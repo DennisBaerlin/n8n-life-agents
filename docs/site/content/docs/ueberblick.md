@@ -15,7 +15,7 @@ Das Wichtigste zuerst: **nichts wird einfach so gespeichert.** Bevor irgendetwas
 
 Betreiben statt nutzen? → [Installation & Betrieb](installation.html).
 
-## Die sieben Agenten auf einen Blick
+## Die Agenten auf einen Blick
 
 - 📒 [**Buchhalter**](buchhalter.html) (`agent.finance`) — bucht Konten, Ausgaben, Überweisungen, Wertpapiere, Zinsen, Kredite und mehr; pflegt Salden automatisch.
 - 🧭 [**Finanzberater**](finanzberater.html) (`agent.finance_advisor`) — interviewt dich, pflegt deinen Finanzplan, recherchiert und meldet Abweichungen. Bucht selbst nie etwas — er hat dafür gar keine Werkzeuge. Einzige Ausnahme: In der Finanzplanung ordnet er deine Depot-Positionen den Bausteinen deines Plans zu (eine Karte zum Bestätigen).
@@ -40,7 +40,7 @@ Du:  (tippst ✅)
 Bot: Gebucht. Neuer Saldo Girokonto: 1.234,56 €
 ```
 
-Weitere Beispiel-Dialoge für alle sieben Agenten findest du auf der Seite [Beispiele](beispiele.html).
+Weitere Beispiel-Dialoge für alle Agenten findest du auf der Seite [Beispiele](beispiele.html).
 
 ## Weiterlesen
 

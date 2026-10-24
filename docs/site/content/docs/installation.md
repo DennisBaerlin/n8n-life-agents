@@ -24,7 +24,7 @@ Auf der frischen Debian-Maschine lädt dieser eine Befehl (als root, wie im fris
 curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh --domain n8n.example.com
 
 # oder eine bestimmte, fest gepinnte Version:
-#   ... -o install.sh && bash install.sh --version v0.1.0 --domain n8n.example.com
+#   ... -o install.sh && bash install.sh --version vX.Y.Z --domain n8n.example.com
 ```
 
 Der Start-Befehl (`install.sh`) lädt das passende Release herunter, prüft eine Prüfsumme (SHA256 — ein digitaler Fingerabdruck der Datei), bevor überhaupt etwas entpackt oder ausgeführt wird, und übergibt danach an den eigentlichen Einrichter (`provision.sh`). Bricht die Prüfsumme nicht auf, läuft nichts — so kann keine manipulierte Datei unbemerkt zur Ausführung kommen. (Eine normale Installation ist immer „release" — du musst dafür kein Profil angeben.)

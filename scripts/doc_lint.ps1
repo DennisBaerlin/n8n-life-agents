@@ -12,6 +12,7 @@
 #   2) Bare Dateinamen-Tokens (*.ps1/*.sql) in der Doku -> muessen irgendwo unter scripts/db/tests/packages/docs liegen.
 #   3) Harte Case-Counts / ID-Ranges im GESAMTEN Doku-Korpus (alle CLAUDE.md + BACKLOG.md) -> Verstoss
 #      (Counts via .Count verifizieren; S2-Haertung: vorher nur tests/CLAUDE.md).
+#   3b) Gezaehlte Agenten ("sieben Spezialisten") in Doku-Korpus, README/AGENTS/CONTRIBUTING und Site-Quellen.
 #   4) Set-Gleichheit: Write-Tools-Tabelle (korpus-weit aus ALLEN CLAUDE.mds extrahiert, mit
 #      Fehlt-Guard statt Crash -- S3-Doku-Split-fest) <-> packages/*/build/workflows/tools/*.ps1
 #      (Ausnahmen = Core-Host-Tools + als intern markierte Tools, siehe $InternalToolMarker).
@@ -134,6 +135,39 @@ foreach ($doc in $docFiles) {
         }
         if ($line -match '\((tc|e2e|oc|ic|ac|ae|sec)\d+\s*[–-]\s*(tc|e2e|oc|ic|ac|ae|sec)?\d+\)') {
             Fail "$rel`:$lineNo" "Erschoepfender ID-Range (driftet -- markante Beispiele als 'u. a.' statt Range)."
+        }
+    }
+}
+
+# ---------------------------------------------------------------
+# 3b) Gezaehlte Agenten ("sieben Spezialisten", "seven specialist agents") verboten -- die Agenten-Tabellen
+#     (README, docs/site ueberblick) sind die eine Adresse. Anlass Public-Schalten 2026-10-24: Seitentitel
+#     sagte "Fuenf", Footer/README "sieben". Korpus = Doku-Korpus + OSS-Doku + Site-Quellen (nicht public/).
+#     Erlaubt: optional "specialist "/"Fach-" dazwischen; "Multi-Agent-…" oder "zwei … agent.*-Views" treffen nicht.
+# ---------------------------------------------------------------
+$agentCountRx = [regex]'(?i)\b(zwei|drei|vier|f(?:ü|ue)nf|sechs|sieben|acht|neun|zehn|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:specialist\s+|fach-?)?(spezialist|agent|specialist)'
+$st3b = 0
+foreach ($pos in @('ein Telegram-Bot, sieben Spezialisten', 'seven specialist agents', '3 Fach-Agenten', "F$([char]0xFC)nf Spezialisten")) { if (-not $agentCountRx.IsMatch($pos)) { $st3b++ } }
+foreach ($neg in @('Multi-Agent-Assistent', 'zwei zeilen-gefilterten agent.x-Views', 'die passenden Spezialisten')) { if ($agentCountRx.IsMatch($neg)) { $st3b++ } }
+if ($st3b -gt 0) { Fail 'doc_lint.ps1' "Check-3b-Selbst-Assert fehlgeschlagen ($st3b) -- Agenten-Zahl-Regex defekt." }
+$countDocs = @($docFiles)
+foreach ($extra in @('README.md', 'AGENTS.md', 'CONTRIBUTING.md')) {
+    $p = Join-Path $RepoRoot $extra
+    if (Test-Path $p) { $countDocs += Get-Item $p }
+}
+$siteSrc = Join-Path $RepoRoot 'docs\site'
+foreach ($sub in @('content', 'layouts', 'data')) {
+    $countDocs += @(Get-ChildItem -Path (Join-Path $siteSrc $sub) -Recurse -File -ErrorAction SilentlyContinue)
+}
+foreach ($doc in $countDocs) {
+    $rel = $doc.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
+    $lineNo = 0
+    foreach ($line in [System.IO.File]::ReadAllLines($doc.FullName)) {
+        $lineNo++
+        if ($line -match 'lint-ignore') { continue }
+        $m = $agentCountRx.Match($line)
+        if ($m.Success) {
+            Fail "$rel`:$lineNo" "Gezaehlte Agenten '$($m.Value)' (driftet -- die Agenten-Tabelle ist die eine Adresse; zahlfrei formulieren)."
         }
     }
 }

@@ -20,7 +20,7 @@ You: (taps ✅)
 Bot: Booked. New balance Checking: €1,234.56
 ```
 
-Personal project · self-hosted · seven specialist agents on n8n 2.44.4 + PostgreSQL 17.
+Personal project · self-hosted · specialist agents on n8n 2.44.4 + PostgreSQL 17.
 
 ## What it is — and who it is for
 

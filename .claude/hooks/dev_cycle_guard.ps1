@@ -6,8 +6,8 @@
 #     interner Fehler) -> ebenfalls 'deny' (fail-closed) mit Hinweis "Text in Datei, per --body-file uebergeben".
 #     Lokale Pfade (Body-Datei, Variablen-Zuweisung mit Pfad) werden vorher aus dem Befehlstext genommen: sie werden
 #     nicht veroeffentlicht und traefen sonst die Benutzerpfad-Regel.
-# (2) 'git push' -> zuerst privacy_lint -Outgoing (ausgehende Commits + neue annotierte Tags; deckt den reinen Tag-Push
-#     ab, den prek auslaesst) -> Treffer = 'deny'. Sonst Erinnerung an Schritt 8 (/code-review): 'ask' mit Hinweis-
+# (2) echter 'git push'-Aufruf -> zuerst privacy_lint -Outgoing je Refspec gegen das genannte Remote (ausgehende Commits
+#     + neue annotierte Tags; deckt den reinen Tag-Push ab, den prek auslaesst) -> Treffer = 'deny'. Sonst Erinnerung an Schritt 8 (/code-review): 'ask' mit Hinweis-
 #     Charakter - die VS-Code-Erweiterung winkt ein Hook-'ask' unter bypassPermissions still durch (GH #77212); "Review
 #     gelaufen" ist kein deterministisch pruefbarer Zustand, die harten Gates sind die von prek.
 # Kein jq -> native ConvertFrom-Json. ASCII-only + Compact-JSON (kein BOM in stdout-JSON).
@@ -70,13 +70,34 @@ if ($isGh -and -not $ghRead) {
     Out-Decision 'deny' "PERSOENLICHE DATEN IM OEFFENTLICHEN TEXT (Repo ist public, privacy_lint): $(Get-FailLines $res). Echte Werte entfernen bzw. durch erfundene ersetzen (Zeilen zaehlen ueber Befehlstext + angehaengte Dateien), dann erneut senden."
   }
 }
-if ($cmd -match 'git\s+push') {
+# Nur ein echter Aufruf zaehlt: 'git [-C dir] push' am Anfang eines Befehls-Segments (nicht der Text in einem
+# Argument, z. B. einer sed-Ersetzung oder Commit-Message). Geprueft wird das tatsaechliche Ziel: Remote + Refspecs
+# aus dem Befehl (ohne Refspec: HEAD), mit --tags/--follow-tags/--all/--mirror zusaetzlich jeder lokale Tag, der dem
+# Remote fehlt.
+$push = [regex]::Match($cmd, '(?:^|[;&|(]|\r?\n)\s*git(?:\s+-C\s+(?:"[^"]+"|''[^'']+''|\S+))?\s+push\b([^;&|\r\n]*)')
+if ($push.Success) {
+  $pArgs = @($push.Groups[1].Value.Trim() -split '\s+' | Where-Object { $_ })
+  $pos = @($pArgs | Where-Object { $_ -notmatch '^-' } | ForEach-Object { $_.Trim('"', "'") })
+  $allTags = [bool]($pArgs | Where-Object { $_ -match '^--(tags|follow-tags|all|mirror)$' })
+  $remote = if ($pos.Count -ge 1) { $pos[0] } else { 'origin' }
+  $specs = if ($pos.Count -ge 2) { @($pos[1..($pos.Count - 1)]) } else { @('HEAD') }
+  $fails = @()
   try {
-    $res = @(& powershell -NoProfile -ExecutionPolicy Bypass -File $lint -Outgoing)
-    $code = $LASTEXITCODE
-  } catch { $code = -1; $res = @("[FAIL] Hook-Fehler: $($_.Exception.Message)") }
-  if ($code -ne 0) {
-    Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing): $(Get-FailLines $res). Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."
+    foreach ($spec in $specs) {
+      $src = ($spec -split ':')[0].TrimStart('+')
+      if (-not $src) { continue }   # ':ziel' loescht nur, veroeffentlicht nichts
+      $env:PRE_COMMIT_REMOTE_NAME = $remote
+      $env:PRE_COMMIT_TO_REF = (& git rev-parse --verify -q "$src^{commit}")
+      Remove-Item Env:PRE_COMMIT_FROM_REF -ErrorAction SilentlyContinue
+      if (-not $env:PRE_COMMIT_TO_REF) { $fails += "[FAIL] Refspec '$spec' nicht aufloesbar"; continue }
+      $lintArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $lint, '-Outgoing') + $(if ($allTags) { @('-AllTags') } else { @() })
+      $res = @(& powershell $lintArgs)
+      if ($LASTEXITCODE -ne 0) { $fails += @($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) }
+    }
+  } catch { $fails += "[FAIL] Hook-Fehler: $($_.Exception.Message)" }
+  if ($fails.Count -gt 0) {
+    $shown = (@($fails | Select-Object -First 5) -join '; ') + $(if ($fails.Count -gt 5) { " (+$($fails.Count - 5) weitere)" } else { '' })
+    Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing, Ziel '$remote'): $shown. Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."
   }
   Out-Decision 'ask' 'Schritt 8 offen? Vor dem Push: /code-review (high) auf DIESEN Diff gelaufen und die Findings eingearbeitet? Die Gates (Lints beim Commit, db_test + privacy-outgoing beim Push) ersetzen den Review nicht.'
 }

@@ -232,9 +232,13 @@ needed.
 ## Branch protection
 
 `main` and the `v*` release tags are protected by repository rulesets: no force-push, no deletion, no
-moving a tag. Pull requests need the CI checks from [ci.yml](.github/workflows/ci.yml) to pass; the
-maintainer pushes directly (admin bypass). Workflow runs from outside contributors wait for maintainer
-approval and, as fork `pull_request` runs, get no secrets and a read-only token.
+moving a tag. A ruleset bypass applies to *every* rule in that ruleset, so these hard locks live in their
+own rulesets **without** any bypass — not even the owner can rewrite `main` or move a release tag without
+deliberately switching the ruleset off. Only the CI requirement has an admin bypass: pull requests need
+the CI checks from [ci.yml](.github/workflows/ci.yml) to pass, while the maintainer pushes directly. A
+broken release is therefore never re-tagged; it gets a new patch version. Workflow runs from outside
+contributors wait for maintainer approval and, as fork `pull_request` runs, get no secrets and a
+read-only token.
 [.github/CODEOWNERS](.github/CODEOWNERS) documents who owns the sensitive paths (secrets / auth / build /
 db functions).
 

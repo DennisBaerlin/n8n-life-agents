@@ -22,7 +22,8 @@
 #   -TextFile <f>       beliebiger oeffentlicher Text (PR-/Issue-/Release-Body des Claude-Hooks).
 #   -Outgoing           pre-push: Message + Identitaeten jedes ausgehenden Commits (PRE_COMMIT_FROM_REF..PRE_COMMIT_TO_REF
 #                       von prek, sonst @{push}..HEAD; nie fremde lokale Branches paralleler Sessions) und jeder lokale
-#                       annotierte Tag (= Release-Notes), der vom gepushten Stand erreichbar ist und dem Remote fehlt.
+#                       annotierte Tag (= Release-Notes), der vom gepushten Stand erreichbar ist (mit -AllTags: jeder) und
+#                       dem Remote fehlt.
 #                       Grenze: prek prueft je Push nur den ersten Ref mit neuen Commits und laesst einen reinen Tag-Push
 #                       aus -> der Claude-Hook dev_cycle_guard.ps1 ruft -Outgoing zusaetzlich vor JEDEM `git push`.
 # Ausgaben nennen nie den Treffer-Wert selbst, nur Quelle:Zeile (das Log soll den echten Wert nicht wiederholen).
@@ -30,7 +31,8 @@
 param(
     [string]$MessageFile,
     [string]$TextFile,
-    [switch]$Outgoing
+    [switch]$Outgoing,
+    [switch]$AllTags   # mit -Outgoing: JEDEN lokalen annotierten Tag pruefen, der dem Remote fehlt (git push --tags/--all)
 )
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
@@ -169,7 +171,8 @@ try {
         # Tags: nur annotierte, vom gepushten Stand erreichbare (alte Tags fremder Historie zaehlen nicht), die dem Remote fehlen.
         $onRemote = @(Invoke-Git @('ls-remote', '--tags', '--refs', $remote) | ForEach-Object { ($_ -split "`t")[-1] -replace '^refs/tags/', '' })
         $tags = 0
-        foreach ($t in (Invoke-Git @('tag', '--merged', $tip))) {
+        $tagArgs = if ($AllTags) { @('tag') } else { @('tag', '--merged', $tip) }
+        foreach ($t in (Invoke-Git $tagArgs)) {
             if (-not $t -or $onRemote -contains $t) { continue }
             if (((Invoke-Git @('cat-file', '-t', "refs/tags/$t")) -join '') -ne 'tag') { continue }
             $tags++

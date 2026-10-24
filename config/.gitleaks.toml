@@ -36,6 +36,8 @@ regexes = [
 # -- a real secret elsewhere in install.sh is still caught. The "line" gitleaks matches against starts with the
 # preceding \n (gitleaks 8.30.1, --staged and git mode), so the anchors are (?:^|\n) / (?:\r?\n|$), not ^ / $.
 # Never anchor with $ alone: that also suppresses a real token elsewhere in the same file.
+# Only valid for the diff-based modes we use (prek --staged, CI `gitleaks git`): in `gitleaks dir` this allowlist
+# suppresses EVERY finding in install.sh, real tokens included (verified 8.30.1) -- re-verify before adopting dir mode.
 description = "Public release-signing key embedded in provisioning/install.sh"
 condition = "AND"
 regexTarget = "line"

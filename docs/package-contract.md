@@ -739,12 +739,16 @@ before saving it as a trigger). The narrow package role `<pkg>_ro` cannot serve 
 - **Person privacy beats host oversight (Owner decision 2026-10-24, "strictly private"):** the free-SQL roles
   (`core_ro`, `<pkg>_ro`) never see another person's private data. The **host derives** it — still no package
   flag: in a package with `per_user` scopes (`core.fn_package_is_per_user`) every table with `person_id NOT NULL`
-  plus every view depending on it loses `SELECT` for `<pkg>_ro` and `core_ro` (`core.fn_provision_package_roles`,
-  re-run after the seed). Row-level: RLS hides per_user context rows (`<base>__<person_id>`) and person plans
+  plus every view depending on it loses `SELECT` for `<pkg>_ro` and `core_ro` (`core.fn_provision_package_roles`;
+  the install passes `per_user` read from the manifest, because the registry is only seeded afterwards). Row-level: RLS hides per_user context rows (`<base>__<person_id>`) and person plans
   (`agent.advisor_plans.person_id NOT NULL`) from `core_ro`; `util_create_core_ro.sql` denies chat memories,
   pairing codes, raw ingress and open card texts. A person reads their own data only through a **bound DEFINER
   window** called with the build-fixed `chat_id` under a non-free-SQL credential; such a window returns nothing
   for per_user data when `core.fn_is_free_sql_session()` (login role `*_ro` — the `chat_id` would be LLM-chosen).
+  **Accepted residual (status metadata, no content):** the menu windows `core.fn_onboarding_status`/
+  `fn_onboarding_overview` and `core.fn_reminders_overview` take a `chat_id` and stay executable by `core_ro`/
+  `<pkg>_ro`, because deterministic menu/gate nodes share those login roles; they reveal only which onboarding
+  sections a person finished and which reminders are on.
 - **The package only DECLARES, the host EXECUTES.** Package SQL contains **no** `GRANT`/`CREATE|ALTER ROLE`
   and references no foreign schema (only `EXECUTE` on published core read-fns). The sole privilege authority
   is `core.fn_provision_package_roles` (always own-schema-scoped). The manifest `read_surface` field declares

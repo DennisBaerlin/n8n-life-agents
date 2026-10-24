@@ -46,7 +46,14 @@ BEGIN
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [2c] unaufgeloeste chat_id lieferte %', v_cnt; END IF;
   RAISE NOTICE 'PASS [2] NULL/nicht-numerisch/unaufgeloest -> leere Menge';
 
-  -- 4) Host-abgeleitete Sperre: career per_user -> person-private Tabellen + abhaengige View fuer die Frei-SQL-Rollen zu
+  -- 4) Host-abgeleitete Sperre: career per_user -> person-private Tabellen + abhaengige View fuer die Frei-SQL-Rollen zu.
+  -- (4a) Install-Weg: per_user-Flag aus dem Manifest (die Registry ist beim Erst-Install noch leer — im db_test auch).
+  PERFORM core.fn_provision_package_roles(jsonb_build_object('package','career','per_user',true));
+  IF has_table_privilege('career_ro', 'career.job_matches', 'SELECT') OR has_table_privilege('core_ro', 'career.v_job_matches', 'SELECT') THEN
+    RAISE EXCEPTION 'FAIL [4a] per_user-Flag aus dem Manifest sperrt die person-privaten Tabellen nicht';
+  END IF;
+  -- (4b) Registry-Weg: Grant zuruecksetzen, Scope seeden, Aufruf OHNE Flag (spaeteres Re-Provisioning).
+  GRANT SELECT ON career.job_matches, career.onboarding_state, career.v_job_matches TO career_ro, core_ro;
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
   VALUES ('career_profile','per_user','own_user_only','career')
   ON CONFLICT (context_name) DO UPDATE SET scope='per_user', write_permission='own_user_only';

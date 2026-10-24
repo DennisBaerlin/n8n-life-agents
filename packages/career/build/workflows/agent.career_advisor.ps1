@@ -183,7 +183,7 @@ function Build-AgentCareerAdvisor {
     $nToolReadJobs = [ordered]@{
         parameters = [ordered]@{
             descriptionType = 'manual'
-            toolDescription = 'Read your own job matches (the weekday scan + forwarded postings), automatically scoped to the asking person - the 20 most recently rated first (feedback_at DESC), then newest. Use it to discuss recent matches OR to find the MOST-RECENTLY-RATED match (the first row with feedback_at) when the user gives a free-text reason after a 👍/👎, so you can attribute it and persist the learned preference via tool_set_career_preferences. Returns id, source, title, employer, location, url, score, is_serendipity, status, feedback_at, created_at. Takes NO arguments - it is scoped to the current user for you.'
+            toolDescription = 'Read your own job matches (the weekday scan + forwarded postings), automatically scoped to the asking person - the 20 most recently rated first (feedback_at DESC; the first row with feedback_at is the most-recently-rated match), then newest. Returns id, source, title, employer, location, url, score, is_serendipity, status, feedback_at, created_at. Takes NO arguments - it is scoped to the current user for you.'
             operation = 'executeQuery'
             query = "=SELECT id, source, title, employer, location, url, score, is_serendipity, status, feedback_at, created_at FROM career.fn_read_job_matches((`$1::jsonb)->>'chat_id', 20);"
             options = [ordered]@{ queryReplacement = "={{ JSON.stringify({ chat_id: `$('$START_NODE').item.json.chat_id }) }}" }

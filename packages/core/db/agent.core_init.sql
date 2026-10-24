@@ -526,8 +526,10 @@ END $$;
 -- ============================================================
 -- ROW-LEVEL-SECURITY: per_user-Zeilen sind fuer den Frei-SQL-Pfad (core_ro: guide/monitor-LLM, Monitor-Specs) unsichtbar
 --   (Owner-Entscheid 2026-10-24 "strikt privat"). PERMISSIVE fuer alle = unveraendertes Verhalten; die RESTRICTIVE-
---   Policy blendet nur fuer current_user = core_ro die physischen per_user-Zeilen aus. Bewusst current_user statt
---   "TO core_ro": die App-Rolle ERBT core_ro (apply_schema.sh) und waere sonst mitbetroffen. Owner (postgres) und
+--   Policy blendet nur fuer current_user = core_ro / core_ro_eval (Monitor-Specs) die physischen per_user-Zeilen aus
+--   (strpos vorab: Zeilen ohne "__" kosten keinen fn-Aufruf). Bewusst current_user statt
+--   "TO core_ro": eine Policy "TO <rolle>" trifft jedes Mitglied der Rolle — die Sperre haengt so nur an den zwei
+--   tatsaechlichen Frei-SQL-Identitaeten, unabhaengig davon, wer welche Rolle erbt. Owner (postgres) und
 --   DEFINER-Fenster (core.fn_fetch_context) umgehen RLS -> die gebundenen Lesepfade bleiben intakt. ACHTUNG: eine
 --   kuenftige VIEW ueber diese Tabelle laeuft mit Owner-Rechten und umginge die Policy.
 -- ============================================================
@@ -536,4 +538,4 @@ DROP POLICY IF EXISTS core_contexts_all ON agent.core_contexts;
 CREATE POLICY core_contexts_all ON agent.core_contexts USING (TRUE) WITH CHECK (TRUE);
 DROP POLICY IF EXISTS core_contexts_ro_private ON agent.core_contexts;
 CREATE POLICY core_contexts_ro_private ON agent.core_contexts AS RESTRICTIVE FOR SELECT
-    USING (current_user <> 'core_ro' OR NOT agent.fn_is_per_user_row(name));
+    USING (current_user NOT IN ('core_ro', 'core_ro_eval') OR strpos(name, '__') = 0 OR NOT agent.fn_is_per_user_row(name));

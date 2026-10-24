@@ -80,27 +80,26 @@ BEGIN
 END $$;
 
 -- Monitor-Specs (Security-Audit 2026-10): agent.fn_monitor_ro_eval fuehrt die gespeicherte Trigger-Abfrage als
--- SECURITY DEFINER mit Eigentuemer core_ro aus — in einer DEFINER-fn lehnt PostgreSQL jeden Rollenwechsel ab, die
--- Abfrage kann core_ro also nicht ablegen. Der Eigentuemerwechsel lebt HIER (die Rolle existiert erst ab hier; ein
--- Superuser darf OWNER TO ohne CREATE-Recht, CREATE OR REPLACE in der R__ behaelt den Eigentuemer). EXECUTE an
--- core_ro: die App-Rolle (Cron) erreicht die fn ueber ihre core_ro-Mitgliedschaft, die Paket-Rollen nicht.
+-- SECURITY DEFINER mit Eigentuemer core_ro_eval aus — in einer DEFINER-fn lehnt PostgreSQL jeden Rollenwechsel ab, die
+-- Abfrage kann die Leserechte also nicht ablegen. core_ro_eval ist NOLOGIN und erbt NUR die Leserechte von core_ro
+-- (Deny-Liste + RLS gelten mit); eigener Eigentuemer statt core_ro, damit eine Frei-SQL-Sitzung unter core_ro die fn
+-- weder aendern noch droppen kann (nur der Eigentuemer darf das). Der Eigentuemerwechsel lebt HIER (die Rolle existiert
+-- erst ab hier; ein Superuser darf OWNER TO ohne CREATE-Recht, CREATE OR REPLACE in der R__ behaelt den Eigentuemer).
+-- KEIN EXECUTE an core_ro (die Frei-SQL-Sitzung braucht die fn nicht); die App-Rolle (Cron) hat EXECUTE per
+-- Sammel-Grant in apply_schema.sh, die Paket-Rollen nicht.
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro_eval') THEN
+        CREATE ROLE core_ro_eval NOLOGIN;
+    END IF;
+END $$;
+GRANT core_ro TO core_ro_eval;
 DO $$ BEGIN
     IF to_regprocedure('agent.fn_monitor_ro_eval(text, text)') IS NOT NULL THEN
-        ALTER FUNCTION agent.fn_monitor_ro_eval(text, text) OWNER TO core_ro;
-        REVOKE ALL ON FUNCTION agent.fn_monitor_ro_eval(text, text) FROM public;
-        GRANT EXECUTE ON FUNCTION agent.fn_monitor_ro_eval(text, text) TO core_ro;
+        ALTER FUNCTION agent.fn_monitor_ro_eval(text, text) OWNER TO core_ro_eval;
+        REVOKE ALL ON FUNCTION agent.fn_monitor_ro_eval(text, text) FROM public, core_ro;
     END IF;
 END $$;
 
--- Gebundene Person-Lesefenster (Security-Audit 2026-10): der career_advisor liest seinen Plan ueber read_plan unter der
--- Haupt-Credential (chat_id build-fix, nie $fromAI); die App-Rolle erreicht das DEFINER-Fenster ueber ihre
--- core_ro-Mitgliedschaft. Ein Frei-SQL-Aufruf (Login-Rolle *_ro) bekommt fuer per_user-Domaenen nichts
--- (core.fn_is_free_sql_session im Fenster).
-DO $$ BEGIN
-    IF to_regprocedure('core.fn_advisor_read_plan(text, text)') IS NOT NULL THEN
-        GRANT EXECUTE ON FUNCTION core.fn_advisor_read_plan(text, text) TO core_ro;
-    END IF;
-END $$;
 
 -- WS-2 (Onboarding-UX): EXECUTE auf das kombinierte Onboarding-Lesefenster core.fn_onboarding_status(text)
 -- fuer core_ro. Der Guide (Core-Agent, core_ro) zeigt die frische Wiedereinstiegs-Checkliste ueber diese

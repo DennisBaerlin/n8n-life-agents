@@ -42,7 +42,7 @@ BEGIN
 
   v := agent.fn_monitor_probe(jsonb_build_object(
     'acquisition_method', 'sql',
-    'acquisition_sql', 'SELECT CASE WHEN current_user = ''core_ro'' THEN 1 ELSE 0 END'
+    'acquisition_sql', 'SELECT CASE WHEN current_user = ''core_ro_eval'' THEN 1 ELSE 0 END'
   ));
   IF (v->>'value')::numeric IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION 'FAIL fn_monitor_probe [sql role]: EXECUTE laeuft NICHT unter core_ro, got %', v;

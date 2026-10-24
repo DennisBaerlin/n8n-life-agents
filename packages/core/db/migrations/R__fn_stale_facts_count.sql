@@ -6,7 +6,7 @@
 --   Ersetzt die gespeicherte Abfrage mit dem Literal 'finance_profile' (Core kennt kein Paket). Die Core-
 --   Trigger-Zeile ruft nur diese fn (agent.monitor_init.sql; Bestand: core:V019) -> der Owner kann die Spec
 --   editieren, eine Logik-Aenderung bleibt trotzdem eine reine R__-Aenderung.
---   Ausgefuehrt von fn_monitor_acquire unter SET LOCAL ROLE core_ro -> STABLE INVOKER, search_path gepinnt,
+--   Ausgefuehrt von fn_monitor_acquire als core_ro_eval (agent.fn_monitor_ro_eval) -> STABLE INVOKER, search_path gepinnt,
 --   array-sicher (jsonb_array_elements nur auf echten Arrays); EXECUTE an core_ro in util_create_core_ro.sql.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_stale_facts_count()

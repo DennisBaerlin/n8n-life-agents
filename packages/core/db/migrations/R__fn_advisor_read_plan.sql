@@ -75,5 +75,5 @@ $$;
 
 REVOKE ALL ON FUNCTION core.fn_advisor_read_plan(text, text) FROM public;
 -- EXECUTE-GRANT an die Paket-Leserollen erteilt core.fn_provision_package_roles (idempotent,
--- to_regprocedure-geguardet auf die 2-Arg-Signatur), an core_ro (-> App-Rolle per Mitgliedschaft, read_plan-Werkzeug)
--- util_create_core_ro.sql — hier nur der PUBLIC-REVOKE als Default-Schutz.
+-- to_regprocedure-geguardet auf die 2-Arg-Signatur); die App-Rolle (read_plan-Werkzeug) hat EXECUTE per Sammel-Grant
+-- (apply_schema.sh) — hier nur der PUBLIC-REVOKE als Default-Schutz.

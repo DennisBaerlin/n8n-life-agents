@@ -5,7 +5,8 @@
 --   -> jedes Argument ist dort LLM-gesteuert. Gebundene Person-Lesefenster (core.fn_advisor_read_plan,
 --   career.fn_read_job_matches) nehmen eine chat_id als Argument; Telegram-IDs sind nicht geheim -> aus einer
 --   Frei-SQL-Sitzung geben sie fuer per_user-Daten NICHTS heraus (Security-Audit 2026-10, "strikt privat"). Die
---   gebundenen Werkzeuge laufen unter der Haupt-Credential (chat_id build-fix aus dem Start-Node, nie $fromAI).
+--   gebundenen Werkzeuge laufen unter einer Nicht-Frei-SQL-Credential (Haupt-Credential bzw. <pkg>_rw; chat_id build-fix
+--   aus dem Start-Node, nie $fromAI).
 --   SQL STABLE INVOKER, keine Tabellen.
 --   Tests: tests/db/core/test_fn_advisor_read_plan.sql, tests/db/career/test_fn_read_job_matches.sql
 -- ============================================================

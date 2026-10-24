@@ -72,6 +72,67 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
+                                                                                   "id":  "b54a91fd-94ec-52c4-803f-50f1b879e853",
+                                                                                   "leftValue":  "={{ !!($(\u0027New Telegram message\u0027).item.json.callback_query) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -2740,
+                                       -280
+                                   ],
+                      "id":  "b9d305d0-63e6-56dd-a89e-1f55065f766c",
+                      "name":  "Group button tap?"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "callback",
+                                         "operation":  "answerQuery",
+                                         "queryId":  "={{ $(\u0027New Telegram message\u0027).item.json.callback_query.id }}",
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -2520,
+                                       -280
+                                   ],
+                      "id":  "0808d21c-ddf9-5faa-950d-5290357e53c2",
+                      "name":  "Answer group tap",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
                                                                                    "id":  "07644716-3d1d-524e-9cc5-dd72da50ecda",
                                                                                    "leftValue":  "={{ $json.message !== undefined \u0026\u0026 $json.message !== null }}",
                                                                                    "rightValue":  true,
@@ -2625,9 +2686,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT (SELECT a.advisor_agent FROM agent.advisor_plans p JOIN core.advisors a ON a.domain = p.domain WHERE p.status = \u0027draft\u0027 AND p.updated_at \u003e now() - interval \u00272 hours\u0027 AND (p.person_id IS NULL OR p.person_id = (($1::jsonb)-\u003e\u003e\u0027person_id\u0027)) ORDER BY p.updated_at DESC LIMIT 1) AS interview_advisor;",
+                                         "query":  "SELECT (SELECT a.advisor_agent FROM agent.advisor_plans p JOIN core.advisors a ON a.domain = p.domain WHERE p.status = \u0027draft\u0027 AND p.updated_at \u003e now() - interval \u00272 hours\u0027 AND ((p.person_id IS NULL AND (($1::jsonb)-\u003e\u003e\u0027role\u0027) = \u0027owner\u0027) OR p.person_id = (($1::jsonb)-\u003e\u003e\u0027person_id\u0027)) ORDER BY p.updated_at DESC LIMIT 1) AS interview_advisor;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ person_id: $(\u0027Resolve sender\u0027).item.json.sender.person_id }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ person_id: $(\u0027Resolve sender\u0027).item.json.sender.person_id, role: $(\u0027Resolve sender\u0027).item.json.sender.role }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -3948,40 +4009,6 @@
                   },
                   {
                       "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "a7fcdecf-1394-56a8-aa78-5d9e5fd38a55",
-                                                                                   "leftValue":  "={{ String(($(\u0027Trigger normalize\u0027).item.json.message.chat.type) || \u0027\u0027) }}",
-                                                                                   "rightValue":  "private",
-                                                                                   "operator":  {
-                                                                                                    "type":  "string",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       -300,
-                                       -760
-                                   ],
-                      "id":  "ddafad77-91ce-5e3d-8ac7-8aa78f92002b",
-                      "name":  "Thinking private?"
-                  },
-                  {
-                      "parameters":  {
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "y2XrhJmzfuEr8Ler",
@@ -4165,7 +4192,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Private chat? (nur Einzelchats; Gruppe/Kanal endet still, vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle) -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (RO, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil, höchstens ein inhaltsfreier Satz um die Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).",
+                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Private chat? (nur Einzelchats; Gruppe/Kanal endet vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle; ein Knopf-Tipp aus einer Gruppe bekommt per Group button tap? -\u003e Answer group tap nur eine leere Quittung) -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (Haupt-Credential, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors; nur der EIGENE Personen-Draft bzw. — für den Owner — ein Haushalts-Draft, nie der Draft eines anderen Mitglieds) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil, höchstens ein inhaltsfreier Satz um die Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).",
                                          "height":  320,
                                          "width":  720,
                                          "color":  4
@@ -4261,7 +4288,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (Fix C: kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). Send a text message (WP-2 Markdown-Robustheit): PRIMARY sendet parse_mode=Markdown, LLM-Output bewusst UN-escapt (workflow_lint-Allowlist), onError=continueErrorOutput + maxTries=1 (Retry bei deterministischem Parse-Fehler nutzlos + GH #10763 defekt mit onError); ein Parse-Fehler (ungepaartes _*[` -\u003e HTTP 400 can\\\u0027t parse entities) fällt auf Send a text message (plain fallback) mit parse_mode=HTML + escapten \u0026 \u003c \u003e (echtes Plain, crash-frei; leeres parse_mode macht n8n still zu Markdown, Exec 297; voller retryOnFail) -\u003e ein echter Zustellausfall des Fallbacks bleibt UNGEFANGEN -\u003e errorWorkflow (nicht maskiert). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Thinking private? (nur private Chats) -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Send a text message bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
+                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (Fix C: kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). Send a text message (WP-2 Markdown-Robustheit): PRIMARY sendet parse_mode=Markdown, LLM-Output bewusst UN-escapt (workflow_lint-Allowlist), onError=continueErrorOutput + maxTries=1 (Retry bei deterministischem Parse-Fehler nutzlos + GH #10763 defekt mit onError); ein Parse-Fehler (ungepaartes _*[` -\u003e HTTP 400 can\\\u0027t parse entities) fällt auf Send a text message (plain fallback) mit parse_mode=HTML + escapten \u0026 \u003c \u003e (echtes Plain, crash-frei; leeres parse_mode macht n8n still zu Markdown, Exec 297; voller retryOnFail) -\u003e ein echter Zustellausfall des Fallbacks bleibt UNGEFANGEN -\u003e errorWorkflow (nicht maskiert). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Send a text message bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
                                          "height":  320,
                                          "width":  800,
                                          "color":  4
@@ -5666,10 +5693,28 @@
                                                                }
                                                            ],
                                                            [
-
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Group button tap?",
+                                                                   "type":  "main"
+                                                               }
                                                            ]
                                                        ]
                                           },
+                        "Group button tap?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Answer group tap",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ],
+                                                               [
+
+                                                               ]
+                                                           ]
+                                              },
                         "Message update?":  {
                                                 "main":  [
                                                              [
@@ -6510,7 +6555,7 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Thinking private?",
+                                                                           "node":  "Open thinking lease",
                                                                            "type":  "main"
                                                                        },
                                                                        {
@@ -6522,7 +6567,7 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Thinking private?",
+                                                                           "node":  "Open thinking lease",
                                                                            "type":  "main"
                                                                        },
                                                                        {
@@ -6541,7 +6586,7 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Thinking private?",
+                                                                           "node":  "Open thinking lease",
                                                                            "type":  "main"
                                                                        },
                                                                        {
@@ -6553,7 +6598,7 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Thinking private?",
+                                                                           "node":  "Open thinking lease",
                                                                            "type":  "main"
                                                                        },
                                                                        {
@@ -6564,17 +6609,6 @@
                                                                    ]
                                                                ]
                                                   },
-                        "Thinking private?":  {
-                                                  "main":  [
-                                                               [
-                                                                   {
-                                                                       "index":  0,
-                                                                       "node":  "Open thinking lease",
-                                                                       "type":  "main"
-                                                                   }
-                                                               ]
-                                                           ]
-                                              },
                         "Open thinking lease":  {
                                                     "main":  [
                                                                  [
@@ -6755,7 +6789,7 @@
                                                                                  [
                                                                                      {
                                                                                          "index":  0,
-                                                                                         "node":  "Thinking private?",
+                                                                                         "node":  "Open thinking lease",
                                                                                          "type":  "main"
                                                                                      },
                                                                                      {

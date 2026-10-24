@@ -4,7 +4,7 @@
 --   UND fn_monitor_probe (Test-Abruf der Tools). web_search wird IMMER im Workflow
 --   beschafft (HTTP-Node mit Credential) und hier abgelehnt.
 --     * sql: Shape-Guard (single SELECT, kein ';', Laengen-Cap) als Beratungsebene,
---       dann agent.fn_monitor_ro_eval (DEFINER, Eigentuemer core_ro: strukturell read-only — das
+--       dann agent.fn_monitor_ro_eval (DEFINER, Eigentuemer core_ro_eval = nur die core_ro-Leserechte: strukturell read-only — das
 --       GESETZ, ohne Rollenwechsel-Ausweg; core_ro ist die Core-Host-Leserolle: liest agent+core+jedes
 --       installierte Paket ohne fremde Person-Daten, denn eine Monitor-sql-Acquisition kann beliebige Schemata
 --       treffen — der Core-Seed household_facts_freshness liest agent.core_contexts, ein Paket-Trigger dessen
@@ -46,7 +46,7 @@ BEGIN
                 'reason', 'sql spec rejected: must be a single SELECT statement (no semicolons, max 2000 chars)');
         END IF;
         BEGIN
-            -- strukturelles read-only: agent.fn_monitor_ro_eval ist DEFINER mit Eigentuemer core_ro (kein
+            -- strukturelles read-only: agent.fn_monitor_ro_eval ist DEFINER mit Eigentuemer core_ro_eval (kein
             -- Rollenwechsel aus der Spec heraus moeglich); Pfad des Aufrufers fuer unqualifizierte Namen.
             v_value := agent.fn_monitor_ro_eval(v_q, current_setting('search_path'));
         EXCEPTION WHEN OTHERS THEN

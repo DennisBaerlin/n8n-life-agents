@@ -1300,23 +1300,13 @@ BEGIN
   RAISE NOTICE 'PASS [Rollen-Zaun generisch: % Paket-Rollen ohne agent-USAGE / Host-Tabellen / unpublizierte core-fns]', v_n;
 END $$;
 
--- ===== Security-Audit 2026-10: neue core_ro-Fenster unter der echten Rolle (kein permission denied) =====
---   agent.fn_monitor_ro_eval  (Monitor-Specs; DEFINER, Eigentuemer core_ro; die App-Rolle erbt EXECUTE)
---   core.fn_advisor_read_plan (read_plan unter der Haupt-Credential = App-Rolle, erbt EXECUTE von core_ro)
---   career.fn_read_job_matches (read_job_matches unter career_rw)
+-- ===== Security-Audit 2026-10: gebundene Fenster unter der echten Rolle =====
+--   career.fn_read_job_matches (read_job_matches unter career_rw) -> kein permission denied
+--   agent.fn_monitor_ro_eval   (Monitor-Specs; DEFINER, Eigentuemer core_ro_eval) -> die Frei-SQL-Rolle core_ro
+--                              hat KEIN EXECUTE (nur die App-Rolle per Sammel-Grant in apply_schema.sh)
 DO $$
-DECLARE v_num numeric; v_cnt int;
+DECLARE v_cnt int;
 BEGIN
-  BEGIN
-    SET LOCAL ROLE core_ro;
-    v_num := agent.fn_monitor_ro_eval('SELECT 7', 'pg_catalog');
-    SELECT count(*) INTO v_cnt FROM core.fn_advisor_read_plan('__rp_none__', NULL);
-    RESET ROLE;
-  EXCEPTION WHEN OTHERS THEN
-    RESET ROLE;
-    RAISE EXCEPTION 'FAIL [core_ro -> fn_monitor_ro_eval / fn_advisor_read_plan]: %', SQLERRM;
-  END;
-  IF v_num IS DISTINCT FROM 7 THEN RAISE EXCEPTION 'FAIL [core_ro -> fn_monitor_ro_eval]: erwartet 7, got %', v_num; END IF;
   BEGIN
     SET LOCAL ROLE career_rw;
     SELECT count(*) INTO v_cnt FROM career.fn_read_job_matches('900199');
@@ -1325,7 +1315,10 @@ BEGIN
     RESET ROLE;
     RAISE EXCEPTION 'FAIL [career_rw -> career.fn_read_job_matches]: %', SQLERRM;
   END;
-  RAISE NOTICE 'PASS [core_ro -> fn_monitor_ro_eval / fn_advisor_read_plan, career_rw -> fn_read_job_matches: kein permission denied]';
+  IF has_function_privilege('core_ro', 'agent.fn_monitor_ro_eval(text, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> fn_monitor_ro_eval]: die Frei-SQL-Rolle darf das Monitor-Fenster nicht ausfuehren';
+  END IF;
+  RAISE NOTICE 'PASS [career_rw -> fn_read_job_matches: kein permission denied; core_ro ohne EXECUTE auf fn_monitor_ro_eval]';
 END $$;
 
 ROLLBACK;

@@ -108,4 +108,4 @@ DROP POLICY IF EXISTS advisor_plans_all ON agent.advisor_plans;
 CREATE POLICY advisor_plans_all ON agent.advisor_plans USING (TRUE) WITH CHECK (TRUE);
 DROP POLICY IF EXISTS advisor_plans_ro_household_only ON agent.advisor_plans;
 CREATE POLICY advisor_plans_ro_household_only ON agent.advisor_plans AS RESTRICTIVE FOR SELECT
-    USING (current_user <> 'core_ro' OR person_id IS NULL);
+    USING (current_user NOT IN ('core_ro', 'core_ro_eval') OR person_id IS NULL);

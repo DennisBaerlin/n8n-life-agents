@@ -746,9 +746,13 @@ pkg_cmd_install() {
 }
 
 # _pkg_provision_roles <pkg> — core.fn_provision_package_roles (Paket-Rollen + Isolation + person-private Tabellen),
-#   idempotent; Fehler = die.
+#   idempotent; Fehler = die. per_user kommt aus dem MANIFEST (context_scopes): core.context_scopes fuellt erst der
+#   Seed (Stufe 5) — ohne das Flag blieben person-private Tabellen beim Erst-Install bis zum naechsten Update lesbar.
 _pkg_provision_roles() {
-  _pkg_psql_exec "DO \$do\$ DECLARE r jsonb; BEGIN r := core.fn_provision_package_roles(jsonb_build_object('package','${1}')); IF NOT (r->>'ok')::bool THEN RAISE EXCEPTION 'fn_provision_package_roles(%): %', '${1}', r; END IF; END \$do\$;" \
+  local pu
+  pu="$(jq -r '[(.context_scopes // {}) | to_entries[] | .value | objects | .scope] | any(. == "per_user")' "$(_pkg_dir)/$1/manifest.json" 2>/dev/null || true)"
+  [ "$pu" = true ] || pu=false
+  _pkg_psql_exec "DO \$do\$ DECLARE r jsonb; BEGIN r := core.fn_provision_package_roles(jsonb_build_object('package','${1}','per_user',${pu})); IF NOT (r->>'ok')::bool THEN RAISE EXCEPTION 'fn_provision_package_roles(%): %', '${1}', r; END IF; END \$do\$;" \
     || die "Rollen-Provisionierung '$1' fehlgeschlagen."
 }
 
@@ -812,10 +816,6 @@ pkg_install_one() {
   else                          SEED_PKG="$pkg" seed_data; fi
   # Stufe 5b: vorab erfragte Paket-Einstellungen (Manifest .config.prompt) in die eben geseedeten Zeilen.
   _pkg_apply_settings "$pkg"
-  # Stufe 5c: Rollen erneut (idempotent) — die person-privaten Tabellen leitet fn_provision_package_roles aus den
-  #   per_user-Scopes ab, die erst der Seed (Stufe 5) in core.context_scopes schreibt; beim Erst-Install sperrte
-  #   Stufe 3 sie sonst erst beim naechsten Update.
-  _pkg_provision_roles "$pkg"
 
   # Stufe 6: nur die Paket-Workflows deployen (Wortgrenze-Prefix aus provides.agents) + aktivieren.
   deploy_workflows "$pkg"

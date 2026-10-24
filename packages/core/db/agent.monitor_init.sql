@@ -25,10 +25,10 @@
 --     Namen"-Nicht-Ziel; fn_create faengt unique_violation -> {ok:false})
 --
 -- SQL-Beschaffung (Sicherheits-Layering): HITL bei Anlage + Regex-Shape-Guard in der fn
--- ('^\s*select\y', kein ';', Laengen-Cap — Beratung) -> SET LOCAL ROLE core_ro beim
--- EXECUTE (strukturelles Gesetz: read-only; core_ro = Core-Host-Leserolle agent+core+finance,
--- weil eine Acquisition beliebige Schemata treffen kann — B3, nach der Finance-Paket-Isolation).
--- Voraussetzung: der App-DB-User ist Member von core_ro (GRANT unten + apply_schema, idempotent).
+-- ('^\s*select\y', kein ';', Laengen-Cap — Beratung) -> EXECUTE im DEFINER-Fenster agent.fn_monitor_ro_eval
+-- (Eigentuemer core_ro_eval = nur die core_ro-Leserechte; strukturelles Gesetz: read-only, kein Rollenwechsel
+-- moeglich; core_ro = Core-Host-Leserolle agent+core+Pakete ohne fremde Person-Daten, weil eine Acquisition
+-- beliebige Schemata treffen kann — B3; Security-Audit 2026-10).
 -- BEKANNTE GRENZE: statement_timeout wirkt in Postgres nur am Top-Level-Statement — ein
 -- SET LOCAL im fn-Inneren begrenzt das innere EXECUTE NICHT. Restrisiko (Runaway-Query)
 -- akzeptiert: Single-User, Query ist HITL-bestaetigt + Probe-getestet, Scalar-Subquery-Wrap.
@@ -321,10 +321,8 @@ WHERE NOT EXISTS (
 -- der Paket-Extraktion eng auf `finance` skopiert; der Monitor ist ein CORE-Agent). core_ro
 -- bekommt seinen breiten agent-SELECT ohnehin in util_create_core_ro (deckt diese Tabellen) —
 -- der explizite GRANT hier ist FMEA-Backstop (nicht allein auf Default-Privileges verlassen).
--- (b) Membership: der anwendende App-DB-User wird Member von core_ro, damit fn_monitor_acquire
--- die gespeicherten SQL-Specs unter SET LOCAL ROLE core_ro ausfuehren kann (die autoritative
--- Runtime-Membership des n8n-Users erteilt apply_schema.sh Phase 4; hier der Dev/Apply-User).
--- Beides no-op, falls core_ro (noch) nicht existiert (Phase 1 vor util_create_core_ro = Phase 4;
+-- Keine Mitgliedschaft des App-Users in core_ro mehr (Security-Audit 2026-10: agent.fn_monitor_ro_eval statt
+-- SET ROLE). No-op, falls core_ro (noch) nicht existiert (Phase 1 vor util_create_core_ro = Phase 4;
 -- greift beim Re-Apply / im db_test, wo core_ro vor den Monitor-Tests da ist).
 -- ============================================================
 
@@ -332,6 +330,5 @@ DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
         GRANT SELECT ON agent.monitor_triggers     TO core_ro;
         GRANT SELECT ON agent.monitor_observations TO core_ro;
-        EXECUTE format('GRANT core_ro TO %I', current_user);
     END IF;
 END $$;

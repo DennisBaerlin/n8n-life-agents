@@ -429,15 +429,15 @@
   },
   {
     "id": "ri23e",
-    "expect_texts": ["초기 설정은 봇과의 개인 채팅에서만 할 수 있어요"],
-    "name": "Mitglied Lena tappt einen Onboarding-Knopf in einer GRUPPE (negative chat_id) -> Toast, kein Onboarding-Arm",
+    "name": "Mitglied Lena tappt einen Knopf in einer GRUPPE (negative chat_id) -> leere Quittung, keine Verarbeitung",
     "kind": "node_ran",
     "update": "callback",
     "chat_id": -1001234567,
     "from_uid": 880055200,
     "callback_data": "onboarding:career:profile_basics",
-    "expected_node": "Answer dispatched cb",
-    "notes": "Agent-Identitaet waere message.chat.id (die Gruppe), nicht der Tapper -> der Handler laesst nur chat_type=private durch (der Treiber setzt type=group bei negativer chat_id) -> Answer dispatched cb."
+    "expected_node": "Answer group tap",
+    "expected_not_node": "Trigger normalize",
+    "notes": "Security-Audit 2026-10 (Owner: nur Einzelchats): 'Private chat?' verwirft Gruppen-Updates vor jedem DB-Zugriff; ein Knopf-Tipp bekommt nur eine leere answerCallbackQuery (Lade-Kreisel stoppt). Der Treiber setzt type=group bei negativer chat_id."
   },
   {
     "id": "ri23c",
@@ -733,16 +733,14 @@
   },
   {
     "id": "ri51",
-    "name": "Gruppe: zwei Personen schreiben gleichzeitig -> nie verschmolzen, zwei Laeufe",
-    "kind": "burst",
+    "name": "Gruppe: Nachricht in einer Gruppe -> still verworfen, kein Ingress-Eintrag",
+    "kind": "node_ran",
     "chat_id": -1001234567,
     "from_uid": 880055071,
-    "updates": [
-      { "type": "text", "text": "Burst-Gruppe Owner einundfuenfzig" },
-      { "type": "text", "text": "Burst-Gruppe Lena einundfuenfzig", "from_uid": 880055200 }
-    ],
-    "expect_processed": 2,
-    "notes": "Buendel-Schluessel ist (chat_id, from.id): in einer Gruppe gehoeren gleichzeitige Nachrichten verschiedener Personen nie zusammen."
+    "text": "Gruppe einundfuenfzig",
+    "expected_node": "Private chat?",
+    "expected_not_node": "Ingress record",
+    "notes": "Security-Audit 2026-10 (Owner: nur Einzelchats): in einer Gruppe ist chat.id negativ (HITL-Sentinel-Pfad) und Antworten gingen an alle -> 'Private chat?' endet vor dem Ingress. Ersetzt den frueheren Gruppen-Burst-Fall."
   },
   {
     "id": "ri52",

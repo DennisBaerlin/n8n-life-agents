@@ -269,7 +269,7 @@ BEGIN
     (domain, label, trigger_type, acquisition_method, acquisition_spec,
      expected_unit, check_interval, next_check_at)
   VALUES ('__test__', 'role echo', 'recurring_info', 'sql',
-          jsonb_build_object('query', 'SELECT CASE WHEN current_user = ''core_ro'' THEN 1 ELSE 0 END'),
+          jsonb_build_object('query', 'SELECT CASE WHEN current_user = ''core_ro_eval'' THEN 1 ELSE 0 END'),
           'flag', INTERVAL '1 day', v_now - INTERVAL '1 hour')
   RETURNING id INTO v_id_sql;
 

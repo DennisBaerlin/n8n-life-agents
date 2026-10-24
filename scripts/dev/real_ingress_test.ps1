@@ -183,7 +183,7 @@ function Send-TelegramUpdate([long]$ChatId, [long]$FromUid, [string]$Text, [stri
         message_id = [int](Get-Random -Minimum 1000 -Maximum 99999)
         date       = [long][System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
         from       = $from
-        chat       = @{ id = $ChatId; type = 'private' }
+        chat       = @{ id = $ChatId; type = $(if ($ChatId -lt 0) { 'group' } else { 'private' }) }   # Telegram: negative chat_id = Gruppe
     }
     # Sprachnachricht (optional, Case-Feld voice_file_id): Telegram schickt dann message.voice statt message.text.
     if ($VoiceFileId) { $msg['voice'] = @{ file_id = $VoiceFileId; file_unique_id = 'ingress'; duration = 2; mime_type = 'audio/ogg' } }

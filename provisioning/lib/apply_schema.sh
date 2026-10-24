@@ -127,9 +127,10 @@ _emit_core_role_phase() {
   printf 'ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA agent GRANT ALL ON TABLES TO %s;\n' "$DB_SUPERUSER" "$N8N_DB_USER"
   printf 'ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA core  GRANT ALL ON TABLES TO %s;\n' "$DB_SUPERUSER" "$N8N_DB_USER"
   printf 'ALTER ROLE %s SET search_path = pg_catalog, agent, core;\n' "$N8N_DB_USER"
-  # Membership in core_ro: der n8n-Owner faehrt den Monitor-Cron; fn_monitor_acquire macht fuer die
-  # sql-Beschaffung ein SET LOCAL ROLE core_ro (strukturell read-only, B3) -> der Owner MUSS Member sein.
-  printf 'GRANT core_ro TO %s;\n' "$N8N_DB_USER"
+  # KEINE Mitgliedschaft in core_ro mehr (Security-Audit 2026-10): die Monitor-Specs laufen ueber das DEFINER-Fenster
+  # agent.fn_monitor_ro_eval (EXECUTE oben per Sammel-Grant); der fruehere SET-ROLE-Weg brauchte sie. REVOKE raeumt
+  # Bestands-Installationen auf (ohne Mitgliedschaft nur eine WARNING).
+  printf 'REVOKE core_ro FROM %s;\n' "$N8N_DB_USER"
   # core.backup_key bleibt dem Owner-Schreibpfad vorbehalten, nie an Leserollen (REVOKE in
   # core.backup_key_init / util_create_core_ro).
 }

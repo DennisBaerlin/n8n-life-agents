@@ -24,7 +24,8 @@
 --   anlegt (postgres) -> deckt kuenftige Tabellen.
 --
 --   Eingabe jsonb: package (Pflicht; Schema-/Paketname, muss ^[a-z][a-z0-9_]*$ matchen
---     und als Schema existieren).
+--     und als Schema existieren); per_user (optional bool: Paket deklariert per_user-Kontexte -> person-private
+--     Tabellen sperren, s. unten).
 --   RUECKGABE: {ok:true, package, rw_role, ro_role}. Leerer/ungueltiger Name oder
 --     fehlendes Schema -> {ok:false, reason} OHNE Write (korrigierbar, kein RAISE).
 -- ============================================================
@@ -140,7 +141,10 @@ BEGIN
     -- (auch verschachtelt) davon abhaengige View sind fuer die Frei-SQL-Rollen <pkg>_ro + core_ro unsichtbar (Views
     -- lesen mit Owner-Rechten -> explizit mit). Die Person liest ihre Zeilen nur ueber gebundene DEFINER-Fenster
     -- (z. B. career.fn_read_job_matches). Laeuft nach dem Schema-Grant oben -> jedes Re-Provisioning setzt es erneut.
-    IF to_regprocedure('core.fn_package_is_per_user(text)') IS NOT NULL AND core.fn_package_is_per_user(v_pkg) THEN
+    -- per_user-Quelle: das Manifest (p.per_user, vom Install-Lifecycle aus context_scopes gelesen — core.context_scopes
+    -- fuellt erst der Seed NACH dieser fn) ODER die Registry (Aufrufer ohne Flag, z. B. ein spaeteres Re-Provisioning).
+    IF COALESCE((p->>'per_user')::boolean, false)
+       OR (to_regprocedure('core.fn_package_is_per_user(text)') IS NOT NULL AND core.fn_package_is_per_user(v_pkg)) THEN
         DECLARE v_rel record;
         BEGIN
             FOR v_rel IN

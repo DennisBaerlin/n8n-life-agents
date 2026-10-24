@@ -44,7 +44,7 @@ function Build-SetRecurringPayment {
     # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Betrag in der Konto-Waehrung (Read Current).
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
-    $dom = "($S.schedule_day_of_month == '-1' ? 'finance.value.last_day_of_month' : 'finance.tpl.day_of_month')"
+    $dom = Get-FinanceDomTpl "$S.schedule_day_of_month"
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.set_recurring_payment' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.payment'    "$S.payment_name")
         (New-HitlLine 'finance.label.new_amount' "($S.valid_from ? 'finance.tpl.new_amount_from_date' : 'finance.tpl.new_amount_from_today')" -Kind tpl -If "$S.amount" -Params @{

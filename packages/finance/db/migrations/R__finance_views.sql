@@ -75,12 +75,9 @@ SELECT
     l.original_amount,
     l.disbursement_date,
     l.interest_rate,
-    l.principal_rate,
-    l.annuity_rate,
+    l.principal_rate,                  -- informativ (Vertragswert, NULL = nicht angegeben); nie Rechengrundlage
     l.interest_rate_fixed_until,
     l.monthly_annuity,
-    l.origination_monthly_interest,
-    l.origination_monthly_principal,
     l.status,
     b.balance                          AS current_remaining_debt,
     l.loan_account_id,
@@ -702,9 +699,7 @@ SELECT
     -- Multi-Waehrung: alle Geldsummen in EUR-Basis konvertiert (mixed-currency-Summe waere sonst falsch).
     sum(current_remaining_debt_eur)                       AS total_debt,                                    -- negative, EUR
     sum(finance.fn_to_eur(monthly_annuity, currency)) FILTER (WHERE status = 'active')      AS total_monthly_payment,
-    sum(finance.fn_to_eur(origination_monthly_interest, currency)) FILTER (WHERE status = 'active')  AS total_monthly_interest_at_origination,
-    sum(finance.fn_to_eur(origination_monthly_principal, currency)) FILTER (WHERE status = 'active') AS total_monthly_principal_at_origination,
-    -- ans Ende angehaengt (Historie; Reporting-Reihenfolge stabil):
+    -- Zins/Tilgung nur aus der aktuellen Restschuld (die Ursprungs-Summen entfielen mit finance:V025):
     sum(finance.fn_to_eur(monthly_interest_current, currency)) FILTER (WHERE status = 'active')  AS total_monthly_interest,   -- aus aktueller Restschuld
     sum(finance.fn_to_eur(monthly_principal_current, currency)) FILTER (WHERE status = 'active') AS total_monthly_principal,  -- Rate - Zins
     count(*) FILTER (WHERE status = 'paused')             AS paused_loan_count,

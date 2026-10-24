@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_set_loan.sql
--- Testet fn_set_loan: GENERATED-Recompute, Recurring-Sync (Rate), Status-Kaskade,
+-- Testet fn_set_loan: Konditionen, Rate-unter-Zins-Guard, Recurring-Sync (Rate, Tag), Status-Kaskade,
 -- active-ohne-Annuitaet-Guard, neg-Rate-Guard
 BEGIN;
 
@@ -22,12 +22,37 @@ BEGIN
   v_rp   := (v_res->>'recurring_payment_id')::int;
   IF v_rp IS NULL THEN RAISE EXCEPTION 'FAIL set_loan [setup]: keine Kreditrate-recurring angelegt'; END IF;
 
-  -- TEST 1: Zinssatz 3.0 -> 3.5; GENERATED annuity_rate = 3.5 + 2.0 = 5.5
+  -- TEST 1: Zinssatz 3.0 -> 3.5 (Tilgungssatz bleibt informativ, keine abgeleitete Summen-Spalte mehr)
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'interest_rate', 3.5)) INTO v_res;
-  SELECT interest_rate, annuity_rate INTO v_irate, v_arate FROM finance.loans WHERE id = v_loan;
-  IF v_irate IS DISTINCT FROM 3.5 OR v_arate IS DISTINCT FROM 5.5 THEN
-    RAISE EXCEPTION 'FAIL set_loan [generated]: interest=% annuity_rate=% (erwartet 3.5/5.5)', v_irate, v_arate; END IF;
-  RAISE NOTICE 'PASS set_loan [interest 3.5 -> GENERATED annuity_rate 5.5]';
+  SELECT interest_rate, principal_rate INTO v_irate, v_arate FROM finance.loans WHERE id = v_loan;
+  IF v_irate IS DISTINCT FROM 3.5 OR v_arate IS DISTINCT FROM 2.0 THEN
+    RAISE EXCEPTION 'FAIL set_loan [interest]: interest=% principal_rate=% (erwartet 3.5/2.0)', v_irate, v_arate; END IF;
+  RAISE NOTICE 'PASS set_loan [interest 3.5, principal_rate unveraendert]';
+
+  -- TEST 1b (Live-Befund 2026-10-24): Rate unter dem Monatszins aus der Restschuld -> ok:false ohne Write
+  --   (100.000 * 3,5 % / 12 = 291,67; jede Buchung scheiterte sonst an fn_get_loan_payment_split)
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'monthly_annuity', 200)) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'interest')::numeric IS DISTINCT FROM 291.67
+     OR (SELECT monthly_annuity FROM finance.loans WHERE id = v_loan) IS DISTINCT FROM 1200 THEN
+    RAISE EXCEPTION 'FAIL set_loan [rate < zins]: erwartet ok=false + interest 291.67 ohne Write, got %', v_res; END IF;
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'interest_rate', 15)) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL set_loan [zins > rate]: erwartet ok=false, got %', v_res; END IF;
+  -- Quartalsrate traegt drei Monatszinsen (fn_loan_period_months, wie jede Buchung): 500 < 3 x 291,67
+  UPDATE finance.recurring_payments SET schedule_interval = 3 WHERE id = v_rp;
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'monthly_annuity', 500)) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'interest')::numeric IS DISTINCT FROM 875.00 THEN
+    RAISE EXCEPTION 'FAIL set_loan [quartal]: erwartet ok=false + interest 875.00, got %', v_res; END IF;
+  UPDATE finance.recurring_payments SET schedule_interval = 1 WHERE id = v_rp;
+  RAISE NOTICE 'PASS set_loan [Rate < Monatszins -> ok:false, auch je Quartal]';
+
+  -- TEST 1c: vorletzter Tag (-2) -> Kredit + verknuepfte Kreditrate
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'schedule_day_of_month', -2)) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT schedule_day_of_month FROM finance.loans WHERE id = v_loan) IS DISTINCT FROM -2
+     OR (SELECT schedule_day_of_month FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM -2 THEN
+    RAISE EXCEPTION 'FAIL set_loan [dom -2]: got %', v_res; END IF;
+  RAISE NOTICE 'PASS set_loan [schedule_day_of_month -2 -> Kreditrate synchron]';
 
   -- TEST 2: Annuitaet 1200 -> 1000; verknuepfte recurring.amount = -1000 (Befund B)
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'monthly_annuity', 1000)) INTO v_res;

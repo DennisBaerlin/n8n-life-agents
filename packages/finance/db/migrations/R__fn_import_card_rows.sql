@@ -16,6 +16,9 @@
 --     period_amount   Versicherung: Rate je Abbuchung (fn_insurance_period_amount, wie fn_create_insurance)
 --     schedule        Sparziel: fn_savings_rate_schedule (wie fn_create_savings_goal)
 --     is_nominal      Standmitteilung: genannt, sonst ja (Default von fn_import_bundle)
+--     running         Kredit: laufend (Restschuld zum Stichtag heute) wie fn_create_loan, sonst frisch
+--     rate_split      Kredit mit Rate: {interest, principal} der 1. Rate aus der Restschuld (fn_loan_monthly_interest,
+--                     wie fn_create_loan first_rate_interest/_principal)
 --   name = Anzeige-Name der Zeile (name, sonst symbol, sonst die referenzierte Rente).
 --   RUECKGABE jsonb-Array (leer = '[]', nie NULL -> der Pg-Knoten liefert immer genau ein Item).
 -- ============================================================
@@ -97,6 +100,20 @@ BEGIN
             END IF;
         ELSIF v_row.entity_type = 'pension_statement' THEN
             v_x := v_x || jsonb_build_object('is_nominal', COALESCE(NULLIF(v_p->>'is_nominal', '')::boolean, TRUE));
+        ELSIF v_row.entity_type = 'loan' THEN
+            -- dieselbe Regel wie fn_create_loan: laufend = Restschuld genannt und (kein Betrag oder kleiner)
+            v_x := v_x || jsonb_build_object('running',
+                NULLIF(v_p->>'current_balance', '') IS NOT NULL
+                AND (NULLIF(v_p->>'original_amount', '') IS NULL
+                     OR (v_p->>'current_balance')::numeric < (v_p->>'original_amount')::numeric));
+            IF NULLIF(v_p->>'monthly_annuity', '') IS NOT NULL THEN
+                -- dieselbe Formel wie fn_create_loan (first_rate_interest/_principal): Zins aus der Restschuld
+                v_x := v_x || jsonb_build_object('rate_split', (
+                    SELECT jsonb_build_object('interest', i, 'principal', (v_p->>'monthly_annuity')::numeric - i)
+                    FROM finance.fn_loan_monthly_interest(
+                             COALESCE(NULLIF(v_p->>'current_balance', ''), v_p->>'original_amount')::numeric,
+                             NULLIF(v_p->>'interest_rate', '')::numeric) AS i));
+            END IF;
         END IF;
 
         v_out := v_out || jsonb_build_array(jsonb_build_object(

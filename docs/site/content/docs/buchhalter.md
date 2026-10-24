@@ -12,7 +12,7 @@ Der Buchhalter ist der Agent, mit dem du ganz normal per Chat deine Finanzen fü
 
 **Wertpapiere und Krypto mit Kursen.** Käufe und Verkäufe von Aktien, ETFs und Kryptowährungen, Dividenden sowie das nachträgliche Ändern eines Bestands. Aktuelle Kurse holt ein täglicher automatischer Lauf (Fachbegriff: Cron) sich selbst — du musst sie nicht melden.
 
-**Kredite mit Zins und Tilgung.** Kredite anlegen, Raten buchen, Konditionen ändern oder vorzeitig ablösen. Wie sich eine Rate in Zins- und Tilgungsanteil aufteilt, rechnet die Datenbank selbst aus — nie der Chat-Assistent, damit es immer exakt stimmt.
+**Kredite mit Zins und Tilgung.** Kredite anlegen, Raten buchen, Konditionen ändern oder vorzeitig ablösen. Wie sich eine Rate in Zins- und Tilgungsanteil aufteilt, rechnet die Datenbank selbst aus — nie der Chat-Assistent, damit es immer exakt stimmt. Für einen Kredit, der schon läuft, reichen vier Angaben: die Restschuld heute, der Zinssatz, die Rate und die nächste Abbuchung. Ursprungsbetrag, Auszahlungsdatum und anfängliche Tilgung aus dem alten Angebot sind freiwillig, denn maßgeblich ist die Rate, die wirklich abgebucht wird. Die Bestätigungskarte zeigt, wie sich die erste Rate in Zins und Tilgung aufteilt. Als Abbuchungstag geht auch „vorletzter Tag im Monat".
 
 **Versicherungen, Altersvorsorge und Immobilien.** Policen mit Jahresprämie, gesetzliche/betriebliche/private Vorsorge sowie Immobilien lassen sich als Vermögenswerte erfassen, anpassen und neu bewerten oder beenden (Police kündigen, Immobilie verkaufen).
 

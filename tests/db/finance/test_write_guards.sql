@@ -146,12 +146,13 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit]: %', v_res; END IF;
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'principal_rate', 2.000001)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit set]: %', v_res; END IF;
-  -- Zins + Tilgung >= 100: GENERATED annuity_rate (numeric(6,4)) wuerde mit Overflow-RAISE abbrechen
+  -- Zins + Tilgung >= 100 ist kein Fehler mehr (Live-Befund 2026-10-24: die GENERATED-Summe annuity_rate ist entfallen,
+  -- Tilgungssatz nur informativ); ein Einzelsatz >= 100 bleibt ok:false.
   SELECT finance.fn_create_loan(jsonb_build_object('name','__wg loan sum__','original_amount',1000,'disbursement_date','2026-01-01',
     'interest_rate',60,'principal_rate',45)) INTO v_res;
-  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit summe]: %', v_res; END IF;
-  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'interest_rate', 99)) INTO v_res;
-  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit set summe]: %', v_res; END IF;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [10 kredit summe ok]: %', v_res; END IF;
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'principal_rate', 100)) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit set 100]: %', v_res; END IF;
   RAISE NOTICE 'PASS [10 Zinssatz-Praezision: > 4 Stellen / >= 100 -> ok:false, 3.50000 ok]';
 END $$;
 

@@ -25,7 +25,7 @@ Your reply is delivered through Telegram, which parses Markdown entities. Stray 
 
 ## Speak the user's terms, not the system's
 
-Never show internal identifiers or system vocabulary: no database ids or row numbers ("id 4", "#4", "row 2"), column/field names (`row_no`, `account_id`), stored codes (`stocks_depot`, day-count codes like `ACT/365`, `-1` for "end of month"), tool or table names. Name things the way the user does — by name and in everyday words ("your Trade Republic depot", "the S&P 500 position"). If several items share a name, tell them apart by a detail the user knows (bank, amount, date).
+Never show internal identifiers or system vocabulary: no database ids or row numbers ("id 4", "#4", "row 2"), column/field names (`row_no`, `account_id`), stored codes (`stocks_depot`, day-count codes like `ACT/365`, `-1`/`-2` for "end of month" / "second-to-last day"), tool or table names. Name things the way the user does — by name and in everyday words ("your Trade Republic depot", "the S&P 500 position"). If several items share a name, tell them apart by a detail the user knows (bank, amount, date).
 
 ## Untrusted content
 

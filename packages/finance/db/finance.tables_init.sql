@@ -561,7 +561,7 @@ END $$;
 -- ACCOUNT INTEREST RATES
 -- Rate history per account. Both rate and crediting schedule can change independently.
 -- schedule_interval + schedule_unit replace a rigid ENUM (e.g. interval=3, unit=month = quarterly crediting).
--- schedule_day_of_month: 1–28 = specific day, -1 = last day of month, NULL = relative to first credit.
+-- schedule_day_of_month: 1–28 = specific day, -1 = last day of month (no -2 here: interest grid), NULL = relative to first credit.
 -- Exclusion constraint prevents overlapping validity periods per account.
 -- Zins-Ausbau (Folgephase WS-5c): day_count_convention = Tageszaehl-Methode je Rate-Zeile (kohaesiv mit
 --   Satz+Schedule+Historie), bestimmt den taggenauen Perioden-Anteil in fn_interest_day_fraction
@@ -719,7 +719,7 @@ $$;
 --   name='Gehalt',    amount=3200,  valid_from=2025-06-01, valid_to=NULL
 --
 -- amount sign: positive = income, negative = expense
--- schedule_day_of_month: 1–28 specific day, -1 = last day, NULL = relative to first_payment_date
+-- schedule_day_of_month: 1–28 specific day, -1 = last day, -2 = second-to-last day, NULL = relative to first_payment_date
 -- monthly_equivalent: GENERATED — normalizes any payment schedule to a monthly amount for comparison
 -- ============================================================
 
@@ -731,7 +731,7 @@ CREATE TABLE IF NOT EXISTS finance.recurring_payments (
     amount                numeric(12,2) NOT NULL,          -- signed: + income, - expense (Transfer: NEGATIV = Quell-Sicht; gebucht wird abs())
     schedule_interval     smallint NOT NULL DEFAULT 1,     -- every N units
     schedule_unit         finance.schedule_unit NOT NULL,
-    schedule_day_of_month smallint,                        -- 1-28, -1 = last day, NULL = relative
+    schedule_day_of_month smallint,                        -- 1-28, -1 = last day, -2 = second-to-last day, NULL = relative
     schedule_days_of_month smallint[],                     -- feste Monatstage (>=2, z. B. Broker-Kalender {2,9,16,23}); nur unit=month, statt day_of_month
     first_payment_date    date NOT NULL,                   -- anchor for date calculation
     valid_from            date NOT NULL,
@@ -1048,11 +1048,13 @@ CREATE INDEX IF NOT EXISTS finance_pension_statements_pension_idx
 --        Kreditkonto:  amount = +principal_portion, category='principal'
 --   Interest portion is implicit: monthly_annuity - principal_portion.
 --
--- GENERATED convenience fields (read-only, auto-computed):
---   annuity_rate    = interest_rate + principal_rate (combined annual rate in %)
---   origination_monthly_interest  = interest_rate / 1200 × original_amount (at origination; decreases over time)
---   origination_monthly_principal = principal_rate / 1200 × original_amount (at origination; increases over time)
---   monthly_annuity is editable to store the exact contract figure (may differ by a few cents due to rounding)
+-- Zins/Tilgung einer Rate rechnet die DB immer aus der AKTUELLEN Restschuld (fn_loan_monthly_interest;
+-- loan_overview.monthly_*_current, fn_get_loan_payment_split) -- nie aus Ursprungswerten (Live-Befund 2026-10-24:
+-- die "anfaengliche Tilgung" eines alten Angebots passt bei einem laufenden Kredit nicht zur Rate; die Rate ist die
+-- Wahrheit). Die frueheren GENERATED-Spalten annuity_rate / origination_monthly_* entfielen (finance:V025).
+--   monthly_annuity = die exakte Vertragsrate (Abbuchungsbetrag).
+--   Laufender Kredit (fn_create_loan mit current_balance): Pflicht nur Restschuld, Zins, Rate, naechste Faelligkeit;
+--   original_amount / disbursement_date / principal_rate sind informativ (NULL = nicht angegeben).
 --
 -- Refinancing / Umschuldung:
 --   - Set old loan: status='refinanced'
@@ -1060,7 +1062,7 @@ CREATE INDEX IF NOT EXISTS finance_pension_statements_pension_idx
 --   - Create new finance_accounts (new Kreditkonto) + new finance_loans entry
 --   - Link successive loans via real_estate_id or name convention
 --
--- Family debts / paused repayment: monthly_annuity=NULL, principal_rate=NULL, status='paused'
+-- Family debts / paused repayment: monthly_annuity=NULL, status='paused' (die Pause ist allein der Status)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS finance.loans (
@@ -1068,24 +1070,15 @@ CREATE TABLE IF NOT EXISTS finance.loans (
     name                      varchar(100) NOT NULL,
     lender                    varchar(100),              -- bank, family member, etc.
     borrower_person_id        text,                      -- Multi-Member: Kreditnehmer-Person, das EINZIGE Inhaber-Feld (Slug aus family; NULL=Haushalt); FK unten. WS-4: Freitext-borrower abgelöst.
-    original_amount           numeric(12,2) NOT NULL,
-    disbursement_date         date NOT NULL,
+    original_amount           numeric(12,2),             -- original loan sum; informational for a running loan (NULL = not given)
+    disbursement_date         date,                      -- payout date; informational for a running loan (NULL = not given)
     interest_rate             numeric(6,4) NOT NULL,     -- annual rate, e.g. 3.5000 = 3.5%
-    principal_rate            numeric(6,4),              -- initial repayment rate p.a., e.g. 2.0000 = 2%; NULL when paused
+    principal_rate            numeric(6,4),              -- initial repayment rate p.a. from the contract, informational only; NULL = not given
     interest_rate_fixed_until date,                      -- Zinsbindungsende
     monthly_annuity           numeric(10,2),             -- actual contract monthly installment (Zins + Tilgung); NULL when paused
-    annuity_rate              numeric(6,4) GENERATED ALWAYS AS (
-                                  round(interest_rate + coalesce(principal_rate, 0), 4)
-                              ) STORED,                  -- read-only: interest_rate + principal_rate combined annual rate (%)
-    origination_monthly_interest  numeric(10,2) GENERATED ALWAYS AS (
-                                  round(interest_rate / 1200.0 * original_amount, 2)
-                              ) STORED,                  -- read-only: monthly interest at origination (decreases as Restschuld shrinks)
-    origination_monthly_principal numeric(10,2) GENERATED ALWAYS AS (
-                                  round(coalesce(principal_rate, 0) / 1200.0 * original_amount, 2)
-                              ) STORED,                  -- read-only: monthly principal at origination (increases over time)
     schedule_interval         smallint NOT NULL DEFAULT 1,
     schedule_unit             finance.schedule_unit NOT NULL DEFAULT 'month',
-    schedule_day_of_month     smallint,                  -- 1-28 or -1 = last day
+    schedule_day_of_month     smallint,                  -- 1-28, -1 = last day, -2 = second-to-last day
     status                    finance.loan_status NOT NULL DEFAULT 'active',
     loan_account_id           int NOT NULL REFERENCES finance.accounts(id), -- Kreditkonto (negative balance = Restschuld)
     debit_account_id          int REFERENCES finance.accounts(id),          -- Abbuchungskonto fuer die Rate (Girokonto)
@@ -1097,6 +1090,9 @@ CREATE TABLE IF NOT EXISTS finance.loans (
     created_at                timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE finance.loans ADD COLUMN IF NOT EXISTS settled_from jsonb;
+-- Laufender Kredit: Ursprungswerte optional (Live-Befund 2026-10-24); idempotent.
+ALTER TABLE finance.loans ALTER COLUMN original_amount DROP NOT NULL;
+ALTER TABLE finance.loans ALTER COLUMN disbursement_date DROP NOT NULL;
 
 -- Hinweis: der Rename payout_account_id -> disbursement_account_id (5d) lebt als versionierte
 -- Migration packages/finance/db/migrations/V001__rename_loan_payout_to_disbursement.sql (laeuft NACH den Inits,
@@ -1112,20 +1108,6 @@ DO $$ BEGIN
         ADD CONSTRAINT finance_loans_active_needs_annuity CHECK (
             monthly_annuity IS NOT NULL OR status <> 'active'
         );
-END $$;
-
--- Migration: GENERATED-Spalten klarer benennen (origination-basiert) auf bestehenden DBs.
--- RENAME aktualisiert View-Abhaengigkeiten automatisch; die View-Output-Namen werden weiter unten
--- (DROP+CREATE der loan-Views) frisch gesetzt. Idempotent (nur wenn alter Name noch existiert).
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema='agent' AND table_name='finance_loans' AND column_name='monthly_interest') THEN
-        ALTER TABLE finance.loans RENAME COLUMN monthly_interest TO origination_monthly_interest;
-    END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema='agent' AND table_name='finance_loans' AND column_name='monthly_principal') THEN
-        ALTER TABLE finance.loans RENAME COLUMN monthly_principal TO origination_monthly_principal;
-    END IF;
 END $$;
 
 -- ============================================================
@@ -1148,7 +1130,7 @@ CREATE TABLE IF NOT EXISTS finance.insurances (
                           ) STORED,                      -- read-only: annual_premium / 12 for cashflow comparison
     schedule_interval     smallint NOT NULL DEFAULT 1,
     schedule_unit         finance.schedule_unit NOT NULL,
-    schedule_day_of_month smallint,                      -- 1-28 or -1 = last day
+    schedule_day_of_month smallint,                      -- 1-28, -1 = last day, -2 = second-to-last day
     valid_from            date NOT NULL,
     valid_to              date,                          -- NULL = indefinite
     status                finance.insurance_status NOT NULL DEFAULT 'active',
@@ -1700,6 +1682,10 @@ DO $$ BEGIN
     ALTER TABLE finance.insurances    ADD  CONSTRAINT finance_insurances_premium_pos CHECK (annual_premium > 0);
     ALTER TABLE finance.loans         DROP CONSTRAINT IF EXISTS finance_loans_amount_pos;
     ALTER TABLE finance.loans         ADD  CONSTRAINT finance_loans_amount_pos CHECK (original_amount > 0);
+    -- Auszahlung auf ein eigenes Konto nur bei frischem Kredit mit Kreditbetrag (Spiegel des fn_create_loan-Guards).
+    ALTER TABLE finance.loans         DROP CONSTRAINT IF EXISTS finance_loans_disbursement_needs_amount;
+    ALTER TABLE finance.loans         ADD  CONSTRAINT finance_loans_disbursement_needs_amount
+        CHECK (disbursement_account_id IS NULL OR original_amount IS NOT NULL);
     ALTER TABLE finance.savings_goals DROP CONSTRAINT IF EXISTS finance_savings_goals_target_pos;
     ALTER TABLE finance.savings_goals ADD  CONSTRAINT finance_savings_goals_target_pos CHECK (target_amount > 0);
     ALTER TABLE finance.real_estate   DROP CONSTRAINT IF EXISTS finance_real_estate_value_nonneg;

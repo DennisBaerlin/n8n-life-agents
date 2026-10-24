@@ -9,6 +9,9 @@
 -- Alte 1-Arg-Signatur droppen: die neue (TEXT, BOOLEAN DEFAULT TRUE) ist sonst ein zweiter
 -- Overload und ein 1-Arg-Aufruf wird mehrdeutig ("function is not unique").
 DROP FUNCTION IF EXISTS finance.fn_resolve_loan(text);
+-- Rueckgabe-Spalte monthly_principal (Ursprungs-Tilgung, ungelesen) entfiel mit finance:V025 -> geaenderter
+-- RETURNS TABLE verlangt DROP + CREATE (CREATE OR REPLACE kann den Rueckgabetyp nicht aendern).
+DROP FUNCTION IF EXISTS finance.fn_resolve_loan(text, boolean);
 
 CREATE OR REPLACE FUNCTION finance.fn_resolve_loan(
     p_name        text,
@@ -18,7 +21,6 @@ CREATE OR REPLACE FUNCTION finance.fn_resolve_loan(
     loan_account_id   int,
     debit_account_id  int,
     monthly_annuity   numeric,
-    monthly_principal numeric,
     hit_count         int,
     candidates        jsonb
 ) LANGUAGE plpgsql STABLE AS $$
@@ -50,14 +52,13 @@ BEGIN
             l.loan_account_id,
             l.debit_account_id,
             l.monthly_annuity,
-            l.origination_monthly_principal,
             1,
             v_cand
         FROM finance.loans l
         WHERE finance.fn_name_matches(l.name, p_name, v_exact) AND (p_active_only = FALSE OR l.status = 'active');
     ELSE
         RETURN QUERY SELECT
-            NULL::INT, NULL::INT, NULL::INT, NULL::NUMERIC, NULL::NUMERIC,
+            NULL::INT, NULL::INT, NULL::INT, NULL::NUMERIC,
             COALESCE(v_count, 0),
             COALESCE(v_cand, '[]'::jsonb);
     END IF;

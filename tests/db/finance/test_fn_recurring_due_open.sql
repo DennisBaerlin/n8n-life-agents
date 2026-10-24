@@ -143,6 +143,26 @@ BEGIN
     RAISE NOTICE 'PASS [Days2Bi: alle 2 Monate je 2 Tage]';
   END;
 
+  -- dom=-2 (vorletzter Tag des Monats, Live-Befund 2026-10-24): Februar Schalt-/Nichtschaltjahr,
+  -- 30/31-Tage-Monate, Quartal (n=3). Expliziter Zeitraum (2-arg), damit das 90-Tage-Fenster nicht schneidet.
+  DECLARE r17 INT; r18 INT; v_got TEXT;
+  BEGIN
+    r17 := finance.fn_add_recurring_payment(v_acct, -100, 'M second-to-last', 1::smallint,'month'::finance.schedule_unit, (-2)::smallint, '2027-01-30','2027-01-30', NULL, NULL, NULL);
+    SELECT string_agg(due_date::text, ',' ORDER BY due_date) INTO v_got
+      FROM finance.fn_recurring_due_open(DATE '2027-01-01', DATE '2028-05-31') WHERE recurring_payment_id = r17
+       AND (due_date < '2027-05-01' OR due_date >= '2028-02-01');
+    IF v_got IS DISTINCT FROM '2027-01-30,2027-02-27,2027-03-30,2027-04-29,2028-02-28,2028-03-30,2028-04-29,2028-05-30' THEN
+      RAISE EXCEPTION 'FAIL [M second-to-last]: falsche Termine %', v_got; END IF;
+    RAISE NOTICE 'PASS [M second-to-last: Feb 27./28., 30/31-Tage-Monate]';
+
+    r18 := finance.fn_add_recurring_payment(v_acct, -100, 'Q second-to-last', 3::smallint,'month'::finance.schedule_unit, (-2)::smallint, '2027-03-30','2027-03-30', NULL, NULL, NULL);
+    SELECT string_agg(due_date::text, ',' ORDER BY due_date) INTO v_got
+      FROM finance.fn_recurring_due_open(DATE '2027-01-01', DATE '2027-12-31') WHERE recurring_payment_id = r18;
+    IF v_got IS DISTINCT FROM '2027-03-30,2027-06-29,2027-09-29,2027-12-30' THEN
+      RAISE EXCEPTION 'FAIL [Q second-to-last]: falsche Termine %', v_got; END IF;
+    RAISE NOTICE 'PASS [Q second-to-last: alle 3 Monate]';
+  END;
+
 END $$;
 
 ROLLBACK;

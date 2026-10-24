@@ -60,6 +60,16 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set_account_interest [neg rate -> ok:false]';
 
+  -- TEST 3b: Gutschrift am vorletzten Tag (-2) gibt es nur fuer Zahlungen -> {ok:false} vor dem Zins-Raster
+  SELECT finance.fn_set_account_interest(jsonb_build_object(
+    'account_id', v_acct, 'annual_rate', 2, 'valid_from', '2027-01-01',
+    'schedule_unit', 'month', 'schedule_interval', 1, 'schedule_day_of_month', -2
+  )) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT ILIKE '%-2%' THEN
+    RAISE EXCEPTION 'FAIL set_account_interest [dom -2]: erwartet ok=false mit -2-Grund, got %', v_res;
+  END IF;
+  RAISE NOTICE 'PASS set_account_interest [dom -2 -> ok:false]';
+
   -- TEST 4: valid_from nicht nach offener Zeile (2026-07-01) -> {ok:false} + kein Overlap
   SELECT finance.fn_set_account_interest(jsonb_build_object(
     'account_id', v_acct, 'annual_rate', 4.0, 'valid_from', '2026-05-01'

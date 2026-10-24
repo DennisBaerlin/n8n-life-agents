@@ -62,11 +62,12 @@ function Build-CreateSavingsPlan {
         (New-HitlLine 'finance.label.isin'               "($S.isin ? 'finance.tpl.plain' : 'finance.value.crypto_no_isin')" -Kind tpl -Params @{ value = "$S.isin" })
         (New-HitlLine 'finance.label.symbol_security'    "($S.security_name ? 'finance.tpl.symbol_name' : 'finance.tpl.plain')" -Kind tpl -Params @{ symbol = "($S.symbol || $S.isin)"; name = "$S.security_name"; value = "($S.symbol || $S.isin)" })   # Kennung wie fn_holding_symbol (ohne Ticker = ISIN)
         (New-HitlLine 'core.label.amount'                "$S.amount" -Kind money -Currency "$D.currency")
-        (New-HitlLine 'finance.label.cycle'              "($Y.schedule_days ? 'finance.tpl.plan_days_of_month' : ($Y.schedule_day_of_month ? 'finance.tpl.plan_interval_day' : 'finance.tpl.plan_interval_same_day'))" -Kind tpl -Params @{
+        (New-HitlLine 'finance.label.cycle'              "($Y.schedule_days ? 'finance.tpl.plan_days_of_month' : (Number($Y.schedule_day_of_month) < 0 ? 'finance.tpl.plan_interval_month_end' : ($Y.schedule_day_of_month ? 'finance.tpl.plan_interval_day' : 'finance.tpl.plan_interval_same_day')))" -Kind tpl -Params @{
             days     = "$Y.schedule_days"
             interval = "$Y.schedule_interval"
             unit     = (New-HitlValue -Kind enum -Value "$Y.schedule_unit" -Enum 'finance.enum.schedule_unit')
-            day      = "$Y.schedule_day_of_month" })
+            day      = "$Y.schedule_day_of_month"
+            end      = (New-HitlValue -Kind key -Value (Get-FinanceMonthEndKey "$Y.schedule_day_of_month")) })
         (New-HitlLine 'finance.label.monthly_equivalent' "$Y.monthly_amount" -Kind money -Currency "$D.currency")
         (New-HitlLine 'finance.label.bank_calendar'      "$Y.calendar_learned" -If "$Y.calendar_learned")
         (New-HitlLine 'finance.label.first_execution'    "$S.first_payment_date" -Kind date)

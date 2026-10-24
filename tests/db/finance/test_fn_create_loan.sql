@@ -168,4 +168,113 @@ BEGIN
   RAISE NOTICE 'PASS fn_create_loan [laufender Kredit: Rate ab Eroeffnungssaldo-Stichtag]';
 END $$;
 
+-- ============================================================
+-- Live-Befund 2026-10-24 (erfundene Werte): laufender Kredit = Restschuld HEUTE + Zins + Rate + naechste Faelligkeit
+--   (A) Eroeffnung zum Stichtag heute (nicht zum Auszahlungsdatum), Kreditkonto mit opening_balance_date;
+--   (C) Ursprungswerte optional, Aufteilung der 1. Rate aus der Restschuld, Rate < Monatszins abgelehnt.
+-- ============================================================
+DO $$
+DECLARE
+  v_res   JSONB;
+  v_giro  INT;
+  v_acc   INT;
+  v_base  JSONB;
+  r       RECORD;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_lr_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  -- laufend: nur Restschuld 95.000 / Zins 1,2 % / Rate 600 / naechste Faelligkeit / Abbuchungskonto
+  v_base := jsonb_build_object('lender','Testbank','current_balance',95000,'interest_rate',1.2,
+    'monthly_annuity',600,'schedule_day_of_month',-2,'first_payment_date',(core.fn_today() + 20)::text,
+    'debit_account_id',v_giro);
+
+  v_res := finance.fn_create_loan(v_base || '{"name":"__test_lr_minimal__"}'::jsonb);
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [laufend minimal]: ok:true erwartet (Ursprungswerte optional), got %', v_res; END IF;
+  v_acc := (v_res->>'loan_account_id')::int;
+  -- (A) Eroeffnung heute, nicht vorher
+  IF (SELECT transaction_date FROM finance.transactions WHERE account_id = v_acc AND category = 'disbursement')
+     IS DISTINCT FROM core.fn_today() THEN
+    RAISE EXCEPTION 'FAIL [laufend Stichtag]: Eroeffnung nicht zum Stichtag heute'; END IF;
+  IF finance.fn_get_balance_as_of(v_acc, core.fn_today() - 1) IS DISTINCT FROM 0::numeric THEN
+    RAISE EXCEPTION 'FAIL [laufend Stichtag]: Saldo gestern % statt 0', finance.fn_get_balance_as_of(v_acc, core.fn_today() - 1); END IF;
+  IF (SELECT opening_balance_date FROM finance.accounts WHERE id = v_acc) IS DISTINCT FROM core.fn_today()
+     OR (v_res->>'opening_balance_date')::date IS DISTINCT FROM core.fn_today() THEN
+    RAISE EXCEPTION 'FAIL [laufend Stichtag]: opening_balance_date nicht heute, got %', v_res; END IF;
+  -- Rate zaehlt ab Stichtag; -2 gespeichert
+  IF (SELECT valid_from FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int) < core.fn_today()
+     OR (SELECT schedule_day_of_month FROM finance.loans WHERE id = (v_res->>'loan_id')::int) IS DISTINCT FROM -2 THEN
+    RAISE EXCEPTION 'FAIL [laufend rp]: valid_from vor heute oder -2 nicht gespeichert'; END IF;
+  -- Post-State: Restschuld + DB-Aufteilung der 1. Rate (95.000 * 1,2 % / 12 = 95,00 Zins, 505,00 Tilgung)
+  IF (v_res->>'remaining_debt')::numeric IS DISTINCT FROM 95000
+     OR (v_res->>'first_rate_interest')::numeric IS DISTINCT FROM 95.00
+     OR (v_res->>'first_rate_principal')::numeric IS DISTINCT FROM 505.00
+     OR v_res->'disbursement_balance' IS DISTINCT FROM 'null'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [laufend Post-State]: got %', v_res; END IF;
+  IF EXISTS (SELECT 1 FROM finance.loans WHERE id = (v_res->>'loan_id')::int
+             AND (original_amount IS NOT NULL OR disbursement_date IS NOT NULL OR principal_rate IS NOT NULL)) THEN
+    RAISE EXCEPTION 'FAIL [laufend minimal]: Ursprungswerte nicht NULL'; END IF;
+  RAISE NOTICE 'PASS [laufend minimal: Eroeffnung heute, opening_balance_date, rp ab heute, -2, Aufteilung 95/505]';
+
+  -- laufend MIT Ursprungswerten: Eroeffnung trotzdem heute, Werte gespeichert (informativ)
+  v_res := finance.fn_create_loan(v_base || jsonb_build_object('name','__test_lr_full__','original_amount',180000,
+    'disbursement_date','2016-05-02','principal_rate',4.2));
+  v_acc := (v_res->>'loan_account_id')::int;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT transaction_date FROM finance.transactions WHERE account_id = v_acc AND category = 'disbursement')
+        IS DISTINCT FROM core.fn_today()
+     OR NOT EXISTS (SELECT 1 FROM finance.loans WHERE id = (v_res->>'loan_id')::int
+                    AND original_amount = 180000 AND disbursement_date = '2016-05-02' AND principal_rate = 4.2) THEN
+    RAISE EXCEPTION 'FAIL [laufend voll]: Eroeffnung heute + Ursprungswerte gespeichert erwartet, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [laufend mit Ursprungswerten: Eroeffnung heute, Werte informativ gespeichert]';
+
+  -- Korrigierbare Ablehnungen ohne Write
+  FOR r IN SELECT * FROM (VALUES
+      ('frisch ohne Betrag',       '{"current_balance":"","disbursement_date":"2026-01-02"}'::jsonb),
+      ('frisch ohne Datum',        '{"current_balance":"","original_amount":50000}'::jsonb),
+      ('Auszahlung ohne Betrag',   jsonb_build_object('disbursement_account_id', v_giro)),
+      ('Rate unter Monatszins',    '{"monthly_annuity":90}'::jsonb),
+      ('Zinssatz fehlt',           '{"interest_rate":""}'::jsonb)
+    ) t(label, delta)
+  LOOP
+    v_res := finance.fn_create_loan(v_base || r.delta || jsonb_build_object('name','__test_lr_' || r.label));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' IS NULL
+       OR EXISTS (SELECT 1 FROM finance.loans WHERE name = '__test_lr_' || r.label) THEN
+      RAISE EXCEPTION 'FAIL [guard %]: ok:false ohne Write erwartet, got %', r.label, v_res; END IF;
+  END LOOP;
+  v_res := finance.fn_create_loan(v_base || '{"name":"__test_lr_low__","monthly_annuity":90}'::jsonb);
+  IF (v_res->>'interest')::numeric IS DISTINCT FROM 95.00 THEN
+    RAISE EXCEPTION 'FAIL [Rate unter Monatszins]: Zins 95,00 im Ergebnis erwartet, got %', v_res; END IF;
+  -- Restschuld > Kreditbetrag nennt genau diesen Grund (nicht "neuer Kredit braucht ...")
+  v_res := finance.fn_create_loan(v_base || '{"name":"__test_lr_over__","original_amount":20000,"current_balance":25000}'::jsonb);
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not above the original amount%' THEN
+    RAISE EXCEPTION 'FAIL [Restschuld > Betrag]: falscher Grund, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [Guards: frisch ohne Betrag/Datum, Auszahlungskonto ohne Betrag, Rate < Monatszins, Zins fehlt, Restschuld > Betrag]';
+
+  -- Frischer Kredit: Eroeffnung bleibt am Auszahlungsdatum; Post-State beider Konten + Aufteilung
+  DECLARE v_disb INT;
+  BEGIN
+    SELECT (finance.fn_create_account('{"name":"__test_lr_payout__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_disb;
+    v_res := finance.fn_create_loan(jsonb_build_object('name','__test_lr_fresh__','lender','Testbank',
+      'original_amount',40000,'disbursement_date',(core.fn_today() - 3)::text,'interest_rate',6,'monthly_annuity',700,
+      'first_payment_date',(core.fn_today() + 27)::text,'disbursement_account_id',v_disb,'debit_account_id',v_giro));
+    v_acc := (v_res->>'loan_account_id')::int;
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+       OR (SELECT min(transaction_date) FROM finance.transactions WHERE account_id = v_acc) IS DISTINCT FROM core.fn_today() - 3
+       OR (SELECT opening_balance_date FROM finance.accounts WHERE id = v_acc) IS NOT NULL
+       OR (v_res->>'remaining_debt')::numeric IS DISTINCT FROM 40000
+       OR (v_res->>'disbursement_balance')::numeric IS DISTINCT FROM 40000
+       OR (v_res->>'first_rate_interest')::numeric IS DISTINCT FROM 200.00
+       OR (v_res->>'first_rate_principal')::numeric IS DISTINCT FROM 500.00 THEN
+      RAISE EXCEPTION 'FAIL [frisch]: Eroeffnung am Auszahlungstag + Post-State erwartet, got %', v_res; END IF;
+  END;
+  RAISE NOTICE 'PASS [frisch: Eroeffnung am Auszahlungsdatum, Post-State 40000/40000, Aufteilung 200/500]';
+
+  -- Spiegelnder CHECK: Auszahlungskonto ohne Kreditbetrag (direktes DML)
+  BEGIN
+    UPDATE finance.loans SET disbursement_account_id = v_giro WHERE name = '__test_lr_minimal__';
+    RAISE EXCEPTION 'FAIL [CHECK]: Auszahlungskonto ohne original_amount akzeptiert';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  RAISE NOTICE 'PASS [CHECK finance_loans_disbursement_needs_amount]';
+END $$;
+
 ROLLBACK;

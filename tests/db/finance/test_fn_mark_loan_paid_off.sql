@@ -108,8 +108,10 @@ BEGIN
   v_d1 := (v_d0 + interval '1 month')::date;
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_mlp2_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
+  -- frischer Kredit (Eroeffnung zum Auszahlungstag): ein laufender buchte seine Restschuld zum Stichtag heute, die
+  -- vergangenen Raten d0/d1 steckten dann schon darin (fn_create_loan, Live-Befund 2026-10-24)
   SELECT finance.fn_create_loan(jsonb_build_object('name','__test_mlp2_kredit__','lender','B','borrower','T',
-    'original_amount',10000,'current_balance',800,'disbursement_date',(v_d0 - 30)::text,'interest_rate',3,
+    'original_amount',800,'disbursement_date',(v_d0 - 30)::text,'interest_rate',3,
     'monthly_annuity',500,'first_payment_date',v_d0::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;

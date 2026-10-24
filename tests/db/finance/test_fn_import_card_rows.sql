@@ -142,6 +142,19 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_card_rows [pension_statement nominal-Default, recurring Waehrung]';
 
+  -- Kredit (laufend): Aufteilung der 1. Rate aus der Restschuld wie fn_create_loan (60.000 * 2 % / 12 = 100,00 Zins)
+  v_res := finance.fn_import_stage(jsonb_build_object('rows', jsonb_build_array(
+    jsonb_build_object('entity_type','loan','name','__test_icr Kredit','current_balance',60000,'interest_rate',2,
+                       'monthly_annuity',400,'first_payment_date','2026-11-30','debit_account','__test_icr Alt-Giro'))));
+  IF (v_res->>'valid')::int IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'FAIL [fixture loan]: %', v_res; END IF;
+  v_r := finance.fn_import_card_rows((v_res->>'batch_id')::uuid)->0;
+  IF (v_r->'x'->'rate_split'->>'interest')::numeric IS DISTINCT FROM 100.00
+     OR (v_r->'x'->'rate_split'->>'principal')::numeric IS DISTINCT FROM 300.00
+     OR (v_r->'x'->>'running')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [loan rate_split]: %', v_r;
+  END IF;
+  RAISE NOTICE 'PASS fn_import_card_rows [loan: Aufteilung 1. Rate 100/300 aus der Restschuld]';
+
   -- Unbekannter/leerer Batch -> leeres Array (nie NULL, nie 0 Items)
   IF finance.fn_import_card_rows(gen_random_uuid()) IS DISTINCT FROM '[]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [leer]: %', finance.fn_import_card_rows(gen_random_uuid());

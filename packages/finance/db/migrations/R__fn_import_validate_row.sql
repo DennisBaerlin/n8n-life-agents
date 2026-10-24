@@ -286,10 +286,27 @@ BEGIN
         IF v_hits > 0 THEN RETURN format('savings goal "%s" already exists', v_name); END IF;
 
     ELSIF p_type = 'loan' THEN
+        -- Spiegel fn_create_loan: laufend = current_balance gesetzt und (kein original_amount oder kleiner) -> keine
+        -- Ursprungswerte noetig; sonst frisch -> Betrag + Auszahlungsdatum Pflicht.
         v_num := NULLIF(p->>'original_amount','')::numeric;
-        IF v_num IS NULL OR v_num <= 0 THEN RETURN 'original_amount must be a positive number'; END IF;
+        IF v_num IS NOT NULL AND v_num <= 0 THEN RETURN 'original_amount must be a positive number'; END IF;
         IF NULLIF(p->>'interest_rate','') IS NULL THEN RETURN 'interest_rate is required'; END IF;
-        IF NULLIF(p->>'disbursement_date','') IS NULL THEN RETURN 'disbursement_date is required'; END IF;
+        IF NULLIF(p->>'current_balance','') IS NOT NULL
+           AND ((p->>'current_balance')::numeric <= 0 OR (p->>'current_balance')::numeric > v_num) THEN
+            RETURN 'current_balance (remaining debt) must be greater than 0 and not above original_amount';
+        END IF;
+        IF NOT (NULLIF(p->>'current_balance','') IS NOT NULL AND (v_num IS NULL OR (p->>'current_balance')::numeric < v_num))
+           AND (v_num IS NULL OR NULLIF(p->>'disbursement_date','') IS NULL) THEN
+            RETURN 'a new loan needs original_amount and disbursement_date (a running loan: current_balance instead)';
+        END IF;
+        -- die Rate muss den Monatszins der Restschuld decken (fn_create_loan; sonst scheiterte jede Buchung)
+        IF NULLIF(p->>'monthly_annuity','') IS NOT NULL
+           AND (p->>'monthly_annuity')::numeric < finance.fn_loan_monthly_interest(
+                   COALESCE(NULLIF(p->>'current_balance','')::numeric, v_num), (p->>'interest_rate')::numeric) THEN
+            RETURN format('monthly_annuity %s does not cover the monthly interest %s on the remaining debt',
+                          p->>'monthly_annuity', finance.fn_loan_monthly_interest(
+                              COALESCE(NULLIF(p->>'current_balance','')::numeric, v_num), (p->>'interest_rate')::numeric));
+        END IF;
         v_ref := NULLIF(trim(COALESCE(p->>'debit_account','')), '');
         IF v_ref IS NULL THEN RETURN 'debit_account (name) is required'; END IF;
         IF finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
@@ -302,10 +319,6 @@ BEGIN
         IF NULLIF(p->>'monthly_annuity','') IS NOT NULL AND NULLIF(p->>'first_payment_date','') IS NULL THEN
             RETURN 'first_payment_date (the next rate debit) is required when monthly_annuity is given';
         END IF;
-        IF NULLIF(p->>'current_balance','') IS NOT NULL
-           AND ((p->>'current_balance')::numeric <= 0 OR (p->>'current_balance')::numeric > v_num) THEN
-            RETURN 'current_balance (remaining debt) must be greater than 0 and not above original_amount';
-        END IF;
         v_ref := NULLIF(trim(COALESCE(p->>'disbursement_account','')), '');
         IF v_ref IS NOT NULL THEN
             IF finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
@@ -314,7 +327,7 @@ BEGIN
             IF finance.fn_import_ref_currency(p_batch_id, v_ref) IS DISTINCT FROM 'EUR' THEN
                 RETURN format('loans are kept in EUR - disbursement_account "%s" is not a EUR account', v_ref);
             END IF;
-            IF COALESCE(NULLIF(p->>'current_balance','')::numeric, v_num) < v_num THEN
+            IF v_num IS NULL OR COALESCE(NULLIF(p->>'current_balance','')::numeric, v_num) < v_num THEN
                 RETURN 'a loan that is already being repaid has no disbursement_account (the payout is part of today''s balance) - remove it';
             END IF;
         END IF;

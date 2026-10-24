@@ -135,4 +135,59 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [CHECK accounts plan_execution_days: nur Depots, kanonisch, leer erlaubt]';
 END $$;
+
+-- ===== (5) -2 = vorletzter Tag des Monats (Live-Befund 2026-10-24): Zahlungen ja, Zins-Konditionen nein =====
+DO $$
+DECLARE v_acct INT; v_res JSONB; v_reason TEXT;
+BEGIN
+  IF NOT finance.fn_valid_schedule_dom(-2) THEN
+    RAISE EXCEPTION 'FAIL [fn_valid_schedule_dom]: -2 (vorletzter Tag) abgelehnt'; END IF;
+  IF finance.fn_valid_schedule_dom(-3) THEN
+    RAISE EXCEPTION 'FAIL [fn_valid_schedule_dom]: -3 akzeptiert'; END IF;
+  -- Reason-fn = die EINE Adresse des Fehlertexts
+  IF finance.fn_schedule_dom_reason(-2) IS NOT NULL OR finance.fn_schedule_dom_reason(NULL) IS NOT NULL
+     OR finance.fn_schedule_dom_reason(28) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [fn_schedule_dom_reason]: gueltiger Tag mit Grund'; END IF;
+  v_reason := finance.fn_schedule_dom_reason(30);
+  IF v_reason IS NULL OR v_reason NOT LIKE '%-2%' OR v_reason NOT LIKE '%-1%' THEN
+    RAISE EXCEPTION 'FAIL [fn_schedule_dom_reason]: 30 ohne Grund oder ohne -1/-2-Hinweis, got %', v_reason; END IF;
+  RAISE NOTICE 'PASS [-2 gueltig, -3 ungueltig, Reason-fn]';
+
+  INSERT INTO finance.accounts (name, account_type, currency, status)
+    VALUES ('__dom2_acct__', 'cash', 'EUR', 'active') RETURNING id INTO v_acct;
+  -- CHECK: rp/loans/insurances nehmen -2, account_interest_rates nicht (Zins-Raster kennt nur -1)
+  INSERT INTO finance.recurring_payments
+    (name, account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
+    VALUES ('__dom2_rp__', v_acct, 100, 'month', -2, DATE '2026-01-01', DATE '2026-01-01');
+  INSERT INTO finance.loans
+    (name, original_amount, disbursement_date, interest_rate, monthly_annuity, schedule_day_of_month, loan_account_id)
+    VALUES ('__dom2_loan__', 1000, DATE '2026-01-01', 3, 10, -2, v_acct);
+  INSERT INTO finance.insurances
+    (name, annual_premium, schedule_interval, schedule_unit, schedule_day_of_month, valid_from)
+    VALUES ('__dom2_ins__', 120, 1, 'month', -2, DATE '2026-01-01');
+  BEGIN
+    INSERT INTO finance.account_interest_rates
+      (account_id, annual_rate, schedule_interval, schedule_unit, schedule_day_of_month, valid_from)
+      VALUES (v_acct, 2, 1, 'month', -2, DATE '2026-01-01');
+    RAISE EXCEPTION 'FAIL [CHECK air]: account_interest_rates akzeptierte -2';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN
+    INSERT INTO finance.recurring_payments
+      (name, account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
+      VALUES ('__dom3_rp__', v_acct, 100, 'month', -3, DATE '2026-01-01', DATE '2026-01-01');
+    RAISE EXCEPTION 'FAIL [CHECK rp]: -3 akzeptiert';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  RAISE NOTICE 'PASS [CHECK: -2 auf rp/loans/insurances, nicht auf account_interest_rates; -3 nirgends]';
+
+  -- Schreib-fns: Dauerauftrag mit -2 ok; Zins-Konditionen mit -2 -> ok:false (eigener Grund)
+  v_res := finance.fn_create_recurring_payment(jsonb_build_object(
+    'name','__dom2_fn__','account_id',v_acct,'direction','expense','amount',100,
+    'schedule_unit','month','schedule_day_of_month',-2,'first_payment_date','2026-01-30'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [fn dom=-2]: fn_create_recurring_payment lehnte -2 ab, got %', v_res; END IF;
+  v_reason := finance.fn_interest_terms_reason('month', (-2)::smallint, NULL, NULL);
+  IF v_reason IS NULL OR v_reason NOT ILIKE '%interest%' THEN
+    RAISE EXCEPTION 'FAIL [fn_interest_terms_reason]: -2 fuer Zins nicht abgelehnt, got %', v_reason; END IF;
+  RAISE NOTICE 'PASS [Schreib-fn -2 ok; Zins-Konditionen -2 abgelehnt (%)]', v_reason;
+END $$;
 ROLLBACK;

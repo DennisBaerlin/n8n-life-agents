@@ -228,7 +228,15 @@
     "_comment": "tc57 Kredit: Abbuchungstag leer = Tag der ersten Rate.",
     "match": "Lege einen Kredit 'Autokredit VW Bank' an",
     "calls": [
-      { "tool": "tool_create_loan", "args": { "name": "Autokredit VW Bank", "lender": "VW Bank", "original_amount": 18000, "disbursement_date": "2026-09-01", "interest_rate": 4.9, "monthly_annuity": "350", "first_payment_date": "2026-10-15", "schedule_day_of_month": "", "debit_account_name": "DKB Giro" } }
+      { "tool": "tool_create_loan", "args": { "name": "Autokredit VW Bank", "lender": "VW Bank", "original_amount": "18000", "disbursement_date": "2026-09-01", "interest_rate": 4.9, "monthly_annuity": "350", "first_payment_date": "2026-10-15", "schedule_day_of_month": "", "debit_account_name": "DKB Giro" } }
+    ],
+    "final": "Kredit angelegt."
+  },
+  {
+    "_comment": "tc71 laufender Kredit: nur Restschuld/Zins/Rate/naechste Faelligkeit, vorletzter Tag (-2); Ursprungswerte leer.",
+    "match": "Trag meinen laufenden Hauskredit",
+    "calls": [
+      { "tool": "tool_create_loan", "args": { "name": "Baufi Sparkasse Alt", "lender": "Sparkasse", "original_amount": "", "current_balance": "84000", "disbursement_date": "", "interest_rate": 1.1, "monthly_annuity": "520", "first_payment_date": "2026-11-30", "schedule_day_of_month": "-2", "debit_account_name": "DKB Giro" } }
     ],
     "final": "Kredit angelegt."
   },

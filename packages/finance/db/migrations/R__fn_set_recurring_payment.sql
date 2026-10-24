@@ -32,11 +32,9 @@ DECLARE
     v_eff_from DATE;
     v_core     JSONB;     -- Phase L WS-3: Erfolgs-Kern beider Zweige (Split/In-Place) vor dem Cashflow-Fold
 BEGIN
-    -- WP-2b: fester Buchungstag muss 1-28 oder -1 (Monatsletzter) sein (29/30/31 overflowen kurze Monate).
-    IF NOT finance.fn_valid_schedule_dom(v_dom) THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'Booking day ' || v_dom || ' is invalid - allowed are 1-28 or -1 (last day of the month); '
-                   || 'for the 29th/30th/31st use -1 (last day of the month).');
+    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
     SELECT * INTO v_row FROM finance.recurring_payments WHERE id = v_id;
     IF NOT FOUND THEN

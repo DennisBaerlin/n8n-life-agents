@@ -89,7 +89,9 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_loan' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity loan -S $S -D @{
-        Person = "$P.full_name"; RealEstate = "`$('Check duplicate name').item.json.real_estate_name" })
+        Person = "$P.full_name"; RealEstate = "`$('Check duplicate name').item.json.real_estate_name"
+        RateInterest = "`$('Dry run').item.json.r.first_rate_interest"; RatePrincipal = "`$('Dry run').item.json.r.first_rate_principal"
+        Running = "!!`$('Dry run').item.json.r.opening_balance_date" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `
@@ -118,15 +120,15 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
 
     $stickyGen = Build-Sticky 'DB-Automatik Loan' @(2420, -240) `
         'Trigger + GENERATED (fn_create_loan atomar)' `
-        'fn_create_loan schreibt in EINER Transaktion: Loan-Konto (balance-Zeile via trg_finance_account_balance_init), Loan-Stammdaten (annuity_rate etc. GENERATED; Zins/Tilgung live in finance.loan_overview aus current_restschuld), optional recurring_payment für die Rate, Restschuld-Eröffnung (-current_balance) aufs Loan-Konto, und NUR bei gesetztem disbursement_account_id eine Auszahlungsbuchung (+original_amount). Salden via trg_finance_balance_update.' 240 480
+        'fn_create_loan schreibt in EINER Transaktion: Loan-Konto (balance-Zeile via trg_finance_account_balance_init), Loan-Stammdaten, optional recurring_payment für die Rate (gültig ab dem Stichtag von Abbuchungs- und Kreditkonto), Restschuld-Eröffnung aufs Loan-Konto (frisch: -original_amount zum Auszahlungsdatum; laufend: -current_balance zum Stichtag heute + opening_balance_date am Kreditkonto), und NUR bei gesetztem disbursement_account_id eine Auszahlungsbuchung (+original_amount). Salden via trg_finance_balance_update. Zins/Tilgung je Rate rechnet die DB immer aus der Restschuld (fn_loan_monthly_interest, finance.loan_overview).' 240 520
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `
-        'Nicht-positiver Kreditbetrag (original_amount) oder nicht-positive Monatsrate liefert die fn als {ok:false, reason} -> Loan rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.' 200 400
+        'Korrigierbare Fehler (frischer Kredit ohne Betrag/Auszahlungsdatum, nicht-positive Beträge, Rate unter dem Monatszins der Restschuld, Auszahlungskonto bei laufendem Kredit …) liefert die fn als {ok:false, reason} -> Loan rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.' 200 420
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1100, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_create_loan mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (nicht-positiver Kreditbetrag (original_amount) oder nicht-positive Monatsrate) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
+        'Dry run = fn_create_loan mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (z. B. Rate unter dem Monatszins, frischer Kredit ohne Betrag) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte mit der DB-Aufteilung der 1. Rate (first_rate_interest/_principal aus der Restschuld); Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 460
 
     $nodes = @($trig, $checkDup, $ifExists, $errExists, $resAcc, $ifAcc, $errAcc,
                $resDisbursement, $ifDisbursement, $errDisbursement,

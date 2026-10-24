@@ -1,9 +1,8 @@
 -- ============================================================
 -- fn_set_loan (ATOMIC WRITE)
 --   Aendert Konditionen/Status eines bestehenden Kredits (Zinsbindungs-Ende: neuer Zins/Tilgung/
---   Annuitaet; Status). Partielles Update. Die GENERATED-Spalten annuity_rate/monthly_interest/
---   monthly_principal (origination-basiert) rechnen automatisch neu; die LIVE-Werte liefert
---   finance_loan_overview aus der Restschuld.
+--   Annuitaet; Status). Partielles Update. Zins/Tilgung je Rate liefert finance.loan_overview LIVE aus der
+--   Restschuld (principal_rate ist nur informativ; die Ursprungs-GENERATED-Spalten entfielen mit finance:V025).
 --   RECURRING-SYNC (Befund B, in-place): geaenderte monthly_annuity -> verknuepfte Kreditrate
 --   (recurring_payment.amount = -annuity); geaenderter schedule_day_of_month -> verknuepfte Kreditrate
 --   (recurring_payment.schedule_day_of_month).
@@ -13,7 +12,8 @@
 --   Eingabe jsonb: loan_id (im n8n aufgeloest), name, lender, borrower_person_id (Slug; leer=unveraendert), interest_rate, principal_rate,
 --   interest_rate_fixed_until, monthly_annuity, schedule_day_of_month, status, notes.
 --   RUECKGABE: {ok:true, loan_id, recurring_payment_id}. Korrigierbar (neg. Rate, annuity<=0,
---   active-ohne-Annuitaet, unbekannter status) -> {ok:false} OHNE Write.
+--   active-ohne-Annuitaet, unbekannter status, wirksame Rate unter dem Monatszins der Restschuld -> {interest, payment};
+--   jede Buchung scheiterte sonst an fn_get_loan_payment_split) -> {ok:false} OHNE Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_loan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -28,16 +28,15 @@ DECLARE
     v_loan        finance.loans%ROWTYPE;
     v_eff_status  finance.loan_status;
     v_eff_annuity NUMERIC;
+    v_interest    NUMERIC;
 BEGIN
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
     v_status := NULLIF(p->>'status', '')::finance.loan_status;
-    -- WP-2b: fester Buchungstag muss 1-28 oder -1 (Monatsletzter) sein (29/30/31 overflowen kurze Monate).
-    IF NOT finance.fn_valid_schedule_dom(v_dom) THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'Booking day ' || v_dom || ' is invalid - allowed are 1-28 or -1 (last day of the month); '
-                   || 'for the 29th/30th/31st use -1 (last day of the month).');
+    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
     SELECT * INTO v_loan FROM finance.loans WHERE id = v_id;
     IF NOT FOUND THEN
@@ -53,10 +52,7 @@ BEGIN
     END IF;
     -- numeric(6,4) kuerzte > 4 Nachkommastellen still bzw. warf ab 100 Overflow (Rundungs-Paket 2026-10-23)
     v_reason := COALESCE(finance.fn_rate_precision_reason(v_irate, 'Interest rate'),
-                         finance.fn_rate_precision_reason(v_prate, 'Principal rate'),
-                         -- GENERATED annuity_rate = Zins + Tilgung (gemergt mit dem Bestand) ist ebenfalls numeric(6,4)
-                         finance.fn_rate_precision_reason(COALESCE(v_irate, v_loan.interest_rate)
-                             + COALESCE(v_prate, v_loan.principal_rate, 0), 'Interest + principal rate'));
+                         finance.fn_rate_precision_reason(v_prate, 'Principal rate'));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
@@ -70,6 +66,20 @@ BEGIN
     IF v_eff_status = 'active' AND v_eff_annuity IS NULL THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'An active loan needs a monthly annuity. Provide monthly_annuity or set the loan to paused.');
+    END IF;
+    -- Korrigierbar (Live-Befund 2026-10-24): neue Rate bzw. neuer Zins -> die wirksame Rate muss den Monatszins der
+    -- Restschuld je Raten-Periode decken (dieselbe Formel + derselbe Perioden-Faktor wie jede Buchung,
+    -- fn_get_loan_payment_split: fn_loan_monthly_interest x fn_loan_period_months).
+    IF (v_annuity IS NOT NULL OR v_irate IS NOT NULL) AND v_eff_annuity IS NOT NULL THEN
+        SELECT finance.fn_loan_monthly_interest(-balance, COALESCE(v_irate, v_loan.interest_rate),
+                   finance.fn_loan_period_months(v_loan.recurring_payment_id)) INTO v_interest
+        FROM finance.account_balances WHERE account_id = v_loan.loan_account_id;
+        IF v_eff_annuity < v_interest THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'The monthly rate ' || v_eff_annuity || ' does not cover the monthly interest ' || v_interest
+                       || ' on the remaining debt - check the rate and the interest rate.',
+                'interest', v_interest, 'payment', v_eff_annuity);
+        END IF;
     END IF;
 
     UPDATE finance.loans SET

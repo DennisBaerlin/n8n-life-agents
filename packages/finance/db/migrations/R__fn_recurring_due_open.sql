@@ -42,11 +42,12 @@ occ AS (
     FROM rp, generate_series(rp.f, p_until, (rp.n * 7 || ' days')::interval) gs
     WHERE rp.u = 'week'
     UNION ALL
-    -- MONTH: alle n Monate; Tag aus dom (-1=Monatsletzter, NULL=Tag von f mit Monatsend-Clamping)
+    -- MONTH: alle n Monate; Tag aus dom (-1=Monatsletzter, -2=vorletzter Tag, NULL=Tag von f mit Monatsend-Clamping)
     SELECT rp.id,
            CASE
-             WHEN rp.dom = -1 THEN
-               (date_trunc('month', rp.f) + (k * rp.n || ' months')::interval + interval '1 month' - interval '1 day')::date
+             WHEN rp.dom IN (-1, -2) THEN
+               (date_trunc('month', rp.f) + (k * rp.n || ' months')::interval + interval '1 month'
+                + (rp.dom || ' days')::interval)::date
              WHEN rp.dom IS NULL THEN
                (rp.f + (k * rp.n || ' months')::interval)::date
              ELSE

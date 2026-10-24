@@ -21,6 +21,18 @@ function Get-FinanceNumSetJs([string]$Expr) {
     "((v) => v !== undefined && v !== null && v !== '' && Number(String(v).replace(',', '.')) !== 0)($Expr)"
 }
 
+# Abbuchungstag (schedule_day_of_month) in Klartext — EINE Definition fuer alle Karten (vorher Kopien je Tool; Sparziel
+# und Sparplan zeigten -1 als "-1."): -1 -> letzter, -2 -> vorletzter Tag des Monats, fester Tag -> Template -DayTpl
+# (Param {day}), leer -> -Empty (JS-Ausdruck; 'null' = '—'). Liefert den Template-Key-Ausdruck fuer New-HitlLine -Kind tpl.
+function Get-FinanceDomTpl {
+    param([Parameter(Mandatory)][string]$Dom, [string]$DayTpl = 'finance.tpl.day_of_month', [string]$Empty = 'null')
+    "(String($Dom ?? '') === '-1' ? 'finance.value.last_day_of_month' : (String($Dom ?? '') === '-2' ? 'finance.value.second_to_last_day_of_month' : ($Dom ? '$DayTpl' : $Empty)))"
+}
+# Monatsende-Tag (-1/-2) als Key-Wert fuer Templates mit eigenem Platzhalter (z. B. Sparplan-Zyklus {end}).
+function Get-FinanceMonthEndKey([string]$Dom) {
+    "(String($Dom ?? '') === '-2' ? 'finance.value.second_to_last_day_of_month' : 'finance.value.last_day_of_month')"
+}
+
 # Zins-Kadenz in Klartext (Live-Befund 2026-10-24: keine Codes wie "ACT/365" oder "-1" auf der Karte) — EINE Definition
 # fuer die Konto-Karte (Einzel-Tool + Import) und die Karte von tool_set_account_interest. Werte als JS-Ausdruecke:
 # Unit/Interval/Dom/Pdom = die Kadenz, die der Write schreibt (Konto: Eingabe, von fn_create_account unveraendert
@@ -69,7 +81,7 @@ function Get-FinanceHitlLines {
     )
     $need = { param($k) if (-not $D.ContainsKey($k) -or [string]::IsNullOrWhiteSpace($D[$k])) { throw "Get-FinanceHitlLines ${Entity}: -D.$k fehlt" }; $D[$k] }
     $own  = { param($label, $expr) New-HitlLine $label "($expr ? 'finance.tpl.plain' : 'finance.value.household')" -Kind tpl -Params @{ value = $expr } }
-    $dom  = "($S.schedule_day_of_month == '-1' ? 'finance.value.last_day_of_month' : ($S.schedule_day_of_month ? 'finance.tpl.day_of_month' : 'finance.value.relative_to_start'))"
+    $dom  = Get-FinanceDomTpl "$S.schedule_day_of_month" -Empty "'finance.value.relative_to_start'"
     # Verrechnungskonto: im Import mit Herkunft (-D.SettlementRef = X.settlement_ref aus fn_import_ref_account:
     # 'db' besteht schon, 'batch' wird mit angelegt) -- der Owner las den nackten Namen als Neuanlage (2026-10-23).
     # Einzel-Tools loesen es immer gegen den Bestand auf -> dort nur der Name.
@@ -254,7 +266,7 @@ function Get-FinanceHitlLines {
                     months = (& $need 'Months') })
                 (New-HitlLine 'finance.label.debit_account'        "$S.account_name")
                 (New-HitlLine 'finance.label.reserve_pot'          "'finance.tpl.reserve_pot'" -Kind tpl -Params @{ name = "$S.reserve_account_name" })
-                (New-HitlLine 'finance.label.debit_day'            "($S.schedule_day_of_month ? 'finance.tpl.day_ordinal' : 'finance.value.relative_to_start')" -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
+                (New-HitlLine 'finance.label.debit_day'            (Get-FinanceDomTpl "$S.schedule_day_of_month" -DayTpl 'finance.tpl.day_ordinal' -Empty "'finance.value.relative_to_start'") -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
                 (New-HitlLine 'finance.label.first_booking'        "$S.first_payment_date" -Kind date)
                 (& $own 'finance.label.beneficiary_person' (& $need 'Person'))
                 (New-HitlLine 'finance.label.priority'             "($S.priority ? 'finance.tpl.priority_hint' : null)" -Kind tpl -Params @{ value = "$S.priority" })
@@ -263,20 +275,30 @@ function Get-FinanceHitlLines {
         }
         'loan' {
             $hasRate = Get-FinanceNumSetJs "$S.monthly_annuity"
-            $ldom = "($S.schedule_day_of_month == '-1' ? 'finance.value.last_day_of_month' : ($S.schedule_day_of_month ? 'finance.tpl.day_of_month' : null))"
+            $ldom = Get-FinanceDomTpl "$S.schedule_day_of_month"
+            # Aufteilung der 1. Rate aus der Restschuld: Einzel-Tool = Probelauf von fn_create_loan, Import =
+            # fn_import_card_rows (beide fn_loan_monthly_interest) -- die Karte rechnet nichts (Live-Befund 2026-10-24).
+            $rateInt = & $need 'RateInterest'
+            $ratePri = & $need 'RatePrincipal'
+            # laufend (Restschuld zum Stichtag heute) entscheidet die DB: Einzel-Tool = Probelauf opening_balance_date,
+            # Import = X.running (dieselbe Regel wie fn_create_loan)
+            $running = & $need 'Running'
             @(
                 (New-HitlLine 'core.label.name'                      "$S.name")
                 (New-HitlLine 'finance.label.lender'                 "$S.lender")
                 (& $own 'finance.label.borrower_person' (& $need 'Person'))
                 (New-HitlLine 'finance.label.loan_amount_original'   "$S.original_amount" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.remaining_debt_current' "($S.current_balance ? 'finance.tpl.amount_running_loan' : 'finance.tpl.plain')" -Kind tpl -Params @{
+                (New-HitlLine 'finance.label.remaining_debt_current' "($running ? 'finance.tpl.amount_running_loan' : 'finance.tpl.plain')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "($S.current_balance || $S.original_amount)" -EurByModel) })
                 (New-HitlLine 'finance.label.disbursement_date'      "$S.disbursement_date" -Kind date)
                 (New-HitlLine 'finance.label.interest_rate'          "'finance.tpl.percent_pa'" -Kind tpl -Params @{ value = "$S.interest_rate" })
-                (New-HitlLine 'finance.label.principal_rate'         "($S.principal_rate ? 'finance.tpl.percent_pa' : 'finance.value.suspended')" -Kind tpl -Params @{ value = "$S.principal_rate" })
+                (New-HitlLine 'finance.label.principal_rate'         "($S.principal_rate ? 'finance.tpl.percent_pa' : null)" -Kind tpl -Params @{ value = "$S.principal_rate" })
                 (New-HitlLine 'finance.label.fixed_until'            "$S.interest_rate_fixed_until" -Kind date)
                 (New-HitlLine 'finance.label.monthly_instalment'     "($hasRate ? 'finance.tpl.plain' : 'finance.value.no_instalment')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "$S.monthly_annuity" -EurByModel) })
+                (New-HitlLine 'finance.label.first_rate_split'       "'finance.tpl.rate_split'" -Kind tpl -If $hasRate -Params @{
+                    interest  = (New-HitlValue -Kind money -Value $rateInt -EurByModel)
+                    principal = (New-HitlValue -Kind money -Value $ratePri -EurByModel) })
                 (New-HitlLine 'finance.label.first_instalment'       "$S.first_payment_date" -Kind date -If $hasRate)
                 (New-HitlLine 'finance.label.debit_day'              $ldom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If $hasRate)
                 (New-HitlLine 'finance.label.debit_account_instalment' "$S.debit_account_name")
@@ -314,7 +336,7 @@ $script:FIN_IMPORT_CARD = [ordered]@{
                            D = @{ Person = 'X.person'; TargetDate = '(X.schedule || {}).target_date'; MonthlyRate = '(X.schedule || {}).monthly_rate'; Months = '(X.schedule || {}).months' }
                            Covered = @('target_date', 'monthly_savings_rate') }
     loan              = @{ Heading = 'finance.label.loan'; Alias = @{ debit_account = 'debit_account_name'; disbursement_account = 'disbursement_account_name' }
-                           D = @{ Person = 'X.person'; RealEstate = 'S.real_estate' }; Covered = @() }
+                           D = @{ Person = 'X.person'; RealEstate = 'S.real_estate'; RateInterest = '(X.rate_split || {}).interest'; RatePrincipal = '(X.rate_split || {}).principal'; Running = 'X.running' }; Covered = @() }
 }
 
 # Die erlaubten Import-Felder je Art aus der EINEN SQL-Adresse (R__fn_import_allowed_keys.sql, Zeilenformat

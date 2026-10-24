@@ -4,7 +4,7 @@
 --   finance_ro lesbar), von fn_book_loan_payment (Buchung) und von fn_recurring_occurrence_amount (Erinnerung)
 --   -> Karte, Erinnerung und Buchung zeigen garantiert dieselben Zahlen. Zins = fn_loan_monthly_interest (Restschuld
 --   * Zinssatz / 1200, die eine Formel auch der Cashflow-Klassifikation) * Monate je Raten-Periode (Audit Paket 2: eine Quartalsrate traegt drei Monatszinsen, vorher nur einen;
---   Periode aus Kadenz der Kredit-rp, ohne rp = 1 Monat; Monats-Normalisierung ueber fn_days_per_month);
+--   Periode aus Kadenz der Kredit-rp ueber fn_loan_period_months, ohne rp = 1 Monat);
 --   Tilgung = Rate - Zins; mit explizitem principal_amount: Zins = Rate - Tilgung.
 --   FAELLIGKEITS-ZUORDNUNG (Audit F1b): eine regulaere Rate (Betrag = geplante Rate eines Glieds der Raten-Kette, oder
 --   die letzte Rate, die den Kredit genau abloest)
@@ -31,7 +31,6 @@ DECLARE
     v_due        DATE    := NULLIF(p->>'due_date', '')::date;
     v_stamp_rp   INT     := NULLIF(p->>'recurring_payment_id', '')::int;
     v_loan       finance.loans%ROWTYPE;
-    v_rp         finance.recurring_payments%ROWTYPE;
     v_months     NUMERIC := 1;
     v_restschuld NUMERIC;
     v_interest   NUMERIC;
@@ -56,14 +55,9 @@ BEGIN
     -- Monate je Raten-Periode aus der Kadenz des Glieds, dessen Vorkommen gebucht wird (Scheduler-Stempel), sonst
     -- des Kopfs der Kette (Code-Review Paket 3: ein in die Zukunft datierter Kadenzwechsel darf die laufende alte
     -- Monatsrate nicht mit drei Monatszinsen belasten).
+    -- (die eine Adresse: fn_loan_period_months; ohne rp = 1 Monat)
     IF v_loan.recurring_payment_id IS NOT NULL THEN
-        SELECT * INTO v_rp FROM finance.recurring_payments WHERE id = COALESCE(v_stamp_rp, v_loan.recurring_payment_id);
-        v_months := GREATEST(v_rp.schedule_interval, 1) * CASE v_rp.schedule_unit
-                        WHEN 'day'   THEN 1.0 / finance.fn_days_per_month()
-                        WHEN 'week'  THEN 7.0 / finance.fn_days_per_month()
-                        WHEN 'month' THEN 1.0
-                        WHEN 'year'  THEN 12.0
-                    END;
+        v_months := finance.fn_loan_period_months(COALESCE(v_stamp_rp, v_loan.recurring_payment_id));
     END IF;
 
     SELECT GREATEST(-balance, 0) INTO v_restschuld

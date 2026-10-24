@@ -52,7 +52,7 @@ function Build-CreateRecurringTransfer {
     # --- HITL approval gate (before the atomic write) ---
     # Strukturiertes Summary (Textkatalog): Rate in der Waehrung des Quellkontos (Resolve From liest accounts.currency mit).
     $S = "`$('Start').item.json"
-    $dom = "($S.schedule_day_of_month == '-1' ? 'finance.value.last_day_of_month' : ($S.schedule_day_of_month ? 'finance.tpl.day_of_month' : 'finance.value.relative_to_start'))"
+    $dom = Get-FinanceDomTpl "$S.schedule_day_of_month" -Empty "'finance.value.relative_to_start'"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_recurring_transfer' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'core.label.name'            "$S.name")
         (New-HitlLine 'finance.label.from'         "$S.from_account_name")

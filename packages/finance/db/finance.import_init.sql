@@ -29,9 +29,9 @@
 --   savings_goal:      name*, target_amount*, account* (Name), reserve_account* (Name, Sparkonto/Topf, ≠ account),
 --                      first_payment_date*, beneficiary_person,
 --                      GENAU EINES von {target_date, monthly_savings_rate}, goal_type, ...
---   loan:              name*, original_amount*, interest_rate*, debit_account* (Name, EUR),
---                      disbursement_date*, monthly_annuity (+ first_payment_date Pflicht),
---                      current_balance (Restschuld heute, 0 < x <= original), borrower_person,
+--   loan:              name*, interest_rate*, debit_account* (Name, EUR), monthly_annuity (+ first_payment_date Pflicht),
+--                      frisch: original_amount* + disbursement_date*; laufend: current_balance* (Restschuld heute,
+--                      0 < x <= original), Ursprungswerte + principal_rate dann optional, borrower_person,
 --                      lender, schedule_day_of_month, disbursement_account (Name; nur frischer Kredit),
 --                      real_estate (Name), interest_rate_fixed_until
 --   Personen-Felder: Name aus dem Haushalt (fn_import_resolve_persons), leer = Haushalt.

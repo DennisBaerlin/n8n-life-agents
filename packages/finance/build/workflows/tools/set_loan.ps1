@@ -58,7 +58,7 @@ function Build-SetLoan {
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
     $P = "`$('Resolve Person').item.json"
-    $dom = "($S.schedule_day_of_month == '-1' ? 'finance.value.last_day_of_month' : 'finance.tpl.day_of_month')"
+    $dom = Get-FinanceDomTpl "$S.schedule_day_of_month"
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.set_loan' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.loan'            "$S.loan_name")
         (New-HitlLine 'finance.label.new_name'        "$S.new_name" -If "$S.new_name")
@@ -98,11 +98,11 @@ function Build-SetLoan {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(880, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_set_loan mit denselben Werten, immer zurückgerollt. ok:false (negative Rate, Annuität <= 0, aktiver Kredit ohne Annuität) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception (CHECK) -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
+        'Dry run = fn_set_loan mit denselben Werten, immer zurückgerollt. ok:false (negative Rate, Annuität <= 0, aktiver Kredit ohne Annuität, Rate unter dem Monatszins der Restschuld) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception (CHECK) -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 420
 
     $stickyOv = Build-Sticky 'Doc set_loan' @(2200, -240) `
-        'fn_set_loan: GENERATED-Recompute + Rate-Sync + Status-Kaskade' `
-        'GENERATED annuity_rate/monthly_interest/monthly_principal rechnen auto neu; LIVE-Werte in finance.loan_overview. Annuität-Änderung -> verknüpfte Kreditrate (recurring) -annuity; Status paused/paid_off/refinanced -> recurring paused. {ok:false}: neg. Rate / annuity<=0 / active ohne Annuität (CHECK). Umschuldungs-Mehrschritt NICHT hier.' 230 430
+        'fn_set_loan: Konditionen + Rate-Sync + Status-Kaskade' `
+        'Zins/Tilgung je Rate liefert finance.loan_overview LIVE aus der Restschuld; der Tilgungssatz ist nur informativ (keine abgeleiteten Spalten). Annuität-/Tag-Änderung -> verknüpfte Kreditrate (recurring) synchron; Status paused/paid_off/refinanced -> recurring paused. {ok:false}: neg. Rate / annuity<=0 / active ohne Annuität (CHECK) / Rate unter Monatszins. Umschuldungs-Mehrschritt NICHT hier.' 230 450
 
     $nodes = @($trig, $resLoan, $ifLoan, $errLoan, $readCur, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)

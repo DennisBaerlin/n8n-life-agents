@@ -5,7 +5,7 @@
 --     * mehr als 4 Nachkommastellen: account_interest_rates.annual_rate / loans.interest_rate / principal_rate sind
 --       numeric(6,4) und kuerzten still (3.12345 -> 3.1235). Geprueft per round(p,4) statt scale(): 3.50000 ist ok.
 --     * |Satz| >= 100: numeric(6,4) wuerde mit Overflow-RAISE abbrechen.
---   Bewusst kein Spalten-Umbau: loans.interest_rate speist GENERATED-Spalten und Views; der Rest-Fehler von <= 0.00005
+--   Bewusst kein Spalten-Umbau: loans.interest_rate speist Views und Zins-fns; der Rest-Fehler von <= 0.00005
 --   Prozentpunkten ist ohne Wirkung, wichtig ist, dass nichts STILL geaendert wird.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_rate_precision_reason(p_rate numeric, p_field text)

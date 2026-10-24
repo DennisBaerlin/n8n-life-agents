@@ -123,6 +123,31 @@ $IngressUrl = "$N8nUrl/webhook/$($tgTrigger.webhookId)/webhook"
 $IngressSecret = ("{0}_{1}" -f $OrchWfId, $tgTrigger.id) -replace '[^a-zA-Z0-9_\-]+', ''
 if ($Verbose) { Write-Host "  Ingress: $IngressUrl" -ForegroundColor DarkGray }
 
+# --- Eingangs-Geheimnis je Instanz (Security-Audit 2026-10) -------------------------------------------------------
+# Der Deploy ersetzt id + webhookId des Triggers aus INGRESS_ID_KEY (deploy_workflows.sh). Die Repo-Werte sind
+# oeffentlich -> sie duerfen live nicht gelten: alte Route = 404 (nicht registriert), echte Route mit dem aus dem Repo
+# ableitbaren Secret = 403. Ein Treffer hier = Update-Faelschung von aussen moeglich -> harter Abbruch.
+$repoOrchFile = Get-ChildItem (Join-Path $RepoRoot 'packages\core\workflows') -Filter '*-agent.orchestrator.main_route.json' | Select-Object -First 1
+$repoTrig = ([System.IO.File]::ReadAllText($repoOrchFile.FullName, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json).nodes |
+    Where-Object { $_.type -eq 'n8n-nodes-base.telegramTrigger' } | Select-Object -First 1
+if ($repoTrig.id -eq $tgTrigger.id -or $repoTrig.webhookId -eq $tgTrigger.webhookId) {
+    throw "Eingangs-ids live = Repo-Werte (oeffentlich ableitbar) — deploy_workflows hat sie nicht je Instanz ersetzt."
+}
+function Get-IngressStatus([string]$Url, [string]$Secret) {
+    try {
+        $r = Invoke-WebRequest -Uri $Url -Method Post -UseBasicParsing -ContentType 'application/json' `
+            -Headers @{ 'X-Telegram-Bot-Api-Secret-Token' = $Secret } -Body '{"update_id":1}' -TimeoutSec 15
+        return [int]$r.StatusCode
+    } catch { if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode } ; return -1 }
+}
+$repoSecret = ("{0}_{1}" -f $OrchWfId, $repoTrig.id) -replace '[^a-zA-Z0-9_\-]+', ''
+$stOldRoute = Get-IngressStatus "$N8nUrl/webhook/$($repoTrig.webhookId)/webhook" $repoSecret
+$stOldSecret = Get-IngressStatus $IngressUrl $repoSecret
+if ($stOldRoute -ne 404 -or $stOldSecret -ne 403) {
+    throw "Eingangs-Geheimnis: Repo-Route liefert $stOldRoute (erwartet 404), Repo-Secret auf der Live-Route $stOldSecret (erwartet 403)."
+}
+Write-Host "  Eingangs-Geheimnis je Instanz: Repo-Route 404, Repo-Secret 403 [PASS]" -ForegroundColor Green
+
 # Finance-Sub-Workflow + dessen Trigger-Node-Name (fuer den chat_id-Typ-Check in ri01).
 $finWf = $wfList.data | Where-Object { $_.name -eq 'agent.finance' } | Select-Object -First 1
 if (-not $finWf) { throw "Workflow 'agent.finance' nicht gefunden." }

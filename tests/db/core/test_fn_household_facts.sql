@@ -153,6 +153,37 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS trg_validate_household_facts [language nur Codes aus core.ui_languages]';
 
+  -- ---------- TEST 6c (Trigger-Backstop): persona nur aus core.ui_personas, 'neutral' nie gespeichert ----------
+  v_id := NULL;
+  BEGIN
+    UPDATE agent.core_contexts
+       SET metadata = jsonb_set(metadata, '{facts,persons,0,persona}', '"pirate"')
+     WHERE name = 'family';
+  EXCEPTION WHEN raise_exception THEN
+    v_id := SQLERRM;
+  END;
+  IF v_id IS NULL OR v_id NOT LIKE '%persona%' THEN
+    RAISE EXCEPTION 'FAIL trg_validate_household_facts [persona "pirate" akzeptiert: %]', v_id;
+  END IF;
+  v_id := NULL;
+  BEGIN
+    UPDATE agent.core_contexts
+       SET metadata = jsonb_set(metadata, '{facts,persons,0,persona}', '"neutral"')
+     WHERE name = 'family';
+  EXCEPTION WHEN raise_exception THEN
+    v_id := SQLERRM;
+  END;
+  IF v_id IS NULL OR v_id NOT LIKE '%persona%' THEN
+    RAISE EXCEPTION 'FAIL trg_validate_household_facts [persona "neutral" gespeichert: %]', v_id;
+  END IF;
+  UPDATE agent.core_contexts
+     SET metadata = jsonb_set(metadata, '{facts,persons,0,persona}', '"butler"')
+   WHERE name = 'family';
+  UPDATE agent.core_contexts
+     SET metadata = metadata #- '{facts,persons,0,persona}'
+   WHERE name = 'family';
+  RAISE NOTICE 'PASS trg_validate_household_facts [persona nur Codes aus core.ui_personas, neutral = kein Key]';
+
   -- ---------- TEST 7 (fn_set_context_facts): Merge bestehende Person + as_of-Stempel ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','family',

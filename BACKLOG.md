@@ -143,6 +143,9 @@ Sammelort fuer ausgeklammerte Items aus aktuellen + vergangenen Sessions. **Beim
 - **Tages-Briefing (Digest) + Obergrenze je Person/Tag** — alle an einem Tag fälligen Erinnerungen als EINE Karte (Muster Novu-Digest/Braze-Frequency-Capping), Rangfolge nach Wichtigkeit, Rest auf morgen. Heute laufen die Reminder gestaffelt 10:00–10:30 im Fenster 10–20 Uhr, an Spitzentagen 2–3 Nachrichten. **Trigger:** Owner sagt „zu viele Nachrichten am Morgen".
 - **„Alles pausieren" (Urlaub)** — in `/reminders` alle schaltbaren Erinnerungen bis Datum X aus, danach automatisch wieder an; Fristen im Todesfall laufen weiter. **Trigger:** Owner-Wunsch vor einem Urlaub.
 
+### Bot-Persona (Owner-Entscheid 2026-10-24: v1 = Rahmen nur im Orchestrator)
+- **Persona in Cron-Texten** — das Haiku-Phrasing der Berater-Hinweise (`cron.advisor_common`, `cron.review_register`) bekommt die Persona des Empfängers als Rahmen (gleiche Regeln wie `persona_styles.md`; Zahlen setzt weiter das Programm ein). **Trigger:** Owner wünscht den Charakter auch in Erinnerungen/Berater-Hinweisen.
+
 ### Backup
 - **Geplanter Auto-Backup als systemd-Timer** (heute `--notify-telegram` + dokumentierte root-crontab-Zeile). systemd-Standard (`.timer`+`.service`, `Persistent=true`) zieht Retention/Rotation + `doctor`-Check + `--purge`-Teardown nach. Bauen bei Owner-Signal.
 - **Versions-übergreifende Restore-Daten-Migration:** der harte Version-Gate IST Branchen-Standard (pg_restore/Borg/restic verweigern Cross-Version ebenso). Echtes Forward-Migrate braucht ≥2 Versionen → **Re-Eval ab v0.2.0 + echtem Mismatch**.

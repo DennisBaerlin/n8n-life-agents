@@ -78,7 +78,7 @@ CREATE TRIGGER trg_core_contexts_touch
 -- freien Prosa-Body (content) ein kleines jsonb-Sidecar metadata.facts NUR fuer die
 -- berechenbaren/kritischen Felder (Identitaet, Daten, Zahlen):
 --   family:          {persons:[{person_id, first_name, last_name, aliases[], role(owner|partner|child),
---                     birth_date, telegram_user_id?, citizenships[]?, language?, education_status?, as_of?}],
+--                     birth_date, telegram_user_id?, citizenships[]?, language?, persona?, education_status?, as_of?}],
 --                     household:{shared_finances?, care_flag?, as_of?}, _meta:{last_confirmed_at}}
 --   finance_profile: {persons:[{person_id (muss in family existieren — Single-Writer-Referenz),
 --                     planned_retirement_age?, steuerklasse?, kirchensteuer?,
@@ -227,6 +227,15 @@ BEGIN
                AND NOT EXISTS (SELECT 1 FROM core.ui_languages l WHERE l.code = v_p->>'language') THEN
                 RETURN format('person "%s": language "%s" is not supported (use one of: %s)', v_id, v_p->>'language',
                     (SELECT string_agg(l.code, '|' ORDER BY l.ord) FROM core.ui_languages l));
+            END IF;
+            -- Bot-Persona: nur Codes aus core.ui_personas; 'neutral' wird nie gespeichert (= Key fehlt), damit
+            -- "keine Persona" genau eine Darstellung hat (fn_set_context_facts macht aus 'neutral' ein Loeschen).
+            IF v_p ? 'persona' AND jsonb_typeof(v_p->'persona') <> 'null'
+               AND (v_p->>'persona' = 'neutral'
+                    OR NOT EXISTS (SELECT 1 FROM core.ui_personas x WHERE x.code = v_p->>'persona')) THEN
+                RETURN format('person "%s": persona "%s" is not supported (use one of: %s; neutral = omit the key)',
+                    v_id, v_p->>'persona',
+                    (SELECT string_agg(x.code, '|' ORDER BY x.ord) FROM core.ui_personas x WHERE x.code <> 'neutral'));
             END IF;
             IF v_p ? 'as_of' AND jsonb_typeof(v_p->'as_of') <> 'null' THEN
                 BEGIN

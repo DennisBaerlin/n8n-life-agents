@@ -172,7 +172,10 @@ BEGIN
                                'birth_date', p->>'birth_date')
                            -- Sprache fester Texte bleibt (sonst faellt nach dem Reset alles auf Englisch zurueck)
                            || CASE WHEN jsonb_typeof(p->'language') = 'string'
-                                   THEN jsonb_build_object('language', p->>'language') ELSE '{}'::jsonb END)
+                                   THEN jsonb_build_object('language', p->>'language') ELSE '{}'::jsonb END
+                           -- Bot-Persona ebenso (Installer-Wahl wie die Sprache, kein Nutzerdatum)
+                           || CASE WHEN jsonb_typeof(p->'persona') = 'string'
+                                   THEN jsonb_build_object('persona', p->>'persona') ELSE '{}'::jsonb END)
                       FROM jsonb_array_elements(metadata->'facts'->'persons') p
                      WHERE p->>'role' = 'owner'),
                    metadata->'facts'->'persons')))

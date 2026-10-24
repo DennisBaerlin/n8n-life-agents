@@ -39,7 +39,9 @@
 # persistiert (Naht-Rueckbau der Install-UX-Phase; contract_lint Naht-Guard blockt Rueckfaelle).
 # OWNER_LANGUAGE = Sprache der festen Bot-Texte des Owners (Textkatalog; eigener Auswahl-Dialog _ask_owner_language,
 # Vorauswahl Deutsch; leer/unattended -> bootstrap_owner nimmt 'de').
-_INSTALL_ENV_KEYS="DOMAIN TRUSTED_PROXIES N8N_OWNER_EMAIL N8N_OWNER_PASSWORD OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY"
+# OWNER_PERSONA = Bot-Charakter des Owners (Core-Manifest personas.list; eigener Auswahl-Dialog _ask_owner_persona,
+# Vorauswahl Neutral; leer/unattended/ungueltig -> util_seed_owner_skeleton laesst den Key weg = neutral).
+_INSTALL_ENV_KEYS="DOMAIN TRUSTED_PROXIES N8N_OWNER_EMAIL N8N_OWNER_PASSWORD OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE OWNER_PERSONA TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY"
 
 # Pflicht-Host-Keys (Install-UX-Phase 7): ohne sie ist die Instanz unbenutzbar — kein Chat (Telegram), kein Agent denkt
 # (seit Modell-Phase 2 laufen ALLE Agenten auf Claude -> Anthropic Pflicht; Google ist optional und traegt nur noch die
@@ -355,6 +357,8 @@ Versicherungen). Alles bleibt auf deinem Server." ;;
       _HK_PROMPT="Dein Geburtsdatum (JJJJ-MM-TT, z. B. 1985-04-23): "; _HK_VFN=_validate_birthdate ;;
     OWNER_LANGUAGE)
       _HK_PROMPT="Sprache der Bot-Nachrichten: " ;;
+    OWNER_PERSONA)
+      _HK_PROMPT="Charakter des Bots: " ;;
     TELEGRAM_BOT_TOKEN)
       _HK_PROMPT="Telegram-Bot-Token: "; _HK_VFN=_validate_telegram; _HK_SECRET=1
       _HK_HELP="Pflicht: Über einen eigenen Telegram-Bot schreibst du mit deinen Agenten. So bekommst du
@@ -407,7 +411,7 @@ _host_key_ask() {
 _host_editable_keys() {
   printf '%s\n' DOMAIN TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY
   if ! declare -F _oc_owner_person_exists >/dev/null || ! _oc_owner_person_exists; then
-    printf '%s\n' OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE
+    printf '%s\n' OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE OWNER_PERSONA
   fi
   return 0
 }
@@ -509,12 +513,13 @@ INTRO
   _ensure_install_env_file
 
   # Die Fragen in der Reihenfolge von _INSTALL_ENV_KEYS (EINE Liste fuer Reihenfolge, Persistenz und Intro);
-  # TRUSTED_PROXIES und OWNER_LANGUAGE haben eigene Auswahl-Dialoge, alle anderen kommen aus der Host-Fragen-Tabelle.
+  # TRUSTED_PROXIES, OWNER_LANGUAGE und OWNER_PERSONA haben eigene Auswahl-Dialoge, alle anderen kommen aus der Host-Fragen-Tabelle.
   local _k
   for _k in $_INSTALL_ENV_KEYS; do
     case "$_k" in
       TRUSTED_PROXIES) _ask_trusted_proxies ;;
       OWNER_LANGUAGE)  _ask_owner_language ;;
+      OWNER_PERSONA)   _ask_owner_persona ;;
       *)               _host_key_ask "$_k" ;;
     esac
   done
@@ -619,7 +624,10 @@ _all_host_keys_answered() {
 # Domain eingetragen, muss die Proxy-Frage dann noch kommen).
 _TP_SKIPPED=0   # Proxy-Frage in diesem Lauf abgebrochen/ohne gueltige Antwort -> nicht als gesehen markieren
 _key_not_offered() {
-  [ "$1" = "TRUSTED_PROXIES" ] && { [ -z "${DOMAIN:-}" ] || [ "$_TP_SKIPPED" = 1 ]; }
+  [ "$1" = "TRUSTED_PROXIES" ] && { [ -z "${DOMAIN:-}" ] || [ "$_TP_SKIPPED" = 1 ]; } && return 0
+  # OWNER_PERSONA wirkt nur beim ERSTEN Anlegen des Owner-Skeletts: steht der Owner schon (Bestands-Installation, die
+  # den Key noch nie hatte), waere die Frage wirkungslos -> nicht anbieten (dort waehlt man im Chat mit /persona).
+  [ "$1" = "OWNER_PERSONA" ] && declare -F _oc_owner_person_exists >/dev/null && _oc_owner_person_exists
 }
 
 # _owner_language_options -> Picker-Zeilen "Eigenname<TAB>code" der unterstuetzten Sprachen (Core-Manifest languages.list,
@@ -649,6 +657,47 @@ _ask_owner_language() {
   OWNER_LANGUAGE="$pick"; export OWNER_LANGUAGE
   [ "$reask" = "1" ] || _store_answer "${INSTALL_ENV_FILE:-}" OWNER_LANGUAGE "$pick"
   ok "  übernommen: $(_owner_language_name "$pick")."
+  return 0
+}
+
+# _owner_persona_name <code> -> deutscher Anzeigename aus dem Core-Textkatalog (core.persona.name.<code>, ohne das
+#   fuehrende Emoji: Emoji-Breiten verschieben die Installer-Auswahl je nach Terminal); unbekannt -> der Code selbst.
+#   _owner_persona_options -> Picker-Zeilen "Name<TAB>code" in Manifest-Reihenfolge (personas.list, die EINE Liste).
+_owner_persona_name() {
+  local n; n="$(pkg_text core "persona.name.$1")"
+  n="${n#* }"
+  printf '%s' "${n:-$1}"
+}
+_owner_persona_options() {
+  local c
+  for c in $(_pkg_manifest_field core '(.personas.list // []) | sort_by(.ord) | map(.code) | join(" ")'); do
+    printf '%s\t%s\n' "$(_owner_persona_name "$c")" "$c"
+  done
+}
+
+# _ask_owner_persona [reask] — Bot-Charakter, mit dem der Orchestrator dem Owner antwortet (nur Rahmen: eigene
+#   Saetze + hoechstens ein Satz um Fach-Antworten; Zahlen, Karten, Knoepfe bleiben neutral). Vorauswahl Neutral;
+#   Esc bei der Erstfrage = Neutral; reask speichert nicht selbst. Nicht interaktiv: nichts fragen -> neutral. Ein
+#   ungueltiger OWNER_PERSONA-Wert bricht nie ab: util_seed_owner_skeleton schreibt nur Codes aus core.ui_personas.
+#   Wirkt nur beim Anlegen des Owner-Skeletts; danach waehlt der Owner im Chat mit /persona.
+_ask_owner_persona() {
+  local reask="${1:-0}" pick
+  if [ "$reask" != "1" ]; then
+    [ -n "${OWNER_PERSONA:-}" ] && return 0
+    env_has_key "${INSTALL_ENV_FILE:-}" OWNER_PERSONA && return 0
+    _key_not_offered OWNER_PERSONA && return 0
+  fi
+  ui_interactive || return 0
+  UI_ASKED=1
+  case " $UI_ASKED_KEYS " in *" OWNER_PERSONA "*) : ;; *) UI_ASKED_KEYS="${UI_ASKED_KEYS:+$UI_ASKED_KEYS }OWNER_PERSONA" ;; esac
+  pick="$(_owner_persona_options | ui_choose 'Welchen Charakter soll der Bot im Chat mit dir haben? (Zahlen, Bestätigungen und Knöpfe bleiben immer neutral; im Chat änderbar mit /persona)' 0 "$(_owner_persona_name neutral)")"
+  if [ -z "$pick" ]; then
+    if [ "$reask" = "1" ]; then log "  Charakter unverändert."; return 0; fi
+    pick=neutral
+  fi
+  OWNER_PERSONA="$pick"; export OWNER_PERSONA
+  [ "$reask" = "1" ] || _store_answer "${INSTALL_ENV_FILE:-}" OWNER_PERSONA "$pick"
+  ok "  übernommen: $(_owner_persona_name "$pick")."
   return 0
 }
 
@@ -837,6 +886,7 @@ _review_status() {
         TRUSTED_PROXIES)    if [ -z "$v" ] || [ "$v" = "127.0.0.1" ]; then printf 'auf diesem Rechner'; else printf 'auf %s' "$v"; fi ;;
         N8N_OWNER_EMAIL)    printf '%s' "${v:-— (Platzhalter-Adresse)}" ;;
         OWNER_LANGUAGE)     printf '%s' "$(_owner_language_name "${v:-de}")" ;;
+        OWNER_PERSONA)      printf '%s' "$(_owner_persona_name "${v:-neutral}")" ;;
         *)
           if [ "$_HK_SECRET" = "1" ]; then
             if [ -n "$v" ]; then printf 'gesetzt'
@@ -903,6 +953,9 @@ _review_edit() {
       elif [ "$id" = "OWNER_LANGUAGE" ]; then
         _ask_owner_language 1
         if [ -n "${OWNER_LANGUAGE:-}" ]; then _store_answer "${INSTALL_ENV_FILE:-}" OWNER_LANGUAGE "$OWNER_LANGUAGE"; fi
+      elif [ "$id" = "OWNER_PERSONA" ]; then
+        _ask_owner_persona 1
+        if [ -n "${OWNER_PERSONA:-}" ]; then _store_answer "${INSTALL_ENV_FILE:-}" OWNER_PERSONA "$OWNER_PERSONA"; fi
       else
         old_domain="${DOMAIN:-}"; old_token="${TELEGRAM_BOT_TOKEN:-}"
         _host_key_ask "$id" 1

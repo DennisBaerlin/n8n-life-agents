@@ -265,7 +265,12 @@ const server = http.createServer((req, res) => {
     }
     out.payload.usage = Object.assign(mockUsage(markers), { output_tokens: 1 });
     // Aufzeichnung (eine JSON-Zeile je Call; der Harness liest sie via `docker exec cat`).
+    // system_tail: die letzten Zeichen des System-Prompts (dort stehen die wechselnden Runtime-Flags, z. B.
+    // "persona: butler") -> real_ingress_test prueft gratis, dass ein Flag das Modell erreicht.
+    const sysText = !body ? '' : (typeof body.system === 'string' ? body.system
+      : (Array.isArray(body.system) ? body.system.map((s) => (s && s.text) || '').join('\n') : ''));
     logLine({ url: req.url, dialect: 'anthropic', offered: out.offered, task: out.task, decision: out.why, markers,
+      system_tail: sysText.slice(-300),
       tool_choice: (body && body.tool_choice) || null,      // llm_gateway_test (j): ein Werkzeug je Antwort
       max_tokens: body ? body.max_tokens : null });          // llm_gateway_test (k): Keep-Alive = max_tokens 0
     // Streaming (body.stream) -> echtes Anthropic-SSE; sonst JSON. Recherche-verifiziert: der Node ruft

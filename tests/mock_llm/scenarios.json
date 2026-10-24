@@ -1,5 +1,21 @@
 [
   {
+    "_comment": "Bot-Persona (oc29): Kontostand auf Englisch -> Call_agent_finance_ (Persona Sportreporter setzt der Harness; der Mock prueft nur das Routing).",
+    "match": "current balance of my DKB Giro",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "What is the current balance of my DKB Giro account?" } }
+    ],
+    "final": "Your DKB Giro balance is 1,234.56 EUR."
+  },
+  {
+    "_comment": "Bot-Persona (oc31): Trauerfall/Erbe -> Call_agent_estate_advisor_ (ernster Moment, kein Rahmensatz; der Mock prueft nur das Routing).",
+    "match": "Meine Mutter ist letzte Woche gestorben",
+    "calls": [
+      { "tool": "Call_agent_estate_advisor_", "args": { "task": "Todesfall im Haushalt - Erbe" } }
+    ],
+    "final": "Der Nachlass-Berater begleitet dich durch die naechsten Schritte."
+  },
+  {
     "_comment": "ORCHESTRATOR-ROUTEN (oc01-oc11). Tool-Namen sind SANITISIERT (Call 'agent.finance' -> Call_agent_finance_, Trailing-Underscore). Pro Route EIN Call; der Sub-Agent (mock-mocked) faellt mangels eligible Tool auf finalen Text zurueck -> nur die Routing-Entscheidung wird geprueft. NULL-Cases (oc03) brauchen kein Szenario (kein Match -> finaler Text -> kein Routing).",
     "match": "aktueller Kontostand beim DKB Giro",
     "calls": [

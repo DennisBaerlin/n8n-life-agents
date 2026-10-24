@@ -148,13 +148,13 @@ if ($seed.Code -ne 0) { throw "Fixture-Seed (Container-DB) fehlgeschlagen: $($se
 $PairedUid     = $TestOwnerTelegramUid
 $PairedUidLena = 880055200
 # Textkatalog Phase B: feste Sprachen je Person (Owner = de, Lena = ko) -> die Text-Asserts (expect_texts) pruefen,
-# dass jeder Empfaenger seine Sprache bekommt.
+# dass jeder Empfaenger seine Sprache bekommt. Bot-Persona: beide starten neutral (Key entfernt; Faelle setzen sie selbst).
 $pairSql = @"
 UPDATE agent.core_contexts
 SET metadata = jsonb_set(metadata, '{facts,persons}',
   (SELECT jsonb_agg(
-     CASE WHEN p->>'person_id' = 'owner' THEN p || jsonb_build_object('telegram_user_id', ${PairedUid}::bigint, 'language', 'de')
-          WHEN p->>'person_id' = 'lena'  THEN p || jsonb_build_object('telegram_user_id', ${PairedUidLena}::bigint, 'language', 'ko')
+     CASE WHEN p->>'person_id' = 'owner' THEN (p - 'persona') || jsonb_build_object('telegram_user_id', ${PairedUid}::bigint, 'language', 'de')
+          WHEN p->>'person_id' = 'lena'  THEN (p - 'persona') || jsonb_build_object('telegram_user_id', ${PairedUidLena}::bigint, 'language', 'ko')
           ELSE p END)
    FROM jsonb_array_elements(metadata->'facts'->'persons') p))
 WHERE name = 'family';
@@ -355,7 +355,10 @@ Write-Host "Real-Ingress-Test (echter Telegram-Webhook des Orchestrators) -- $($
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0
 
+$personaDirty = $null   # Person, deren Persona der vorige Fall gesetzt hat (ein fruehes continue ueberspringt den Reset)
 foreach ($tc in $cases) {
+    if ($personaDirty) { [void](Set-TestPersonaFact -Container $Container -PersonId $personaDirty -Code ''); $personaDirty = $null }
+    if ($tc.persona_person) { $personaDirty = "$($tc.persona_person)" }
     Write-Host ""
     Write-Host "  [$($tc.id)] $($tc.name)"
     [long]$chatId = [long]$tc.chat_id
@@ -580,6 +583,10 @@ foreach ($tc in $cases) {
                 $p = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $prep)
                 if ($p.Code -ne 0) { Write-Host "    [FAIL] DB-Vorbereitung (language) fehlgeschlagen: $($p.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
             }
+            # Bot-Persona (persona:-Picker): persona_person vorab auf persona_before, danach MUSS sie expect_persona sein.
+            if ($tc.persona_person -and -not (Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code "$($tc.persona_before)")) {
+                Write-Host "    [FAIL] DB-Vorbereitung (persona) fehlgeschlagen" -ForegroundColor Red; $failed++; continue
+            }
             $orchBase = Get-MaxExecId $OrchWfId
             Send-TelegramCallback $sender $sender "$($tc.callback_data)"
             $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
@@ -591,6 +598,11 @@ foreach ($tc in $cases) {
                 $q = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT p->>'language' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name = 'family' AND p->>'person_id' = '$($tc.lang_person)';")
                 $langVal = ($q.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)
                 if ($langVal -ne "$($tc.expect_lang)") { $forbidAbsent = $false; Write-Host "    Sprache von $($tc.lang_person) = '$langVal' (erwartet $($tc.expect_lang))" -ForegroundColor Red }
+            }
+            if ($tc.persona_person) {
+                $perVal = Get-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)"
+                if ("$perVal" -ne "$($tc.expect_persona)") { $forbidAbsent = $false; Write-Host "    Persona von $($tc.persona_person) = '$perVal' (erwartet '$($tc.expect_persona)')" -ForegroundColor Red }
+                [void](Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code '')   # self-contained: neutral hinterlassen
             }
             $cronOk = $true; $cronVal = 'n/a'
             if ($tc.cron_key) {
@@ -675,6 +687,13 @@ foreach ($tc in $cases) {
             $subWfId = $subWf.id; $subBase = Get-MaxExecId $subWfId
         }
 
+        # Bot-Persona: persona_person vorab auf persona_before setzen; expect_system_tail = Teilstring, der im Ende des
+        # System-Prompts eines Mock-LLM-Aufrufs stehen MUSS (Runtime-Flag erreicht das Modell; Mock loggt system_tail).
+        if ($tc.persona_person -and -not (Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code "$($tc.persona_before)")) {
+            Write-Host "    [FAIL] DB-Vorbereitung (persona) fehlgeschlagen" -ForegroundColor Red; $failed++; continue
+        }
+        if ($tc.expect_system_tail) { Clear-MockLlmRequests -Container $Container }
+
         $orchBase = Get-MaxExecId $OrchWfId
         if ("$($tc.update)" -eq 'callback') {
             # callback_query.from.id MUSS der gepairte Owner sein (sonst verwirft 'Callback owner?'); chat_id
@@ -720,6 +739,13 @@ foreach ($tc in $cases) {
         }
         $notRanOk = -not ($tc.expected_not_node -and ($runNodes -contains "$($tc.expected_not_node)"))
         $txtOk = Test-CaseTexts $tc
+        if ($tc.expect_system_tail) {
+            $tails = @(Get-MockLlmRequests -Container $Container | ForEach-Object { [string]$_.system_tail })
+            if (-not ($tails | Where-Object { $_.Contains("$($tc.expect_system_tail)") })) {
+                $outOk = $false; Write-Host "    System-Prompt-Ende ohne '$($tc.expect_system_tail)' ($($tails.Count) LLM-Aufruf(e))" -ForegroundColor Red
+            }
+        }
+        if ($tc.persona_person) { [void](Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code '') }   # self-contained: neutral hinterlassen
         Write-Host "    Orchestrator: id=$($orch.id) status=$($orch.status) ranNode($($tc.expected_node))=$ranNode outputOk=$outOk notRanOk=$notRanOk texts=$txtOk"
         if ($orch.status -eq 'success' -and $ranNode -and $outOk -and $notRanOk -and $txtOk) {
             $passed++; Write-Host "    [PASS]" -ForegroundColor Green
@@ -814,6 +840,7 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
 
     Write-Host "    [FAIL] Unbekannter Case-kind '$($tc.kind)'." -ForegroundColor Red; $failed++
 }
+if ($personaDirty) { [void](Set-TestPersonaFact -Container $Container -PersonId $personaDirty -Code '') }
 
 # Haengende Orchestrator-Gates aufraeumen (falls ein hitl-Case abbrach); gestoppte Laeufe hinterlassen Sperr-Zeilen.
 try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }

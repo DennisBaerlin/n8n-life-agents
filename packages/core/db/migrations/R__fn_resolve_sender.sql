@@ -5,7 +5,9 @@
 --   Turn (Pre-Fill, Personen-Aufloesung "mein Konto", Antwortsprache).
 --   Eindeutigkeit der telegram_user_id ueber Personen erzwingt der Validierungs-Trigger
 --   (agent.core_init.sql) — hier genuegt LIMIT 1.
---   RUECKGABE: {found:true, person_id, full_name, role, language, chat_id} | {found:false}
+--   RUECKGABE: {found:true, person_id, full_name, role, language, persona, chat_id} | {found:false}
+--   persona = Bot-Persona der Person (Orchestrator-Runtime-Flag); fehlt der Key -> 'neutral' (der Validator
+--     erzwingt den Wertevorrat beim Write, darum hier kein Lookup in core.ui_personas).
 --   WP-5c: chat_id = die KANONISCHE telegram_user_id der aufgeloesten Person (= der Match-Schluessel). Der
 --     HITL-Member-Send adressiert damit die verifizierte Identitaet, nicht die roh eingehende chat_id.
 -- ============================================================
@@ -20,6 +22,7 @@ BEGIN
         'full_name', (pp->>'first_name') || ' ' || (pp->>'last_name'),
         'role',      pp->>'role',
         'language',  pp->>'language',
+        'persona',   COALESCE(pp->>'persona', 'neutral'),
         'chat_id',   (pp->>'telegram_user_id')::bigint)
     INTO v_result
     FROM agent.core_contexts c,

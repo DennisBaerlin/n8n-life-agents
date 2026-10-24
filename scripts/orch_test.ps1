@@ -12,6 +12,10 @@
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1 (fuers Gate). REAL LLM (Claude)
 #   -> mock_llm NICHT aktiv (sonst gescriptetes statt echtes Routing). .env TEST_HARNESS_SECRET nicht noetig.
 #
+# Case-Felder (Bot-Persona, alle optional): persona = Owner-Persona nur fuer diesen Fall (danach neutral);
+#   verbatim_relay = true -> die Spezialisten-Antwort muss woertlich im Endtext stehen, plus hoechstens ein Satz;
+#   expected_behavior = Rubric -> Eintrag im Judge-Bundle (inkl. specialist_output), Auswertung judge_eval.ps1.
+#
 # Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-Timeout 90] [-Verbose]
 # Exit-Code = Anzahl Fehler. KOSTET LLM-Credits (owner-gegatet).
 param(
@@ -68,6 +72,39 @@ function Get-AgentOutput([object]$RunData) {
     foreach ($run in $RunData.$AgentNode) { try { if ($run.data.main[0][0].json.output) { $txt = $run.data.main[0][0].json.output } } catch { } }
     return $txt
 }
+# Bot-Persona (Rahmen-Modell): die Antwort des Spezialisten = laengster Text-Blatt-Wert der "Call 'agent.<x>'"-Tool-
+# Nodes (ein JSON-String mit .output wird ausgepackt). Leer = kein Spezialist gerufen.
+function Get-StringLeafList($Obj) {
+    if ($null -eq $Obj) { return @() }
+    if ($Obj -is [string]) { return @($Obj) }
+    if ($Obj -is [System.Collections.IEnumerable]) { return @($Obj | ForEach-Object { Get-StringLeafList $_ }) }
+    if ($Obj -is [pscustomobject]) { return @($Obj.PSObject.Properties | ForEach-Object { Get-StringLeafList $_.Value }) }
+    return @()
+}
+function Get-SpecialistOutput([object]$RunData) {
+    $best = ''
+    foreach ($p in @($RunData.PSObject.Properties | Where-Object { $_.Name -like "Call 'agent.*'" })) {
+        foreach ($s in (Get-StringLeafList $p.Value)) {
+            $t = $s
+            if ($t.TrimStart().StartsWith('{')) { try { $j = $t | ConvertFrom-Json; if ($j.output) { $t = [string]$j.output } } catch { } }
+            if ($t.Length -gt $best.Length) { $best = $t }
+        }
+    }
+    return $best
+}
+# verbatim_relay: der Spezialisten-Text steht (Leerraum normalisiert) im Endtext, und ausserhalb davon steht hoechstens
+# EIN Satz (der Persona-Rahmensatz). Liefert @{ ok; reason }.
+function Test-VerbatimRelay([string]$Specialist, [string]$Final) {
+    $norm = { param($s) ([regex]::Replace("$s", '\s+', ' ')).Trim() }
+    $sp = & $norm $Specialist; $fi = & $norm $Final
+    if (-not $sp) { return @{ ok = $false; reason = 'kein Spezialisten-Text gefunden' } }
+    $at = $fi.IndexOf($sp)
+    if ($at -lt 0) { return @{ ok = $false; reason = 'Spezialisten-Text nicht woertlich im Endtext' } }
+    $rest = ($fi.Substring(0, $at) + ' ' + $fi.Substring($at + $sp.Length)).Trim()
+    $sentences = @([regex]::Split($rest, '(?<=[.!?。！？])\s+') | Where-Object { $_.Trim() -match '\w' })
+    if ($sentences.Count -gt 1) { return @{ ok = $false; reason = "$($sentences.Count) Saetze ausserhalb des Spezialisten-Texts (max. 1)" } }
+    return @{ ok = $true; reason = "Rahmen: $($sentences.Count) Satz" }
+}
 
 # --- Setup: echten Ingress aufloesen + Owner pairen ---
 $ingress = Resolve-OrchestratorIngress -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
@@ -84,7 +121,7 @@ if (-not $cases) { throw "Testfall '$Id' nicht gefunden." }
 Write-Host ""
 Write-Host "Orchestrator Routing Tests -- $($cases.Count) Testfall(e)  (echter Telegram-Ingress)"
 Write-Host ("-" * 64)
-$passed = 0; $failed = 0
+$passed = 0; $failed = 0; $judgeBundle = @()
 
 foreach ($tc in $cases) {
     Write-Host ""
@@ -99,8 +136,17 @@ foreach ($tc in $cases) {
     Clear-MockTelegramRequests -Container $Container
     $base = Get-MaxExecId -WfId $OrchWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 
-    Send-TelegramIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $chatId -FromUid $PairedUid -Text $tc.task | Out-Null
-    $ex = Wait-ExecResolvingGates -WfId $OrchWfId -AfterId $base -Approve $false -Container $Container -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY -TimeoutSec $caseTimeout
+    # Bot-Persona (Case-Feld persona): die Owner-Persona gilt NUR fuer diesen Fall -> im finally wieder neutral, weil
+    # alle Faelle als derselbe gepairte Owner laufen (ein Rest wuerde die folgenden Faelle faerben).
+    if ($tc.persona -and -not (Set-TestPersonaFact -Container $Container -PersonId 'owner' -Code "$($tc.persona)")) {
+        Write-Host "    [FAIL] Persona '$($tc.persona)' konnte nicht gesetzt werden." -ForegroundColor Red; $failed++; continue
+    }
+    try {
+        Send-TelegramIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $chatId -FromUid $PairedUid -Text $tc.task | Out-Null
+        $ex = Wait-ExecResolvingGates -WfId $OrchWfId -AfterId $base -Approve $false -Container $Container -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY -TimeoutSec $caseTimeout
+    } finally {
+        if ($tc.persona) { [void](Set-TestPersonaFact -Container $Container -PersonId 'owner' -Code '') }
+    }
     if (-not $ex) { Write-Host "    [FAIL] Keine Orchestrator-Execution gefunden (Timeout $caseTimeout s)." -ForegroundColor Red; $failed++; continue }
 
     $runData = $ex.data.resultData.runData
@@ -114,6 +160,21 @@ foreach ($tc in $cases) {
     if (-not $pass) {
         $want = if ($expect) { $expect } else { 'kein Routing' }
         Write-Host "    FEHLER: erwartet $want, got $routeShown" -ForegroundColor Red
+    }
+    $specialistOut = Get-SpecialistOutput $runData
+    if ($tc.verbatim_relay) {
+        $vr = Test-VerbatimRelay $specialistOut (Get-AgentOutput $runData)
+        Write-Host "    verbatim_relay: $($vr.ok) ($($vr.reason))"
+        if (-not $vr.ok) { $pass = $false }
+    }
+    if ($tc.expected_behavior) {
+        $judgeBundle += [ordered]@{
+            id = $tc.id; name = $tc.name; task = $tc.task
+            expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_route
+            det_pass = $pass; actual_tool = $routeShown; actual_tool_input = ''
+            read_tools = ''; specialist_output = $specialistOut; actual_output = (Get-AgentOutput $runData)
+        }
+        Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }
 
     if ($pass) {
@@ -132,6 +193,7 @@ Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$passed/$($cases.Count) Tests bestanden, $failed fehlgeschlagen." -ForegroundColor $color
+Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot
 Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'orch_test' -RepoRoot $RepoRoot
 Write-Host ""
 exit $failed

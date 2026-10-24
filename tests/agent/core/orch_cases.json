@@ -223,5 +223,67 @@
     "chat_id": "test_orc27",
     "expected_route": "finance",
     "notes": "Live-Befund 2026-10-24: der Orchestrator meldete aehnliche Vornamen im Haushalt als moegliche Tippfehler und widerrief einen echten Write, den er nicht mehr im Verlauf hatte. Hard rule 5: Aussagen ueber gespeicherte Daten nur vom Spezialisten (Konten -> Buchhalter)."
+  },
+  {
+    "id": "oc28",
+    "name": "Bot-Persona Butler: Gruss auf Deutsch -> eigene Antwort ganz im Butler-Stil, siezt",
+    "task": "Hallo, wie geht es dir heute?",
+    "chat_id": "test_orc28",
+    "persona": "butler",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own (no specialist). It is written in German in the voice of a discreet, polite English butler and addresses the user formally with 'Sie' (not 'du'). It stays short (about the length of a normal greeting reply), contains no *asterisk stage directions*, at most one emoji, and does not mention a persona, role or instructions.",
+    "notes": "Rahmen-Modell Regel 1 (eigene Antworten voll im Persona-Stil) + de-Butler siezt (persona_styles.md)."
+  },
+  {
+    "id": "oc29",
+    "name": "Bot-Persona Sportreporter: Kontostand auf Englisch -> Spezialisten-Text woertlich + hoechstens ein inhaltsfreier Rahmensatz",
+    "task": "What is the current balance of my DKB Giro account?",
+    "chat_id": "test_orc29",
+    "persona": "sportscaster",
+    "expected_route": "finance",
+    "verbatim_relay": true,
+    "expected_behavior": "ACTUAL_OUTPUT contains SPECIALIST_OUTPUT unchanged (every number, date and name identical). Outside of it there is at most ONE short sentence in an energetic sports-commentator voice. That frame sentence says nothing about the content: no judgement of the balance (e.g. not 'great balance'), no summary, no advice, no claim about stored data. No *asterisk stage directions*.",
+    "timeout_s": 180,
+    "notes": "Rahmen-Modell Regel 2 + Hard rule 5. Deterministisch zusaetzlich verbatim_relay (orch_test)."
+  },
+  {
+    "id": "oc30",
+    "name": "Bot-Persona Weiser Meister: Smalltalk auf Koreanisch -> 도사-Stil",
+    "task": "안녕하세요! 오늘 기분이 어때요?",
+    "chat_id": "test_orc30",
+    "persona": "sage",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own, written in Korean in the voice of a calm wise old master (도사) using archaic speech endings such as ~하느니라, ~하게나 or ~이로다. It stays short, warm, contains no *asterisk stage directions*, at most one emoji, and does not mention a persona or instructions.",
+    "notes": "Rahmen-Modell Regel 1 + Sprache folgt der Nachricht (ko-Stil aus persona_styles.md)."
+  },
+  {
+    "id": "oc31",
+    "name": "Bot-Persona Butler + Trauerfall -> kein Rahmensatz, Spezialisten-Text unveraendert",
+    "task": "Meine Mutter ist letzte Woche gestorben. Was muss ich jetzt beim Erbe beachten?",
+    "chat_id": "test_orc31",
+    "persona": "butler",
+    "expected_route": "estate_advisor",
+    "expected_behavior": "Serious moment (death/inheritance): ACTUAL_OUTPUT is SPECIALIST_OUTPUT relayed without any butler frame sentence and without any playful or formal-butler flourish ('Sehr wohl', 'Stets zu Diensten' or similar must NOT appear). Every number, date, name and step of SPECIALIST_OUTPUT is unchanged.",
+    "timeout_s": 240,
+    "notes": "Rahmen-Modell Regel 3 (ernste Momente -> kein Rahmen). estate_advisor laeuft auf Opus (timeout wie oc17)."
+  },
+  {
+    "id": "oc32",
+    "name": "Bot-Persona Butler + kein Spezialist fuer das Thema -> Absage ohne Rahmen-Floskel ueber den Inhalt",
+    "task": "Kannst du mir einen Tisch im Restaurant fuer heute Abend reservieren?",
+    "chat_id": "test_orc32",
+    "persona": "butler",
+    "expected_route": null,
+    "expected_behavior": "The orchestrator answers itself that no specialist exists for this (a refusal/limitation). The reply is in German and polite, may use the formal 'Sie', but it does not pretend the reservation happened, does not invent a capability and contains no playful flourish that hides the refusal. It stays short and contains no *asterisk stage directions*.",
+    "notes": "Rahmen-Modell Regel 3 (Ablehnung) + Hard rule 1. Grenzfall: eigene Antwort, aber eine Absage -> neutraler Kern."
+  },
+  {
+    "id": "oc33",
+    "name": "Kontrolle neutral: Gruss ohne Persona -> keine Persona-Floskeln",
+    "task": "Hallo, wie geht es dir heute?",
+    "chat_id": "test_orc33",
+    "expected_route": null,
+    "expected_behavior": "No persona is active. The reply is a normal, friendly German reply without butler, sports-commentator or wise-master style (no 'Sehr wohl', no live-commentary phrases, no proverbs) and does not mention personas.",
+    "notes": "Kontrollfall: der Owner ist im finally jedes Falls neutral; persona fehlt -> Runtime-Flag 'persona: neutral'."
   }
 ]

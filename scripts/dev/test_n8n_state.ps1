@@ -580,6 +580,35 @@ WHERE name = 'family';
     if ($r.Code -ne 0) { throw "Owner-Pairing (Container-DB) fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
+# Bot-Persona einer Person in den family-Facts setzen ('' oder 'neutral' = Key entfernen, wie fn_set_context_facts) bzw.
+# zuruecklesen ('' = Key fehlt). Konsumenten: real_ingress_test (persona_person/-before/expect_persona) und orch_test
+# (Case-Feld persona, Owner). Der Code wird nicht geprueft — der Validator der Container-DB lehnt Unbekanntes ab.
+function Set-TestPersonaFact {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$PersonId, [string]$Code = '')
+    if ("$PersonId$Code" -match "'") { throw "Set-TestPersonaFact: kein Hochkomma in PersonId/Code." }
+    $val = if ($Code -and $Code -ne 'neutral') { "(p - 'persona') || jsonb_build_object('persona', '$Code')" } else { "p - 'persona'" }
+    $sql = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(CASE WHEN p->>'person_id' = '$PersonId' THEN $val ELSE p END) FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = 'family';"
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $sql)
+    return ($r.Code -eq 0)
+}
+function Get-TestPersonaFact {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$PersonId)
+    if ($PersonId -match "'") { throw "Get-TestPersonaFact: kein Hochkomma in PersonId." }
+    $q = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT COALESCE(p->>'persona', '') FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name = 'family' AND p->>'person_id' = '$PersonId';")
+    return (@($q.Output | ForEach-Object { "$_".Trim() }) | Select-Object -First 1)
+}
+
+# Judge-Bundle schreiben (tests/agent/judge_bundle.json, transient = der LETZTE Lauf von n8n_test ODER orch_test) —
+# die eine Adresse fuer Pfad + Format, die judge_eval.ps1 liest.
+function Write-JudgeBundle {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][array]$Entries, [Parameter(Mandatory)][string]$RepoRoot)
+    if ($Entries.Count -eq 0) { return }
+    $bundlePath = Join-Path $RepoRoot 'tests\agent\judge_bundle.json'
+    [System.IO.File]::WriteAllText($bundlePath, (ConvertTo-Json -InputObject @($Entries) -Depth 6), (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "AI-Judge: $($Entries.Count) Case(s) mit Verhaltens-Rubric -> $bundlePath" -ForegroundColor Cyan
+    Write-Host "  Auswerten: .\scripts\judge_eval.ps1  (Claude Haiku; kombinierter Verdikt det AND Rubric)" -ForegroundColor Cyan
+}
+
 # Chat-Memory EINER Session in ALLEN Agent-Gedaechtnissen leeren (sonst zaehlt der Mock Alt-Turns bzw.
 # fasst ein LLM alte Antworten zusammen). Die <agent>_chat_memory-Tabellen legt der n8n-Memory-Node LAZY
 # beim ersten Agent-Turn an -> per pg_tables FINDEN statt aufzaehlen: ein neuer Agent ist ohne Treiber-Edit

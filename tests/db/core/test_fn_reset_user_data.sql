@@ -97,7 +97,7 @@ BEGIN
   INSERT INTO agent.core_contexts (name, description, load_strategy, content, metadata, managed_by, package)
   VALUES ('family', 'test', 'static', E'Familie\n\n## Gelernt\n\n- Notiz (gelernt am 2026-01-01 aus Chat)',
           jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(
-            jsonb_build_object('person_id','powner','first_name','Erika','last_name','Mustermann','role','owner','birth_date','1980-01-01','employment','employed','language','ko'),
+            jsonb_build_object('person_id','powner','first_name','Erika','last_name','Mustermann','role','owner','birth_date','1980-01-01','employment','employed','language','ko','persona','butler'),
             jsonb_build_object('person_id','ppartner','first_name','Tom','last_name','Mustermann','role','partner','birth_date','1982-01-01')))),
           'agent', 'core');
   INSERT INTO core.context_validators (context_name, validate_fn, package)
@@ -170,6 +170,9 @@ BEGIN
   SELECT metadata->'facts'->'persons' INTO v_family FROM agent.core_contexts WHERE name = 'family';
   IF v_family->0->>'language' IS DISTINCT FROM 'ko' THEN
     RAISE EXCEPTION 'FAIL (iii) Owner-Sprache beim Reset verloren: %', v_family->0;
+  END IF;
+  IF v_family->0->>'persona' IS DISTINCT FROM 'butler' THEN
+    RAISE EXCEPTION 'FAIL (iii) Owner-Persona beim Reset verloren: %', v_family->0;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM core.ui_languages WHERE code = 'ko') THEN
     RAISE EXCEPTION 'FAIL (iii) core.ui_languages beim Reset geleert';

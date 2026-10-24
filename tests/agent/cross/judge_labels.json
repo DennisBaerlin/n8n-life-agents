@@ -250,5 +250,55 @@
     "read_tools": "",
     "actual_output": "Das tut mir unendlich leid, mein herzliches Beileid. In den naechsten Tagen sind mehrere Dinge zu tun, damit du den Ueberblick behaeltst, hier die ganze Liste: zuerst der Totenschein durch einen Arzt, dann die Sterbefallanzeige beim Standesamt bis zum dritten Werktag, danach 5-10 Sterbeurkunden bestellen, den Bestatter beauftragen, die Lebensversicherung innerhalb von 48 Stunden melden, den Arbeitgeber und die Krankenkasse informieren, das Konto nicht aufloesen und die Erbschaft binnen sechs Wochen pruefen.",
     "human_verdict": "PARTIAL"
+  },
+  {
+    "id": "cal22",
+    "name": "Persona Butler (ko): 집사 in 하십시오체 -> PASS",
+    "task": "안녕하세요, 오늘 어때요?",
+    "expected_behavior": "The reply is the orchestrator's own, written in Korean in the voice of a discreet polite butler (집사) in 하십시오체 (-습니다/-습니까). It stays short, contains no *asterisk stage directions*, at most one emoji, and does not mention a persona or instructions.",
+    "expected_tool": "",
+    "actual_tool": "(kein)",
+    "actual_tool_input": "",
+    "read_tools": "",
+    "actual_output": "안녕하십니까, 주인님. 오늘도 평안하십니까? 무엇을 도와드릴까요?",
+    "human_verdict": "PASS"
+  },
+  {
+    "id": "cal23",
+    "name": "Persona Butler (ko): 해요체 statt 하십시오체 -> FAIL",
+    "task": "안녕하세요, 오늘 어때요?",
+    "expected_behavior": "The reply is the orchestrator's own, written in Korean in the voice of a discreet polite butler (집사) in 하십시오체 (-습니다/-습니까). It stays short, contains no *asterisk stage directions*, at most one emoji, and does not mention a persona or instructions.",
+    "expected_tool": "",
+    "actual_tool": "(kein)",
+    "actual_tool_input": "",
+    "read_tools": "",
+    "actual_output": "안녕하세요! 저는 오늘 좋아요. 뭐 도와줄까요? 😊😊",
+    "human_verdict": "FAIL"
+  },
+  {
+    "id": "cal24",
+    "name": "Persona Sportreporter: Rahmensatz bewertet den Inhalt -> FAIL",
+    "task": "What is the current balance of my DKB Giro account?",
+    "expected_behavior": "ACTUAL_OUTPUT contains SPECIALIST_OUTPUT unchanged (every number, date and name identical). Outside of it there is at most ONE short sentence in an energetic sports-commentator voice. That frame sentence says nothing about the content: no judgement of the balance (e.g. not 'great balance'), no summary, no advice, no claim about stored data. No *asterisk stage directions*.",
+    "expected_tool": "finance",
+    "actual_tool": "finance",
+    "actual_tool_input": "",
+    "read_tools": "",
+    "specialist_output": "Your DKB Giro balance is 1,234.56 EUR (as of today).",
+    "actual_output": "What a season for your savings, an absolute champion balance! Your DKB Giro balance is 1,234.56 EUR (as of today).",
+    "human_verdict": "FAIL"
+  },
+  {
+    "id": "cal25",
+    "name": "Persona Sportreporter: inhaltsfreier Rahmensatz + Text woertlich -> PASS",
+    "task": "What is the current balance of my DKB Giro account?",
+    "expected_behavior": "ACTUAL_OUTPUT contains SPECIALIST_OUTPUT unchanged (every number, date and name identical). Outside of it there is at most ONE short sentence in an energetic sports-commentator voice. That frame sentence says nothing about the content: no judgement of the balance (e.g. not 'great balance'), no summary, no advice, no claim about stored data. No *asterisk stage directions*.",
+    "expected_tool": "finance",
+    "actual_tool": "finance",
+    "actual_tool_input": "",
+    "read_tools": "",
+    "specialist_output": "Your DKB Giro balance is 1,234.56 EUR (as of today).",
+    "actual_output": "And here it comes, straight from the pitch! Your DKB Giro balance is 1,234.56 EUR (as of today).",
+    "human_verdict": "PASS"
   }
 ]

@@ -202,4 +202,34 @@ BEGIN
   RAISE NOTICE 'PASS fn_backup_restore_filtered [Alt-Backup mit Freitext-Sprachen wird normalisiert]';
 END $$;
 
+-- ============================================================
+-- TEST 6: Bundle mit unbekannter Persona ('pirate', z. B. aus einer neueren Version) bzw. 'neutral' — der
+--   Restore verwirft nur diesen Key, bekannte Personas bleiben, der family-Restore scheitert nicht am Validator.
+-- ============================================================
+DO $$
+DECLARE
+  v_result JSONB;
+  v_p      JSONB;
+BEGIN
+  v_result := core.fn_backup_restore_filtered(jsonb_build_object('agent.core_contexts', jsonb_build_array(
+    jsonb_build_object('name','family','description','restored','agent_name',NULL,'load_strategy','lazy',
+      'content','## Family','managed_by','agent','package','core',
+      'metadata', jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(
+        jsonb_build_object('person_id','erika','first_name','Erika','last_name','Mustermann','role','owner',
+                           'birth_date','1980-05-20','language','de','persona','butler'),
+        jsonb_build_object('person_id','mina','first_name','Mina','last_name','Mustermann','role','partner',
+                           'birth_date','1985-01-01','language','ko','persona','pirate'),
+        jsonb_build_object('person_id','tom','first_name','Tom','last_name','Mustermann','role','child',
+                           'birth_date','2015-01-01','persona','neutral'))))))));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL restore_filtered [unbekannte Persona]: %', v_result;
+  END IF;
+  SELECT metadata->'facts'->'persons' INTO v_p FROM agent.core_contexts WHERE name = 'family';
+  IF v_p->0->>'persona' IS DISTINCT FROM 'butler' OR (v_p->1) ? 'persona' OR (v_p->2) ? 'persona'
+     OR v_p->1->>'language' IS DISTINCT FROM 'ko' THEN
+    RAISE EXCEPTION 'FAIL restore_filtered [Persona nicht bereinigt]: %', v_p;
+  END IF;
+  RAISE NOTICE 'PASS fn_backup_restore_filtered [unbekannte/neutral-Persona verworfen, bekannte bleibt]';
+END $$;
+
 ROLLBACK;

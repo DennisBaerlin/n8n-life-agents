@@ -1,0 +1,162 @@
+{
+    "id":  "6TRVNcIm7PuBUZU1",
+    "name":  "core.sub_send_persona_picker",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "person_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "2fdf7c92-ca56-5d26-a5cf-c3513608b52b",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_text(\u0027core.persona.picker\u0027, y.lang) AS text, core.fn_ui_texts(y.lang, ARRAY[\u0027core.persona.name.neutral\u0027,\u0027core.persona.name.butler\u0027,\u0027core.persona.name.sportscaster\u0027,\u0027core.persona.name.sage\u0027]::text[]) AS t, COALESCE((SELECT pp-\u003e\u003e\u0027persona\u0027 FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata-\u003e\u0027facts\u0027-\u003e\u0027persons\u0027, \u0027[]\u0027::jsonb)) pp WHERE c.name = \u0027family\u0027 AND pp-\u003e\u003e\u0027person_id\u0027 = ($1::jsonb)-\u003e\u003e\u0027person_id\u0027 LIMIT 1), \u0027neutral\u0027) AS current FROM (SELECT agent.fn_person_lang(($1::jsonb)-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027 AS lang) y;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ person_id: $(\u0027Start\u0027).item.json.person_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "1d02c26b-08ee-5208-8048-245324799ac5",
+                      "name":  "Load picker text",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.current === \u0027neutral\u0027 ? \u0027✓ \u0027 : \u0027\u0027) + String((($json.t) || {})[\u0027core.persona.name.neutral\u0027] || \u0027core.persona.name.neutral\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027persona:\u0027 + $(\u0027Start\u0027).item.json.person_id + \u0027:neutral\u0027 }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.current === \u0027butler\u0027 ? \u0027✓ \u0027 : \u0027\u0027) + String((($json.t) || {})[\u0027core.persona.name.butler\u0027] || \u0027core.persona.name.butler\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027persona:\u0027 + $(\u0027Start\u0027).item.json.person_id + \u0027:butler\u0027 }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.current === \u0027sportscaster\u0027 ? \u0027✓ \u0027 : \u0027\u0027) + String((($json.t) || {})[\u0027core.persona.name.sportscaster\u0027] || \u0027core.persona.name.sportscaster\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027persona:\u0027 + $(\u0027Start\u0027).item.json.person_id + \u0027:sportscaster\u0027 }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.current === \u0027sage\u0027 ? \u0027✓ \u0027 : \u0027\u0027) + String((($json.t) || {})[\u0027core.persona.name.sage\u0027] || \u0027core.persona.name.sage\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027persona:\u0027 + $(\u0027Start\u0027).item.json.person_id + \u0027:sage\u0027 }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "e945d250-4865-5423-ac9d-a7ae06d30674",
+                      "name":  "Send persona picker",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_send_persona_picker — Bot-Persona je Person per Knopf**\n\nDeterministisch, kein LLM. Eingang person_id + chat_id. Load picker text holt in der Sprache der Person (agent.fn_person_lang) die Frage core.persona.picker, die Knopf-Namen core.persona.name.\u003ccode\u003e als t-Map und die aktuelle Persona (fehlt -\u003e neutral). Send persona picker: ein Knopf je Persona (build-time aus dem Core-Manifest personas.list, 2 je Zeile), die aktuelle mit ✓, callback_data persona:\u003cperson_id\u003e:\u003ccode\u003e. Gespeichert wird nur der Tipp: generischer Callback-Dispatch -\u003e agent.fn_set_person_persona (Owner jede Person, Mitglied nur sich selbst; neutral = Key entfernt; Toast in der Sprache des Tippenden). Wirkung: der Orchestrator liest die Persona per agent.fn_resolve_sender als Runtime-Flag persona (Rahmen-Regeln persona_styles.md); Fach-Agenten und feste Texte sehen sie nie. Aufrufer: Orchestrator /persona.",
+                                         "height":  300,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -300
+                                   ],
+                      "id":  "9f6a24dd-d58e-5cc7-896c-1b6e7d6adc3d",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load picker text",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load picker text":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Send persona picker",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -97,6 +97,15 @@ BEGIN
             IF v_row->>'name' = 'family' AND jsonb_typeof(v_row->'metadata'->'facts'->'persons') = 'array' THEN
                 v_row := jsonb_set(v_row, '{metadata,facts,persons}',
                                    agent.fn_normalize_person_languages(v_row->'metadata'->'facts'->'persons'));
+                -- Persona aus einem aelteren/neueren Bundle, die diese Instanz nicht kennt (oder 'neutral'): nur
+                -- den Key verwerfen, statt den ganzen family-Restore am Validator scheitern zu lassen.
+                v_row := jsonb_set(v_row, '{metadata,facts,persons}', (
+                    SELECT COALESCE(jsonb_agg(
+                             CASE WHEN jsonb_typeof(e.pp) = 'object' AND e.pp ? 'persona'
+                                       AND (e.pp->>'persona' IS NULL OR e.pp->>'persona' = 'neutral'
+                                            OR NOT EXISTS (SELECT 1 FROM core.ui_personas x WHERE x.code = e.pp->>'persona'))
+                                  THEN e.pp - 'persona' ELSE e.pp END ORDER BY e.ord), '[]'::jsonb)
+                      FROM jsonb_array_elements(v_row->'metadata'->'facts'->'persons') WITH ORDINALITY AS e(pp, ord)));
             END IF;
             UPDATE agent.core_contexts
             SET description   = v_row->>'description',

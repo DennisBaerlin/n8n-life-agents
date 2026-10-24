@@ -80,6 +80,8 @@
 #   (23) GH-DOWNLOAD-SPIEGEL: der `# >>> gh-download`-Block (Release-Download) ist in provisioning/install.sh und
 #       provisioning/lib/fetch_release.sh byte-gleich.
 #   (24) RELEASE-KEY-SPIEGEL: RELEASE_KEY_B64 in provisioning/install.sh = base64 von provisioning/keys/release-signing.gpg.
+#   (25) PERSONA-STIL-PARITAET: je Persona aus personas.list (ausser neutral) genau ein '### <code>'-Abschnitt in
+#       packages/core/contexts/persona_styles.md und umgekehrt.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -1712,6 +1714,28 @@ if (-not $mKey.Success) {
     $want = if (Test-Path $keyPath) { [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($keyPath)) } else { '' }
     if ($mKey.Groups[1].Value -cne $want) {
         $errors.Add("RELEASE-KEY-SPIEGEL: RELEASE_KEY_B64 in provisioning/install.sh passt nicht zu provisioning/keys/release-signing.gpg -- beide ueber scripts/new_release_key.ps1 setzen.")
+    }
+}
+
+# ---------------------------------------------------------------
+# (25) PERSONA-STIL-PARITAET
+# ---------------------------------------------------------------
+# Jede Persona aus dem Core-Manifest personas.list (ausser neutral = keine Persona) hat genau einen Abschnitt
+# '### <code>' in packages/core/contexts/persona_styles.md, und jeder Abschnitt dort ist eine Persona der Liste —
+# sonst waehlte der Picker eine Persona ohne Stil-Regeln (Haiku erfaende sie) bzw. laege toter Stil-Text im Prompt.
+$personaMf = ([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\manifest.json'), $Utf8NoBom) | ConvertFrom-Json).personas
+$personaCodes = @(@($personaMf.list) | ForEach-Object { [string]$_.code } | Where-Object { $_ -ne 'neutral' })
+$styleFile = Join-Path $RepoRoot 'packages\core\contexts\persona_styles.md'
+if (-not (Test-Path $styleFile)) {
+    if ($personaCodes.Count) { $errors.Add("PERSONA-STIL: packages/core/contexts/persona_styles.md fehlt, personas.list nennt $($personaCodes -join ', ').") }
+} else {
+    $styleSections = @([regex]::Matches([System.IO.File]::ReadAllText($styleFile, $Utf8NoBom), '(?m)^### ([a-z_]+)\s*$') | ForEach-Object { $_.Groups[1].Value })
+    foreach ($c in $personaCodes) {
+        $n = @($styleSections | Where-Object { $_ -eq $c }).Count
+        if ($n -ne 1) { $errors.Add("PERSONA-STIL: Persona '$c' (personas.list) hat $n Abschnitt(e) '### $c' in persona_styles.md (erwartet genau 1).") }
+    }
+    foreach ($s in ($styleSections | Sort-Object -Unique)) {
+        if ($personaCodes -notcontains $s) { $errors.Add("PERSONA-STIL: Abschnitt '### $s' in persona_styles.md ist keine Persona aus personas.list (neutral hat keinen Abschnitt).") }
     }
 }
 

@@ -33,6 +33,12 @@
 \else
   \set owner_language de
 \endif
+-- Bot-Charakter (Installer-Auswahl OWNER_PERSONA). Fehlt er, ist er 'neutral' oder kein Code aus core.ui_personas
+-- -> der Key bleibt weg (= neutral), statt am Validator zu scheitern (ein Tippfehler bricht die Installation nie ab).
+\if :{?owner_persona}
+\else
+  \set owner_persona neutral
+\endif
 
 BEGIN;
 
@@ -52,7 +58,11 @@ VALUES ('family',
                                'role',       'owner',
                                'birth_date', :'owner_birth',
                                'language',   coalesce(agent.fn_normalize_language(:'owner_language'), 'de'),
-                               'as_of',      to_char(current_date,'YYYY-MM-DD'))))))
+                               'as_of',      to_char(current_date,'YYYY-MM-DD'))
+                             || (SELECT CASE WHEN x.code IS NULL THEN '{}'::jsonb
+                                             ELSE jsonb_build_object('persona', x.code) END
+                                   FROM (SELECT max(code) AS code FROM core.ui_personas
+                                          WHERE code = lower(trim(:'owner_persona')) AND code <> 'neutral') x)))))
 ON CONFLICT (name) DO NOTHING;
 
 -- Summary (Post-State): existiert der Owner als unverknuepftes Skelett?

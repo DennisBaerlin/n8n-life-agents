@@ -34,6 +34,12 @@ Die Knöpfe einer Erinnerung sagen direkt, was sie tun, z. B. „✅ Ja, so buch
 
 Eine Ausnahme: Das Befehls-Menü von Telegram (die Liste hinter „/") folgt der Sprache, auf die das Telegram-Programm eingestellt ist — Telegram lässt dieses Menü nur so steuern.
 
+## Ein Charakter für den Bot
+
+Mit `/persona` gibst du dem Bot einen Charakter: **🎩 Butler** (sehr höflich, siezt dich), **🎙️ Sportreporter** (aufgedreht wie im Live-Kommentar) oder **🧙 Weiser Meister** (ruhig, mit kleinen Weisheiten). Standard ist **🙂 Neutral**. Den Owner fragt schon die Installation danach; jede Person wählt ihren Charakter selbst, Haushaltsmitglieder starten neutral. Der Charakter klingt in jeder Sprache passend, auf Koreanisch zum Beispiel als besonders förmlicher 집사 (Butler) oder als 도사 mit altertümlicher Sprache.
+
+Der Charakter ist bewusst nur ein **Rahmen**: Begrüßung, Smalltalk und Rückfragen spricht der Bot ganz in seinem Stil, vor oder nach einer Fach-Antwort steht höchstens ein kurzer Satz wie „Sehr wohl, ich habe nachgesehen." Die Antwort selbst — Beträge, Daten, Namen, Warnungen — bleibt Wort für Wort so, wie der zuständige Assistent sie geschrieben hat, und der Rahmensatz bewertet sie nicht. Bei ernsten Themen (Trauer, Erbe, Gesundheit, Schulden, Fehler, Ablehnungen) lässt der Bot den Charakter weg. Feste Texte wie Bestätigungs-Karten, Knöpfe und Erinnerungen bleiben immer neutral, und was gespeichert wird, ist nie im Charakter-Ton geschrieben.
+
 ## „Denkt nach …" während längerer Antworten
 
 Geht deine Nachricht an den Assistenten — Text, Sprachnachricht, Foto oder Dokument —, zeigt Telegram in deinem privaten Chat eine kleine „Thinking…"-Blase, bis die Antwort da ist. So siehst du, dass gearbeitet wird, auch wenn eine ausführliche Beratung etwas dauert. Feste Befehle wie `/help` antworten sofort und brauchen sie nicht. Der Assistent frischt die Blase alle paar Sekunden auf, sodass sie durchgehend stehen bleibt, bis die Antwort kommt — auch wenn das eine Minute oder länger dauert. Liegt eine Bestätigungs-Karte offen vor dir, pausiert die Blase, damit sie nicht über der Karte steht; nach deinem Tipp kommt sie zurück, bis der Assistent fertig ist. Mit der Antwort verschwindet sie.

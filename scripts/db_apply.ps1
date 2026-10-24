@@ -92,7 +92,9 @@ $env:PGCLIENTENCODING = 'UTF8'
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Jeden -File-Eintrag zu konkreten .sql-Pfaden aufloesen (Datei | Verzeichnis | Glob).
+# Jeden -File-Eintrag zu konkreten .sql-Pfaden aufloesen (Datei | Verzeichnis | Glob). Eine in Anfuehrungszeichen
+# uebergebene Komma-Liste ('a.sql,b.sql') kommt als EIN String an -> hier ebenfalls aufteilen (2026-10-24 so gestolpert).
+$File = @($File | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $resolved = foreach ($f in $File) {
     $base = if ([System.IO.Path]::IsPathRooted($f)) { $f } else { Join-Path $RepoRoot $f }
     if ($f -match '[*?]') {

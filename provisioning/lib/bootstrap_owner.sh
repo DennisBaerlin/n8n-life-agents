@@ -42,6 +42,7 @@
 #   N8N_OWNER_EMAIL (default owner@localhost) · N8N_OWNER_PASSWORD (sonst generiert, n8n-konform) ·
 #   OWNER_FIRST_NAME / OWNER_LAST_NAME / OWNER_BIRTH_DATE (Skelett; fehlt -> Seed+Arm uebersprungen) ·
 #   OWNER_LANGUAGE (Sprache fester Bot-Texte, default 'de') ·
+#   OWNER_PERSONA (Bot-Charakter, default neutral; ungueltig -> neutral, nie Abbruch) ·
 #   OWNER_PERSON_ID (default 'owner') · TELEGRAM_BOT_TOKEN (sonst Telegram-Schritt skip) ·
 #   N8N_API_KEY (sonst minten).
 
@@ -310,6 +311,7 @@ _seed_owner_skeleton() {
         _psql_setvar owner_last      "$OWNER_LAST_NAME"
         _psql_setvar owner_birth     "$OWNER_BIRTH_DATE"
         _psql_setvar owner_language  "${OWNER_LANGUAGE:-de}"   # Sprache fester Texte (Textkatalog), Standard Deutsch
+        _psql_setvar owner_persona   "${OWNER_PERSONA:-neutral}"   # Bot-Charakter (Skelett schreibt nur gueltige, nie neutral)
         _psql_setvar owner_person_id "${OWNER_PERSON_ID:-owner}"
         cat "$seed"
       } | _owner_psql_driver; then

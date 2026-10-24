@@ -585,6 +585,20 @@ _seed_ui_languages() {
   done
 }
 
+# --- (4d2b) core.ui_personas — die EINE Liste der Bot-Personas je Person -----
+# SoT = Core-Manifest-Block "personas.list". Upsert der Reihenfolge; NIE loeschen (eine Person kann den Code tragen —
+# der Validator lehnte sonst jeden family-Write ab). core:V031 legt die Basis-Codes vorab an. Code-Seed (auch --no-seed).
+_seed_ui_personas() {
+  _seed_skip_pkg core && return 0   # die Persona-Liste ist core-eigen
+  local mf="$REPO_ROOT/packages/core/manifest.json" code ord
+  jq -r '(.personas.list // [])[] | "\(.code)\t\(.ord)"' "$mf" |
+  while IFS=$'\t' read -r code ord; do
+    [ -n "$code" ] || continue
+    printf 'INSERT INTO core.ui_personas (code, ord) VALUES (%s, %s)\n' "$(_sql_str "$code")" "$ord"
+    printf 'ON CONFLICT (code) DO UPDATE SET ord=EXCLUDED.ord;\n'
+  done
+}
+
 # --- (4d3) core.ui_texts — Textkatalog fester Nutzertexte (packages/<pkg>/locales/<lang>.json) -----
 # Muster Rails/gettext: die getrackten Dateien sind die Wahrheit, die Tabelle ist build-verwaltet -> je Paket
 # VOLLSTAENDIG ersetzen (DELETE + INSERT in der Seed-Transaktion; kein Owner-Edit, kein Conffile-Guard). Die
@@ -867,6 +881,7 @@ seed_data() {
     _seed_ai_models       # ZUERST (config-Trigger referenziert model_key)
     _seed_package_config  # core.config aus den .config-Bloecken ALLER Manifeste (WS4a; loest _seed_config ab)
     _seed_ui_languages    # core.ui_languages aus dem Core-Manifest "languages" (Textkatalog; vor den Texten, FK)
+    _seed_ui_personas     # core.ui_personas aus dem Core-Manifest "personas" (Wertevorrat family.persons[].persona)
     _seed_ui_texts        # core.ui_texts aus packages/<pkg>/locales/<lang>.json (Textkatalog, je Paket ersetzt)
     _seed_contexts
     _seed_context_validators   # core.context_validators aus den Paket-Manifesten (WS-B1/D12)

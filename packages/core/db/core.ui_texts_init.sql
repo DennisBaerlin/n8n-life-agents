@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS core.ui_languages (
 -- Phase C (Textkatalog): Bestands-Instanzen bekommen die Spalte nachgereicht (CREATE TABLE IF NOT EXISTS legt sie nicht an).
 ALTER TABLE core.ui_languages ADD COLUMN IF NOT EXISTS date_pattern text CHECK (date_pattern ~ '^(YYYY|MM|DD|[./ -])+$');
 
+-- Wertevorrat der Bot-Persona je Person (family.persons[].persona; Validator agent.fn_validate_household_facts).
+-- SoT = Core-Manifest-Block "personas.list" (Host seed_data._seed_ui_personas upsertet, nie loeschen); core:V031
+-- legt die Basis-Codes vorab an. 'neutral' steht nur fuer den Picker in der Liste — gespeichert wird es als
+-- fehlender Key. Namen der Knoepfe: Katalog-Keys core.persona.name.<code>, Stil-Text: contexts/persona_styles.md.
+CREATE TABLE IF NOT EXISTS core.ui_personas (
+    code     text PRIMARY KEY CHECK (code ~ '^[a-z_]+$'),
+    ord      int  NOT NULL                                            -- Reihenfolge im Picker
+);
+
 CREATE TABLE IF NOT EXISTS core.ui_texts (
     key      text NOT NULL CHECK (key ~ '^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$'),   -- <pkg>.<bereich>.<name>
     lang     text NOT NULL REFERENCES core.ui_languages (code) ON DELETE CASCADE,

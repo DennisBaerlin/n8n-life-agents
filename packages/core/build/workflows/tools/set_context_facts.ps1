@@ -37,7 +37,7 @@ function New-ContextFactsToolGraph {
   const facts = parse(S.facts, {});
   const persons = parse(S.persons, Array.isArray(facts.persons) ? facts.persons : []);
   const hh = parse(S.household, (facts.household && typeof facts.household === 'object') ? facts.household : {});
-  const ORDER = ['role', 'birth_date', 'employment_status', 'citizenships', 'language'];
+  const ORDER = ['role', 'birth_date', 'employment_status', 'citizenships', 'language', 'persona'];
   const SKIP = ['person_id', 'first_name', 'last_name', 'as_of', '_meta'];
   const human = k => (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, ' ');
   const one = it => {
@@ -54,6 +54,7 @@ function New-ContextFactsToolGraph {
     if (v === null) return Object.assign(b, { kind: 'removed', value: null });
     if (k === 'role') return Object.assign(b, { kind: 'enum', enum: 'core.enum.role', value: v });
     if (k === 'language') return Object.assign(b, { kind: 'language', value: v });
+    if (k === 'persona') return Object.assign(b, { kind: 'enum', enum: 'core.persona.name', value: v });
     if (typeof v === 'boolean') return Object.assign(b, { kind: 'bool', value: v });
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return Object.assign(b, { kind: 'date', value: v });
     if (Array.isArray(v)) return Object.assign(b, { kind: 'text', value: v.map(one).join(', ') });

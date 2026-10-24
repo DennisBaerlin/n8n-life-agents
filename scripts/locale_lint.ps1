@@ -12,9 +12,11 @@
 #   (6) Deutsch ohne Ersatz-Umlaute (scripts/build/lib/umlaut.ps1 + umlaut_allowlist.json).
 #   (7) Pflicht-Keys aus Manifesten: je context_validators-Kontext <pkg>.facts.<ctx>.title (Titel der Fakten-Karte),
 #       je monitor_acquisition_methods-Methode <pkg>.monitor_method.<m>; Core-Builtins core.monitor_method.{web_search,sql,none}.
+#   (7b) Persona-Liste: Core-Manifest personas.list — Code ^[a-z_]+$, eindeutig, neutral enthalten, ord gesetzt; je Persona
+#       core.persona.name.<code>; die in core:V031 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
 #   (8) SQL-Text-Verweise: jedes Katalog-Key-Literal in packages/*/db/migrations/R__*.sql existiert im Katalog.
 # Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs/Workflows/SQL vorkommt (dynamisch zusammengesetzte
-#   Keys — .enum.*, .facts.*, .monitor_method.* — sind ausgenommen).
+#   Keys — .enum.*, .facts.*, .monitor_method.*, core.persona.name.* — sind ausgenommen).
 # Usage: .\scripts\locale_lint.ps1 [-Verbose]
 param([switch]$Verbose)
 
@@ -161,6 +163,27 @@ Check 'Pflicht-Keys: Fakten-Titel je context_validators-Kontext, Bezeichnung je 
     }
 }
 
+# (7b) Bot-Persona: die EINE Liste (Core-Manifest personas.list) ist wohlgeformt, core:V031 legt nur Codes aus ihr an,
+#      und jede Persona hat ihren Knopf-Namen core.persona.name.<code> (die Paritaet je Sprache sichert Check 4).
+Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆ Liste, Knopf-Name je Persona)' {
+    $pers = @($core.personas.list)
+    $pcodes = @($pers | ForEach-Object { [string]$_.code })
+    if ($pers.Count -eq 0) { 'Datei packages/core/manifest.json: personas.list fehlt oder ist leer' }
+    if ($pcodes -notcontains 'neutral') { "personas.list: 'neutral' fehlt (Standard = keine Persona)" }
+    foreach ($p in $pers) {
+        if ("$($p.code)" -notmatch '^[a-z_]+$') { "Persona-Code '$($p.code)' passt nicht zu ^[a-z_]+$ (CHECK in core.ui_personas)" }
+        if ($null -eq $p.ord) { "Persona '$($p.code)': ord fehlt" }
+        if (-not ($cat['core'] -and $cat['core']['de'] -and $cat['core']['de'].Contains("core.persona.name.$($p.code)"))) { "Datei packages/core/locales: core.persona.name.$($p.code) fehlt (Knopf-Name im Persona-Picker)" }
+    }
+    foreach ($d in @($pcodes | Group-Object | Where-Object Count -gt 1)) { "Persona-Code '$($d.Name)' doppelt" }
+    $v = Get-ChildItem (Join-Path $RepoRoot 'packages\core\db\migrations') -Filter 'V*__ui_personas*.sql' -ErrorAction SilentlyContinue
+    foreach ($f in $v) {
+        foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom), "\(\s*'([a-z_]+)'\s*,")) {
+            if ($pcodes -notcontains $m.Groups[1].Value) { "$($f.Name) legt '$($m.Groups[1].Value)' an, das nicht in personas.list steht" }
+        }
+    }
+}
+
 # (8) Textkatalog Phase C: DB-Funktionen liefern Text-Verweise (core.fn_ui_tpl / core.fn_ui_text / Key-Listen) —
 #     db_test laedt den Katalog nicht, ein Tippfehler zeigte in Prod den rohen Key. Jedes key-foermige SQL-Literal
 #     '<pkg>.<bereich>.<name>' eines Pakets mit Katalog, dessen <bereich> im Katalog dieses Pakets vorkommt, MUSS als
@@ -200,7 +223,7 @@ $unused = @()
 foreach ($pkg in $cat.Keys) {
     $de = $cat[$pkg]['de']; if ($null -eq $de) { continue }
     foreach ($k in $de.Keys) {
-        if ($k -match '\.(enum|facts|monitor_method)\.') { continue }
+        if ($k -match '\.(enum|facts|monitor_method)\.' -or $k -match '^core\.persona\.name\.') { continue }
         if (-not $corpusText.Contains("'$k'") -and -not $corpusText.Contains("""$k""")) { $unused += $k }
     }
 }

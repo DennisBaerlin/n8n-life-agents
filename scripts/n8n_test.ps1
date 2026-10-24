@@ -322,12 +322,7 @@ $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 $qNote = if ($quarantined -gt 0) { " ($quarantined in Quarantaene, nicht gewertet)" } else { '' }
 Write-Host "Deterministisch (Tool-Routing): $passed/$($cases.Count) bestanden, $failed fehlgeschlagen$qNote." -ForegroundColor $color
 
-if ($judgeBundle.Count -gt 0) {
-    $bundlePath = Join-Path $RepoRoot 'tests\agent\judge_bundle.json'
-    [System.IO.File]::WriteAllText($bundlePath, ($judgeBundle | ConvertTo-Json -Depth 6), $Utf8NoBom)
-    Write-Host "AI-Judge: $($judgeBundle.Count) Case(s) mit Verhaltens-Rubric -> $bundlePath" -ForegroundColor Cyan
-    Write-Host "  Auswerten: .\scripts\judge_eval.ps1  (Claude Haiku; kombinierter Verdikt det AND Rubric)" -ForegroundColor Cyan
-}
+Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot
 Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label "n8n_test $([System.IO.Path]::GetFileNameWithoutExtension($CasesFile))" -RepoRoot $RepoRoot
 Write-Host ""
 exit $failed

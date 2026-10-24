@@ -307,6 +307,25 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> Sprach-Picker-Text]: kein Text geliefert'; END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_ui_text + agent.fn_person_lang (Picker-Pfad)]';
 
+  -- ===== (3b3b) Persona-Picker: core_ro -> fn_ui_text + fn_ui_texts + fn_person_lang + family-Lesen (core.sub_send_persona_picker) =====
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    SELECT core.fn_ui_text('core.persona.picker', y.lang)
+           || COALESCE(core.fn_ui_texts(y.lang, ARRAY['core.persona.name.butler']::text[])->>'core.persona.name.butler', '')
+           || COALESCE((SELECT pp->>'persona' FROM agent.core_contexts c,
+                          jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) pp
+                         WHERE c.name = 'family' LIMIT 1), 'neutral')
+      INTO v_out
+      FROM (SELECT agent.fn_person_lang(NULL)->>'lang' AS lang) y;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> Persona-Picker-Text]: bricht unter core_ro -- %', SQLERRM;
+  END;
+  IF v_out IS NULL THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> Persona-Picker-Text]: kein Text geliefert'; END IF;
+  RAISE NOTICE 'PASS [core_ro -> Persona-Picker (fn_ui_text + fn_ui_texts + fn_person_lang + family)]';
+
   -- ===== (3b4) Textkatalog Phase C: jede Paket-Rolle -> core.fn_ui_texts_for (Crons/Gates/Angebots-Karten) =====
   -- Paket-Crons (finance_rw/_ro, estate_rw) und Agent-Eingangs-Gates (<pkg>_ro, auch paperless_ro) laden ihre
   -- Empfaenger-Texte ueber das publizierte DEFINER-Fenster; ohne Grant fiele jeder Cron-Send aus.

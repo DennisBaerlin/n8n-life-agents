@@ -97,7 +97,7 @@ $($Entry.expected_behavior)
 ACTUAL_TOOL: $($Entry.actual_tool)
 ACTUAL_TOOL_INPUT: $($Entry.actual_tool_input)
 READ_TOOLS: $($Entry.read_tools)
-
+$(if ($Entry.specialist_output) { "`nSPECIALIST_OUTPUT (the specialist's reply the orchestrator relayed):`n$($Entry.specialist_output)`n" })
 ACTUAL_OUTPUT:
 $($Entry.actual_output)
 "@

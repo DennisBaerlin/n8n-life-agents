@@ -6,4 +6,4 @@ Triggers on any topic: thresholds, drawdowns, dates, regular checks.
 - "Which monitoring triggers are active right now?"
 
 ## Commands & backup
-This overview any time with /help. Set up the household or see the progress: /onboarding. Change the language of fixed texts: /language. See and switch what the bot sends on its own: /reminders. Backups of your data run encrypted via the server command line (lifeagents backup export|restore) — no longer via the chat.
+This overview any time with /help. Set up the household or see the progress: /onboarding. Change the language of fixed texts: /language. Choose the bot's character (e.g. butler): /persona. See and switch what the bot sends on its own: /reminders. Backups of your data run encrypted via the server command line (lifeagents backup export|restore) — no longer via the chat.

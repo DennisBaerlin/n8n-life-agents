@@ -40,6 +40,8 @@
 --     agent.fn_validate_household_facts + registrierter Paket-Validator -> {ok:false, reason} OHNE Write.
 --   Sprache: language einer Person wird vorab normiert (agent.fn_normalize_language: "Koreanisch" -> ko); ein nicht
 --     abbildbarer Wert bleibt roh und scheitert am Validator (Wertevorrat core.ui_languages) mit Grund.
+--   Persona: persona einer Person wird lower(trim()) normiert; 'neutral' loescht den Key (neutral wird nie gespeichert,
+--     Validator-Gesetz).
 --   RUECKGABE (Post-State): {ok:true, context_name, created, last_confirmed_at} + persons_count/updated_persons,
 --     wenn der Post-State persons[] traegt; bei family zusaetzlich language_missing = die in DIESEM Write neu
 --     angehaengten Personen ohne Sprache (Handles -> das Tool schickt dem Owner je Person den Sprach-Picker)
@@ -195,6 +197,12 @@ BEGIN
     IF v_in ? 'persons' THEN
         v_persons := CASE WHEN jsonb_typeof(v_merged->'persons') = 'array' THEN v_merged->'persons' ELSE '[]'::jsonb END;
         FOR v_e IN SELECT * FROM jsonb_array_elements(v_in->'persons') LOOP
+            IF jsonb_typeof(v_e->'persona') = 'string' THEN  -- Persona-Code normieren ("Butler " -> butler) ...
+                v_e := v_e || jsonb_build_object('persona', lower(trim(v_e->>'persona')));
+            END IF;
+            IF v_e->>'persona' = 'neutral' THEN             -- ... neutral = keine Persona = Key loeschen (eine Darstellung)
+                v_e := v_e || jsonb_build_object('persona', NULL);
+            END IF;
             SELECT COALESCE(array_agg(k), '{}') INTO v_nulls
             FROM jsonb_each(v_e) AS x(k, v) WHERE jsonb_typeof(v) = 'null';
             v_e := v_e - v_nulls;                         -- erst null-Keys auswerten ...

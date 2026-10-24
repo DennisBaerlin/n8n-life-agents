@@ -80,7 +80,10 @@ $push = [regex]::Match($cmd, '(?:^|[;&|(]|\r?\n)\s*(?:[A-Za-z_]\w*=\S*\s+)*git(?
 if ($push.Success) {
   $gitDir = [regex]::Match($push.Groups[1].Value, '-C\s+("[^"]+"|''[^'']+''|\S+)')
   $gitC = if ($gitDir.Success) { @('-C', $gitDir.Groups[1].Value.Trim('"', "'")) } else { @() }
-  $pArgs = @($push.Groups[2].Value.Trim() -split '\s+' | Where-Object { $_ })
+  # Ausgabe-Umleitungen (2>$null, *>&1, > log.txt, 2>> x) gehoeren zur Shell, nicht zu git: vorher entfernen, sonst
+  # galten sie als Refspec ("nicht aufloesbar" -> deny; zweimal gestolpert 2026-10-24).
+  $pRest = [regex]::Replace($push.Groups[2].Value, '(?:\d|\*)?>>?(?:&\d|\s*(?:"[^"]*"|''[^'']*''|[^\s;&|]+))?', ' ')
+  $pArgs = @($pRest.Trim() -split '\s+' | Where-Object { $_ })
   $pos = @($pArgs | Where-Object { $_ -notmatch '^-' } | ForEach-Object { $_.Trim('"', "'") })
   $allTags = [bool]($pArgs | Where-Object { $_ -match '^--(tags|follow-tags|all|mirror)$' })
   $remote = if ($pos.Count -ge 1) { $pos[0] } else { 'origin' }

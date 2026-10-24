@@ -74,9 +74,13 @@ if ($isGh -and -not $ghRead) {
 # Argument, z. B. einer sed-Ersetzung oder Commit-Message). Geprueft wird das tatsaechliche Ziel: Remote + Refspecs
 # aus dem Befehl (ohne Refspec: HEAD), mit --tags/--follow-tags/--all/--mirror zusaetzlich jeder lokale Tag, der dem
 # Remote fehlt.
-$push = [regex]::Match($cmd, '(?:^|[;&|(]|\r?\n)\s*git(?:\s+-C\s+(?:"[^"]+"|''[^'']+''|\S+))?\s+push\b([^;&|\r\n]*)')
+# Vor 'push' beliebig viele globale Optionen (-C/-c <arg>, --opt[=wert]) und Bash-Env-Praefixe (X=1 git ...): sonst
+# liefe ein `git -c credential.helper= push` ungeprueft durch (fail-open).
+$push = [regex]::Match($cmd, '(?:^|[;&|(]|\r?\n)\s*(?:[A-Za-z_]\w*=\S*\s+)*git(?:\.exe)?((?:\s+(?:-[Cc]\s+(?:"[^"]+"|''[^'']+''|\S+)|--[\w-]+(?:=\S*)?))*)\s+push\b([^;&|\r\n]*)')
 if ($push.Success) {
-  $pArgs = @($push.Groups[1].Value.Trim() -split '\s+' | Where-Object { $_ })
+  $gitDir = [regex]::Match($push.Groups[1].Value, '-C\s+("[^"]+"|''[^'']+''|\S+)')
+  $gitC = if ($gitDir.Success) { @('-C', $gitDir.Groups[1].Value.Trim('"', "'")) } else { @() }
+  $pArgs = @($push.Groups[2].Value.Trim() -split '\s+' | Where-Object { $_ })
   $pos = @($pArgs | Where-Object { $_ -notmatch '^-' } | ForEach-Object { $_.Trim('"', "'") })
   $allTags = [bool]($pArgs | Where-Object { $_ -match '^--(tags|follow-tags|all|mirror)$' })
   $remote = if ($pos.Count -ge 1) { $pos[0] } else { 'origin' }
@@ -87,7 +91,7 @@ if ($push.Success) {
       $src = ($spec -split ':')[0].TrimStart('+')
       if (-not $src) { continue }   # ':ziel' loescht nur, veroeffentlicht nichts
       $env:PRE_COMMIT_REMOTE_NAME = $remote
-      $env:PRE_COMMIT_TO_REF = (& git rev-parse --verify -q "$src^{commit}")
+      $env:PRE_COMMIT_TO_REF = (& git ($gitC + @('rev-parse', '--verify', '-q', "$src^{commit}")))
       Remove-Item Env:PRE_COMMIT_FROM_REF -ErrorAction SilentlyContinue
       if (-not $env:PRE_COMMIT_TO_REF) { $fails += "[FAIL] Refspec '$spec' nicht aufloesbar"; continue }
       $lintArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $lint, '-Outgoing') + $(if ($allTags) { @('-AllTags') } else { @() })

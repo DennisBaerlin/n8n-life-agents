@@ -347,7 +347,7 @@ return scored.map(p => ({ json: {
         })
 
     # Nur surface=true UND erfolgreich recorded -> Karte (Top-Treffer + Serendipity); der Rest ist recorded
-    # (Advisor sieht ihn via v_job_matches). Das `Record match`.ok-Gate verhindert eine Karte mit job:up:null-Button.
+    # (Advisor sieht ihn via read_job_matches). Das `Record match`.ok-Gate verhindert eine Karte mit job:up:null-Button.
     $ifSurface = Build-If 'Surface?' @(1080, 0) "={{ `$('Record match').item.json.ok === true && `$('Apply scores').item.json.surface === true }}" 'true' 'equals' 'boolean'
 
     # --- EINE Karte je Posting an die EIGENE chat_id der Person: Sub agent.career.sub_send_job_card (Textkatalog Phase C:
@@ -378,7 +378,7 @@ return scored.map(p => ({ json: {
 
     $stCap = Build-Sticky 'Cap = Karten-Drossel GLOBAL (kein Datenverlust)' @(640, -300) `
         'Apply scores: ALLE gescort + recorded; surface drosselt nur die Sends (Top max_per_run + 1 Serendipity über ALLE Quellen)' `
-        'Der Scorer echot den ephemeren Per-Run-Index i (nicht external_id -> keine Cross-Quellen-Kollision im Mapping). Es werden ALLE neuen Postings via career.fn_record_job_match recorded (Dedup verhindert künftiges Re-Scoring; UPSERT-Key (source, external_id, person_id)). surface=true nur für die Top max_per_run (>= Schwelle) GLOBAL über alle Quellen + GENAU 1 Serendipity (höchstes UNTER der Schwelle). Überzählige >= Schwelle sind RECORDED (kein stiller Verlust) -> der Advisor zeigt sie via career.v_job_matches. Fehlt ein Score -> Default 1. source/board/external_id/person_id/chat_id werden durch die Kette gefädelt, weil der Record-Postgres-Node das Item ersetzt.' 340 620
+        'Der Scorer echot den ephemeren Per-Run-Index i (nicht external_id -> keine Cross-Quellen-Kollision im Mapping). Es werden ALLE neuen Postings via career.fn_record_job_match recorded (Dedup verhindert künftiges Re-Scoring; UPSERT-Key (source, external_id, person_id)). surface=true nur für die Top max_per_run (>= Schwelle) GLOBAL über alle Quellen + GENAU 1 Serendipity (höchstes UNTER der Schwelle). Überzählige >= Schwelle sind RECORDED (kein stiller Verlust) -> der Advisor zeigt sie via read_job_matches (career.fn_read_job_matches). Fehlt ein Score -> Default 1. source/board/external_id/person_id/chat_id werden durch die Kette gefädelt, weil der Record-Postgres-Node das Item ersetzt.' 340 620
 
     $stCard = Build-Sticky 'Treffer-Karte (Feedback-Loop, per-Person)' @(1300, -300) `
         'Send card = Sub agent.career.sub_send_job_card je Treffer an die EIGENE chat_id (Texte in der Sprache der Person)' `

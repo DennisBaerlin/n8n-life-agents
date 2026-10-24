@@ -112,10 +112,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS pairing_state_one_open_per_person
 -- -> EINE Dedup-Adresse aller Producer; fn_register_knock ruft core.fn_should_notify. Die alte Tabelle
 -- droppt einmalig V012__consolidate_notification_state.sql.
 
--- Lesepfad (Pre-Router laeuft unter der Haupt-Credential; core_ro = Core-Host-Leserolle nur
--- der Vollstaendigkeit — finance_ro ist nach der Paket-Isolation eng auf `finance` skopiert).
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
-        GRANT SELECT ON agent.pairing_state TO core_ro;
-    END IF;
-END $$;
+-- Lesepfad: NUR die Haupt-Credential (Pre-Router) und die Pairing-fns. KEIN Grant an core_ro (Security-Audit 2026-10):
+-- die offenen Einmal-Codes stehen im Klartext, der Frei-SQL-Pfad darf sie nie sehen. Den Sammel-Grant ueber agent.*
+-- nimmt util_create_core_ro.sql (Deny-Liste) wieder zurueck.

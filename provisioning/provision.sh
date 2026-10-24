@@ -284,7 +284,7 @@ derive_network_config() {
       # 400 -> der Orchestrator bleibt inaktiv -> es entsteht KEINE lokal routbare /webhook-Route
       # (verifiziert: webhook_entity leer ohne Activate). Ein RFC-2606-Platzhalter (example.com)
       # erfuellt Telegrams Syntax-/DNS-Pruefung -> Activate gruen -> n8n registriert die Produktiv-
-      # Route `<webhookId>/webhook` + leitet den deterministischen secret_token (`<wfId>_<nodeId>`)
+      # Route `<webhookId>/webhook` + leitet den secret_token (`<wfId>_<nodeId>`; beide Trigger-ids je Instanz geheim, deploy_workflows)
       # ab. Reale Updates liefert Telegram nie dorthin — fuer den Dev/Test-Betrieb egal: die Test-Tiers
       # feuern ueber die Harness-Webhooks, nicht ueber Telegram (ein echter Telegram-Eingang fuer Tests
       # kaeme spaeter ueber einen Mock-Telegram-Server). Prod/Release nutzt stattdessen --domain (echte URL).

@@ -38,6 +38,40 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
+                                                                                   "id":  "8248960a-6cb9-5c7e-ae96-9eda7b2c959e",
+                                                                                   "leftValue":  "={{ ((($json.message || {}).chat) || ((($json.callback_query || {}).message || {}).chat) || {}).type === \u0027private\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -2850,
+                                       -120
+                                   ],
+                      "id":  "14229132-3407-5037-a3c8-211ad7493f8e",
+                      "name":  "Private chat?"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
                                                                                    "id":  "07644716-3d1d-524e-9cc5-dd72da50ecda",
                                                                                    "leftValue":  "={{ $json.message !== undefined \u0026\u0026 $json.message !== null }}",
                                                                                    "rightValue":  true,
@@ -2591,9 +2625,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT (SELECT a.advisor_agent FROM agent.advisor_plans p JOIN core.advisors a ON a.domain = p.domain WHERE p.status = \u0027draft\u0027 AND p.updated_at \u003e now() - interval \u00272 hours\u0027 ORDER BY p.updated_at DESC LIMIT 1) AS interview_advisor;",
+                                         "query":  "SELECT (SELECT a.advisor_agent FROM agent.advisor_plans p JOIN core.advisors a ON a.domain = p.domain WHERE p.status = \u0027draft\u0027 AND p.updated_at \u003e now() - interval \u00272 hours\u0027 AND (p.person_id IS NULL OR p.person_id = (($1::jsonb)-\u003e\u003e\u0027person_id\u0027)) ORDER BY p.updated_at DESC LIMIT 1) AS interview_advisor;",
                                          "options":  {
-
+                                                         "queryReplacement":  "={{ JSON.stringify({ person_id: $(\u0027Resolve sender\u0027).item.json.sender.person_id }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -2607,8 +2641,8 @@
                       "onError":  "continueRegularOutput",
                       "credentials":  {
                                           "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
-                                                           "name":  "Postgres core_ro (read-only)"
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
                                                        }
                                       }
                   },
@@ -4131,7 +4165,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (RO, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil, höchstens ein inhaltsfreier Satz um die Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).",
+                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Private chat? (nur Einzelchats; Gruppe/Kanal endet still, vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle) -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (RO, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil, höchstens ein inhaltsfreier Satz um die Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).",
                                          "height":  320,
                                          "width":  720,
                                          "color":  4
@@ -5616,12 +5650,26 @@
                                                                   [
                                                                       {
                                                                           "index":  0,
-                                                                          "node":  "Message update?",
+                                                                          "node":  "Private chat?",
                                                                           "type":  "main"
                                                                       }
                                                                   ]
                                                               ]
                                                  },
+                        "Private chat?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Message update?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+
+                                                           ]
+                                                       ]
+                                          },
                         "Message update?":  {
                                                 "main":  [
                                                              [

@@ -38,3 +38,6 @@ N8N_PROXY_HOPS=1
 GENERIC_TIMEZONE=@@TIMEZONE@@
 N8N_DIAGNOSTICS_ENABLED=false
 N8N_RUNNERS_ENABLED=true
+# Code/expression nodes must never read the process environment (it carries the host secrets from core.env).
+# This is the n8n 2.x default; pinned so a changed default can never open it silently.
+N8N_BLOCK_ENV_ACCESS_IN_NODE=true

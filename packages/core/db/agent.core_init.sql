@@ -310,6 +310,23 @@ END;
 $$;
 
 -- ------------------------------------------------------------
+-- agent.fn_is_per_user_row(p_name) -> true gdw p_name eine PHYSISCHE per_user-Zeile '<base>__<pid>' ist (nicht die
+--   Basis selbst). Aufbauend auf fn_context_base_name (eine Adresse). Konsumenten: core.fn_fetch_context (lehnt einen
+--   physischen Namen ab -> nur Basisname + eigene chat_id), das Lazy-Manifest (agent.tool_load_context) und die
+--   RLS-Policy core_contexts_ro_private unten (Frei-SQL unter core_ro sieht keine Person-Zeilen).
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION agent.fn_is_per_user_row(p_name text)
+RETURNS boolean LANGUAGE plpgsql STABLE
+SET search_path = pg_catalog
+AS $$
+DECLARE
+    v_base TEXT := agent.fn_context_base_name(p_name);
+BEGIN
+    RETURN v_base IS NOT NULL AND p_name <> v_base;
+END;
+$$;
+
+-- ------------------------------------------------------------
 -- agent.fn_validate_context_facts(p_facts, p_name) -> Fehlertext (mit Wert, fuer den Schreibenden) | NULL
 --   Die EINE Pruefung "Fakten fuer Kontext X": (1) Core-Anteil agent.fn_validate_household_facts, (2) Paket-Anteil
 --   ueber die Registry core.context_validators (exakter Name zuerst, sonst der per_user-Basisname) -> dynamisches
@@ -505,3 +522,18 @@ DO $$ BEGIN
             ADD CONSTRAINT core_contexts_managed_by_check CHECK (managed_by IN ('seed', 'build', 'agent'));
     END IF;
 END $$;
+
+-- ============================================================
+-- ROW-LEVEL-SECURITY: per_user-Zeilen sind fuer den Frei-SQL-Pfad (core_ro: guide/monitor-LLM, Monitor-Specs) unsichtbar
+--   (Owner-Entscheid 2026-10-24 "strikt privat"). PERMISSIVE fuer alle = unveraendertes Verhalten; die RESTRICTIVE-
+--   Policy blendet nur fuer current_user = core_ro die physischen per_user-Zeilen aus. Bewusst current_user statt
+--   "TO core_ro": die App-Rolle ERBT core_ro (apply_schema.sh) und waere sonst mitbetroffen. Owner (postgres) und
+--   DEFINER-Fenster (core.fn_fetch_context) umgehen RLS -> die gebundenen Lesepfade bleiben intakt. ACHTUNG: eine
+--   kuenftige VIEW ueber diese Tabelle laeuft mit Owner-Rechten und umginge die Policy.
+-- ============================================================
+ALTER TABLE agent.core_contexts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS core_contexts_all ON agent.core_contexts;
+CREATE POLICY core_contexts_all ON agent.core_contexts USING (TRUE) WITH CHECK (TRUE);
+DROP POLICY IF EXISTS core_contexts_ro_private ON agent.core_contexts;
+CREATE POLICY core_contexts_ro_private ON agent.core_contexts AS RESTRICTIVE FOR SELECT
+    USING (current_user <> 'core_ro' OR NOT agent.fn_is_per_user_row(name));

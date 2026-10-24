@@ -4,14 +4,13 @@
 --   UND fn_monitor_probe (Test-Abruf der Tools). web_search wird IMMER im Workflow
 --   beschafft (HTTP-Node mit Credential) und hier abgelehnt.
 --     * sql: Shape-Guard (single SELECT, kein ';', Laengen-Cap) als Beratungsebene,
---       dann EXECUTE unter SET LOCAL ROLE core_ro (strukturell read-only — das
---       GESETZ; core_ro ist die Core-Host-Leserolle: liest agent+core+jedes installierte Paket,
---       denn eine Monitor-sql-Acquisition kann beliebige Schemata treffen — der Core-Seed
---       household_facts_freshness liest agent.core_contexts, ein Paket-Trigger dessen Schema, B3)
---       mit Scalar-Subquery-Wrap 'SELECT (<q>)::numeric' (>1 Zeile/Spalte bricht kontrolliert).
---       Exception-Block = Savepoint -> GUC-Rollback; bei Erfolg wird die Rolle explizit
---       zurueckgesetzt. KEIN statement_timeout: wirkt in PG nur am Top-Level-Statement
---       (Restrisiko dokumentiert in agent.monitor_init.sql).
+--       dann agent.fn_monitor_ro_eval (DEFINER, Eigentuemer core_ro: strukturell read-only — das
+--       GESETZ, ohne Rollenwechsel-Ausweg; core_ro ist die Core-Host-Leserolle: liest agent+core+jedes
+--       installierte Paket ohne fremde Person-Daten, denn eine Monitor-sql-Acquisition kann beliebige Schemata
+--       treffen — der Core-Seed household_facts_freshness liest agent.core_contexts, ein Paket-Trigger dessen
+--       Schema, B3) mit Scalar-Subquery-Wrap 'SELECT (<q>)::numeric' (>1 Zeile/Spalte bricht kontrolliert).
+--       KEIN statement_timeout: wirkt in PG nur am Top-Level-Statement (Restrisiko dokumentiert in
+--       agent.monitor_init.sql).
 --     * none: ok ohne Wert (reiner Reminder).
 --     * PAKET-Methode (Phase B, core.monitor_acquisition_methods): Dispatch an die acquire_fn des Pakets
 --       (fn-Name nur aus der Registry, to_regprocedure-Guard ueber agent.fn_monitor_method_status) mit
@@ -19,8 +18,8 @@
 --       (vorher las der Core finance.fx_rates ungeguardet -> ein verwaister fx-Trigger brach den Heartbeat
 --       fuer ALLE Trigger ab). Ein RAISE in der Paket-fn wird ebenfalls zu {ok:false} gefangen.
 --   Rueckgabe: Observation {ok, value?, unit?, as_of?, source_url?, reason?}
---   BEWUSST KEIN SET search_path (anders als fn_monitor_method_status/_validate_params): der sql-Zweig fuehrt
---   die Owner-Query des Triggers aus, die unqualifizierte Namen mit dem Default-search_path aufloest; das
+--   BEWUSST KEIN SET search_path (anders als fn_monitor_method_status/_validate_params): der sql-Zweig reicht
+--   den Default-search_path an fn_monitor_ro_eval weiter (unqualifizierte Namen der Trigger-Query); das
 --   EXECUTE-Ziel der Paket-Methode ist ohnehin schema-qualifiziert aus der Registry (Regex-CHECK).
 -- ============================================================
 DROP FUNCTION IF EXISTS agent.fn_monitor_acquire(text, jsonb, date, int);   -- Phase B: p_stale_days lebt beim Paket
@@ -47,14 +46,10 @@ BEGIN
                 'reason', 'sql spec rejected: must be a single SELECT statement (no semicolons, max 2000 chars)');
         END IF;
         BEGIN
-            -- strukturelles read-only: laeuft als core_ro (Membership des App-Users via apply_schema Phase 4 /
-            -- monitor_init-GRANT)
-            PERFORM set_config('role', 'core_ro', true);
-            EXECUTE 'SELECT (' || v_q || ')::numeric' INTO STRICT v_value;
-            PERFORM set_config('role', 'none', true);
+            -- strukturelles read-only: agent.fn_monitor_ro_eval ist DEFINER mit Eigentuemer core_ro (kein
+            -- Rollenwechsel aus der Spec heraus moeglich); Pfad des Aufrufers fuer unqualifizierte Namen.
+            v_value := agent.fn_monitor_ro_eval(v_q, current_setting('search_path'));
         EXCEPTION WHEN OTHERS THEN
-            -- set_config(... is_local=true) ist subtransaktions-lokal -> der implizite Savepoint des
-            -- PL/pgSQL-BEGIN..EXCEPTION-Blocks rollt die Rolle bei der Ausnahme automatisch zurueck.
             RETURN jsonb_build_object('ok', false, 'reason', 'sql failed: ' || SQLERRM);
         END;
         IF v_value IS NULL THEN

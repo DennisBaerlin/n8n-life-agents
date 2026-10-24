@@ -3,12 +3,17 @@
 --   Zustand des Chats fuer den Orchestrator-Pre-Router ('Card open check', core_ro). DIE eine Stelle der
 --   Ablauf-Logik (expires_at > now()): 'own' = mindestens eine Karte im Chat selbst offen (auch kurz nach dem
 --   Tipp, solange die Kette noch antwortet); 'other' = nur Freigaben durch jemand anderen offen; NULL = frei.
---   SECURITY INVOKER: core_ro hat SELECT auf agent.* (util_create_core_ro.sql). NULL-Chat -> NULL.
+--   SECURITY DEFINER (Security-Audit 2026-10): agent.hitl_pending traegt den Auftragstext und steht auf der
+--   core_ro-Deny-Liste (util_create_core_ro.sql) -> der Pre-Router liest nur den Zustand ueber dieses Fenster.
+--   NULL-Chat -> NULL.
 --   RUECKGABE: text ('own' | 'other' | NULL)
 --   Tests: tests/db/core/test_fn_hitl_pending.sql, tests/db/cross/test_role_permissions.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_get_hitl_pending_state(p_chat_id bigint)
-RETURNS text LANGUAGE sql STABLE AS $$
+RETURNS text LANGUAGE sql STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, agent, pg_temp
+AS $$
     SELECT CASE WHEN bool_or(own_card) THEN 'own' ELSE 'other' END
       FROM agent.hitl_pending
      WHERE p_chat_id IS NOT NULL AND chat_id = p_chat_id AND expires_at > now()

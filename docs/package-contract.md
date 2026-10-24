@@ -61,7 +61,7 @@ key='core_version')`, seeded from the `.config` block of `packages/core/manifest
 | `commands` | – | Slash-command registry **block** (WS-5): `{ list:[{cmd, visibility:owner\|member\|all, dispatch?:{agent,task}}] }` — the single SoT for the package's deterministic Telegram commands; the menu text is the catalog key `<pkg>.cmd.<name>` (§3.11, ≤ 48 chars per language). Feeds `scripts/command_lint.ps1` (coverage vs the orchestrator `Command router` + the `/help` tail in every language, fail-closed) and `setMyCommands` (owner menu = visibility IN (owner,all); default menu = visibility IN (member,all); one menu per catalog language + a fallback in the owner's language, §3.11). Hidden deterministic commands (`/start`, `/hilfe`, `/sprache`) are allowlisted in the lint, not registered. **`dispatch:{agent,task}` (optional, WS-5 estate `/notfall`) = a CODE-PATH command:** `build.ps1 $CommandDispatchList` (mirror of `$OnboardingDispatchList`) generates a `/xxx` switch case in the orchestrator `Command router` + a Run/Relay dispatch arm → `agent.<agent>` INLINE (message.text path, synthetic `task`, `call_depth=1`; fallback stays LAST). Core commands (`/help`/`/onboarding`/`/start`) have NO `dispatch` = host-bespoke handlers. **Discriminant (§8):** a code-path command → the build-time `Command router` switch; a pure text-/button-callback prefix → the runtime `core.callback_handlers` registry. |
 | `backup` | – | Declarative backup surface (§3.7) — which of the package's user-data tables the CLI (`lifeagents backup`) dumps/restores: `{ schema_dump?, exclude_tables[]?, full_tables[]?, filtered_tables{qual→WHERE}? }`. Read by `backup_cli.sh` (jq), not by SQL. |
 | `credentials` | – | Declarative package secrets (§3.8) — the n8n credentials a package needs from external API keys: `{ "<name>": { placeholder, name, type, required?, env{ KEY: {field, validator?, secret?, prompt} } } }`. Read by `inject_credentials.sh` + the stage-4 wizard (jq), never by SQL. |
-| `approval_matrix` | – | Maker-checker tier per HITL-gate caller of this package (§3.10): `{ "<workflow-name>": { tier, reason } }`. Build data only (`build.ps1` injects the tier, `approval_lint` verifies) — never read by the installer or SQL. |
+| `approval_matrix` | – | Maker-checker tier per HITL-gate caller of this package (§3.10): `{ "<workflow-name>": { tier, reason[, break_glass] } }`. Build data only (`build.ps1` injects the tier, `approval_lint` verifies) — never read by the installer or SQL. |
 | `migrations` | ✓ | Path to the package's `db/` migration set (own schema only; **no core/agent DDL** — DB4/R11). |
 
 The **core is itself a package** (`name: "core"`, always `active`) for homogeneous handling (D1/PM4) — but
@@ -600,7 +600,10 @@ package that owns the workflow (the build engine knows no package; before Phase 
   `save`/`publish`/`invite` → `owner_only`; `set`/`close`/`delete`/`void`/`settle`/`sell`/`reconcile`/`commit` →
   `owner_approval`; `create`/`book`/`record`/`cancel`/`export` → `owner_info`. `record_` = idempotent tracking entry
   (UPSERT, deliberately not `create_`). A new verb must be classified on purpose in the ONE verb→rank map
-  (`scripts/build/lib/approval_matrix.ps1`).
+  (`scripts/build/lib/approval_matrix.ps1`). **Break-glass:** an entry with `"break_glass": true` may carry
+  `owner_info` below its verb floor — only for a write a survivor must be able to do without the owner
+  (`owner_approval` would deadlock when the owner is the affected person); the `reason` states why. First consumer:
+  `agent.estate.tool_set_case_task`.
 - **Ownership:** the declaring package must be the package of the workflow name (`Get-WorkflowPackage`) AND of the
   build def that produces it (build), resp. of the `workflows/` directory the built file lives in (lint).
 - **Fail-closed:** a gate caller without an entry = build error (deny by default); an entry without a built gate caller
@@ -733,6 +736,15 @@ before saving it as a trigger). The narrow package role `<pkg>_ro` cannot serve 
   a package must not be able to hide from host oversight (no opt-in flag). The window falls away with the
   schema on uninstall. Views remain the **recommended first stop** (tool-description steering); raw tables
   are readable as fallback (max host context — Owner decision).
+- **Person privacy beats host oversight (Owner decision 2026-10-24, "strictly private"):** the free-SQL roles
+  (`core_ro`, `<pkg>_ro`) never see another person's private data. The **host derives** it — still no package
+  flag: in a package with `per_user` scopes (`core.fn_package_is_per_user`) every table with `person_id NOT NULL`
+  plus every view depending on it loses `SELECT` for `<pkg>_ro` and `core_ro` (`core.fn_provision_package_roles`,
+  re-run after the seed). Row-level: RLS hides per_user context rows (`<base>__<person_id>`) and person plans
+  (`agent.advisor_plans.person_id NOT NULL`) from `core_ro`; `util_create_core_ro.sql` denies chat memories,
+  pairing codes, raw ingress and open card texts. A person reads their own data only through a **bound DEFINER
+  window** called with the build-fixed `chat_id` under a non-free-SQL credential; such a window returns nothing
+  for per_user data when `core.fn_is_free_sql_session()` (login role `*_ro` — the `chat_id` would be LLM-chosen).
 - **The package only DECLARES, the host EXECUTES.** Package SQL contains **no** `GRANT`/`CREATE|ALTER ROLE`
   and references no foreign schema (only `EXECUTE` on published core read-fns). The sole privilege authority
   is `core.fn_provision_package_roles` (always own-schema-scoped). The manifest `read_surface` field declares
@@ -1102,7 +1114,8 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
 - **career `read_surface`/`catalog` (Phase 0 WS-0d — Paritaet + WS-1-Scaffold):** `read_surface.host_read_role` =
   `core_ro` **wie finance** (Paritaet, **nicht** „bei uns anders") — das ist das unbedingte Core-Host-Aufsichtsfenster
   (`core.fn_provision_package_roles` grantet `core_ro` SELECT auf `career`, §4.1), **nicht** die enge `career_ro`-
-  Isolationsrolle; `preferred_views` = `["career.v_job_matches"]` (seit WS-2 gefüllt). Der `catalog`-Block (`ord` 200)
+  Isolationsrolle; `preferred_views` = `[]` (die Job-Treffer sind person-privat, §4.1 — der Advisor liest die eigenen
+  über `read_job_matches` → `career.fn_read_job_matches`). Der `catalog`-Block (`ord` 200)
   rendert die Tail-Sektion „Karriere-Beratung & Planung" **und** seit WS-2 die Kategorie „Jobsuche & Matching" (sie trägt
   jetzt `tool_record_job_match`). **WS-2-Konsumenten der §8-Nähte:** career-Prefix `job:` ist der erste echte
   `callback_handlers`-Eintrag (`career.fn_handle_job_feedback`); `career_preferences` ist der 2. Fakten-Kontext +

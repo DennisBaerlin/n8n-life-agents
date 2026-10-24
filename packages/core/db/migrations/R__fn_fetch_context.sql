@@ -18,6 +18,7 @@
 --   agent.fn_resolve_sender (NIE LLM/$fromAI; Numerik-Guard wie fn_check_write_permission). person_id NULL
 --   (unaufgeloeste/Sentinel-chat_id) -> physischer Name = Basis-Name -> die (nach der Migration leere) Basis-
 --   Zeile -> leere Menge = FAIL-CLOSED (liest niemandes Daten; das echte Gate fuer unaufgeloeste Sender).
+--   Ein PHYSISCHER Name '<base>__<pid>' als p_name -> leere Menge (agent.fn_is_per_user_row; Security-Audit 2026-10).
 --   STRIP-VOR-REGISTRY: Content-/Metadata-Read + render_fn(...) laufen auf dem PHYSISCHEN (suffigierten)
 --   Namen, ALLE Registry-Lookups (context_renderers/_scopes) auf dem BASIS-Namen (Registries bleiben
 --   exakt-match). Kontexte ohne scope-Zeile (family/financial_planning/finance_profile) -> kein Suffix
@@ -59,6 +60,12 @@ DECLARE
     v_pid      TEXT;
     v_physical TEXT;
 BEGIN
+    -- Physische per_user-Zeile '<base>__<pid>' direkt angefragt (der Name kommt vom LLM) -> leere Menge: eine Person
+    -- liest per_user-Inhalte NUR ueber den Basisnamen + ihre eigene chat_id (sonst laese B A's Zeile per Namen).
+    IF agent.fn_is_per_user_row(p_name) THEN
+        RETURN;
+    END IF;
+
     -- Per-User-Scope-Aufloesung (P0b): Basis-Name -> scope; person_id aus der chat_id (Numerik-Guard
     -- wie fn_check_write_permission; nicht-numerisch/NULL -> kein Resolver-Call -> NULL). Suffix NUR wenn
     -- per_user UND person_id aufgeloest; sonst physischer = Basis-Name (household/1-Arg unveraendert).

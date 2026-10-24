@@ -391,17 +391,15 @@ upgrade_rollback() {
   # Vorab das install.sh des Vorgaengers holen UND pruefen — Netz- oder Signaturfehler fallen so auf, bevor irgendetwas
   # geaendert ist. Mit Schluesselbund: Unterschrift + exakte Zeile in SHA256SUMS (gh-download-Block). Ein unsigniertes
   # Vorgaenger-Release scheitert damit HIER (sein install.sh verlangte mit dem installierten Bund dieselbe Unterschrift
-  # erst NACH dem Zuruecksetzen der Daten). Ohne Bund: dieselbe Vertrauensstufe wie upgrade_rollback_hint.
+  # erst NACH dem Zuruecksetzen der Daten). Ohne Bund: Abbruch (Security-Audit 2026-10 — nie ein ungepruefter
+  # install.sh als root; Paritaet fetch_and_run_release).
   work="$(mktemp -d)"
   _gh_release_json "${PROVISION_GH_API}/repos/${PROVISION_REPO_SLUG}/releases/tags/${from_rel}" "$work/rel.json"
   url="$(_asset_url "$work/rel.json" install.sh)"
   [ -n "$url" ] || die "Release ${from_rel} hat kein install.sh — kein automatischer Rückweg, es wurde nichts geändert."
   kr="$(_release_keyring)"
-  if [ -n "$kr" ]; then
-    _release_fetch_verify "$work/rel.json" "$work" install.sh "$from_rel" "$kr"
-  else
-    _gh_fetch 'application/octet-stream' "$url" "$work/install.sh" 60 install.sh
-  fi
+  [ -n "$kr" ] || die "Der Release-Signierschlüssel fehlt (/etc/lifeagents/release-signing.gpg) — der Rückweg lädt nichts Ungeprüftes, es wurde nichts geändert. Abhilfe: install.sh der gewünschten Version erneut ausführen."
+  _release_fetch_verify "$work/rel.json" "$work" install.sh "$from_rel" "$kr"
 
   log "Dienste anhalten und die Datenbank aus der Sicherung herstellen ..."
   systemctl stop lifeagents-update-run.timer lifeagents-update-check.timer n8n 2>/dev/null || true

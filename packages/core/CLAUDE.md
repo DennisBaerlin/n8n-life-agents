@@ -83,6 +83,6 @@ Callback `upd:now|retry:<tag>` (owner-only) legt höchstens einen offenen Auftra
 
 ## Build-Deltas der Core-Workflows
 
-- Orchestrator: die Route-Tools reichen `task` **deterministisch** aus dem Knoten `Agent input` weiter (Nutzernachricht wörtlich, kein `$fromAI` — der Router wählt nur, er formuliert nicht um; Hard Rule 4). `telegramTrigger`-`webhookId` ist build-stabil wie jede (`scripts/build/CLAUDE.md`), nie von Hand pinnen. Router-Tools, Onboarding- und Command-Arme entstehen build-time aus den Manifesten und zielen auf `agent.sub_dispatch_agent`, nie literal auf Paket-Workflows.
+- Orchestrator: die Route-Tools reichen `task` **deterministisch** aus dem Knoten `Agent input` weiter (Nutzernachricht wörtlich, kein `$fromAI` — der Router wählt nur, er formuliert nicht um; Hard Rule 4). `telegramTrigger`-`webhookId` ist build-stabil wie jede (`scripts/build/CLAUDE.md`), nie von Hand pinnen; der Deploy ersetzt id + webhookId des Triggers je Instanz (`provisioning/CLAUDE.md` *Dev-Ingress*). Router-Tools, Onboarding- und Command-Arme entstehen build-time aus den Manifesten und zielen auf `agent.sub_dispatch_agent`, nie literal auf Paket-Workflows.
 - Anhänge: geroutet wird der opake Marker, nie der Dokument-Inhalt (PII-Datenminimierung); Dokumentarten stehen in der `router_description` des Pakets, `fallback_for: ["attachment"]` fängt Unklares.
 - `web_search` und Monitor-Wertbeschaffung laufen über `New-AnthropicMessagesNode` (`scripts/build/CLAUDE.md`); Leerquery-Guard, UNTRUSTED-Header, `{ok:false}` auch bei abgeschnittener Antwort.

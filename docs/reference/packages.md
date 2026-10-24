@@ -216,7 +216,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_create_case` | Ereignisfall (Todesfall/Vorsorgefall) anlegen + Checkliste instanziieren (owner_info Break-Glass; HITL-Preview = Zusammenfassung) |
 | `tool_set_case` | Offenen Fall ändern (knowledge/bundesland/flags → Fristen-Recompute + Reconcile; owner_approval) |
 | `tool_cancel_case` | Offenen Fall abbrechen (Verb `cancel`; owner_info Break-Glass) |
-| `tool_set_case_task` | Checklisten-Task-Status setzen (done/open/not_applicable; Fortschritts-Flag, kein HITL) |
+| `tool_set_case_task` | Checklisten-Task-Status setzen (done/open/not_applicable; HITL `owner_info`, Break-Glass) |
 | `tool_create_case_task` | Manuelle Task zu offenem Fall hinzufügen (Fortschritts-Flag, kein HITL) |
 | `tool_set_system_profile` | System-Steckbrief + backup_key-Offline-Fundort (Haushalts-Singleton; owner_approval) |
 | `tool_export_emergency_binder` | Notfallmappe als weiterleitbares Telegram-Dokument (erster gegateter READ-Egress; owner_info Break-Glass + adults_only) |

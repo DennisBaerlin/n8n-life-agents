@@ -24,7 +24,8 @@ fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
 # Das Projekt signiert (provisioning/keys/release-signing.gpg, eingebettet in install.sh): die Fake-Releases tragen
 # wie echte SHA256SUMS + SHA256SUMS.sig, unterschrieben mit einem kurzlebigen TEST-Schluessel; jeder Lauf zeigt per
 # LIFEAGENTS_RELEASE_KEYRING auf dessen Bund (install.sh nimmt ein gesetztes Bund vor dem eingebetteten Schluessel).
-# Das .sha256-Sidecar bleibt fuer den Fall ohne Bund (update_no_keyring_sidecar).
+# Das .sha256-Sidecar bleibt im Release (install.sh-Pfad eines Projekts ohne Schluessel); ein Update ohne Bund bricht ab
+# (update_no_keyring_refused).
 rm -rf "$W"; mkdir -p "$REL/$TAG" "$REL/$BADSHA_TAG" "$W/gnupg"; chmod 700 "$W/gnupg"
 export GNUPGHOME="$W/gnupg"
 gpg --batch --passphrase '' --quick-generate-key 'release-fetch-test signer' ed25519 sign never >/dev/null 2>&1
@@ -155,12 +156,13 @@ if [ "$RC" != 0 ] && ! applied "$BADSHA_TAG" && has 'passt nicht zur unterschrie
 cfg '{}'; run update 0 TEST_TAG="$BADSHA_TAG"
 if [ "$RC" != 0 ] && ! applied "$BADSHA_TAG" && has 'passt nicht zur unterschriebenen'; then pass bad_sha_update; else fail bad_sha_update "rc=$RC $(show)"; fi
 
-# 12b Bestand ohne Schluesselbund (Update von vor der ersten signierenden Version) -> das SHA256-Sidecar reicht
+# 12b Bestand ohne Schluesselbund -> Update bricht ab (Security-Audit 2026-10: kein stiller Rueckfall auf das
+#     SHA256-Sidecar aus demselben Release), nichts angewandt; die Meldung nennt den Ausweg install.sh.
 cfg '{}'; run update 0 LIFEAGENTS_RELEASE_KEYRING=/nonexistent/release-signing.gpg
-if [ "$RC" = 0 ] && applied "$TAG" && has 'SHA256 verifiziert' && ! has 'Unterschrift'; then pass update_no_keyring_sidecar
-else fail update_no_keyring_sidecar "rc=$RC $(show)"; fi
+if [ "$RC" != 0 ] && ! applied "$TAG" && has 'Signierschlüssel fehlt' && has 'install.sh'; then pass update_no_keyring_refused
+else fail update_no_keyring_refused "rc=$RC $(show)"; fi
 cfg '{}'; run update 0 LIFEAGENTS_RELEASE_KEYRING=/nonexistent/release-signing.gpg TEST_TAG="$BADSHA_TAG"
-if [ "$RC" != 0 ] && ! applied "$BADSHA_TAG" && has 'SHA256-Verifikation fehlgeschlagen'; then pass bad_sha_no_keyring
+if [ "$RC" != 0 ] && ! applied "$BADSHA_TAG" && has 'Signierschlüssel fehlt'; then pass bad_sha_no_keyring
 else fail bad_sha_no_keyring "rc=$RC $(show)"; fi
 # 12c der ECHTE Projekt-Schluessel (installiertes /etc-Bund bzw. der in install.sh eingebettete) lehnt die
 #     Test-Unterschrift ab — leer = kein Override, install.sh faellt auf /etc bzw. den eingebetteten Schluessel zurueck.

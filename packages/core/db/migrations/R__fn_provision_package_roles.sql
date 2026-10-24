@@ -114,7 +114,8 @@ BEGIN
     -- Pfad der Core-Agenten agent.monitor/agent.guide). UNBEDINGT = System-Invariant: Core ist
     -- der isolations-ausgenommene Host und DARF jedes Paket read-only sehen (kein Paket-Opt-in,
     -- ein Paket soll sich der Host-Aufsicht nicht entziehen koennen). OWN-SCHEMA-SCOPED ueber den
-    -- validierten v_pkg → ein Paket kann hierueber NIE ein fremdes Ziel granten. Views bleiben der
+    -- validierten v_pkg → ein Paket kann hierueber NIE ein fremdes Ziel granten. Einzige Ausnahme: person-private
+    -- Tabellen (Host-abgeleitet, Block unten — Privatsphaere der Person, kein Paket-Opt-out). Views bleiben der
     -- empfohlene erste Anlaufpunkt (Tool-Beschreibung); der Grant deckt Tabellen+Views (Owner:
     -- max. Kontext). Faellt bei Deinstall mit dem Schema weg. No-op, falls core_ro (noch) fehlt.
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
@@ -131,6 +132,40 @@ BEGIN
         IF to_regprocedure('core.fn_sync_role_search_paths(text)') IS NOT NULL THEN
             PERFORM core.fn_sync_role_search_paths('core_ro');
         END IF;
+    END IF;
+
+    -- PERSON-PRIVATE TABELLEN (Security-Audit 2026-10, Owner-Entscheid "strikt privat"): der HOST leitet ab — kein
+    -- Paket-Schalter, ein Paket kann sich so nicht der Aufsicht entziehen. In einem Paket mit per_user-Kontexten
+    -- (core.fn_package_is_per_user) gehoert jede Tabelle mit person_id NOT NULL genau einer Person; sie und jede
+    -- (auch verschachtelt) davon abhaengige View sind fuer die Frei-SQL-Rollen <pkg>_ro + core_ro unsichtbar (Views
+    -- lesen mit Owner-Rechten -> explizit mit). Die Person liest ihre Zeilen nur ueber gebundene DEFINER-Fenster
+    -- (z. B. career.fn_read_job_matches). Laeuft nach dem Schema-Grant oben -> jedes Re-Provisioning setzt es erneut.
+    IF to_regprocedure('core.fn_package_is_per_user(text)') IS NOT NULL AND core.fn_package_is_per_user(v_pkg) THEN
+        DECLARE v_rel record;
+        BEGIN
+            FOR v_rel IN
+                WITH RECURSIVE priv(oid) AS (
+                    SELECT c.oid
+                      FROM pg_class c
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                      JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'person_id'
+                                         AND a.attnotnull AND NOT a.attisdropped
+                     WHERE n.nspname = v_pkg AND c.relkind IN ('r', 'p')
+                    UNION
+                    SELECT r.ev_class
+                      FROM priv p
+                      JOIN pg_depend d ON d.refobjid = p.oid AND d.classid = 'pg_rewrite'::regclass
+                      JOIN pg_rewrite r ON r.oid = d.objid
+                     WHERE r.ev_class <> p.oid
+                )
+                SELECT oid::regclass AS rel FROM priv
+            LOOP
+                EXECUTE format('REVOKE ALL ON %s FROM %I', v_rel.rel, v_ro);
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
+                    EXECUTE format('REVOKE ALL ON %s FROM core_ro', v_rel.rel);
+                END IF;
+            END LOOP;
+        END;
     END IF;
 
     -- Publizierte SECURITY-DEFINER-Read-fns = das EINZIGE Core-Lesefenster der ENGEN Paket-Rollen (D10).

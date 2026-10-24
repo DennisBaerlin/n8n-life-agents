@@ -43,10 +43,8 @@ BEGIN
   -- ==========================================================
   -- (A1) eigenes Schema lesen DARF
   SET LOCAL ROLE career_ro;
-  PERFORM 1 FROM career.onboarding_state LIMIT 1;          -- kein Fehler erwartet (leer ok)
-  PERFORM 1 FROM career.job_matches LIMIT 1;               -- WS-2: neue Tabelle vom Paket-Grant erfasst
-  PERFORM 1 FROM career.v_job_matches LIMIT 1;             -- WS-2: Read-View (Advisor-Read-Pfad)
-  RESET ROLE;
+  PERFORM 1 FROM career.market_signals LIMIT 1;            -- kein Fehler erwartet (leer ok). Person-private Tabellen
+  RESET ROLE;                                              -- (job_matches/onboarding_state) sperrt der Host: test_fn_read_job_matches
 
   -- (A2) JOIN career.x agent.y -> permission denied for schema agent (die Kern-VF3-Aussage)
   SET LOCAL ROLE career_ro;
@@ -92,8 +90,7 @@ BEGIN
   -- ==========================================================
   -- (B1) career lesen DARF (Paket-Lesefenster, von fn_provision_package_roles unbedingt geoeffnet)
   SET LOCAL ROLE core_ro;
-  PERFORM 1 FROM career.onboarding_state LIMIT 1;
-  PERFORM 1 FROM career.job_matches LIMIT 1;               -- WS-2: Aufsichtsfenster deckt die neue Tabelle
+  PERFORM 1 FROM career.market_signals LIMIT 1;            -- Aufsichtsfenster (person-private Tabellen: test_fn_read_job_matches)
   -- (B2) agent + core lesen DARF (eigene Host-Daten)
   PERFORM 1 FROM agent.core_contexts LIMIT 1;
   PERFORM 1 FROM core.config LIMIT 1;

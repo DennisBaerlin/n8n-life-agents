@@ -121,7 +121,7 @@ function Build-AgentCareerAdvisor {
     }
 
     # --- Read-Tools ---
-    $descSelect = 'Run read-only SELECT queries (role career_ro: schema `career` only — sparse in this version, no domain views yet) to ground recommendations. To read your own plan (the draft you are building AND the published active version), use the read_plan tool — NOT this query tool. If a recommendation depends on the household, resolve members via SELECT person_id, full_name, role FROM core.fn_household_persons(). Your job matches (the weekday scan + forwarded postings) live in career.v_job_matches: SELECT id, title, employer, location, url, score, status, feedback_at FROM career.v_job_matches ORDER BY feedback_at DESC NULLS LAST, created_at DESC LIMIT 20 - use it to discuss recent matches OR to find the MOST-RECENTLY-RATED match (feedback_at DESC) when the user gives a free-text reason after a 👍/👎, so you can attribute it and persist the learned preference via tool_set_career_preferences. The CV-style profile lives in the career_profile context — read it with load_context, NOT here (it is in another schema). No finance data is reachable (different role/schema). If a query fails you receive the database error back — read it and retry. You have NO write access here.'
+    $descSelect = 'Run read-only SELECT queries (role career_ro: schema `career` only, e.g. career.market_signals) to ground recommendations. Personal data is NOT reachable here: read your own plan with read_plan, your own job matches with read_job_matches, the CV-style profile with load_context (career_profile). If a recommendation depends on the household, resolve members via SELECT person_id, full_name, role FROM core.fn_household_persons(). No finance data is reachable (different role/schema). If a query fails you receive the database error back — read it and retry. You have NO write access here.'
     # Frei-SQL-Lesewerkzeug: geteilter Builder (Guard gegen fehlendes query-Argument, onError continue).
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
@@ -129,8 +129,8 @@ function Build-AgentCareerAdvisor {
     # werden zur Ladezeit mit Header gerendert). jsonb-Param (Standard) + onError (halluzinierter Name =
     # korrigierbarer Tool-Fehler, killt nicht die Execution).
     # P0b: chat_id als 2. Arg (build-fix aus dem Start-Node, NIE $fromAI) -> fn_fetch_context loest die
-    # person_id intern auf und liest per_user-Kontexte (career_profile/career_preferences) suffigiert pro
-    # Person. household-Kontexte (career_planning/family) ignorieren das Arg (kein Suffix).
+    # person_id intern auf und liest per_user-Kontexte (career_profile/career_preferences/career_planning) suffigiert
+    # pro Person. household-Kontexte (family) ignorieren das Arg (kein Suffix).
     $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
     $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string'), chat_id: `$('$START_NODE').item.json.chat_id }) }}"
     $nToolLoad = [ordered]@{
@@ -155,9 +155,9 @@ function Build-AgentCareerAdvisor {
     # fn_advisor_read_plan('career'), 1-arg) las bei fehlendem chat_id IMMER den OWNER-Plan -> B sah A (Leck,
     # R__fn_advisor_read_plan.sql Kommentar). Dieses GEBUNDENE Tool fixiert die chat_id BUILD-fix aus dem
     # Start-Node (NIE $fromAI -> nicht spoofbar; Muster load_context Z149-150) + den domain (career bzw.
-    # e2e-Sentinel __e2e_career__, Paritaet save/publish). Read-only DEFINER-fn (career_ro hat EXECUTE auf die
-    # 2-Arg-Signatur). Die postgres_select-Description nennt den 1-arg-Pfad nicht mehr -> der eigentliche
-    # Verschluss (das LLM nutzt read_plan statt des spoofbaren Frei-SQL). KEINE $fromAI-Inputs (kein Spoof-Vektor).
+    # e2e-Sentinel __e2e_career__, Paritaet save/publish). Read-only DEFINER-fn unter der HAUPT-Credential (Security-
+    # Audit 2026-10): aus einer Frei-SQL-Sitzung (Login-Rolle *_ro) liefert das Fenster fuer per_user-Domaenen nichts
+    # (core.fn_is_free_sql_session) -> die chat_id ist dort nicht spoofbar. KEINE $fromAI-Inputs (kein Spoof-Vektor).
     $readPlanDomain = "String(`$('$START_NODE').item.json.chat_id || '').startsWith('test_e2e') ? '__e2e_career__' : 'career'"
     $nToolReadPlan = [ordered]@{
         parameters = [ordered]@{
@@ -173,7 +173,28 @@ function Build-AgentCareerAdvisor {
         id = (New-Id)
         name = 'read_plan'
         onError = 'continueRegularOutput'
-        credentials = @{ postgres = $CRED_PG_RO }
+        credentials = @{ postgres = $CRED_POSTGRES }
+    }
+
+    # read_job_matches (Security-Audit 2026-10, Owner "strikt privat"): career.job_matches ist person-privat und fuer
+    # career_ro gesperrt (core.fn_provision_package_roles). Gebundenes Fenster career.fn_read_job_matches(chat_id, limit):
+    # chat_id BUILD-fix aus dem Start-Node (nie $fromAI), Credential career_rw (keine Frei-SQL-Rolle; EXECUTE auf die
+    # DEFINER-fn hat nur career_rw). Muster read_plan: KEINE $fromAI-Inputs (die 20 neuesten genuegen dem Gespraech).
+    $nToolReadJobs = [ordered]@{
+        parameters = [ordered]@{
+            descriptionType = 'manual'
+            toolDescription = 'Read your own job matches (the weekday scan + forwarded postings), automatically scoped to the asking person - the 20 most recently rated first (feedback_at DESC), then newest. Use it to discuss recent matches OR to find the MOST-RECENTLY-RATED match (the first row with feedback_at) when the user gives a free-text reason after a 👍/👎, so you can attribute it and persist the learned preference via tool_set_career_preferences. Returns id, source, title, employer, location, url, score, is_serendipity, status, feedback_at, created_at. Takes NO arguments - it is scoped to the current user for you.'
+            operation = 'executeQuery'
+            query = "=SELECT id, source, title, employer, location, url, score, is_serendipity, status, feedback_at, created_at FROM career.fn_read_job_matches((`$1::jsonb)->>'chat_id', 20);"
+            options = [ordered]@{ queryReplacement = "={{ JSON.stringify({ chat_id: `$('$START_NODE').item.json.chat_id }) }}" }
+        }
+        type = 'n8n-nodes-base.postgresTool'
+        typeVersion = 2.6
+        position = @(-176, 416)
+        id = (New-Id)
+        name = 'read_job_matches'
+        onError = 'continueRegularOutput'
+        credentials = @{ postgres = $CRED_CAREER_RW }
     }
 
     # --- Cross-Agent-Tool-Sub-Workflows ---
@@ -268,7 +289,7 @@ function Build-AgentCareerAdvisor {
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) -Header 'Ablauf' `
         'agent.career_advisor — Career-Coach (Sub-Workflow)' `
-        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn career aktiv, sonst package_inactive) -> Core-first-Gate (Haushalt; sonst /onboarding-Redirect) -> Load Config (core.sub_load_config) -> [P2b-1] Career onboarding read (career-LOKALE Onboarding-Pflicht PRO PERSON, NACH Load Config; flag feature.career_onboarding_gate Default true; core.fn_onboarding_status(career, chat_id)) -> Load Agent Context (agent.tool_load_context, agent_name=career_advisor) -> Build Agent Input (Feature an UND Person-Onboarding offen -> Abschnitt Career onboarding required mit den offenen Sektionen ans Ende des System-Prompts: der Advisor erfasst zuerst das Profil, beraet nicht) -> Advisor Agent. KEIN Redirect: der Advisor ist selbst der Onboarding-Agent des Pakets, ein Redirect wies den Erfassungs-Auftrag aus dem /onboarding-Menue ab (Sackgasse); Analog agent.finance Onboarding ausstehend. Career-Onboarding-Sektionen erfasst der Self-Onboarding-Modus (ueber das /onboarding-Menue oder direkt im Gespraech). SCHREIBT DOMAENEN-/PROFIL-DATEN NUR UEBER HITL-GEGATETE TOOLS (Ausnahme: der un-gegatete Tri-State-Flag tool_set_onboarding_section, package=career FIX -> nur ein Fortschritts-Flag, kein Domaenen-/PII-Write): Reads via postgres_select (career_ro: schema career + career.v_job_matches) + read_plan (P2b-2: person-skopierter Plan-Resume = draft+active via core.fn_advisor_read_plan(career, chat_id), chat_id BUILD-fix aus dem Start-Node, NIE $fromAI -> B sieht A NICHT; ersetzt den frueheren spoofbaren 1-arg-Frei-SQL-Pfad) + load_context (career_profile/career_planning/career_preferences/family). P0b: career_profile + career_preferences sind PER_USER — load_context uebergibt die chat_id als 2. Arg, fn_fetch_context loest die person_id auf und liest sie suffigiert pro Person (base__personid); career_planning bleibt haushaltsweit (P0c); Writes NUR tool_save_plan_section/tool_publish_plan (Plan, domain=career, owner_only) + tool_set_profile_facts (career_profile, Stufe self) + WS-2 tool_set_career_preferences (career_preferences, Stufe self — beide ueber agent.tool_set_own_context_facts: die fragende Person bestaetigt ihre eigenen Daten selbst; gelernt aus 👍/👎-Feedback) + tool_record_job_match (eine weitergeleitete Stelle vormerken, owner_info), je HITL-Gate; P1 tool_set_onboarding_section (package=career FIX, KEIN HITL — markiert eine der 3 Onboarding-Sektionen profile_basics/skills_overview/goals_targets completed/skipped im Self-Onboarding-Modus, NICHT die Plan-Sektionen situation/targets/path). WS-2 Job-Matching: der werktägliche Scan-Cron (agent.career.cron_score_jobs) schickt Treffer-Karten (👍/👎 -> job:-Callback -> career.fn_handle_job_feedback, kein Orchestrator-Edit); ein optionaler Freitext-Grund nach 👍/👎 kommt per career-Route hierher -> der Advisor ordnet ihn der zuletzt bewerteten Stelle (career.v_job_matches, feedback_at DESC) zu und persistiert die Praeferenz via tool_set_career_preferences. CV-Vision tool_extract_cv (WS-1b) ist READ-ONLY (bezahlte Claude-API, kein DB-Write/kein Gate): liefert nur die rohen career_profile-Felder zurueck -> der Advisor spielt sie zurueck und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts. Ein weitergeleiteter Lebenslauf kommt INTENT-BASIERT hierher (Orchestrator routet den [attachment ...]-Marker nach Inhalt/Kontext: CV/Lebenslauf -> career, Finanzdokument -> finance; Marker verbatim, file_id daraus). KEIN Monitor-Tool (WS-4). Beratung/Profil/Plan + Leistbarkeit/Runway des Jobwechsels (kann ich mir den Wechsel leisten?) = hier (career_advisor, seit WS-5); allgemeine Geld-/Kauf-Fragen -> finance_advisor; Buchen -> agent.finance.' 320 640
+        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn career aktiv, sonst package_inactive) -> Core-first-Gate (Haushalt; sonst /onboarding-Redirect) -> Load Config (core.sub_load_config) -> [P2b-1] Career onboarding read (career-LOKALE Onboarding-Pflicht PRO PERSON, NACH Load Config; flag feature.career_onboarding_gate Default true; core.fn_onboarding_status(career, chat_id)) -> Load Agent Context (agent.tool_load_context, agent_name=career_advisor) -> Build Agent Input (Feature an UND Person-Onboarding offen -> Abschnitt Career onboarding required mit den offenen Sektionen ans Ende des System-Prompts: der Advisor erfasst zuerst das Profil, beraet nicht) -> Advisor Agent. KEIN Redirect: der Advisor ist selbst der Onboarding-Agent des Pakets, ein Redirect wies den Erfassungs-Auftrag aus dem /onboarding-Menue ab (Sackgasse); Analog agent.finance Onboarding ausstehend. Career-Onboarding-Sektionen erfasst der Self-Onboarding-Modus (ueber das /onboarding-Menue oder direkt im Gespraech). SCHREIBT DOMAENEN-/PROFIL-DATEN NUR UEBER HITL-GEGATETE TOOLS (Ausnahme: der un-gegatete Tri-State-Flag tool_set_onboarding_section, package=career FIX -> nur ein Fortschritts-Flag, kein Domaenen-/PII-Write): Reads via postgres_select (career_ro: schema career OHNE die person-privaten Tabellen job_matches/onboarding_state — der Host sperrt sie, Security-Audit 2026-10) + read_plan (P2b-2: person-skopierter Plan-Resume = draft+active via core.fn_advisor_read_plan(career, chat_id), Haupt-Credential, chat_id BUILD-fix aus dem Start-Node, NIE $fromAI -> B sieht A NICHT; aus einer Frei-SQL-Sitzung liefert das Fenster nichts) + read_job_matches (die EIGENEN Treffer via career.fn_read_job_matches(chat_id, 20), Credential career_rw, ohne Modell-Felder) + load_context (career_profile/career_planning/career_preferences/family). P0b/P0c: alle drei career-Kontexte sind PER_USER — load_context uebergibt die chat_id als 2. Arg, fn_fetch_context loest die person_id auf und liest sie suffigiert pro Person (base__personid); ein physischer Name base__personid vom Modell liefert nichts; Writes NUR tool_save_plan_section/tool_publish_plan (Plan, domain=career, owner_only) + tool_set_profile_facts (career_profile, Stufe self) + WS-2 tool_set_career_preferences (career_preferences, Stufe self — beide ueber agent.tool_set_own_context_facts: die fragende Person bestaetigt ihre eigenen Daten selbst; gelernt aus 👍/👎-Feedback) + tool_record_job_match (eine weitergeleitete Stelle vormerken, owner_info), je HITL-Gate; P1 tool_set_onboarding_section (package=career FIX, KEIN HITL — markiert eine der 3 Onboarding-Sektionen profile_basics/skills_overview/goals_targets completed/skipped im Self-Onboarding-Modus, NICHT die Plan-Sektionen situation/targets/path). WS-2 Job-Matching: der werktägliche Scan-Cron (agent.career.cron_score_jobs) schickt Treffer-Karten (👍/👎 -> job:-Callback -> career.fn_handle_job_feedback, kein Orchestrator-Edit); ein optionaler Freitext-Grund nach 👍/👎 kommt per career-Route hierher -> der Advisor ordnet ihn der zuletzt bewerteten Stelle (read_job_matches, feedback_at DESC) zu und persistiert die Praeferenz via tool_set_career_preferences. CV-Vision tool_extract_cv (WS-1b) ist READ-ONLY (bezahlte Claude-API, kein DB-Write/kein Gate): liefert nur die rohen career_profile-Felder zurueck -> der Advisor spielt sie zurueck und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts. Ein weitergeleiteter Lebenslauf kommt INTENT-BASIERT hierher (Orchestrator routet den [attachment ...]-Marker nach Inhalt/Kontext: CV/Lebenslauf -> career, Finanzdokument -> finance; Marker verbatim, file_id daraus). KEIN Monitor-Tool (WS-4). Beratung/Profil/Plan + Leistbarkeit/Runway des Jobwechsels (kann ich mir den Wechsel leisten?) = hier (career_advisor, seit WS-5); allgemeine Geld-/Kauf-Fragen -> finance_advisor; Buchen -> agent.finance.' 320 640
 
     $stickyDomain = Build-Sticky 'Doc: Fixe Binding-Inputs' @(560, -200) -Header 'Ablauf' `
         'domain + context_name = fixe Binding-Inputs (+ e2e-Sentinel)' `
@@ -289,7 +310,7 @@ function Build-AgentCareerAdvisor {
     $nodes = @($nTrigger) + $gate.Nodes + @(
         $nLoadConfig, $nGateRead, $nLoadCtx, $nBuildInput, $nAgent,
         $nMemory,
-        $nToolSelect, $nToolLoad, $nToolReadPlan, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolSetProfile, $nToolExtractCv,
+        $nToolSelect, $nToolLoad, $nToolReadPlan, $nToolReadJobs, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolSetProfile, $nToolExtractCv,
         $nToolRecordJob, $nToolSetPrefs, $nToolSetOnb,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyGates
     ) + $mb.Nodes
@@ -312,6 +333,7 @@ function Build-AgentCareerAdvisor {
     $conns['postgres_select']        = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['load_context']           = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['read_plan']              = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['read_job_matches']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['web_search']             = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['expert_panel']           = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_save_plan_section'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

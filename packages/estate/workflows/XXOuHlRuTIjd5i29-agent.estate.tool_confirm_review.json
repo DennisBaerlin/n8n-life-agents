@@ -239,7 +239,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**estate.fn_confirm_review (Stempel last_reviewed_at, re-armt Jahres-Review)**\n\nPerson (Pflicht) -\u003e Slug via core.fn_resolve_person -\u003e Person unique?. estate.fn_confirm_review UPSERTet den Zeitstempel estate.person_records.last_reviewed_at=now() (Zeile entsteht bei Bedarf) -\u003e re-armt den WS-4-Jahres-Review (advisor.estate_review_days). KEIN HITL-Gate (Fortschritts-Flag-Klasse wie set_onboarding_section/set_case_task — kein Daten-/PII-Write, nur ein Zeitstempel; darum KEIN approval_matrix-Eintrag). Der adults_only-DB-Backstop (Kind -\u003e {ok:false}) ist die einzige Absicherung ohne Gate.",
+                                         "content":  "## DB-Automatik\n**estate.fn_confirm_review (Stempel last_reviewed_at, re-armt Jahres-Review)**\n\nPerson (Pflicht) -\u003e Slug via core.fn_resolve_person -\u003e Person unique?. estate.fn_confirm_review UPSERTet den Zeitstempel estate.person_records.last_reviewed_at=now() (Zeile entsteht bei Bedarf) -\u003e re-armt den WS-4-Jahres-Review (advisor.estate_review_days). KEIN HITL-Gate (Fortschritts-Flag-Klasse wie set_onboarding_section — kein Daten-/PII-Write, nur ein Zeitstempel; darum KEIN approval_matrix-Eintrag). Der adults_only-DB-Backstop (Kind -\u003e {ok:false}) ist die einzige Absicherung ohne Gate.",
                                          "height":  260,
                                          "width":  580,
                                          "color":  4

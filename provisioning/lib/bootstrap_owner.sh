@@ -272,7 +272,7 @@ _mint_api_key() {
 # PROSA-Gotcha (n8n-Doku-Pflicht): den produktiven setWebhook (URL + secret_token) setzt n8n SELBST,
 # sobald der Telegram-Trigger-Workflow aktiviert wird (deploy_workflows). Ein manueller setWebhook hier
 # liefe ihm voraus und wuerde ueberschrieben -> wir beschraenken uns auf das Menue + drop_pending_updates
-# (clearing). secret_token-Hardening + eigener Ingress = Phase 6.
+# (clearing). Den secret_token macht _ensure_ingress_id_key je Instanz geheim (deploy_workflows leitet die ids ab).
 _wire_telegram() {
   [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || { log "Kein TELEGRAM_BOT_TOKEN -> Telegram-Schritt uebersprungen."; return 0; }
   need_cmd curl || { warn "curl fehlt -> Telegram-Schritt uebersprungen."; return 0; }
@@ -348,6 +348,17 @@ _ensure_backup_secret() {
   fi
 }
 
+# Eingangs-Schluessel INGRESS_ID_KEY sicherstellen (Security-Audit 2026-10): n8n prueft echte Telegram-Zustellungen ueber
+# secret_token = <workflowId>_<nodeId> auf der Route <webhookId>/webhook — im Repo build-stabil und damit oeffentlich.
+# deploy_workflows leitet beide ids des telegramTrigger je Instanz aus diesem Schluessel ab. EINMAL erzeugen, nie
+# rotieren (sonst re-registriert jeder Deploy den Webhook neu); Wert nur ueber env_upsert (kein argv).
+_ensure_ingress_id_key() {
+  if [ -n "$(read_env_value "$N8N_OWNER_ENV_FILE" INGRESS_ID_KEY || true)" ]; then return 0; fi
+  env_upsert "$N8N_OWNER_ENV_FILE" INGRESS_ID_KEY "$(rand_hex 32)"
+  chmod 0640 "$N8N_OWNER_ENV_FILE" 2>/dev/null || true; chown "root:${N8N_USER}" "$N8N_OWNER_ENV_FILE" 2>/dev/null || true
+  ok "Eingangs-Schlüssel erzeugt (core.env) — die Telegram-Eingangsadresse ist je Installation geheim."
+}
+
 bootstrap_owner() {
   [ -n "${N8N_DB_NAME:-}" ] || die "N8N_DB_NAME nicht gesetzt."
   [ -n "${N8N_URL:-}" ]     || die "N8N_URL nicht gesetzt."
@@ -360,6 +371,7 @@ bootstrap_owner() {
   _ensure_backup_secret    # core.backup_key Backup-Key (idempotent, nie rotieren)
   _mint_api_key || true
   _persist_owner_env       # kohaerent persistieren (API-Key + RO-Passwoerter)
+  _ensure_ingress_id_key   # geheime Telegram-Eingangs-ids je Instanz (deploy_workflows)
   _wire_telegram
   _seed_owner_skeleton
   # Kein Pairing-Code mehr hier: der kommt im gefuehrten Ende (owner_connect_guided), sobald der Bot

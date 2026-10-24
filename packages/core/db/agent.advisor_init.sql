@@ -93,7 +93,19 @@ CREATE TRIGGER trg_advisor_plans_touch
 -- NICHT mehr direkt, sondern NUR ueber die publizierte SECURITY-DEFINER-Read-fn
 -- core.fn_advisor_read_plan(text) (EXECUTE-GRANT in core.fn_provision_package_roles). Darum hier
 -- KEIN direkter GRANT SELECT … TO finance_ro mehr (das war die Vor-Isolations-Form). Der Core-Host
--- (core_ro) liest advisor_plans ohnehin ueber seinen breiten agent-Grant (util_create_core_ro);
--- den Schreibpfad faehrt der Owner (fn_advisor_save_section/publish_plan); die Core-Advisor-Engine
--- (core.cron_review via core.fn_advisor_review_evaluate) liest den Plan ueber das DEFINER-Fenster.
+-- (core_ro) liest advisor_plans ueber seinen breiten agent-Grant (util_create_core_ro), aber NUR die
+-- Haushalts-Plaene (RLS unten); den Schreibpfad faehrt der Owner (fn_advisor_save_section/publish_plan);
+-- die Core-Advisor-Engine (core.cron_review via core.fn_advisor_review_evaluate) liest den Plan ueber das
+-- DEFINER-Fenster.
 -- ============================================================
+
+-- ROW-LEVEL-SECURITY (Owner-Entscheid 2026-10-24 "strikt privat"): Personen-Plaene (person_id NOT NULL, per_user-
+-- Domaenen wie career) sind fuer den Frei-SQL-Pfad core_ro unsichtbar; die Person liest ihren Plan nur ueber das
+-- gebundene Fenster core.fn_advisor_read_plan. Muster + Begruendung (current_user statt TO core_ro, Owner/DEFINER
+-- umgehen RLS, VIEW-Falle) wie agent.core_contexts in agent.core_init.sql.
+ALTER TABLE agent.advisor_plans ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS advisor_plans_all ON agent.advisor_plans;
+CREATE POLICY advisor_plans_all ON agent.advisor_plans USING (TRUE) WITH CHECK (TRUE);
+DROP POLICY IF EXISTS advisor_plans_ro_household_only ON agent.advisor_plans;
+CREATE POLICY advisor_plans_ro_household_only ON agent.advisor_plans AS RESTRICTIVE FOR SELECT
+    USING (current_user <> 'core_ro' OR person_id IS NULL);

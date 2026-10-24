@@ -5,7 +5,7 @@
 # Stempelt estate.person_records.last_reviewed_at = now() fuer EINE Person: die Bestaetigung
 # "Register durchgesehen, Stand aktuell" (re-armt den WS-4-Jahres-Review). KEIN HITL-Gate:
 # reiner Fortschritts-/Bestaetigungs-Flag ohne Daten-/PII-Write (Praezedenz
-# tool_set_onboarding_section/set_case_task) -> ruft KEIN agent.tool_human_approval -> KEIN
+# tool_set_onboarding_section) -> ruft KEIN agent.tool_human_approval -> KEIN
 # approval_matrix-Eintrag (approval_lint greift nur fuer Gate-Aufrufer). Der adults_only-DB-
 # Backstop bleibt (Kind -> {ok:false}) — die einzige Absicherung ohne Gate. Cred = estate_rw.
 function Build-EstateConfirmReview {
@@ -34,7 +34,7 @@ function Build-EstateConfirmReview {
     )
     $stickyFn = Build-Sticky 'Fortschritts-Flag (KEIN HITL) + adults_only-Backstop' @(660, -280) `
         'estate.fn_confirm_review (Stempel last_reviewed_at, re-armt Jahres-Review)' `
-        'Person (Pflicht) -> Slug via core.fn_resolve_person -> Person unique?. estate.fn_confirm_review UPSERTet den Zeitstempel estate.person_records.last_reviewed_at=now() (Zeile entsteht bei Bedarf) -> re-armt den WS-4-Jahres-Review (advisor.estate_review_days). KEIN HITL-Gate (Fortschritts-Flag-Klasse wie set_onboarding_section/set_case_task — kein Daten-/PII-Write, nur ein Zeitstempel; darum KEIN approval_matrix-Eintrag). Der adults_only-DB-Backstop (Kind -> {ok:false}) ist die einzige Absicherung ohne Gate.' 260 580
+        'Person (Pflicht) -> Slug via core.fn_resolve_person -> Person unique?. estate.fn_confirm_review UPSERTet den Zeitstempel estate.person_records.last_reviewed_at=now() (Zeile entsteht bei Bedarf) -> re-armt den WS-4-Jahres-Review (advisor.estate_review_days). KEIN HITL-Gate (Fortschritts-Flag-Klasse wie set_onboarding_section — kein Daten-/PII-Write, nur ein Zeitstempel; darum KEIN approval_matrix-Eintrag). Der adults_only-DB-Backstop (Kind -> {ok:false}) ist die einzige Absicherung ohne Gate.' 260 580
     $nodes = @($trig, $resPerson, $ifBad, $errBad, $confirm, $ifWriteOk, $errWrite, $ret, $stickyFn)
     $conns = [ordered]@{
         'Start'                   = @{ main = @( ,@( E 'Resolve Person' ) ) }

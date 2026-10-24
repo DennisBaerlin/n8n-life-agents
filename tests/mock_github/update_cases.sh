@@ -71,6 +71,9 @@ sign() {
   ( cd "$REL/$1" && sha256sum "n8n-life-agents-$1.tar.gz" install.sh > SHA256SUMS )
   gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$2" --detach-sign -o "$REL/$1/SHA256SUMS.sig" "$REL/$1/SHA256SUMS"
 }
+# Alle stabilen Releases gueltig signiert: seit dem Security-Audit 2026-10 verlangt `lifeagents update` immer einen
+# installierten Schluesselbund (kein SHA256-Rueckfall mehr) -> die Faelle 1-12 laufen gegen das Test-Bund.
+for t in v9.9.8 v9.9.9 v9.9.10; do sign "$t" 'update-test project'; done
 
 # --- Mock starten -------------------------------------------------------------------------------------------
 for d in /proc/[0-9]*; do
@@ -86,9 +89,9 @@ curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null || { echo "FAIL setup
 
 # --- Helfer -------------------------------------------------------------------------------------------------
 # Schluesselbund-Modus immer AUSDRUECKLICH: der Substrat-Baum traegt den echten Projekt-Schluessel (install_release_keyring
-# legt ihn nach /etc) — die Faelle 1-12 pruefen den Sidecar-Modus (Bund-Override auf eine fehlende Datei), ab 13 setzt
-# EXTRA_ENV das Bund des Test-Schluessels (eine spaetere Zuweisung gewinnt bei env).
-RUNENV=(LIFEAGENTS_RELEASE_KEYRING=/nonexistent/release-signing.gpg
+# legt ihn nach /etc) — alle Faelle laufen gegen das Bund des Test-Schluessels; EXTRA_ENV ueberschreibt es gezielt
+# (eine spaetere Zuweisung gewinnt bei env), Fall 17 prueft den Abbruch ohne Bund.
+RUNENV=(LIFEAGENTS_RELEASE_KEYRING="$W/kr.gpg"
         PROVISION_GH_API="$API" PROVISION_REPO_SLUG="$SLUG" LIFEAGENTS_TELEGRAM_API="http://127.0.0.1:${TGPORT}"
         TELEGRAM_BOT_TOKEN=mock-token OWNER_CHAT_ID=4242 N8N_DB_NAME="$DB")
 cli() { OUT="$(env "${RUNENV[@]}" ${EXTRA_ENV:+$EXTRA_ENV} lifeagents update "$@" 2>&1 </dev/null)"; RC=$?; }
@@ -221,6 +224,14 @@ if [ "$RC" = 0 ] && printf '%s' "$OUT" | grep -q 'Unterschrift + SHA256 verifizi
 sign v9.9.10 'update-test evil'
 OUT="$(env "${RUNENV[@]}" LIFEAGENTS_RELEASE_KEYRING="$W/kr.gpg" bash "$LIB/provisioning/install.sh" --version v9.9.10 --profile dev 2>&1 </dev/null)"; RC=$?
 if [ "$RC" != 0 ] && printf '%s' "$OUT" | grep -q 'Unterschrift von Release v9.9.10 ist ungültig'; then pass install_sig_foreign; else fail install_sig_foreign "rc=$RC $(show "$OUT")"; fi
+# 17 kein installierter Schluesselbund -> Abbruch vor dem Download-Entpacken (Security-Audit 2026-10: kein stiller
+#    Rueckfall auf das SHA256-Sidecar aus demselben Release), nichts installiert
+sign v9.9.10 'update-test project'
+EXTRA_ENV="LIFEAGENTS_RELEASE_KEYRING=/nonexistent/release-signing.gpg"
+installed v9.9.8; reset_db; scenario ok; tg_clear; id="$(request v9.9.10)"; cli --run-requested
+o="$(outcome "$id")"
+if [ "${o%%|*}" = failed ] && [ "$(echo "$o" | cut -d'|' -f3)" = signature ] && [ "$(cat "$VER")" = v9.9.8 ]; then pass no_keyring_refused
+else fail no_keyring_refused "outcome=$o ver=$(cat "$VER") $(show "$OUT")"; fi
 unset EXTRA_ENV
 
 exit "$fails"

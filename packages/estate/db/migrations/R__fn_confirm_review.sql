@@ -5,7 +5,7 @@
 --   Vergleich advisor.estate_review_days). UPSERT: existiert noch keine Stammdaten-Zeile,
 --   entsteht sie mit dem Stempel (die Review-Bestaetigung soll nie an einer fehlenden Zeile
 --   scheitern). person_id loest das TOOL via core.fn_resolve_person auf (Pflicht-Input).
---   KEIN HITL am Tool (Fortschritts-Flag wie set_onboarding_section/set_case_task — kein
+--   KEIN HITL am Tool (Fortschritts-Flag wie set_onboarding_section — kein
 --   Domaenen-/PII-Write, nur ein Zeitstempel); der adults_only-DB-Backstop bleibt trotzdem:
 --   core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, person_id (Slug, Pflicht).

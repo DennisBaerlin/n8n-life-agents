@@ -114,15 +114,16 @@ install_postgres() {
   done
   _pg_super pg_isready -q || die "PostgreSQL-Cluster nimmt keine Verbindungen an."
 
-  # --- role + database (guarded; password is hex → safe as a SQL literal) ---
+  # --- role + database (guarded). Passwort nur ueber die 600-Treiberdatei als psql-Variable (nie im argv, quoting-sicher). ---
   log "n8n-DB-Rolle/Datenbank sicherstellen ..."
   [ -n "${N8N_DB_PASSWORD:-}" ] || die "N8N_DB_PASSWORD nicht gesetzt (prepare_n8n_env muss vorher laufen)."
 
-  if [ "$(_pg_super psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${N8N_DB_USER}'")" = "1" ]; then
-    _pg_super psql -qc "ALTER ROLE ${N8N_DB_USER} WITH LOGIN PASSWORD '${N8N_DB_PASSWORD}';"
-  else
-    _pg_super psql -qc "CREATE ROLE ${N8N_DB_USER} WITH LOGIN PASSWORD '${N8N_DB_PASSWORD}';"
-  fi
+  local verb=CREATE
+  if [ "$(_pg_super psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${N8N_DB_USER}'")" = "1" ]; then verb=ALTER; fi
+  # N8N_DB_NAME=postgres: die App-Datenbank existiert beim Erstlauf noch nicht (createdb folgt unten).
+  { psql_setvar dbpw "$N8N_DB_PASSWORD"
+    printf "%s ROLE %s WITH LOGIN PASSWORD :'dbpw';\n" "$verb" "$N8N_DB_USER"
+  } | N8N_DB_NAME=postgres psql_superuser_driver -q || die "n8n-DB-Rolle '${N8N_DB_USER}' konnte nicht angelegt/aktualisiert werden."
 
   if [ "$(_pg_super psql -tAc "SELECT 1 FROM pg_database WHERE datname='${N8N_DB_NAME}'")" != "1" ]; then
     # Kodierung ausdruecklich (template0, sonst erbt sie template1 des Clusters) — contract_lint Check 20.

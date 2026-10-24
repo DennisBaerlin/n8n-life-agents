@@ -25,6 +25,9 @@ $ApprovalSelfFn   = 'agent.fn_set_own_context_facts'
 $ApprovalVerbFloor = @{ save = 2; publish = 2; invite = 2
                         set = 1; close = 1; delete = 1; void = 1; settle = 1; sell = 1; reconcile = 1; commit = 1
                         create = 0; book = 0; record = 0; cancel = 0; export = 0 }
+# Break-Glass-Ausnahme vom Verb-Floor: ein Manifest-Eintrag mit "break_glass": true darf owner_info tragen, wo das Verb
+# strenger verlangt — nur fuer Writes, die ein Hinterbliebener ohne den Owner koennen MUSS (owner_approval deadlockte,
+# wenn der Owner der Betroffene ist); die kompensierende Kontrolle ist owner_info, die Begruendung steht im reason.
 
 function Get-ApprovalMatrix {
     param([Parameter(Mandatory)][string]$RepoRoot)
@@ -44,7 +47,8 @@ function Get-ApprovalMatrix {
             if (-not $verb -or -not $ApprovalVerbFloor.ContainsKey($verb)) {
                 $errors += "${pkg}: unbekanntes Verb-Praefix in '$wf' (erlaubt: $(($ApprovalVerbFloor.Keys | Sort-Object) -join ', ')) — neues Verb bewusst klassifizieren."; continue
             }
-            if ($tier -ne 'self' -and $ApprovalTierRank[$tier] -lt $ApprovalVerbFloor[$verb]) {
+            $breakGlass = ($p.Value.break_glass -eq $true) -and $tier -eq 'owner_info'
+            if ($tier -ne 'self' -and -not $breakGlass -and $ApprovalTierRank[$tier] -lt $ApprovalVerbFloor[$verb]) {
                 $errors += "${pkg}: '$wf' ist als '$tier' SCHWAECHER getiert als der Verb-Praefix '$verb' verlangt — Schwaechen verboten, strenger waere ok."; continue
             }
             $entries[$wf] = [pscustomobject]@{ Tier = $tier; Package = $pkg }

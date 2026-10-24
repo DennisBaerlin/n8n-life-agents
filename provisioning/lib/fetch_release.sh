@@ -186,10 +186,14 @@ fetch_and_run_release() {
   log "Release ${tag} von ${PROVISION_REPO_SLUG} laden (SHA256-verifiziert) ..."
 
   local tarball_name="${PROVISION_ASSET_BASENAME}-${tag}.tar.gz"
-  # Pruefen VOR dem Entpacken (gh-download-Block): mit installiertem Schluesselbund Unterschrift + Pruefsummenliste,
-  # sonst das SHA256-Sidecar. Bricht ab, bevor irgendetwas entpackt oder ausgefuehrt wird.
+  # Pruefen VOR dem Entpacken (gh-download-Block): Unterschrift + Pruefsummenliste gegen den installierten
+  # Schluesselbund. Fehlt er, bricht das Update ab (Security-Audit 2026-10): seit v0.14.0 bringt jede Installation ihn
+  # mit — ein fehlender Bund hiesse sonst still "nur SHA256 aus demselben Release" (keine Echtheit). Den Bund holt
+  # install.sh zurueck (der Schluessel ist dort eingebettet). Bricht ab, bevor irgendetwas entpackt oder ausgefuehrt wird.
   result_set stage verify
-  _release_fetch_verify "$rel" "$work" "$tarball_name" "$tag" "$(_release_keyring)"
+  local kr; kr="$(_release_keyring)"
+  [ -n "$kr" ] || die_because signature "Der Release-Signierschlüssel fehlt (/etc/lifeagents/release-signing.gpg) — ohne ihn lässt sich die Echtheit eines Updates nicht prüfen, ABBRUCH. Abhilfe: das Installationsskript install.sh erneut ausführen (es bringt den Schlüssel mit und behält deine Daten)."
+  _release_fetch_verify "$rel" "$work" "$tarball_name" "$tag" "$kr"
 
   tar -xzf "$work/$tarball_name" -C "$work" || die "Entpacken von '$tarball_name' fehlgeschlagen."
   local applier=''

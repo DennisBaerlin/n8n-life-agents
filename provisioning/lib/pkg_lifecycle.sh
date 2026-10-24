@@ -745,6 +745,13 @@ pkg_cmd_install() {
   [ -z "$fail_list" ]
 }
 
+# _pkg_provision_roles <pkg> — core.fn_provision_package_roles (Paket-Rollen + Isolation + person-private Tabellen),
+#   idempotent; Fehler = die.
+_pkg_provision_roles() {
+  _pkg_psql_exec "DO \$do\$ DECLARE r jsonb; BEGIN r := core.fn_provision_package_roles(jsonb_build_object('package','${1}')); IF NOT (r->>'ok')::bool THEN RAISE EXCEPTION 'fn_provision_package_roles(%): %', '${1}', r; END IF; END \$do\$;" \
+    || die "Rollen-Provisionierung '$1' fehlgeschlagen."
+}
+
 # --- pkg_install_one: Gate -> register(installing) -> Migration -> Rollen -> Creds -> Seed -> Deploy -> active -
 # Der per-Paket-Install-Zustandsfluss (dpkg-analog, zwei Status-Stufen installing->active). Idempotent;
 # bei Teil-Fehler bleibt status='installing' (kein Auto-Rollback) -> ein Re-Run konvergiert. EIN Code-Pfad
@@ -787,8 +794,7 @@ pkg_install_one() {
   apply_schema "$pkg"
 
   # Stufe 3: Paket-Rollen <pkg>_rw/<pkg>_ro (LOGIN ohne Passwort) + Isolation, idempotent.
-  _pkg_psql_exec "DO \$do\$ DECLARE r jsonb; BEGIN r := core.fn_provision_package_roles(jsonb_build_object('package','${pkg}')); IF NOT (r->>'ok')::bool THEN RAISE EXCEPTION 'fn_provision_package_roles(%): %', '${pkg}', r; END IF; END \$do\$;" \
-    || die "Rollen-Provisionierung '$pkg' fehlgeschlagen."
+  _pkg_provision_roles "$pkg"
 
   # Stufe 4: Passwoerter (generisch, override-first -> /etc/lifeagents/<pkg>.env, IMMER ALTER ROLE)
   #   + Paket-Secrets-Wizard (manifest-deklarierte Fremd-API-Keys, interaktiv-gegatet; Install-UX-Phase)
@@ -806,6 +812,10 @@ pkg_install_one() {
   else                          SEED_PKG="$pkg" seed_data; fi
   # Stufe 5b: vorab erfragte Paket-Einstellungen (Manifest .config.prompt) in die eben geseedeten Zeilen.
   _pkg_apply_settings "$pkg"
+  # Stufe 5c: Rollen erneut (idempotent) — die person-privaten Tabellen leitet fn_provision_package_roles aus den
+  #   per_user-Scopes ab, die erst der Seed (Stufe 5) in core.context_scopes schreibt; beim Erst-Install sperrte
+  #   Stufe 3 sie sonst erst beim naechsten Update.
+  _pkg_provision_roles "$pkg"
 
   # Stufe 6: nur die Paket-Workflows deployen (Wortgrenze-Prefix aus provides.agents) + aktivieren.
   deploy_workflows "$pkg"

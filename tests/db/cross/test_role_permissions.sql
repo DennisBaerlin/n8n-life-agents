@@ -1300,4 +1300,32 @@ BEGIN
   RAISE NOTICE 'PASS [Rollen-Zaun generisch: % Paket-Rollen ohne agent-USAGE / Host-Tabellen / unpublizierte core-fns]', v_n;
 END $$;
 
+-- ===== Security-Audit 2026-10: neue core_ro-Fenster unter der echten Rolle (kein permission denied) =====
+--   agent.fn_monitor_ro_eval  (Monitor-Specs; DEFINER, Eigentuemer core_ro; die App-Rolle erbt EXECUTE)
+--   core.fn_advisor_read_plan (read_plan unter der Haupt-Credential = App-Rolle, erbt EXECUTE von core_ro)
+--   career.fn_read_job_matches (read_job_matches unter career_rw)
+DO $$
+DECLARE v_num numeric; v_cnt int;
+BEGIN
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    v_num := agent.fn_monitor_ro_eval('SELECT 7', 'pg_catalog');
+    SELECT count(*) INTO v_cnt FROM core.fn_advisor_read_plan('__rp_none__', NULL);
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> fn_monitor_ro_eval / fn_advisor_read_plan]: %', SQLERRM;
+  END;
+  IF v_num IS DISTINCT FROM 7 THEN RAISE EXCEPTION 'FAIL [core_ro -> fn_monitor_ro_eval]: erwartet 7, got %', v_num; END IF;
+  BEGIN
+    SET LOCAL ROLE career_rw;
+    SELECT count(*) INTO v_cnt FROM career.fn_read_job_matches('900199');
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [career_rw -> career.fn_read_job_matches]: %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [core_ro -> fn_monitor_ro_eval / fn_advisor_read_plan, career_rw -> fn_read_job_matches: kein permission denied]';
+END $$;
+
 ROLLBACK;

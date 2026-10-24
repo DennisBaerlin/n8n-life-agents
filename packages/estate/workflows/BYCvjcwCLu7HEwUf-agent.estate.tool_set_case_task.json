@@ -30,7 +30,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027case_task_id\u0027)::bigint AS case_task_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027case_status\u0027 AS case_status, (r-\u003e\u003e\u0027case_completed\u0027)::boolean AS case_completed FROM estate.fn_set_case_task($1::jsonb) AS r;",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027estate.fn_set_case_task(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, case_task_id: $(\u0027Start\u0027).item.json.case_task_id, status: $(\u0027Start\u0027).item.json.status }) }}"
                                                      }
@@ -41,6 +41,112 @@
                                        220,
                                        0
                                    ],
+                      "id":  "267ab6f0-74f1-5217-ac24-aa05482888fa",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "65df28aa-0b02-59a7-9a17-042300c21ad0",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "5189a0ad-3dd5-5eb9-a7ad-74a8e2cc51fb",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a59e2ee8-9e50-5bad-b853-55297abca706",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a9fe59a4-5d99-5523-bff7-11fabc8c7982",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2c18fc13-a859-5f38-b84c-ea57968ab596",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "91ea136f-4663-52af-becb-9fc5218d3648",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "524db419-a9d9-5a2b-b808-cdf15cbd4bf7",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "639f9876-6adc-50e8-9ac2-1dba808115f0",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027case_task_id\u0027)::bigint AS case_task_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027case_status\u0027 AS case_status, (r-\u003e\u003e\u0027case_completed\u0027)::boolean AS case_completed FROM estate.fn_set_case_task(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, case_task_id: $(\u0027Start\u0027).item.json.case_task_id, status: $(\u0027Start\u0027).item.json.status, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
                       "id":  "16f927f1-6d52-5a3b-942c-07369c9d9a53",
                       "name":  "Set task (atomic)",
                       "credentials":  {
@@ -49,6 +155,163 @@
                                                            "name":  "Postgres estate_rw (read-write)"
                                                        }
                                       }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT ct.title, ct.case_id FROM estate.case_tasks ct WHERE ct.id = ($1::jsonb-\u003e\u003e\u0027case_task_id\u0027)::bigint;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ case_task_id: $(\u0027Start\u0027).item.json.case_task_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "a4aac1fa-a14d-51a4-ae8b-8a199f26114d",
+                      "name":  "Read task",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d1d9012a-acc4-559b-9227-5aba985f6a3c",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027estate.hitl.set_case_task\u0027, lines: [ { label: \u0027estate.label.case_no\u0027, kind: \u0027text\u0027, value: ($(\u0027Read task\u0027).item.json.case_id) }, { label: \u0027estate.label.task\u0027, kind: \u0027text\u0027, value: ($(\u0027Read task\u0027).item.json.title) }, { label: \u0027estate.label.new_status\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027estate.enum.task_status\u0027 } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "f4050c10-5931-5abf-a19e-03706b7bee12",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "e90d5bf4-c0a1-5198-b662-83c7f778d352",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "8cfa71da-fffd-5a45-90a9-49593865c859",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "89abdc8e-f3f3-53e3-a404-2604e7e4df7c",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c4f09315-eea7-5c4e-a2b8-b5436e87ad3f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fcc11c51-d89a-5738-937e-fbc84379dcd5",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "76635299-cec3-5eaa-916b-9fe4f81c1391",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_case_task action (the task status stays unchanged). Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "b3e75afa-2304-5927-b6f9-b0702ea0ecda",
+                      "name":  "Return cancelled"
                   },
                   {
                       "parameters":  {
@@ -78,7 +341,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       440,
+                                       1760,
                                        0
                                    ],
                       "id":  "12d72542-2f90-538c-ae80-f112196a5674",
@@ -109,7 +372,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       660,
+                                       1980,
                                        200
                                    ],
                       "id":  "45593475-86e7-5ca9-ad4c-e64b22da2f07",
@@ -158,7 +421,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       660,
+                                       1980,
                                        0
                                    ],
                       "id":  "d2656df6-7303-5e0f-9f7c-bd5a92f6505e",
@@ -166,19 +429,35 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**estate.fn_set_case_task (Task-Status; Auto-Complete-Trigger)**\n\nKEIN HITL-Gate (Fortschritts-Flag-Klasse wie confirm_review/set_onboarding_section -\u003e kein approval_matrix-Eintrag). Der adults_only-DB-Backstop (Kind -\u003e {ok:false}) + der \"Task in OFFENEM Fall\"-Guard sind die Absicherung. done -\u003e done_at. Wird die letzte offene Task done/n.a., kippt der Auto-Complete-Trigger den Fall auf completed (Post-State case_completed=true).",
-                                         "height":  280,
-                                         "width":  560,
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = estate.fn_set_case_task mit denselben Werten, immer zurückgerollt. ok:false (unbekannte Task, Fall nicht offen, ungültiger Status, nicht erwachsen) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Read task (Titel + Fall-Nr. für die Karte) -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  300,
+                                         "width":  400,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
                       "typeVersion":  1,
                       "position":  [
                                        220,
-                                       -240
+                                       -280
                                    ],
-                      "id":  "1a3f2541-4b1c-592a-a8a3-341f5848824d",
-                      "name":  "Fortschritts-Flag (KEIN HITL) + Auto-Complete"
+                      "id":  "2187509b-816a-528d-900d-75d2fd9f53cf",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_set_case_task (Task-Status; Auto-Complete-Trigger)**\n\nOwner-Entscheid 2026-10-24 (Security-Audit): jeder Statuswechsel einer Checklisten-Task braucht einen Tipp auf Bestätigen — eine Pflichtfrist darf nie still per Modell abgehakt werden (etwa nach einer Anweisung in einem gelesenen Dokument). Stufe owner_info wie create_case/cancel_case (Break-Glass: der Owner kann der Betroffene sein; ein erwachsenes Mitglied bestätigt selbst, der Owner bekommt die Info). Neue Tasks (create_case_task) bleiben ohne Karte. adults_only-DB-Backstop + \"Task in OFFENEM Fall\"-Guard in der fn. done -\u003e done_at. Wird die letzte offene Task done/n.a., kippt der Auto-Complete-Trigger den Fall auf completed (Post-State case_completed=true).",
+                                         "height":  300,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -280
+                                   ],
+                      "id":  "e4a59afd-3ba6-51cd-8b00-9fe96594d149",
+                      "name":  "Karte beim Abhaken (owner_info) + Auto-Complete"
                   }
               ],
     "connections":  {
@@ -187,12 +466,92 @@
                                                    [
                                                        {
                                                            "index":  0,
-                                                           "node":  "Set task (atomic)",
+                                                           "node":  "Dry run",
                                                            "type":  "main"
                                                        }
                                                    ]
                                                ]
                                   },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Read task",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Read task":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Build Approval Summary",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set task (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Set task (atomic)":  {
                                                   "main":  [
                                                                [

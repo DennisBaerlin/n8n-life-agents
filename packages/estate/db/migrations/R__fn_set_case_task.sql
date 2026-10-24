@@ -1,8 +1,8 @@
 -- ============================================================
--- estate.fn_set_case_task (ATOMIC WRITE — WS-3, Fortschritts-Flag-Klasse: KEIN HITL am Tool)
---   Setzt den Status EINER Task (open|done|not_applicable). Fortschritts-Flag (Praezedenz
---   set_onboarding_section/confirm_review) -> das Tool ruft KEIN Gate; der adults_only-DB-Backstop
---   bleibt die einzige Absicherung (Kind -> {ok:false}). GUARD: die Task muss zu einem OFFENEN Fall
+-- estate.fn_set_case_task (ATOMIC WRITE — WS-3; das Tool fragt seit dem Security-Audit 2026-10 per Karte, owner_info)
+--   Setzt den Status EINER Task (open|done|not_applicable). Das Tool laeuft als Probelauf VOR der Karte und nach
+--   dem Tipp als Write (Owner-Entscheid "Karte nur bei Abhaken"); der est:-Callback ist selbst ein menschlicher
+--   Tipp. adults_only-DB-Backstop (Kind -> {ok:false}). GUARD: die Task muss zu einem OFFENEN Fall
 --   gehoeren (Tasks abgeschlossener/abgebrochener/superseded Faelle sind eingefroren). done -> done_at
 --   materialisiert. Der Auto-Complete-Trigger kann den Fall danach auf 'completed' kippen -> der
 --   Post-State liest den Fall-Status FRISCH (nach dem Trigger, in derselben Tx).

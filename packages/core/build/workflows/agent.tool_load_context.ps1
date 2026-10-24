@@ -31,7 +31,7 @@ function Build-AgentToolLoadContext {
 
     # Assembly-SQL: $1 = jsonb { agent_name, include_manifest } (Build-Pg-Standard). Sichtbarkeit =
     # (load_strategy x agent_name): static+NULL/agent -> System-Prompt; lazy -> Manifest (nur wenn
-    # include_manifest != 'false').
+    # include_manifest != 'false'; physische per_user-Zeilen nie — Security-Audit 2026-10).
     $sql = @'
 WITH static_docs AS (
   SELECT string_agg(content, E'\n\n---\n\n'
@@ -50,6 +50,7 @@ manifest AS (
     FROM agent.core_contexts
    WHERE load_strategy = 'lazy'
      AND (agent_name = (($1::jsonb)->>'agent_name') OR agent_name IS NULL)
+     AND NOT agent.fn_is_per_user_row(name)
 )
 SELECT COALESCE((SELECT static_part FROM static_docs), '')
     || CASE WHEN (($1::jsonb)->>'include_manifest') = 'false' THEN '' ELSE COALESCE((SELECT manifest_part FROM manifest), '') END AS system_prompt;
@@ -91,7 +92,7 @@ Die Assembly-SQL lebt hier im Workflow, nicht in der DB (siehe Verweis in core_i
 ## agent.tool_load_context
 
 Gemeinsamer Sub-Workflow: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest.
-EINE Postgres-Query: static-concat der static-Docs aus agent.core_contexts (global zuerst, dann agent-spezifisch) + optional das Lazy-Manifest (Name+Description der lazy-Contexts). Rueckgabe: system_prompt.
+EINE Postgres-Query: static-concat der static-Docs aus agent.core_contexts (global zuerst, dann agent-spezifisch) + optional das Lazy-Manifest (Name+Description der lazy-Contexts; OHNE die physischen per_user-Zeilen '<base>__<person_id>' anderer Personen — agent.fn_is_per_user_row; gelesen wird per Basisname + eigener chat_id). Rueckgabe: system_prompt.
 Wird von jedem Agent-Workflow VOR dem AI-Node aufgerufen. Sichtbarkeit = (load_strategy x agent_name) -> siehe CLAUDE.md Vier-Schichten-Memory.
 '@
             height  = 240

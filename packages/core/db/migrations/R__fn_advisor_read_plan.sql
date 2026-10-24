@@ -5,17 +5,17 @@
 --   Infra fuer die Advisor-Domaenen). Der Advisor-Agent liest seinen Plan-Stand zur Laufzeit per freiem
 --   postgres_select (Interview fortsetzen / publizierte Version pruefen); unter der engen Rolle erreicht
 --   er agent.* nicht direkt → er ruft stattdessen diese Fn:
---       SELECT status, version, interview_state, plan_md FROM core.fn_advisor_read_plan('career');
+--       SELECT status, version, interview_state, plan_md FROM core.fn_advisor_read_plan('finance');
 --
 --   P0c PERSON-SCOPE (Paritaet zum Schreibpfad fn_advisor_save_section/_publish_plan): der Plan-Schluessel
 --   ist (domain, person_id). Die Domain -> ihr Plan-Context (core.advisors.plan_context, Fallback
 --   '<domain>_planning') -> dessen scope (core.context_scopes). household -> person_id IS NULL (der eine
 --   Haushalts-Plan; finance/financial_planning). per_user -> die Person:
 --     * chat_id geliefert + aufgeloest (fn_resolve_sender, NIE LLM) -> dessen person_id;
---     * KEIN/unaufgeloester chat_id -> agent.fn_owner_person_id() (Owner-Plan). Das ist der dokumentierte
---       P0c-Single-Person-Fallback: der career_advisor liest seinen Plan per LLM-Frei-SQL ('career', 1-Arg,
---       KEIN spoofbarer $fromAI-chat_id) -> er bekommt den Owner-Plan. Die echte Per-Person-Resume-Faedelung
---       (build-fixer chat_id) kommt mit P2.
+--     * KEIN/unaufgeloester chat_id -> leere Menge (fail-closed; der fruehere Owner-Fallback ist entfernt).
+--     * Aufruf aus einer Frei-SQL-Sitzung (core.fn_is_free_sql_session: Login-Rolle *_ro) -> leere Menge: dort waere
+--       die chat_id LLM-gesteuert. Der career_advisor liest seinen Plan ueber das gebundene read_plan-Werkzeug unter
+--       der Haupt-Credential (Security-Audit 2026-10, "strikt privat").
 --
 --   Liefert die OPERATIV relevanten Zeilen (draft + active) — KEINE superseded-Historie. p_domain deckt auch
 --   den E2E-Sentinel '__e2e_finance__' ab (household, kein scope-Eintrag -> person_id NULL, m4-verifiziert).
@@ -50,12 +50,17 @@ BEGIN
     -- Domain -> Plan-Context (Registry/Fallback) -> scope.
     v_ctx   := COALESCE((SELECT a.plan_context FROM core.advisors a WHERE a.domain = p_domain), p_domain || '_planning');
     v_scope := COALESCE((SELECT cs.scope FROM core.context_scopes cs WHERE cs.context_name = v_ctx), 'household');
-    -- Ziel-person_id: household -> NULL; per_user -> aufgeloester Sender ODER Owner-Fallback (P0c Single-Person).
+    -- Ziel-person_id: household -> NULL; per_user -> aufgeloester Sender, sonst nichts (fail-closed).
     IF v_scope = 'per_user' THEN
+        IF core.fn_is_free_sql_session() THEN
+            RETURN;
+        END IF;
         IF p_chat_id ~ '^[0-9]+$' THEN
             v_pid := agent.fn_resolve_sender(p_chat_id::bigint) ->> 'person_id';
         END IF;
-        v_pid := COALESCE(v_pid, agent.fn_owner_person_id());
+        IF v_pid IS NULL THEN
+            RETURN;
+        END IF;
     END IF;
 
     RETURN QUERY
@@ -70,4 +75,5 @@ $$;
 
 REVOKE ALL ON FUNCTION core.fn_advisor_read_plan(text, text) FROM public;
 -- EXECUTE-GRANT an die Paket-Leserollen erteilt core.fn_provision_package_roles (idempotent,
--- to_regprocedure-geguardet auf die 2-Arg-Signatur) — hier nur der PUBLIC-REVOKE als Default-Schutz.
+-- to_regprocedure-geguardet auf die 2-Arg-Signatur), an core_ro (-> App-Rolle per Mitgliedschaft, read_plan-Werkzeug)
+-- util_create_core_ro.sql — hier nur der PUBLIC-REVOKE als Default-Schutz.

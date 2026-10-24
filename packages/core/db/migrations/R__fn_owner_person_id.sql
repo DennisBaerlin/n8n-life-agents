@@ -7,8 +7,6 @@
 --
 --   ZWECK (P0c): EINE deterministische Quelle fuer den Owner-Anker, statt das Muster
 --   in mehreren fns/Migrationen zu duplizieren (DRY). Konsumenten:
---     * core.fn_advisor_read_plan (per_user-Fallback, wenn kein chat_id geliefert wird:
---       der LLM-Frei-SQL-Lesepfad des career_advisor -> Owner-Plan, P0c Single-Person)
 --     * career.fn_advisor_review (liest career_planning/career_profile am Owner-Suffix,
 --       da der geteilte Review-Wrapper KEINE Person-Dimension hat -> P0c Single-Person)
 --     * cron.refresh_market_signals (always-on: liest career_planning am Owner-Suffix)

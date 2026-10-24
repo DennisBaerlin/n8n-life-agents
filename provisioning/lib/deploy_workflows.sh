@@ -55,6 +55,12 @@ _owner_chat_id_db() {
       "SELECT pp->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) pp WHERE c.name='family' AND pp->>'role'='owner' AND jsonb_typeof(pp->'telegram_user_id') <> 'null' LIMIT 1;" \
       2>/dev/null | head -n1 || true)"
   fi
+  # Nur reine Ziffern (Telegram-uid): der Wert landet in einem root-sed-Ausdruck (deploy_workflows) — ein anderer
+  # DB-Inhalt wird verworfen statt ausgefuehrt (Security-Audit 2026-10).
+  if [ -n "$v" ] && ! printf '%s' "$v" | grep -qE '^[0-9]+$'; then
+    warn "Owner-chat_id in der DB ist keine Zahl — ignoriert (family-Facts pruefen)."
+    v=''
+  fi
   printf '%s' "$v"
 }
 
@@ -95,8 +101,27 @@ _resolve_owner_chat_id() {
   local v
   v="$(_owner_chat_id_db)"
   [ -n "$v" ] || v="${OWNER_CHAT_ID:-}"
-  [ -n "$v" ] || v='0'
+  printf '%s' "$v" | grep -qE '^[0-9]+$' || v='0'
   printf '%s' "$v"
+}
+
+# _ingress_uuid <key> <seed> -> UUID (Version-4-Form), deterministisch je Instanz aus sha256(key:seed). Fuer die
+#   telegramTrigger-ids (s. deploy_workflows): stabil ueber Deploys (Fingerprint/Only-changed), aber ohne den
+#   Instanz-Schluessel nicht aus dem oeffentlichen Repo ableitbar. printf ist ein Builtin -> der Schluessel steht in
+#   keiner Prozess-Argumentliste.
+_ingress_uuid() {
+  local h; h="$(printf '%s:%s' "$1" "$2" | sha256sum | cut -c1-32)"
+  printf '%s-%s-4%s-%x%s-%s' "${h:0:8}" "${h:8:4}" "${h:13:3}" $(( (16#${h:16:1} & 3) | 8 )) "${h:17:3}" "${h:20:12}"
+}
+
+# _ingress_id_map <workflow.json> <key> -> JSON-Objekt {Repo-id: Instanz-id} fuer id + webhookId jedes telegramTrigger.
+_ingress_id_map() {
+  local f="$1" key="$2" v
+  jq -r '.nodes[]? | select(.type == "n8n-nodes-base.telegramTrigger") | .id, (.webhookId // empty)' "$f" \
+    | while IFS= read -r v; do
+        [ -n "$v" ] && printf '%s\t%s\n' "$v" "$(_ingress_uuid "$key" "$v")"
+      done \
+    | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}'
 }
 
 # (Der gegatete Deploy-Restart + seine Helfer _list_active_workflow_ids/_deploy_wait_health sind ENTFERNT:
@@ -477,6 +502,11 @@ deploy_workflows() {
 
   local cfg_map; cfg_map="$(_schedule_placeholder_map)"
   printf '%s' "$cfg_map" | jq -e 'type == "object"' >/dev/null 2>&1 || cfg_map='{}'
+  # Geheime Telegram-Eingangs-ids je Instanz (Security-Audit 2026-10): der secret_token <workflowId>_<nodeId> und die
+  # Route <webhookId>/webhook stehen build-stabil im oeffentlichen Repo -> id + webhookId jedes telegramTrigger werden
+  # hier aus INGRESS_ID_KEY (core.env, bootstrap_owner._ensure_ingress_id_key) abgeleitet. Ohne Schluessel: Abbruch
+  # beim ersten Trigger-Workflow, nie ein Rueckfall auf die oeffentlichen ids.
+  local ingress_key; ingress_key="$(read_env_value "${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" INGRESS_ID_KEY || true)"
   local hitl_chat; _hitl_chat_approval "$scope" >/dev/null; hitl_chat="$_HITL_CHAT_APPROVAL_VAL"   # Cache im Eltern-Prozess setzen
 
   local staging; staging="$(mktemp -d /tmp/n8n_wf_deploy.XXXXXX)"; chmod 0755 "$staging"
@@ -501,8 +531,16 @@ deploy_workflows() {
             continue ;;
         esac
       fi
+      local ing_map='{}'
+      if jq -e 'any(.nodes[]?; .type == "n8n-nodes-base.telegramTrigger")' "$f" >/dev/null 2>&1; then
+        if [ -z "$ingress_key" ]; then
+          rm -rf "$staging"
+          die "Eingangs-Schlüssel INGRESS_ID_KEY fehlt in core.env — ohne ihn wäre die Telegram-Eingangsadresse öffentlich ableitbar. Abhilfe: 'lifeagents update' (bzw. provision.sh) erneut ausführen."
+        fi
+        ing_map="$(_ingress_id_map "$f" "$ingress_key")"
+      fi
       # Zeitplan-Platzhalter: NUR exakte String-Werte ersetzen (jq --argjson, kein sed — ein Cron enthaelt '/').
-      jq --argjson map "$remap_json" --argjson cfg "$cfg_map" --argjson hitl "$hitl_chat" '
+      jq --argjson map "$remap_json" --argjson cfg "$cfg_map" --argjson hitl "$hitl_chat" --argjson ing "$ing_map" '
         walk(
           if (type == "object") and (has("credentials")) and ((.credentials | type) == "object")
           then .credentials |= map_values(
@@ -511,6 +549,10 @@ deploy_workflows() {
           elif (type == "string") and ($cfg[.] != null) then $cfg[.]
           elif . == "__HITL_CHAT_APPROVAL__" then $hitl
           else . end)
+        | if has("nodes") then .nodes |= map(
+            if .type == "n8n-nodes-base.telegramTrigger"
+            then .id = ($ing[.id] // .id) | (if has("webhookId") then .webhookId = ($ing[.webhookId] // .webhookId) else . end)
+            else . end) else . end
       ' "$f" | sed "s/__OWNER_CHAT_ID__/${owner_chat}/g" > "$staging/$base"
       chmod 0644 "$staging/$base"
       count=$((count + 1))

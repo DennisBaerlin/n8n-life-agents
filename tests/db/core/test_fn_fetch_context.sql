@@ -271,4 +271,58 @@ BEGIN
   RAISE NOTICE 'PASS [P0b: 2-Arg fn_fetch_context loest person_id unter context_ro auf (interner fn_resolve_sender im DEFINER)]';
 END $$;
 
+-- ---------- TEST 10 (Security-Audit 2026-10): physischer per_user-Name per LLM -> leere Menge ----------
+-- Der Kontextname kommt vom LLM ($fromAI). B (lena, 222) darf A's Zeile nicht ueber ihren physischen Namen lesen —
+-- weder mit eigener noch ohne chat_id. Die Regel lebt in agent.fn_is_per_user_row (eine Adresse). (Fixtures aus TEST 8.)
+DO $$
+DECLARE v_out TEXT;
+BEGIN
+  SELECT content INTO v_out FROM core.fn_fetch_context('career_profile__erika', '222');
+  IF v_out IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [phys name 222]: lena las erikas Zeile ueber den physischen Namen (Leck). got: %', left(v_out,80);
+  END IF;
+  SELECT content INTO v_out FROM core.fn_fetch_context('career_profile__erika');
+  IF v_out IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [phys name 1-arg]: physischer Name ohne chat_id lieferte Inhalt. got: %', left(v_out,80);
+  END IF;
+  IF NOT agent.fn_is_per_user_row('career_profile__erika') OR agent.fn_is_per_user_row('career_profile')
+     OR agent.fn_is_per_user_row('family') OR agent.fn_is_per_user_row('__test_hh_plan__') THEN
+    RAISE EXCEPTION 'FAIL [fn_is_per_user_row]: Klassifikation falsch (phys=true, Basis/household/Fixture=false erwartet)';
+  END IF;
+  RAISE NOTICE 'PASS [Audit: physischer per_user-Name -> leere Menge; fn_is_per_user_row klassifiziert]';
+END $$;
+
+-- ---------- TEST 11 (Security-Audit 2026-10): RLS — core_ro sieht keine per_user-Zeilen ----------
+-- core_ro (Frei-SQL guide/monitor) sieht family + Basis-Zeilen, aber keine '<base>__<pid>'-Zeile. Eine Rolle, die
+-- core_ro nur ERBT (wie die App-Rolle), sieht weiterhin alles (Policy auf current_user, nicht auf Mitgliedschaft).
+-- context_ro hat kein direktes SELECT mehr (nur das DEFINER-Fenster). (Fixtures aus TEST 8.)
+DO $$
+DECLARE v_cnt INT; v_denied BOOLEAN := FALSE;
+BEGIN
+  SET LOCAL ROLE core_ro;
+  SELECT count(*) INTO v_cnt FROM agent.core_contexts WHERE name LIKE 'career\_profile\_\_%';
+  RESET ROLE;
+  IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [RLS core_ro]: core_ro sieht % per_user-Zeile(n)', v_cnt; END IF;
+  SET LOCAL ROLE core_ro;
+  SELECT count(*) INTO v_cnt FROM agent.core_contexts WHERE name = 'family';
+  RESET ROLE;
+  IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [RLS core_ro]: family fuer core_ro unsichtbar (got %)', v_cnt; END IF;
+
+  CREATE ROLE __test_inherits_core_ro NOLOGIN;
+  GRANT core_ro TO __test_inherits_core_ro;
+  SET LOCAL ROLE __test_inherits_core_ro;
+  SELECT count(*) INTO v_cnt FROM agent.core_contexts WHERE name LIKE 'career\_profile\_\_%';
+  RESET ROLE;
+  IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [RLS erbende Rolle]: erwartet 2 per_user-Zeilen sichtbar, got % (Policy traf die App-Rolle)', v_cnt; END IF;
+
+  BEGIN
+    SET LOCAL ROLE context_ro;
+    PERFORM 1 FROM agent.core_contexts LIMIT 1;
+    RESET ROLE;
+  EXCEPTION WHEN insufficient_privilege THEN RESET ROLE; v_denied := TRUE;
+  END;
+  IF NOT v_denied THEN RAISE EXCEPTION 'FAIL [context_ro]: direktes SELECT auf agent.core_contexts noch erlaubt'; END IF;
+  RAISE NOTICE 'PASS [Audit RLS: core_ro ohne per_user-Zeilen, erbende Rolle unveraendert, context_ro nur ueber das Fenster]';
+END $$;
+
 ROLLBACK;

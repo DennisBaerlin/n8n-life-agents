@@ -61,6 +61,47 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- DENY-LISTE (Security-Audit 2026-10, Owner-Entscheid "strikt privat"): Tabellen mit fremden Gespraechen, Einmal-Codes
+-- oder rohen Eingaengen sind fuer den Frei-SQL-Pfad (guide/monitor-LLM, Monitor-Specs) tabu. Gleiche Begruendung wie
+-- core.backup_key: der REVOKE lebt am Ort des Sammel-Grants, damit ein Re-Apply nichts still re-grantet. Die
+-- *_chat_memory-Tabellen legt n8n zur Laufzeit an -> dynamisch ueber pg_tables. Die per_user-Kontext- und
+-- Personen-Plan-ZEILEN sperrt RLS (agent.core_init.sql / agent.advisor_init.sql). Test: test_core_ro_deny_acl.sql.
+DO $$
+DECLARE v_t text;
+BEGIN
+    FOR v_t IN
+        SELECT format('%I.%I', schemaname, tablename) FROM pg_tables
+         WHERE schemaname = 'agent'
+           AND (right(tablename, 12) = '_chat_memory'
+                OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending'))
+    LOOP
+        EXECUTE format('REVOKE ALL ON %s FROM core_ro', v_t);
+    END LOOP;
+END $$;
+
+-- Monitor-Specs (Security-Audit 2026-10): agent.fn_monitor_ro_eval fuehrt die gespeicherte Trigger-Abfrage als
+-- SECURITY DEFINER mit Eigentuemer core_ro aus — in einer DEFINER-fn lehnt PostgreSQL jeden Rollenwechsel ab, die
+-- Abfrage kann core_ro also nicht ablegen. Der Eigentuemerwechsel lebt HIER (die Rolle existiert erst ab hier; ein
+-- Superuser darf OWNER TO ohne CREATE-Recht, CREATE OR REPLACE in der R__ behaelt den Eigentuemer). EXECUTE an
+-- core_ro: die App-Rolle (Cron) erreicht die fn ueber ihre core_ro-Mitgliedschaft, die Paket-Rollen nicht.
+DO $$ BEGIN
+    IF to_regprocedure('agent.fn_monitor_ro_eval(text, text)') IS NOT NULL THEN
+        ALTER FUNCTION agent.fn_monitor_ro_eval(text, text) OWNER TO core_ro;
+        REVOKE ALL ON FUNCTION agent.fn_monitor_ro_eval(text, text) FROM public;
+        GRANT EXECUTE ON FUNCTION agent.fn_monitor_ro_eval(text, text) TO core_ro;
+    END IF;
+END $$;
+
+-- Gebundene Person-Lesefenster (Security-Audit 2026-10): der career_advisor liest seinen Plan ueber read_plan unter der
+-- Haupt-Credential (chat_id build-fix, nie $fromAI); die App-Rolle erreicht das DEFINER-Fenster ueber ihre
+-- core_ro-Mitgliedschaft. Ein Frei-SQL-Aufruf (Login-Rolle *_ro) bekommt fuer per_user-Domaenen nichts
+-- (core.fn_is_free_sql_session im Fenster).
+DO $$ BEGIN
+    IF to_regprocedure('core.fn_advisor_read_plan(text, text)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_advisor_read_plan(text, text) TO core_ro;
+    END IF;
+END $$;
+
 -- WS-2 (Onboarding-UX): EXECUTE auf das kombinierte Onboarding-Lesefenster core.fn_onboarding_status(text)
 -- fuer core_ro. Der Guide (Core-Agent, core_ro) zeigt die frische Wiedereinstiegs-Checkliste ueber diese
 -- EINE fn (statt eines rohen UNION ueber agent.guide_onboarding_state + finance.onboarding_state) —
@@ -118,8 +159,8 @@ DO $$ BEGIN
 END $$;
 
 -- Fix C (Karte-offen-Sperre): EXECUTE auf agent.fn_get_hitl_pending_state(bigint) fuer core_ro — der Orchestrator-
--- Pre-Router ('Card open check') liest unter __CRED_POSTGRES_CORE_RO__. INVOKER (SELECT auf agent.* oben); die fn
--- REVOKEt PUBLIC in ihrer R__ -> Grant HIER am Rollen-Ort (Muster oben). Guarded auf fn-Existenz.
+-- Pre-Router ('Card open check') liest unter __CRED_POSTGRES_CORE_RO__. DEFINER (agent.hitl_pending steht auf der
+-- Deny-Liste oben); die fn REVOKEt PUBLIC in ihrer R__ -> Grant HIER am Rollen-Ort (Muster oben). Guarded auf fn-Existenz.
 DO $$ BEGIN
     IF to_regprocedure('agent.fn_get_hitl_pending_state(bigint)') IS NOT NULL THEN
         GRANT EXECUTE ON FUNCTION agent.fn_get_hitl_pending_state(bigint) TO core_ro;
@@ -127,7 +168,7 @@ DO $$ BEGIN
 END $$;
 
 -- Phase A: EXECUTE auf den Aktualitaets-Waechter core.fn_stale_facts_count() fuer core_ro — fn_monitor_acquire
--- fuehrt die gespeicherte Spec 'SELECT core.fn_stale_facts_count()' unter SET LOCAL ROLE core_ro aus. Expliziter
+-- fuehrt die gespeicherte Spec 'SELECT core.fn_stale_facts_count()' als core_ro aus (agent.fn_monitor_ro_eval). Expliziter
 -- Grant am Rollen-Ort (nicht auf den PUBLIC-Default verlassen). Guarded auf fn-Existenz.
 DO $$ BEGIN
     IF to_regprocedure('core.fn_stale_facts_count()') IS NOT NULL THEN

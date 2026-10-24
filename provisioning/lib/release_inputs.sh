@@ -13,8 +13,8 @@
 #
 # SELBST generiert (kein Prompt, openssl rand): N8N_ENCRYPTION_KEY + N8N_DB_PASSWORD
 # (prepare_n8n_env/install_pg) + Owner-Init-Passwort (_resolve_owner_creds) + core.backup_key-Backup-
-# Key (bootstrap_owner._ensure_backup_secret) + der Telegram-secret_token (n8n selbst beim
-# Trigger-Activate = <workflowId>_<nodeId>). EXTERN abgefragt (hier): Domain, Telegram-Bot-Token,
+# Key (bootstrap_owner._ensure_backup_secret) + der Eingangs-Schluessel INGRESS_ID_KEY (bootstrap_owner._ensure_ingress_id_key;
+# daraus leitet deploy_workflows die Trigger-ids ab, aus denen n8n beim Activate den secret_token <workflowId>_<nodeId> bildet). EXTERN abgefragt (hier): Domain, Telegram-Bot-Token,
 # Google-/Anthropic-API-Key, Owner-Identitaet. Der Repo-Token fuer --version kommt in der
 # Release-Asset-Phase dazu (separate Action).
 #
@@ -111,11 +111,13 @@ _persist_install_env() {
     cp -p "$f" "${f}.bak" 2>/dev/null || true
   else
     mkdir -p "$(dirname "$f")"
-    {
-      printf '# Managed by provisioning collect_release_inputs (Phase 6) — Release-Eingaben.\n'
-      printf '# Idempotenz-Store (env-override-first reuse; leere KEY=-Zeile = bewusst uebersprungen/seen).\n'
-      printf '# chmod 640 root:%s, NIE ins Repo.\n' "$N8N_USER"
-    } > "$f"
+    # umask 077 im Subshell: die Datei nimmt gleich Secrets auf -> nie (auch nicht kurz) world-readable anlegen.
+    ( umask 077
+      {
+        printf '# Managed by provisioning collect_release_inputs (Phase 6) — Release-Eingaben.\n'
+        printf '# Idempotenz-Store (env-override-first reuse; leere KEY=-Zeile = bewusst uebersprungen/seen).\n'
+        printf '# chmod 640 root:%s, NIE ins Repo.\n' "$N8N_USER"
+      } > "$f" )
   fi
   for k in $_INSTALL_ENV_KEYS; do
     eval "v=\${$k:-}"
@@ -241,6 +243,8 @@ _prompt_validated() {
   else
     if [ -n "$cur" ]; then
       if ! _is_live_validator "$vfn" && ! "$vfn" "$cur"; then
+        # Die Domain landet in n8n.env, das Shell-Schritte sourcen -> ein ungueltiger Wert ist ein Abbruch, kein Hinweis.
+        [ "$name" = DOMAIN ] && die "Die vorgegebene Internet-Adresse „${cur}“ ist ungültig (erwartet z. B. bot.example.org). Bitte korrigieren und erneut starten."
         warn "Gespeicherter Wert für „${label}“ ist ungültig — bitte prüfen (Protokoll: $name)."
       fi
       return 0

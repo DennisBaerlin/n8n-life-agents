@@ -70,5 +70,15 @@
     "expected_tool": "tool_set_career_preferences",
     "expected_behavior": "The advisor must, after a brief confirmation, call tool_set_career_preferences with the learned preference (disliked_aspects carrying a travel-related keyword). It must NOT use tool_set_profile_facts (that is the CV profile, not preferences) and must NOT invent unrelated fields. context_name is fixed by the binding (career_preferences), never asked from the model.",
     "notes": "WS-2 Feedback-Lernschleife: gelernte Job-Praeferenzen (career_preferences) -> tool_set_career_preferences (2. Bindung von agent.tool_set_context_facts, owner_only); der Scorer re-injiziert sie. Korrektheit der facts-Struktur deckt test_fn_validate_career_preferences (DB)."
+  },
+  {
+    "id": "cc08",
+    "name": "Eigene Job-Treffer nennen -> read_job_matches, kein Write-Tool",
+    "task": "Welche Stellen hast du mir zuletzt vorgeschlagen und welche davon habe ich mit Daumen hoch bewertet?",
+    "chat_id": "test_cc08",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The advisor answers from the asking person's OWN job matches (it reads them via read_job_matches; with no matches it says so plainly) and must NOT call any write tool. It must NOT claim to see matches of other household members and must NOT try to query job matches through postgres_select (they are not reachable there).",
+    "notes": "Security-Audit 2026-10 (Owner strikt privat): career.job_matches ist person-privat und fuer career_ro gesperrt; das gebundene read_job_matches (career.fn_read_job_matches, chat_id build-fix) ist der einzige Lesepfad. NULL-Case (Lese-Werkzeug, kein Write) -> kein Mock-Szenario; Isolation selbst deckt test_fn_read_job_matches (DB)."
   }
 ]

@@ -33,6 +33,21 @@ function Get-GpgExe {
     throw 'gpg nicht gefunden — Git for Windows bringt es mit (usr\bin\gpg.exe).'
 }
 function Get-Sha256([string]$Path) { (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant() }
+# gpg-Aufruf, bei dem nur der Exit-Code zaehlt. PS 5.1 macht aus umgeleitetem stderr eines Native-Tools ein ErrorRecord,
+# das unter ErrorActionPreference=Stop abbricht (gpg schreibt Status wie "Good signature" nach stderr; Owner-Lauf
+# 2026-10-24) -> fuer diesen Aufruf Continue.
+function Invoke-GpgQuiet {
+    $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { & $gpg @args *> $null; return $LASTEXITCODE } finally { $ErrorActionPreference = $prevEap }
+}
+# Pfad fuer gpg-Ressourcen (--keyring, --homedir). Das gpg aus Git for Windows (MSYS) lehnt 'C:\...' als --keyring ab
+# ("invalid key resource URL", der Doppelpunkt gilt als URL-Schema; Owner-Lauf 2026-10-24) und haengt es bei --homedir an
+# das Arbeitsverzeichnis -> /c/... uebergeben. Gpg4win (nativ) bekommt den Windows-Pfad. Datei-Argumente betrifft das nicht.
+function ConvertTo-GpgPath([string]$Path) {
+    if ($gpg -notlike '*\usr\bin\gpg.exe') { return $Path }
+    $full = [System.IO.Path]::GetFullPath($Path)
+    return '/' + $full.Substring(0, 1).ToLowerInvariant() + ($full.Substring(2) -replace '\\', '/')
+}
 function Invoke-Git { & git -C $RepoRoot @args; if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') fehlgeschlagen." } }
 
 $gpg = Get-GpgExe
@@ -48,8 +63,7 @@ $slug = $Matches['slug']
 
 # Fingerabdruck des Repo-Schluessels + privater Teil vorhanden?
 $fpr = ((& $gpg --batch --with-colons --show-keys $keyFile) | Where-Object { $_ -like 'fpr:*' } | Select-Object -First 1).Split(':')[9]
-& $gpg --batch --list-secret-keys $fpr *> $null
-if ($LASTEXITCODE -ne 0) { throw "Der private Schluessel $fpr fehlt in diesem gpg-Speicher (anderer PC? Sicherung importieren: gpg --import <datei>)." }
+if ((Invoke-GpgQuiet --batch --list-secret-keys $fpr) -ne 0) { throw "Der private Schluessel $fpr fehlt in diesem gpg-Speicher (anderer PC? Sicherung importieren: gpg --import <datei>)." }
 
 Write-Host "Release $Tag ($slug) pruefen ..." -ForegroundColor Cyan
 Invoke-Git fetch --quiet --tags origin
@@ -113,8 +127,7 @@ try {
     $pass | & $gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
     $pass = $null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $sig)) { throw 'Unterschreiben fehlgeschlagen (falsches Passwort?).' }
-    & $gpg --batch --no-default-keyring --keyring $keyFile --verify $sig (Join-Path $work 'SHA256SUMS') *> $null
-    if ($LASTEXITCODE -ne 0) { throw 'Die neue Unterschrift passt nicht zum Schluesselbund im Repo — nicht hochgeladen.' }
+    if ((Invoke-GpgQuiet --batch --no-default-keyring --keyring (ConvertTo-GpgPath $keyFile) --verify $sig (Join-Path $work 'SHA256SUMS')) -ne 0) { throw 'Die neue Unterschrift passt nicht zum Schluesselbund im Repo — nicht hochgeladen.' }
 
     # 4) hochladen + veroeffentlichen
     & gh release upload $Tag -R $slug $sig --clobber

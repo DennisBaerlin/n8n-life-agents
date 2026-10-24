@@ -1,0 +1,141 @@
+{
+    "id":  "UpUCUpPLqNnosD5B",
+    "name":  "agent.tool_load_context",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "inputSource":  "workflowInputs",
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "agent_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "include_manifest"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7571f6e1-3841-55ca-a6ae-605d15d60c50",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "WITH static_docs AS (\n  SELECT string_agg(content, E\u0027\\n\\n---\\n\\n\u0027\n                    ORDER BY CASE\n                                WHEN name = \u0027global_instructions\u0027 THEN 1\n                                WHEN agent_name IS NOT NULL THEN 2\n                                ELSE 3 END,\n                             name) AS static_part\n    FROM agent.core_contexts\n   WHERE load_strategy = \u0027static\u0027\n     AND (agent_name = (($1::jsonb)-\u003e\u003e\u0027agent_name\u0027) OR agent_name IS NULL)\n),\nmanifest AS (\n  SELECT E\u0027\\n\\n# Available lazy contexts (load via `load_context` tool by name)\\n\\n\u0027\n       || string_agg(\u0027- **\u0027 || name || \u0027**: \u0027 || description, E\u0027\\n\u0027 ORDER BY name) AS manifest_part\n    FROM agent.core_contexts\n   WHERE load_strategy = \u0027lazy\u0027\n     AND (agent_name = (($1::jsonb)-\u003e\u003e\u0027agent_name\u0027) OR agent_name IS NULL)\n)\nSELECT COALESCE((SELECT static_part FROM static_docs), \u0027\u0027)\n    || CASE WHEN (($1::jsonb)-\u003e\u003e\u0027include_manifest\u0027) = \u0027false\u0027 THEN \u0027\u0027 ELSE COALESCE((SELECT manifest_part FROM manifest), \u0027\u0027) END AS system_prompt;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ agent_name: $(\u0027Start\u0027).item.json.agent_name, include_manifest: $(\u0027Start\u0027).item.json.include_manifest }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       224,
+                                       0
+                                   ],
+                      "id":  "1e4f673c-4a5e-5e9c-a1ac-fd7fe4686376",
+                      "name":  "Load Static + Manifest",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b7b89922-d71a-58bc-8f34-de49888edf28",
+                                                                                     "name":  "system_prompt",
+                                                                                     "value":  "={{ $json.system_prompt }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       448,
+                                       0
+                                   ],
+                      "id":  "8b722c48-60dd-5ccf-ab04-e42e6894a332",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## include_manifest\n\n**Aufbau des system_prompt (Inputs: agent_name, include_manifest):**\n- `false` -\u003e nur Static-Docs (global + agent_instructions), KEIN Lazy-Manifest. Fuer Agenten OHNE load_context-Tool (Orchestrator/Router).\n- sonst / `true` -\u003e Static-Docs + Lazy-Manifest (z. B. finance).\n\nDie Assembly-SQL lebt hier im Workflow, nicht in der DB (siehe Verweis in core_init.sql).",
+                                         "height":  240,
+                                         "width":  380,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       180
+                                   ],
+                      "id":  "a9d88c88-f059-5ef4-9318-b7a61cd816a3",
+                      "name":  "Doc: include_manifest"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.tool_load_context\n\nGemeinsamer Sub-Workflow: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest.\nEINE Postgres-Query: static-concat der static-Docs aus agent.core_contexts (global zuerst, dann agent-spezifisch) + optional das Lazy-Manifest (Name+Description der lazy-Contexts). Rueckgabe: system_prompt.\nWird von jedem Agent-Workflow VOR dem AI-Node aufgerufen. Sichtbarkeit = (load_strategy x agent_name) -\u003e siehe CLAUDE.md Vier-Schichten-Memory.",
+                                         "height":  240,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -180
+                                   ],
+                      "id":  "e28e4d4a-92a2-5b6c-b062-6e809c8eb511",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load Static + Manifest",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load Static + Manifest":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Return",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   }
+                    },
+    "settings":  {
+                     "availableInMCP":  false,
+                     "binaryMode":  "separate",
+                     "callerPolicy":  "workflowsFromSameOwner",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba",
+                     "executionOrder":  "v1",
+                     "timeSavedMode":  "fixed"
+                 }
+}

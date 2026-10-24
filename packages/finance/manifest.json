@@ -1,0 +1,229 @@
+{
+  "name": "finance",
+  "version": "0.1.0",
+  "description": "Personal finance domain: CQRS bookkeeper (agent.finance) + advisor (agent.finance_advisor; advises, never books - its only data write is assigning asset classes). Accounts, investments, loans, recurring payments, insurances, pension, real estate, savings goals/plans, FX, bulk import.",
+  "core_api": "0.4.0",
+  "requires": [],
+  "schema": "finance",
+  "schemas": ["finance"],
+  "provides": {
+    "_agents_comment": "provides.agents = OBJEKTE {name, router_description, order, fallback_for?} (Schema-Doku im core-Manifest + docs/package-contract.md §2). Phase C: das Routing-Wissen dieses Pakets (Buchhalter vs. Berater, Dokumentarten der Anhänge, Default bei mehrdeutigen Geld-Nachrichten) lebt NUR hier in den router_descriptions - der Core-Prompt kennt kein Paket. finance beansprucht per fallback_for den Anhang-Fallback (Dokumentart unklar). order = globale Routing-Reihenfolge (finance vor advisor).",
+    "agents": [
+      { "name": "finance", "router_description": "Bookkeeper - records and reports: concrete bookings and master data (create/close accounts, transactions, transfers, stock/ETF buys and sells, dividends, loans, insurances and pensions as records, savings goals/plans, reconciliation), looking up the current public conditions (interest rate, cap, crediting rhythm) of an account or product the user holds in order to record them (\"mein Tagesgeld ist verzinst, such die Konditionen\"), property/real-estate values and bookings (Wert der Wohnung/Immobilie eintragen), and factual data questions (balances, net worth, lists, \"how much ...\", \"wie hoch ist ...\"), and the progress of the finance onboarding areas (accounts, investments, liabilities, protection, goals: \"das waren alle Konten\", \"Bereich Konten ist fertig\", \"Depots überspringe ich\"). A concrete booking instruction goes here even in the middle of an advice conversation. Attachments: a financial document as photo or PDF (Kontoauszug, Depotauszug, Versicherungspolice, Renteninformation/Standmitteilung, Rechnung, Gehaltsabrechnung) - the bookkeeper extracts and stages it; bank/depot statements are the most common attachment. NOT for opinions, recommendations, what-if questions or planning -> agent.finance_advisor.", "order": 0, "fallback_for": ["attachment"] },
+      { "name": "finance_advisor", "router_description": "Finance advisor - recommends and plans, never books: opinions, recommendations, should-I/what-if questions, comparisons, web research on finance topics (except looking up the current conditions of an account or product the user holds to record them -> agent.finance), creating or updating the financial plan (Finanzplanung), interviews, plan reviews, anything starting from \"was hältst du von ...\" / \"lohnt sich ...\" / \"soll ich ...\"; general money/affordability questions (a purchase, \"kann ich mir das Auto leisten?\", broader cashflow/budget/portfolio); ADVICE arising from a fired alert (\"Gold ist gerissen - was soll ich jetzt tun?\"). Also the DEFAULT for a money message that could be either a booking or advice (advice is the safer default; the advisor hands bookings back). NOT for concrete bookings, master data or factual data lookups -> agent.finance.", "order": 1 }
+    ],
+    "onboarding": {
+      "_comment": "P1 Generisches Paket-Onboarding (docs/package-contract.md §3.2): der Agent, der die finance-Onboarding-Sektionen erfasst = agent.finance (der Buchhalter, NICHT der Advisor; entspricht dem heutigen Orchestrator-Dispatch 'Finanz-Sektion -> agent.finance'). Sektionen aus der Konvention packages/finance/onboarding/sections.json (kein sections_file-Feld, arch-challenge D3). build.ps1 generiert daraus den Dispatch-Arm onboarding:finance:<key> -> agent.finance. agent = bare Name (Build prefixt agent.<agent>).",
+      "agent": "finance"
+    },
+    "tools": [
+      "create_account", "set_account", "set_account_interest", "close_account", "delete_account",
+      "create_loan", "set_loan", "settle_loan", "delete_loan", "book_loan_payment",
+      "book_stock_buy", "book_stock_sell", "set_holding", "set_asset_classes", "delete_holding", "book_dividend", "verify_price_symbol",
+      "book_transaction", "book_transfer", "void_transaction",
+      "reconcile_account", "reconcile_accounts_batch",
+      "create_insurance", "set_insurance", "close_insurance",
+      "create_pension", "set_pension", "close_pension",
+      "create_real_estate", "set_real_estate", "sell_real_estate", "delete_real_estate",
+      "create_recurring_payment", "set_recurring_payment", "delete_recurring_payment",
+      "create_recurring_transfer",
+      "create_savings_goal", "set_savings_goal", "close_savings_goal",
+      "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
+      "book_recurring_occurrence", "book_interest",
+      "import_stage_rows", "update_staging_row", "commit_import", "extract_finance_document",
+      "reconcile_bank_statement", "void_bank_statement",
+      "set_onboarding_section"
+    ],
+    "crons": ["cron_refresh_fx_rates", "cron_refresh_market_prices", "cron_remind_interest", "cron_reconcile_accounts"],
+    "routes": ["finance", "finance_advisor"],
+    "config": ["model", "schedule", "finance", "monitor", "feature", "cron_enable"],
+    "models": [],
+    "_reads_comment": "WS-5 Cross-package reads (docs/package-contract.md): provider-eigene Lese-fns, die ANDERE Pakete optional konsumieren dürfen (Spiegel zu consumes.reads). finance.fn_liquidity_snapshot() = cash-only Liquidität + Monats-Aus-/Einnahmen für die career-Runway-Brücke. WS-0b (estate): fn_insurance_register/fn_account_register/fn_liability_register = die Nachlass-Register-Lesefenster (aktive Policen/Konten/Kredite mit den estate-relevanten Feldern) für den estate-Agenten. ALLE Oberfläche A: PLAIN STABLE, kein Grant; render-at-fetch im fn_fetch_context-DEFINER-Kontext (Owner=Superuser) gelesen, Consumer doppel-guardet (fn_package_active('finance') + to_regprocedure). contract_lint erzwingt: ein nicht-core consumes.reads-Eintrag eines Pakets MUSS hier (beim benannten Provider) deklariert sein.",
+    "reads": ["finance.fn_liquidity_snapshot()", "finance.fn_insurance_register()", "finance.fn_account_register()", "finance.fn_liability_register()"]
+  },
+  "consumes": {
+    "services": [
+      "core:human_approval", "core:load_context", "core:load_config", "core:web_search", "core:expert_panel",
+      "core:transcribe_telegram_voice", "core:fetch_telegram_file", "core:error_notify", "core:save_plan_section", "core:publish_plan", "core:create_monitor_trigger",
+      "core:list_monitor_triggers", "core:onboarding_progress",
+      "paperless:search_documents", "paperless:get_document", "paperless:ask_documents"
+    ],
+    "reads": ["core.fn_core_api_version()", "core.fn_advisor_read_plan(text,text)"]
+  },
+  "config": {
+    "_comment": "Per-Paket-Config (WS4a, docs/package-contract.md §3.6): das Finance-Paket deklariert seine Config (Modelle, Schedules, Tuning, Cron-Enable-Flags) im eigenen Manifest. Host-Seeder (_seed_package_config) lädt sie paket-skopiert (package='finance') in core.config; schedule.* beim Deploy eingesetzt (__CFG_SCHEDULE_*__), sonst runtime via core.sub_load_config (Agent-Modelle) bzw. core.fn_config_get (model.vision_extract über 'Load model config', cron_enable, finance.reconcile_overdue_days). Jeder Eintrag {value, description, summary} (summary = deutscher Owner-Einzeiler für lifeagents config list). cron_enable: pro Cron ein Enable-Flag (fail-closed im Gate: nur 'true' läuft) - die 3 Always-on-Crons 'true'. Der früher hier deklarierte advisor_plan_review-Cron ist seit WS2 in die generische Core-Advisor-Engine überführt (Config + Crons sind jetzt core-besessen; V007 räumt die alten finance-Zeilen).",
+    "model": {
+      "finance": { "value": "claude-sonnet-latest", "description": "LLM for the Finance agent (reliable function-calling -> Sonnet tier, effort medium). Runtime selector: lifeagents config set model finance <key>, no rebuild.", "summary": "KI-Modell für den Finanz-Assistenten (Buchungen, Konten, Depot)." },
+      "finance_advisor": { "value": "claude-opus-latest", "description": "LLM for the Finance-Advisor agent (interview, advice, plan synthesis). Quality over cost by owner decision (low request volume). Swap = change value to any model_key in agent.ai_models; a NEW model first needs a row in packages/core/seed/ai_models.json + selector regeneration (build script).", "summary": "KI-Modell für den Finanzberater (Gespräch, Beratung, Finanzplan)." },
+      "vision_extract": { "value": "claude-sonnet-latest", "description": "Vision model for agent.finance.tool_extract_finance_document (photo/PDF of a German bank/depot/insurance/pension statement -> raw staging rows). Claude Messages API via New-AnthropicMessagesNode (image/document blocks). Default claude-sonnet-latest (effort low). PRIVACY: runs over the paid Anthropic API (commercial terms: no training on customer content); NEVER route statements over a free-tier key. Runtime (read each run via Load model config, any Claude chat model): lifeagents config set model vision_extract <key>, no rebuild.", "summary": "KI-Modell, das Fotos/PDFs von Finanz-Unterlagen ausliest." }
+    },
+    "schedule": {
+      "refresh_fx_rates": { "value": "0 6 * * *", "type": "cron", "description": "Cron expression for agent.finance.cron_refresh_fx_rates (FX rates via open.er-api.com, free/no key, EUR base, 7 days/week). Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately). 06:00 = before the 09:00 recurring reminder so rates are fresh.", "summary": "Zeitplan des Wechselkurs-Abrufs (Cron; „0 6 * * *“ = täglich 6:00 Uhr)" },
+      "refresh_market_prices": { "value": "0 7 * * *", "type": "cron", "description": "Cron expression for agent.finance.cron_refresh_market_prices (market prices via Yahoo Finance [stocks/ETFs] + CoinGecko [crypto], free/no key; deterministic, no LLM). 07:00 = after the FX refresh and before the advisor drift check (see core schedule.drift_check) so the allocation drift sees fresh prices. Dual-trigger: this schedule + on-booking sub-call from tool_book_stock_buy. Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan des Wertpapierkurs-Abrufs (Cron; „0 7 * * *“ = täglich 7:00 Uhr)" },
+      "remind_interest": { "value": "10 10 * * *", "type": "cron", "description": "Cron expression for agent.finance.cron_remind_interest (WS-5c-B daily interest-credit reminder; finds due interest occurrences via fn_interest_due_open and asks HITL to book the DB-computed amount). 10:10 = after the 10:05 monthly-check reminder. Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan der Zinsgutschrift-Erinnerung (Cron; „10 10 * * *“ = täglich 10:10 Uhr)" },
+      "reconcile_accounts": { "value": "5 10 3,17 * *", "type": "cron", "description": "Cron expression for agent.finance.cron_reconcile_accounts (monthly check reminder: asks for the bank statement PDF of every statement account whose balance is not yet confirmed for the last month; 3rd = most banks have issued the monthly statement, 17th = second nudge only for still-missing accounts; 10:05). Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan der Monats-Check-Erinnerung (Cron; „5 10 3,17 * *“ = am 3. und 17., 10:05)" }
+    },
+    "finance": {
+      "coverage_buffer_eur": { "value": "250", "type": "number", "minimum": 0, "description": "Coverage buffer in EUR (converted to the account currency) for finance.fn_account_outlook: the finance advisor warns (alert account_coverage) when the lowest projected balance of a statement account until the next income on that account falls below this amount; the monthly check reply names the shortfall. 250 = a small cushion for estimation error (everyday spending is already part of the projection). Read at runtime (core.fn_config_get); change: lifeagents config set finance coverage_buffer_eur <amount>.", "summary": "Puffer in Euro, unter den der vorausgesagte Kontostand nicht fallen soll." }
+    },
+    "monitor": {
+      "fx_stale_days": { "value": "5", "type": "integer", "minimum": 1, "description": "Trigger monitoring, finance acquisition method fx_rate: an observation counts as STALE (failure path, loud alert) when the newest finance.fx_rates row is older than this many days (5 covers weekends + holiday bridges). Read at RUNTIME inside finance.fn_monitor_acquire_fx_rate via core.fn_config_get('finance','monitor','fx_stale_days'); change = edit here + re-seed, no rebuild. (Owned by finance since Phase B - the core no longer knows the fx method.)", "summary": "Ab so vielen Tagen ohne neuen Wechselkurs schlägt eine Kurs-Beobachtung Alarm." }
+    },
+    "feature": {
+      "onboarding_gate": { "value": "true", "type": "boolean", "description": "Hard gate at the finance advisor entry (Phase 5a, Plan §1b): when 'true', agent.finance_advisor refuses advice with a /onboarding redirect until no core or finance onboarding section is 'unknown' (fn_onboarding_status complete). Read at the advisor entry (deterministic IF before the LLM, no cost). Currently seeded 'true' (onboarding gate live); set 'false' + re-seed (provision.sh / substrate -Reset) to bypass it (no rebuild). Owned by finance since Phase C (moved from the core manifest - the core no longer knows this advisor; the seed re-stamps package, an owner value survives).", "summary": "Finanzberatung erst nach abgeschlossenem Einstieg (/onboarding) (true/false)." }
+    },
+    "cron_enable": {
+      "refresh_fx_rates": { "value": "true", "type": "boolean", "description": "F9 enable-flag for agent.finance.cron_refresh_fx_rates. The cron's entry gate runs core.fn_package_active('finance') AND core.fn_config_get('finance','cron_enable','refresh_fx_rates')='true' (fail-closed). Default true (always-on). Toggle at runtime: lifeagents config set cron_enable refresh_fx_rates false (no rebuild).", "summary": "Schaltet den täglichen Wechselkurs-Abruf ein oder aus (true/false)." },
+      "refresh_market_prices": { "value": "true", "type": "boolean", "description": "F9 enable-flag for agent.finance.cron_refresh_market_prices (market-price refresh for allocation drift). Gate: core.fn_package_active('finance') AND core.fn_config_get('finance','cron_enable','refresh_market_prices')='true' (fail-closed). Default true (always-on; the cron early-exits when no depot positions are held). Toggle: lifeagents config set cron_enable refresh_market_prices false (no rebuild).", "summary": "Schaltet den täglichen Wertpapierkurs-Abruf ein oder aus (true/false)." },
+      "remind_interest": { "value": "true", "type": "boolean", "description": "F9 enable-flag for agent.finance.cron_remind_interest (WS-5c-B, always-on, default true). Gate: core.fn_package_active('finance') AND core.fn_config_get('finance','cron_enable','remind_interest')='true' (fail-closed). Household reminder (cron_labels.list, Roter Faden Paket B): the owner switches it in /reminders (the question card carries the /reminders hint); console: lifeagents config set cron_enable remind_interest false.", "summary": "Schaltet die Erinnerung an Zinsgutschriften ein oder aus (true/false)." },
+      "reconcile_accounts": { "value": "true", "type": "boolean", "description": "F9 enable-flag for agent.finance.cron_reconcile_accounts (always-on, default true). Household reminder (cron_labels.list, Roter Faden Paket B): the owner switches it in /reminders or with the switch-off button on the reminder card; console: lifeagents config set cron_enable reconcile_accounts false.", "summary": "Schaltet die Monats-Check-Erinnerung (Kontoauszug schicken) ein oder aus (true/false)." }
+    }
+  },
+  "context_validators": {
+    "_comment": "Generische Validator-Registry (WS-B1 / D12, docs/package-contract.md §3.3): bindet einen paket-besessenen Sidecar-Context-Namen an die finance-fn, die seine metadata.facts-Struktur prüft. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): seed_data.sh upsertet die Zeile in core.context_validators; der Core-Trigger dispatcht generisch (kein hartkodierter finance-Name im Core). validate_fn MUSS ins eigene Schema (finance.*) zeigen.",
+    "finance_profile": "finance.fn_validate_finance_profile"
+  },
+  "context_scopes": {
+    "_comment": "Generische Scope-/Permission-Registry (P0a, docs/package-contract.md §3.3): deklariert je facts-Context, ob er haushaltsweit (household) oder pro Person (per_user) lebt und welche write_permission (owner_only/adults_only/own_user_only) gilt. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): seed_data.sh upsertet die Zeile in core.context_scopes; agent.fn_check_write_permission setzt sie durch (Identität aus fn_resolve_sender, nie LLM). Jeder context_validators-Key MUSS hier eine Zeile haben (contract_lint Check 10, fail-closed). KEINE fn-Bezeichner -> kein own-schema-Boundary (Werte sind Daten-Enums, die Tabellen-CHECKs sind die Durchsetzung).",
+    "finance_profile": { "scope": "household", "write_permission": "owner_only" }
+  },
+  "context_skeletons": {
+    "_comment": "Paket-besessene Fakten-Kontexte, deren LEERES Skelett das Paket selbst anlegt (Install-UX-Phase 6, docs/package-contract.md §2 + §3.3; Debian-postinst-Muster): DEKLARATION (Paket) vs. AUSFÜHRUNG (Host) — seed_data.sh _seed_context_skeletons legt die Zeile bei jeder Installation/Aktualisierung INSERT-ONLY an (ON CONFLICT DO NOTHING, load_strategy lazy, managed_by='agent', package=<pkg>), auch mit --no-seed -> heilt 'purge + neu installieren'; vorhandene (PII-)Fakten werden nie angefasst. Je Key: agent_name (Sichtbarkeit; leer = alle), description (Manifest-Zeile des Kontexts, Englisch), content (Platzhalter-Prosa), facts (Start-Sidecar). Jeder Key MUSS in context_validators stehen und darf NICHT per_user sein (contract_lint; per_user-Kontexte legt agent.fn_set_context_facts beim ersten Schreiben als <base>__<person_id> an). Umgekehrt braucht JEDER household-skopierte context_validators-Key ein Skelett: agent.fn_set_context_facts legt household-Zeilen nie selbst an (Sichtbarkeit agent_name bleibt paket-deklariert).",
+    "finance_profile": {
+      "agent_name": "finance_advisor",
+      "description": "Per-person financial profile facts (advisor-scoped); references family persons by id.",
+      "content": "(noch keine Daten erfasst - Onboarding ausstehend)",
+      "facts": { "persons": [] }
+    }
+  },
+  "context_renderers": {
+    "_comment": "Generische Render-Registry (WS1a, docs/package-contract.md §3.3): bindet einen facts-tragenden Context-Namen an die finance-fn, die seinen autoritativen Fakten-Header baut (render-at-fetch, Ableitungen via SQL). DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): seed_data.sh upsertet die Zeile in core.context_renderers; die generische Engine core.fn_fetch_context dispatcht generisch + wrappt Banner/Stempel/Prosa. render_fn MUSS ins eigene Schema (finance.*) zeigen, UNIFORME Signatur fn(text)->text.",
+    "financial_planning": "finance.fn_render_plan_facts",
+    "finance_profile": "finance.fn_render_finance_profile"
+  },
+  "retired_workflows": {
+    "_comment": "Explizite Tombstones (Phase A, docs/package-contract.md §2): früher ausgelieferte, aus dem Baum entfernte Workflows dieses Pakets; deploy_workflows.sh retire_workflows löscht sie auf Bestands-Instanzen. cron_plan_review wurde durch agent.advisor.cron_review (Core, neue id) ersetzt; die alte remind_recurring-id durch die heutige — beide trugen einen Zeitplan (sonst doppelte Nachrichten). Seit dem Monats-Check (2026-10-22) entfällt die tägliche Dauerauftrags-Frage ganz (z0HyRoDQVzpr86KP): der Kontoauszug hakt die Zahlungen ab.",
+    "list": [
+      { "id": "KoHdXZ9wrjctv98F", "name": "agent.finance_advisor.cron_plan_review", "since": "2026-06-21" },
+      { "id": "ePuLFLmXxzcUuf9r", "name": "agent.finance.cron_remind_recurring", "since": "2026-06-08" },
+      { "id": "z0HyRoDQVzpr86KP", "name": "agent.finance.cron_remind_recurring", "since": "2026-10-22" }
+    ]
+  },
+  "cron_labels": {
+    "_comment": "Erinnerungs-Registry (Roter Faden Paket B, docs/package-contract.md §8): Haushalts-Erinnerungen, die der Owner in /reminders oder per Knopf an der Karte schaltet (Texte finance.cron.<key>.*).",
+    "list": ["reconcile_accounts", "remind_interest"]
+  },
+  "advisors": {
+    "_comment": "Generische Advisor-Registry (WS2, Core-Advisor-Engine, docs/package-contract.md §3.3): bindet eine Advisor-DOMAIN dieses Pakets an ihren Soll-Plan-Context + die paket-besessene Review-fn, die Soll-Ist-Drift/Staleness/Digest rechnet. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_advisors): der Host upsertet die Zeile own-schema-scoped in core.advisors; der generische Core-Wrapper core.fn_advisor_review_evaluate(domain) dispatcht über die Tabelle (kein hartkodierter finance-Name im Core). VERSCHACHTELT (3 Werte je domain + optional learn_notes): {domain:{plan_context,review_fn,advisor_agent,learn_notes?}}; learn_notes=true = das Plan-Dokument darf owner-bestätigte Lern-Notizen ('## Gelernt') tragen (core.fn_note_context_allowed, Default false; nur household-Plan-Kontexte); review_fn MUSS ins eigene Schema (finance.*) zeigen; advisor_agent = das Orchestrator-Router-Ziel der Domäne (Phase 0 WS-0c #1 — der Interview-Pin pinnt dorthin). package='finance' -> fn_pkg_purge_data räumt die Zeile beim Uninstall (sonst Orphan-review_fn).",
+    "finance": {
+      "plan_context": "financial_planning",
+      "review_fn": "finance.fn_advisor_review",
+      "advisor_agent": "agent.finance_advisor",
+      "learn_notes": true
+    }
+  },
+  "protected_contexts": [
+    "finance_profile",
+    "finance_agent_instructions",
+    "finance_advisor_instructions",
+    "financial_planning"
+  ],
+  "monitor_acquisition_methods": {
+    "_comment": "Phase B (docs/package-contract.md §3.9): Paket-Methoden der Wert-Beschaffung des Core-Trigger-Monitorings. Host-Seeder (_seed_monitor_acquisition_methods) upsertet sie in core.monitor_acquisition_methods (acquire_fn/validate_fn MÜSSEN ins eigene Schema zeigen); der Core dispatcht generisch (kein finance-Literal im Core). validate_fn muss idempotent sein (eigene normalisierte spec als params -> ok, gleiche spec). params_description (EN, LLM) ist BUILD-Datum: build.ps1 backt sie in die Monitor-Tool-Beschreibungen; die nutzer-sichtbare Bezeichnung steht im Textkatalog (finance.monitor_method.<methode>, je Sprache).",
+    "fx_rate": {
+      "acquire_fn": "finance.fn_monitor_acquire_fx_rate",
+      "validate_fn": "finance.fn_monitor_validate_fx_rate",
+      "params_description": "reads the daily FX table of the finance package - ALWAYS prefer for currency pairs. acquisition_params = {\"base\": \"<ISO code>\", \"quote\": \"<ISO code>\"}, e.g. {\"base\":\"EUR\",\"quote\":\"KRW\"}; the value is quote units per 1 base unit."
+    }
+  },
+  "read_surface": {
+    "_comment": "Paket-Lese-Vertrag (Owner-Lock 2026-06-18): das Lesefenster, das dieses Paket dem privilegierten Core-Host (Leserolle core_ro) bei der Provisionierung öffnet (core.fn_provision_package_roles grantet core_ro SELECT auf Schema finance). Deklarativ — der GRANT ist host-kontrolliert (Deklaration vs. Ausführung). Die SELECT-Knoten-Beschreibungen der Core-Agenten werden hieraus erst in Phase 4/5 build-time zusammengesetzt (Install erweitert / Uninstall verkleinert); in 3a gebacken-aber-korrekt.",
+    "host_read_role": "core_ro",
+    "preferred_views": [
+      "finance.account_overview", "finance.loan_overview", "finance.loan_summary",
+      "finance.monthly_cashflow_overview", "finance.monthly_cashflow_summary",
+      "finance.savings_goal_progress", "finance.real_estate_overview",
+      "finance.pension_overview", "finance.depot_holdings_overview",
+      "finance.active_recurring_payments", "finance.active_insurances"
+    ],
+    "tables_readable": true
+  },
+  "backup": {
+    "_comment": "Paket-Backup-Oberfläche (Phase 4b, docs/package-contract.md): rein deklarativ, was die CLI (lifeagents backup export|restore) sichert. schema_dump=true -> das GANZE Paket-Schema (finance) wird via pg_dump -a --disable-triggers gesichert (inkl. materialisierter Tabellen wie account_balances + currencies/fx_rates: 1:1-Restore, kein Trigger-Recompute), exclude_tables fallen raus (Arbeitskopien). Domänen-Pakete besitzen ihr Schema voll -> kein zeilen-Filter nötig (das ist nur für die geteilten agent-Tabellen in core).",
+    "schema_dump": true,
+    "exclude_tables": ["import_staging"]
+  },
+  "catalog": {
+    "_comment": "Per-Fragment-Katalog (WS-B7, docs/package-contract.md §3.5): dieses Paket besitzt die STRUKTUR seiner /help-Kategorien + Tail-Sektionen (Beratung/Auswertungen = Advisor/Reads); Titel, Beschreibungen, Beispiele und Tail-Texte stehen im Textkatalog (finance.help.<id>.*, §3.11). build.ps1 rendert je Sprache das Fragment (seed/capabilities_catalog/<lang>.fragment.md) und composet es nach `ord`. categories[].id MUSS dem `Category` der Tool-_manifeste entsprechen (sonst harter -VerifyCatalog-FAIL).",
+    "ord": 100,
+    "categories": [
+      { "id": "accounts", "ord": 10 },
+      { "id": "bookings", "ord": 20 },
+      { "id": "securities", "ord": 30 },
+      { "id": "loans", "ord": 40 },
+      { "id": "insurance", "ord": 50 },
+      { "id": "pension", "ord": 60 },
+      { "id": "real_estate", "ord": 70 },
+      { "id": "savings_goals", "ord": 80 },
+      { "id": "recurring", "ord": 90 },
+      { "id": "import", "ord": 100 }
+    ],
+    "tail": [
+      { "id": "advice", "ord": 200 },
+      { "id": "queries", "ord": 210 }
+    ]
+  },
+  "migrations": "db",
+  "approval_matrix": {
+    "_comment": "Maker-Checker-Stufe je Gate-Aufrufer dieses Pakets (WS-5b): Workflow-Name -> {tier, reason}. build.ps1 injiziert den tier in jeden Gate-Call-Node (fail-closed: Gate-Aufrufer ohne Eintrag = Build-Fehler), approval_lint prüft die gebauten JSONs. Stufen, Verb-Präfix-Strenge + Besitz-Regel -> docs/package-contract.md §3.10.",
+    "agent.finance.tool_set_account": { "tier": "owner_approval", "reason": "set_: Konto-Stammdaten ändern." },
+    "agent.finance.tool_set_account_interest": { "tier": "owner_approval", "reason": "set_: Kontozins ändern." },
+    "agent.finance.tool_set_real_estate": { "tier": "owner_approval", "reason": "set_: Immobilie neubewerten/ändern." },
+    "agent.finance.tool_set_pension": { "tier": "owner_approval", "reason": "set_: Altersvorsorge ändern." },
+    "agent.finance.tool_set_insurance": { "tier": "owner_approval", "reason": "set_: Versicherung ändern." },
+    "agent.finance.tool_set_loan": { "tier": "owner_approval", "reason": "set_: Kredit-Konditionen/Status ändern." },
+    "agent.finance.tool_set_recurring_payment": { "tier": "owner_approval", "reason": "set_: Dauerauftrag ändern." },
+    "agent.finance.tool_set_savings_goal": { "tier": "owner_approval", "reason": "set_: Sparziel ändern." },
+    "agent.finance.tool_set_holding": { "tier": "owner_approval", "reason": "set_: Depot-Position-Metadaten ändern." },
+    "agent.finance.tool_set_asset_classes": { "tier": "owner_approval", "reason": "set_: Anlageklassen mehrerer Depot-Positionen zuordnen (Bookkeeper + Finanzberater)." },
+    "agent.finance.tool_set_savings_plan": { "tier": "owner_approval", "reason": "set_: Sparplan ändern." },
+    "agent.finance.tool_close_account": { "tier": "owner_approval", "reason": "close_: Konto schliessen (Status)." },
+    "agent.finance.tool_close_savings_plan": { "tier": "owner_approval", "reason": "close_: Sparplan beenden." },
+    "agent.finance.tool_close_insurance": { "tier": "owner_approval", "reason": "close_: Versicherung beenden." },
+    "agent.finance.tool_close_pension": { "tier": "owner_approval", "reason": "close_: Altersvorsorge beenden." },
+    "agent.finance.tool_close_savings_goal": { "tier": "owner_approval", "reason": "close_: Sparziel beenden." },
+    "agent.finance.tool_delete_real_estate": { "tier": "owner_approval", "reason": "delete_: Immobilie löschen (Hard-DELETE)." },
+    "agent.finance.tool_delete_holding": { "tier": "owner_approval", "reason": "delete_: Depot-Position löschen." },
+    "agent.finance.tool_delete_account": { "tier": "owner_approval", "reason": "delete_: Konto löschen." },
+    "agent.finance.tool_delete_recurring_payment": { "tier": "owner_approval", "reason": "delete_: Dauerauftrag löschen." },
+    "agent.finance.tool_delete_loan": { "tier": "owner_approval", "reason": "delete_: Kredit löschen." },
+    "agent.finance.tool_void_transaction": { "tier": "owner_approval", "reason": "void_: Fehlbuchung rückgängig (Hard-DELETE)." },
+    "agent.finance.tool_settle_loan": { "tier": "owner_approval", "reason": "settle_: Kredit vorzeitig ablösen." },
+    "agent.finance.tool_sell_real_estate": { "tier": "owner_approval", "reason": "sell_: Immobilien-Verkauf buchen." },
+    "agent.finance.tool_reconcile_account": { "tier": "owner_approval", "reason": "reconcile_: Saldo-Korrektur (Manipulationsschutz = Vier-Augen)." },
+    "agent.finance.tool_reconcile_accounts_batch": { "tier": "owner_approval", "reason": "reconcile_: Sammel-Saldo-Korrektur." },
+    "agent.finance.tool_commit_import": { "tier": "owner_approval", "reason": "commit_: Bulk-Import committen (atomarer Multi-Row-Write)." },
+    "agent.finance.tool_reconcile_bank_statement": { "tier": "owner_approval", "reason": "reconcile_: Kontoauszug abgleichen (Daueraufträge, Rest als Abgleich, atomarer Multi-Row-Write)." },
+    "agent.finance.tool_void_bank_statement": { "tier": "owner_approval", "reason": "void_: letzten Kontoauszug samt Buchungen zurücknehmen." },
+    "agent.finance.tool_create_account": { "tier": "owner_info", "reason": "create_: Konto anlegen (additiv)." },
+    "agent.finance.tool_create_insurance": { "tier": "owner_info", "reason": "create_: Versicherung anlegen." },
+    "agent.finance.tool_create_loan": { "tier": "owner_info", "reason": "create_: Kredit anlegen." },
+    "agent.finance.tool_create_real_estate": { "tier": "owner_info", "reason": "create_: Immobilie anlegen." },
+    "agent.finance.tool_create_savings_goal": { "tier": "owner_info", "reason": "create_: Sparziel anlegen." },
+    "agent.finance.tool_create_recurring_payment": { "tier": "owner_info", "reason": "create_: Dauerauftrag anlegen." },
+    "agent.finance.tool_create_recurring_transfer": { "tier": "owner_info", "reason": "create_: Wiederkehrenden Transfer anlegen." },
+    "agent.finance.tool_create_pension": { "tier": "owner_info", "reason": "create_: Altersvorsorge anlegen." },
+    "agent.finance.tool_create_savings_plan": { "tier": "owner_info", "reason": "create_: Sparplan anlegen." },
+    "agent.finance.tool_book_stock_buy": { "tier": "owner_info", "reason": "book_: Aktien-/ETF-Kauf buchen (additiv)." },
+    "agent.finance.tool_book_stock_sell": { "tier": "owner_info", "reason": "book_: Aktien-/ETF-Verkauf buchen (additive Trade-Buchung; Asset-Verkauf = sell_real_estate)." },
+    "agent.finance.tool_book_dividend": { "tier": "owner_info", "reason": "book_: Dividende buchen." },
+    "agent.finance.tool_book_transfer": { "tier": "owner_info", "reason": "book_: Transfer zwischen eigenen Konten buchen." },
+    "agent.finance.tool_book_savings_goal_transfer": { "tier": "owner_info", "reason": "book_: Sparziel-Bewegung (einzahlen/entnehmen/umschichten) als getaggter Transfer." },
+    "agent.finance.tool_book_savings_reservation": { "tier": "owner_info", "reason": "book_: Depot-Anteil einer Sparziel-Reserve als append-only Journal-Zeile." },
+    "agent.finance.tool_book_transaction": { "tier": "owner_info", "reason": "book_: Externe Einnahme/Ausgabe buchen." },
+    "agent.finance.tool_book_loan_payment": { "tier": "owner_info", "reason": "book_: Kreditrate buchen." },
+    "agent.finance.tool_book_savings_plan_execution": { "tier": "owner_info", "reason": "book_: Sparplan-Ausführung buchen." },
+    "agent.finance.tool_book_recurring_occurrence": { "tier": "owner_info", "reason": "book_: fälliges Dauerauftrag-Vorkommen mit angepasstem Betrag buchen (WS-5c-A)." },
+    "agent.finance.tool_book_interest": { "tier": "owner_info", "reason": "book_: fällige Zinsgutschrift buchen (DB-berechnet oder Override, WS-5c-B)." }
+  }
+}

@@ -1,0 +1,946 @@
+{
+    "id":  "WqYgjn3UUNiGaDnK",
+    "name":  "agent.finance.tool_create_pension",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "pension_type"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "provider"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "contract_number"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "owner_person"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "current_value"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "value_updated_at"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "guaranteed_monthly_pension"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "retirement_start_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "contribution_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "debit_account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_day_of_month"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "first_payment_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "notes"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "cfdfb3bd-2e77-5948-8bc0-5f65d84b6f91",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT COUNT(*)::int AS hit_count FROM finance.pension WHERE name = ($1::jsonb)-\u003e\u003e\u0027name\u0027 AND status = \u0027active\u0027;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       -200
+                                   ],
+                      "id":  "1813e71a-0c34-57de-9d80-994737f35fb5",
+                      "name":  "Check duplicate name",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "64246891-eb3e-5d52-b65c-3e74f411f63c",
+                                                                                   "leftValue":  "={{ $(\u0027Check duplicate name\u0027).item.json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gte"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       -200
+                                   ],
+                      "id":  "c61e392d-05f4-58bf-af82-2c3993e4160e",
+                      "name":  "Pension exists?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "14ecd645-ce88-5963-a542-608b6f3dd7cf",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "940d1538-6c7b-5368-b848-f551a1cc9c5f",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=An active pension named \u0027{{ $(\u0027Start\u0027).item.json.name }}\u0027 already exists. I will NOT create a duplicate. Choose a different name or update the existing one.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -300
+                                   ],
+                      "id":  "3dfa8c46-bb48-593e-ae6b-ba2011045e33",
+                      "name":  "Pension exists"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT\n  CASE WHEN NULLIF(($1::jsonb)-\u003e\u003e\u0027debit_account_name\u0027,\u0027\u0027) IS NULL THEN NULL ELSE r.id END       AS debit_id,\n  CASE WHEN NULLIF(($1::jsonb)-\u003e\u003e\u0027debit_account_name\u0027,\u0027\u0027) IS NULL THEN 1   ELSE r.hit_count END AS debit_hits,\n  r.candidates AS debit_candidates\nFROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027debit_account_name\u0027,\u0027\u0027), ARRAY[\u0027cash\u0027]) r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ debit_account_name: $(\u0027Start\u0027).item.json.debit_account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "e98a834a-6634-5c3d-81b1-a93ab07acf72",
+                      "name":  "Resolve Debit Account",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "663f79d7-95a9-5b08-8c80-375cad8edb25",
+                                                                                   "leftValue":  "={{ $json.debit_hits }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "d17eac5a-7c2a-5487-9ef3-cc66baf2698f",
+                      "name":  "Debit ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e9d20350-ea93-5883-b877-fc5992292b88",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "606294d6-5a8b-5976-9ea2-775d94996e4e",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Debit account \u0027{{ $(\u0027Start\u0027).item.json.debit_account_name }}\u0027 resolves to {{ $(\u0027Resolve Debit Account\u0027).item.json.debit_hits }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Debit Account\u0027).item.json.debit_candidates) }}. Ask the user the exact cash account for the contribution (or omit the contribution).",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "b15d893f-5a43-549d-b6e3-e5bbdad929d5",
+                      "name":  "Debit ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027owner_person\u0027, \u0027\u0027));",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ owner_person: $(\u0027Start\u0027).item.json.owner_person }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       440,
+                                       360
+                                   ],
+                      "id":  "ed66d7c3-253b-5f1f-a16c-8173b9e6c027",
+                      "name":  "Resolve Person",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fba37b61-a923-5fc8-9dac-1e674e48bc83",
+                                                                                   "leftValue":  "={{ !!$(\u0027Start\u0027).item.json.owner_person \u0026\u0026 $(\u0027Resolve Person\u0027).item.json.hit_count !== 1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       360
+                                   ],
+                      "id":  "58b0c5ce-4be8-57c4-92f9-805e4d5c8763",
+                      "name":  "Person invalid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "45a055e4-c2ac-5093-8358-45935b8cbcdc",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "021ceac1-f2f4-5f70-afbb-e2f028ed5338",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The owner person \u0027{{ $(\u0027Start\u0027).item.json.owner_person }}\u0027 could not be uniquely resolved ({{ $(\u0027Resolve Person\u0027).item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify($(\u0027Resolve Person\u0027).item.json.candidates) }}. Ask which household member, or leave empty for a joint/household provision.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       480
+                                   ],
+                      "id":  "05c31a48-60ee-5cd8-867d-998999de35e6",
+                      "name":  "Person unresolved"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_create_pension(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, pension_type: $(\u0027Start\u0027).item.json.pension_type, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, contribution_amount: $(\u0027Start\u0027).item.json.contribution_amount, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.debit_id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "7f964264-1966-57aa-9364-d591562d44fd",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "6f103a33-3023-526a-a721-71a5b7313978",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "d4800dea-a89f-5647-a862-fd99776055e4",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "496ea37c-4520-52d1-bd38-fb8efa72ac96",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c6f1076d-8df4-59fb-9971-6b830d04df5c",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "97fc15e2-fa10-5e51-b60b-6179c82f1c31",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b582e101-8095-5fba-9b37-e0aa076b065e",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8c080cf2-0c2d-5fa2-8db3-5e93d9fa952e",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "62518464-d0e9-5154-9054-1ef3a5ecd083",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027pension_id\u0027)::int AS pension_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id FROM finance.fn_create_pension(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, pension_type: $(\u0027Start\u0027).item.json.pension_type, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, contribution_amount: $(\u0027Start\u0027).item.json.contribution_amount, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.debit_id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "a00e2493-e5cb-597f-9f6c-23e086e3ba1c",
+                      "name":  "Create pension (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5830e9d4-6de6-52fa-956b-5d7bf8653e16",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.create_pension\u0027, lines: [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.name) }, { label: \u0027finance.label.kind\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.pension_type), enum: \u0027finance.enum.pension_type\u0027 }, { label: \u0027finance.label.provider\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.provider) }, { label: \u0027finance.label.contract_number\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.contract_number) }, { label: \u0027finance.label.owner_person\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Resolve Person\u0027).item.json.full_name) } }, { label: \u0027finance.label.current_value\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Start\u0027).item.json.current_value ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.unknown\u0027)), params: { value: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.current_value), currency: (\u0027EUR\u0027) }) } }, { label: \u0027finance.label.valuation_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.value_updated_at) }, { label: \u0027finance.label.guaranteed_monthly_pension\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.guaranteed_monthly_pension), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.retirement_start\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.retirement_start_date) }, { label: \u0027finance.label.monthly_contribution\u0027, kind: \u0027tpl\u0027, value: ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)($(\u0027Start\u0027).item.json.contribution_amount) ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.none_parens\u0027)), params: { value: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.contribution_amount), currency: (\u0027EUR\u0027) }) } }, ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)($(\u0027Start\u0027).item.json.contribution_amount)) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.debit_account_name) } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)($(\u0027Start\u0027).item.json.contribution_amount)) ? { label: \u0027finance.label.first_debit\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.first_payment_date) } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)($(\u0027Start\u0027).item.json.contribution_amount)) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Start\u0027).item.json.schedule_day_of_month == \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : ($(\u0027Start\u0027).item.json.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : \u0027finance.value.relative_to_start\u0027))), params: { day: ($(\u0027Start\u0027).item.json.schedule_day_of_month) } } : null), { label: \u0027finance.label.notes\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "71c5829c-9f64-5440-a395-d439015cffb0",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "1bbb71a1-2f21-5da9-822f-c69bdf89d21c",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "41ff58a3-b3d7-5f04-9219-5a83105b1d04",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "1b8e88b1-96e8-5c0f-9409-01694354769d",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "66163614-81ba-54bd-ac44-dbf8d3efb826",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a64f3291-5027-51e6-a517-a5f4c3737c61",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "966974c2-2afd-5006-9cee-3748b38a992d",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the create_pension action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       240
+                                   ],
+                      "id":  "ee4f48e8-1e01-5921-b2ed-6642f77e79f2",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "6aa13d12-79b7-5862-8ca0-1bdab49cb76f",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "0c4b0ae2-7a8a-5ca8-8efb-808676878e59",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8f68ceab-bf51-59dc-87a7-44cb40b2013f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "baae29f0-8792-5189-a3a2-a1c9d383f796",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create pension (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       240
+                                   ],
+                      "id":  "b39cf563-c424-52ef-92f0-c1510db7c54d",
+                      "name":  "Pension rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3a5795f6-b037-5aac-88fe-140193a76d26",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f19958f2-d3bc-5e54-a8a3-c6a61d13c8fc",
+                                                                                     "name":  "pension_id",
+                                                                                     "value":  "={{ $(\u0027Create pension (atomic)\u0027).item.json.pension_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5c996684-9a83-5550-b2d5-f9cfcaafa718",
+                                                                                     "name":  "recurring_payment_id",
+                                                                                     "value":  "={{ $(\u0027Create pension (atomic)\u0027).item.json.recurring_payment_id }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "0d48b403-50ad-55e8-b005-53e2eb743f7b",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**optional Beitrag-recurring (Helper) + pension-INSERT**\n\nfn_create_pension schreibt atomar: optional einen monatlichen Beitrag als recurring_payment (expense) via fn_add_recurring_payment (nur wenn contribution_amount + Abbuchungskonto gesetzt) + FK-Link, dann die finance.pension-Zeile (Asset). current_value optional (gesetzliche Rente oft unbekannt). Erscheint in finance.pension_overview (Net-Worth).",
+                                         "height":  220,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2200,
+                                       -240
+                                   ],
+                      "id":  "1b4477cf-4805-5b59-a40d-b1003acf3ed1",
+                      "name":  "fn_create_pension (atomar)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\ncurrent_value\u003c0, contribution\u003c0 oder Beitrag ohne Abbuchungskonto liefert die fn als {ok:false, reason} -\u003e Pension rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert).",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2640,
+                                       -240
+                                   ],
+                      "id":  "de9d61c5-1ae2-5f59-a34e-4ad872b32668",
+                      "name":  "Write ok? (korrigierbare Ablehnung)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_create_pension mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (current_value oder Beitrag negativ, Beitrag ohne Abbuchungskonto) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  220,
+                                         "width":  440,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -220
+                                   ],
+                      "id":  "22444759-827c-5721-8362-6cccd041d7ec",
+                      "name":  "Probelauf vor der Karte"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Check duplicate name",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Check duplicate name":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Pension exists?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Pension exists?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Pension exists",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Resolve Debit Account",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Resolve Debit Account":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Debit ok?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Debit ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Resolve Person",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Debit ambiguous",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Resolve Person":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Person invalid?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Person invalid?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Person unresolved",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create pension (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Create pension (atomic)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Write ok?",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Pension rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

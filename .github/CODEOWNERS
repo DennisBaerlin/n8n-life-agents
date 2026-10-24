@@ -1,0 +1,23 @@
+# Code owners — required reviewers for security-, secrets-, and infrastructure-sensitive paths.
+# GitHub auto-requests these owners on any PR touching a matching path. This is deliberate even for
+# solo work: it forces a conscious security pass before merge and documents ownership for later.
+# Syntax: <path-pattern>  <owner>   (last matching pattern wins). Docs: https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything.
+*                       @DennisBaerlin
+
+# Secrets / credentials surface (env templates at the repo root; the real .env is gitignored).
+/.env*                  @DennisBaerlin
+
+# Database migrations — versioned V__ deltas + repeatable R__ (views + the atomic fn_* enforcement).
+/packages/*/db/migrations/ @DennisBaerlin
+
+# Provisioning + multi-user bootstrap (owner pairing, schema deploy, credential injection).
+/provisioning/          @DennisBaerlin
+
+# Build orchestrator — generates all workflow JSON and the write-tool catalog.
+/scripts/build/         @DennisBaerlin
+
+# CI, branch automation, and the enforcement config itself.
+/.github/               @DennisBaerlin
+/.pre-commit-config.yaml @DennisBaerlin

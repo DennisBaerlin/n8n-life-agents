@@ -1,0 +1,35 @@
+[
+  {
+    "id": "me01",
+    "name": "create_monitor_trigger: FX-Trigger entsteht unter Sentinel-Domain (echter Write)",
+    "task": "Ich bestaetige den besprochenen Trigger: Label '__E2E__ EUR-KRW ueber 1500', Typ Schwellwert, Quelle FX-Kurstabelle mit Paar EUR/KRW, feuert ab 1500 oder hoeher (gte), Pruefung taeglich (1 day), Aktion: 'E2E-Test'. Lege den Trigger jetzt an.",
+    "chat_id": "test_e2e_me01",
+    "sentinel_accounts": 0,
+    "verify_sql": "SELECT count(*) FROM agent.monitor_triggers WHERE domain = '__e2e_monitor__' AND lower(label) = lower('__E2E__ EUR-KRW ueber 1500') AND trigger_type = 'threshold' AND acquisition_method = 'fx_rate' AND comparator = 'gte' AND threshold_value = 1500 AND status = 'armed';",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "Auto-Approve (test_e2e) -> Probe (FX-Fast-Path) -> fn_create_monitor_trigger. Domain-Switch IM Tool (chat_id test_e2e -> __e2e_monitor__); fn_clear_e2e_data raeumt domain ILIKE __E2E% inkl. Observations (CASCADE)."
+  },
+  {
+    "id": "me02",
+    "name": "create + set: Termin-Trigger anlegen und deaktivieren (Lifecycle, echter Write)",
+    "task": "Zwei Schritte, beide bereits von mir bestaetigt - KEINE Rueckfrage, direkt ausfuehren: 1) Lege den Termin-Trigger '__E2E__ TUEV Termin' an, faellig am 2027-03-31, Vorwarnung 30 Tage, Pruefung woechentlich (7 days), Aktion 'E2E-Test'. 2) Deaktiviere danach sofort genau diesen Trigger '__E2E__ TUEV Termin' (Status disabled).",
+    "chat_id": "test_e2e_me02",
+    "sentinel_accounts": 0,
+    "verify_sql": "SELECT count(*) FROM agent.monitor_triggers WHERE domain = '__e2e_monitor__' AND lower(label) = lower('__E2E__ TUEV Termin') AND trigger_type = 'date' AND due_date = '2027-03-31' AND warn_days_before = 30 AND status = 'disabled';",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "Multi-Step in EINER Execution (jeder Write auto-approved): tool_create_monitor_trigger -> tool_set_monitor_trigger (Lifecycle disabled). Deckt set_* ohne dauerhafte Prod-Entitaet (Tier-Wahl-Regel: E2E ist Primaerabdeckung)."
+  },
+  {
+    "id": "me03",
+    "name": "create + delete: Fehlanlage hart loeschen (echter Write + CASCADE)",
+    "task": "Zwei Schritte, beide bereits von mir bestaetigt - KEINE Rueckfrage, direkt ausfuehren: 1) Lege den Termin-Trigger '__E2E__ Fehlanlage' an, faellig am 2027-06-30, Pruefung woechentlich (7 days). 2) Loesche danach sofort genau diesen Trigger '__E2E__ Fehlanlage' wieder komplett (endgueltig, inklusive Historie - bewusst bestaetigt).",
+    "chat_id": "test_e2e_me03",
+    "sentinel_accounts": 0,
+    "verify_sql": "SELECT count(*) FROM agent.monitor_triggers WHERE domain = '__e2e_monitor__' AND lower(label) = lower('__E2E__ Fehlanlage');",
+    "expect": 0,
+    "is_negative": false,
+    "notes": "tool_create_monitor_trigger -> tool_delete_monitor_trigger (Hard-DELETE, Observations via FK-CASCADE). verify erwartet 0 Zeilen nach dem Delete."
+  }
+]

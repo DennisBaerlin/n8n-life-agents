@@ -1,0 +1,561 @@
+{
+    "id":  "9CgkHotZZ5Pqt3ay",
+    "name":  "agent.monitor.cron_check_triggers",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_MONITOR_TRIGGERS__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "47b2ab33-9b04-570a-8c10-68e37d43c8d1",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT COALESCE((SELECT value FROM core.config WHERE category = \u0027feature\u0027 AND key = \u0027monitor_triggers\u0027), \u0027true\u0027) AS flag;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "18611234-7bf1-5ab6-b3f1-4f45930bc03c",
+                      "name":  "Read feature flag",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b19caed5-2dd7-5d70-8771-662d94b1ab1a",
+                                                                                   "leftValue":  "={{ String(($json.flag) || \u0027\u0027) }}",
+                                                                                   "rightValue":  "true",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "aafff27c-b861-5818-bf6a-aa193ee8db47",
+                      "name":  "Enabled?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -440,
+                                       200
+                                   ],
+                      "id":  "2e07d28c-cf7c-5a01-b15c-efd1897c720b",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"core\",\"key\":\"monitor_acquisition\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -550,
+                                       -180
+                                   ],
+                      "id":  "d7f38b94-8694-5820-9a5f-25f82377cc96",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT run_ts::text AS run_ts, id, label, acquisition_spec-\u003e\u003e\u0027prompt\u0027 AS prompt FROM agent.fn_monitor_due(NOW()) WHERE acquisition_method = \u0027web_search\u0027;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "b9f276d4-b251-5a84-a962-f98c22213ad2",
+                      "name":  "Load due web triggers",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "97457c6a-cad9-5951-b09d-b35371465a88",
+                                                                                   "leftValue":  "={{ $json.id || 0 }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -220,
+                                       0
+                                   ],
+                      "id":  "08f51c8b-0bd5-5c2b-92d0-55bf98d9fe9c",
+                      "name":  "Web items?"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/v1/messages",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "anthropicApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "anthropic-version",
+                                                                                         "value":  "2023-06-01"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: ({\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"}[$(\u0027Load model config\u0027).first().json.model.monitor_acquisition] || null), max_tokens: 16000, system: \"You retrieve exactly ONE metric value via web search. Respond with ONLY a single JSON object, no prose, no markdown fences: {\\\"ok\\\": true|false, \\\"value\\\": number|null, \\\"unit\\\": \\\"unit exactly as requested in the query\\\", \\\"as_of\\\": \\\"date the value refers to (YYYY-MM-DD if known)\\\", \\\"source_url\\\": \\\"best source url\\\", \\\"reason\\\": \\\"only when ok=false\\\"}. Set ok=false with a concrete reason when the value cannot be RELIABLY determined (sources conflict, data is stale or paywalled). Never guess. value is a plain number with dot decimal, no thousands separators, no units inside value.\", messages: [{ role: \u0027user\u0027, content: (String($json.prompt || \u0027\u0027)) }], output_config: { effort: \u0027medium\u0027 }, tools: [{ type: \u0027web_search_20260209\u0027, name: \u0027web_search\u0027, max_uses: 3 }] }) }}",
+                                         "options":  {
+                                                         "timeout":  120000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       0,
+                                       -140
+                                   ],
+                      "id":  "149ecbbf-67c4-5eb5-858a-3ea06e426f52",
+                      "name":  "Acquire web value",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForEachItem",
+                                         "jsCode":  "\nconst anthropicText = (r) =\u003e {\n  if (!r || !Array.isArray(r.content)) {\n    const m = (r \u0026\u0026 r.error \u0026\u0026 (r.error.message || r.error.type || r.error.description)) || \u0027no response\u0027;\n    return { ok: false, error: String(m).slice(0, 200) };\n  }\n  if (r.stop_reason === \u0027max_tokens\u0027) return { ok: false, error: \u0027answer truncated (max_tokens)\u0027 };\n  if (r.stop_reason === \u0027refusal\u0027) return { ok: false, error: \u0027model declined the request\u0027 };\n  if (r.stop_reason === \u0027pause_turn\u0027) return { ok: false, error: \u0027web search did not finish (pause_turn)\u0027 };\n  const text = r.content.filter(b =\u003e b \u0026\u0026 b.type === \u0027text\u0027 \u0026\u0026 b.text).map(b =\u003e b.text).join(\u0027\u0027).trim();\n  if (!text) return { ok: false, error: \u0027empty answer\u0027 };\n  return { ok: true, text };\n};\nconst stripFences = (t) =\u003e String(t).replace(/^\\s*```[a-z]*\\s*/i, \u0027\u0027).replace(/\\s*```\\s*$/, \u0027\u0027);\nconst r = $input.item.json;\nconst mk = (o) =\u003e { const obs = o; return { json: { observation: Object.assign({ trigger_id: $(\u0027Load due web triggers\u0027).item.json.id }, obs) } }; };\nconst fail = (m) =\u003e mk({ ok: false, reason: String(m).slice(0, 300) });\nconst res = anthropicText(r);\nif (!res.ok) return fail(res.error);\nconst text = stripFences(res.text);\nconst start = text.indexOf(\u0027{\u0027);\nif (start \u003c 0) return fail(\u0027no JSON object in model output\u0027);\nlet depth = 0, end = -1;\nfor (let i = start; i \u003c text.length; i++) {\n  if (text[i] === \u0027{\u0027) depth++;\n  else if (text[i] === \u0027}\u0027) { depth--; if (depth === 0) { end = i; break; } }\n}\nif (end \u003c 0) return fail(\u0027unbalanced JSON in model output\u0027);\nlet o;\ntry { o = JSON.parse(text.slice(start, end + 1)); } catch (e) { return fail(\u0027unparseable model output\u0027); }\nif (o.ok !== true) return mk({ ok: false, reason: String(o.reason || \u0027model reported cannot_determine\u0027).slice(0, 300) });\nif (typeof o.value !== \u0027number\u0027 || !isFinite(o.value)) return fail(\u0027value is not a finite number\u0027);\nreturn mk({ ok: true, value: o.value, unit: String(o.unit || \u0027\u0027), as_of: String(o.as_of || \u0027\u0027), source_url: String(o.source_url || \u0027\u0027) });"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       180,
+                                       -140
+                                   ],
+                      "id":  "cad0a2b7-1c7f-5e18-b6ab-4c41756951ef",
+                      "name":  "Shape web observations"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const items = $input.all();\nreturn [{ json: {\n  run_ts: $(\u0027Load due web triggers\u0027).first().json.run_ts,\n  observations: items.map(i =\u003e i.json.observation)\n} }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       360,
+                                       -140
+                                   ],
+                      "id":  "7226f20b-c7cb-5313-aa5a-92689d64354c",
+                      "name":  "Collect observations"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, (r-\u003e\u003e\u0027checked\u0027)::int AS checked, jsonb_array_length(r-\u003e\u0027fired\u0027)::int AS fired_count, jsonb_array_length(r-\u003e\u0027info\u0027)::int AS info_count, jsonb_array_length(r-\u003e\u0027problems\u0027)::int AS problem_count, (r-\u003e\u0027fired\u0027)::text AS fired, (r-\u003e\u0027info\u0027)::text AS info, (r-\u003e\u0027problems\u0027)::text AS problems, core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027core.monitor.title\u0027,\u0027core.monitor.fired\u0027,\u0027core.monitor.date_reached\u0027,\u0027core.monitor.drawdown\u0027,\u0027core.monitor.threshold\u0027,\u0027core.monitor.threshold_previous\u0027,\u0027core.monitor.source\u0027,\u0027core.monitor.source_as_of\u0027,\u0027core.monitor.action\u0027,\u0027core.monitor.advisor_hint\u0027,\u0027core.monitor.info\u0027,\u0027core.monitor.date_warning\u0027,\u0027core.monitor.value_as_of\u0027,\u0027core.monitor.problems\u0027,\u0027core.monitor.problem\u0027,\u0027core.monitor.repair\u0027,\u0027core.monitor.fired_note\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027,\u0027career.package.name\u0027,\u0027estate.package.name\u0027,\u0027finance.package.name\u0027]::text[])))::text AS ui FROM agent.fn_monitor_evaluate($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ now: ($json.run_ts || null), observations: ($json.observations || []) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       540,
+                                       0
+                                   ],
+                      "id":  "aa6893c4-88bf-5dd8-b32a-80076fee9bb4",
+                      "name":  "Evaluate (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "bd489f8b-bd90-599a-8e6f-7007808fdcce",
+                                                                                   "leftValue":  "={{ ($json.fired_count || 0) + ($json.info_count || 0) + ($json.problem_count || 0) }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       720,
+                                       0
+                                   ],
+                      "id":  "fad9c928-7cc4-55fe-94b1-9c69b6ca8ee0",
+                      "name":  "Anything to report?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       900,
+                                       200
+                                   ],
+                      "id":  "9d0d5963-29ee-5d6a-b594-4b70e7d2c170",
+                      "name":  "Quiet run"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $input.first().json;\nconst fired = JSON.parse(m.fired || \u0027[]\u0027);\nconst info = JSON.parse(m.info || \u0027[]\u0027);\nconst problems = JSON.parse(m.problems || \u0027[]\u0027);\nconst U = uiRender(JSON.parse(m.ui || \u0027{}\u0027));\nconst domainPackage = {\"career\":\"career\",\"estate\":\"estate\",\"finance\":\"finance\"};\n// Werte exakt (bis 6 Nachkommastellen, keine erzwungenen Nullen) im Owner-Locale; Nicht-Zahlen roh\nconst nv = (v) =\u003e U.isEmpty(v) ? \u0027-\u0027 : (isFinite(Number(v)) ? Number(v).toLocaleString(U.loc, { maximumFractionDigits: 6 }) : String(v));\nconst withUnit = (v, unit) =\u003e nv(v) + (unit ? \u0027 \u0027 + unit : \u0027\u0027);\nconst d = (iso) =\u003e U.date(iso);\nconst L = [U.t(\u0027core.monitor.title\u0027)];\nif (fired.length) {\n  L.push(\u0027\u0027); L.push(U.t(\u0027core.monitor.fired\u0027));\n  for (const f of fired) {\n    let detail;\n    if (f.trigger_type === \u0027date\u0027) detail = U.fill(U.t(\u0027core.monitor.date_reached\u0027), { date: d(f.due_date) });\n    else if (f.trigger_type === \u0027drawdown\u0027) detail = U.fill(U.t(\u0027core.monitor.drawdown\u0027), { pct: nv(f.drawdown_observed),\n      reference: withUnit(f.reference_value, f.unit), value: withUnit(f.value, f.unit) });\n    else detail = U.fill(U.t((f.previous_value !== undefined \u0026\u0026 f.previous_value !== null) ? \u0027core.monitor.threshold_previous\u0027 : \u0027core.monitor.threshold\u0027),\n      { value: withUnit(f.value, f.unit), comparator: (f.comparator === \u0027lte\u0027 ? \u0027\u003c=\u0027 : \u0027\u003e=\u0027), threshold: nv(f.threshold_value), previous: nv(f.previous_value) });\n    L.push(\u0027• \u0027 + f.label + \u0027: \u0027 + detail);\n    if (f.source_url) L.push(\u0027  \u0027 + U.fill(U.t(f.as_of ? \u0027core.monitor.source_as_of\u0027 : \u0027core.monitor.source\u0027), { url: f.source_url, date: d(f.as_of) }));\n    if (f.action_note) L.push(\u0027  \u0027 + U.fill(U.t(\u0027core.monitor.action\u0027), { note: f.action_note }));\n    const pkg = domainPackage[f.domain];\n    if (pkg) L.push(\u0027  -\u003e \u0027 + U.fill(U.t(\u0027core.monitor.advisor_hint\u0027), { package: U.t(pkg + \u0027.package.name\u0027) }));\n  }\n}\nif (info.length) {\n  L.push(\u0027\u0027); L.push(U.t(\u0027core.monitor.info\u0027));\n  for (const i of info) {\n    if (i.kind === \u0027date_warning\u0027) L.push(\u0027• \u0027 + i.label + \u0027: \u0027 + U.fill(U.t(\u0027core.monitor.date_warning\u0027), { days: nv(i.days_left), date: d(i.due_date) }) + (i.action_note ? \u0027 - \u0027 + i.action_note : \u0027\u0027));\n    else L.push(\u0027• \u0027 + i.label + \u0027: \u0027 + ((i.value !== undefined \u0026\u0026 i.value !== null) ? withUnit(i.value, i.unit) : \u0027-\u0027)\n      + (i.as_of ? \u0027 \u0027 + U.fill(U.t(\u0027core.monitor.value_as_of\u0027), { date: d(i.as_of) }) : \u0027\u0027) + (i.action_note ? \u0027 - \u0027 + i.action_note : \u0027\u0027));\n  }\n}\nif (problems.length) {\n  L.push(\u0027\u0027); L.push(U.t(\u0027core.monitor.problems\u0027));\n  for (const p of problems) {\n    L.push(\u0027• \u0027 + p.label + \u0027: \u0027 + U.fill(U.t(\u0027core.monitor.problem\u0027), { since: p.first_fail ? d(p.first_fail) : \u0027?\u0027, streak: nv(p.fail_streak), reason: p.reason || \u0027\u0027 }));\n    L.push(\u0027  \u0027 + U.fill(U.t(\u0027core.monitor.repair\u0027), { label: p.label }));\n  }\n}\nif (fired.length) { L.push(\u0027\u0027); L.push(U.t(\u0027core.monitor.fired_note\u0027)); }\nreturn [{ json: { message: L.join(\u0027\\n\u0027) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       900,
+                                       0
+                                   ],
+                      "id":  "dd9d2f39-8ee8-53e2-acdf-1c558045029e",
+                      "name":  "Build message"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.message).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1080,
+                                       0
+                                   ],
+                      "id":  "a37fda20-003a-5b32-838f-3127c06eb84a",
+                      "name":  "Send alerts",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Heartbeat des generischen Trigger-Monitorings (deterministisch)**\n\nStündlicher Heartbeat (schedule.monitor_triggers aus core.config) = nur AUFLÖSUNGSBODEN — die Frequenz JEDES Triggers lebt als check_interval/next_check_at an der Zeile (agent.monitor_triggers); fn_monitor_due selektiert Fällige. Kill-Switch feature.monitor_triggers zur LAUFZEIT (default true; ohne Trigger natürlicherweise stumm). Leerer Lauf = 1 SELECT, kein LLM, keine Message. Trigger anlegen/ändern/reparieren NUR über die HITL-Tools des Monitor-Agenten (Fach-Advisor: nur create, domain = sein Paket).",
+                                         "height":  300,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -420
+                                   ],
+                      "id":  "ca018023-24e8-5c1c-8597-7df30d5ba2d3",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Wert-Beschaffung: nur WEB im Canvas, Rest in der fn**\n\nLoad due web triggers liefert NUR fällige web_search-Trigger; je Item ein Claude-web_search-HTTP-Call (model.monitor_acquisition, bei JEDEM Lauf von Load model config aus core.config gelesen, strikter JSON-Vertrag im System-Prompt, gespeicherter Prompt WÖRTLICH als User-Content, max 2 Calls/Tag/Trigger via DB-CHECK \u003e= 12h). Shape: deterministischer Parse (Fences strippen, erster balancierter JSON-Block, value finite number; trigger_id via pairedItem-Kette, NIE durchs Modell). sql (SET LOCAL ROLE core_ro) / Paket-Methoden (Registry core.monitor_acquisition_methods -\u003e acquire_fn des Pakets; Paket fehlt/inaktiv -\u003e Trigger GEPARKT, kein Fehlerpfad) / none beschafft fn_monitor_evaluate SELBST. Exklusive IF-Branches statt Merge: entweder echte Web-Items ODER das eine alwaysOutputData-Leeritem -\u003e Evaluate läuft exakt 1x.",
+                                         "height":  320,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -20,
+                                       -420
+                                   ],
+                      "id":  "30aedc85-8fb7-5179-b4e0-925dc9456ead",
+                      "name":  "Doc Beschaffung"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_monitor_evaluate (atomar, off-canvas) — die Schritte**\n\n1. Due-Set unter FOR UPDATE NEU berechnen (TOCTOU: disabled/editiert zählt Row-Wahrheit; nicht verfügbare Paket-Methode -\u003e geparkt). 2. Beschaffung sql/none/Paket-Methoden in der fn. 3. Validierungs-Kaskade fn_validate_observation: numerisch -\u003e Unit-Echo (expected_unit, nur web) -\u003e Bounds (min/max_plausible) -\u003e Jump-Guard (max_jump_pct vs. letzter sauberer Wert). 4. Observation-Log IMMER (agent.monitor_observations, Audit). 5. dirty: fail_streak++, Problem-Alarm bei monitor.fail_alert_streak + Vielfachen; last_value/Ratchet UNBERÜHRT. 6. clean: threshold gte/lte-Latch; drawdown Ratchet GREATEST + dd%-Latch; date Warn-Info (kein Latch) + Latch am due_date; recurring_info latcht NIE. 7. next_check_at IMMER advancen (fn_next_check, anker-erhaltend). Datum = core.fn_today (Haushalts-Zeitzone der DB-Sitzung). Message deterministisch (kein LLM) in Owner-Sprache: Texte aus derselben Evaluate-Anweisung (core.fn_ui_texts_for), Zahlen/Daten per Intl; Domain-\u003ePaket-Map build-time aus den Manifest-advisors-Blöcken, der Paketname zur Laufzeit aus dem Katalog: fired in einer Advisor-Domain -\u003e Berater dieses Pakets, Probleme -\u003e Monitor-Agent.",
+                                         "height":  360,
+                                         "width":  640,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       480,
+                                       -420
+                                   ],
+                      "id":  "8ab0e1da-cb24-55e8-82b5-b74288735d7b",
+                      "name":  "Doc Evaluate"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Read feature flag",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Read feature flag":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Enabled?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Enabled?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Load due web triggers",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Load due web triggers":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Web items?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Web items?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Acquire web value",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Evaluate (atomic)",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Acquire web value":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Shape web observations",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Shape web observations":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Collect observations",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Collect observations":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Evaluate (atomic)",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Evaluate (atomic)":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Anything to report?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Anything to report?":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Build message",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Quiet run",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Build message":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Send alerts",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

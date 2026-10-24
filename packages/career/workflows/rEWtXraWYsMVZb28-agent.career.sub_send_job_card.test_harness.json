@@ -1,0 +1,135 @@
+{
+    "id":  "rEWtXraWYsMVZb28",
+    "name":  "agent.career.sub_send_job_card.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "job-card-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "81c4ee1c-fc54-517d-9dc2-a2d0c56b7a60",
+                      "name":  "Test Webhook",
+                      "webhookId":  "d2ee0208-e5b8-5cf1-a6b9-62031fe125c6",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "MP2QuA5247ffwkUB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/MP2QuA5247ffwkUB",
+                                                            "cachedResultName":  "agent.career.sub_send_job_card"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}",
+                                                                              "job_match_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.job_match_id }}",
+                                                                              "is_serendipity":  "={{ $(\u0027Test Webhook\u0027).item.json.body.is_serendipity }}",
+                                                                              "score":  "={{ $(\u0027Test Webhook\u0027).item.json.body.score }}",
+                                                                              "title":  "={{ $(\u0027Test Webhook\u0027).item.json.body.title }}",
+                                                                              "employer":  "={{ $(\u0027Test Webhook\u0027).item.json.body.employer }}",
+                                                                              "location":  "={{ $(\u0027Test Webhook\u0027).item.json.body.location }}",
+                                                                              "board":  "={{ $(\u0027Test Webhook\u0027).item.json.body.board }}",
+                                                                              "url":  "={{ $(\u0027Test Webhook\u0027).item.json.body.url }}",
+                                                                              "reasoning":  "={{ $(\u0027Test Webhook\u0027).item.json.body.reasoning }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "c714a4a0-bfbb-50ae-a9d1-a134b6316161",
+                      "name":  "Run agent.career.sub_send_job_card",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "a1cc08b1-3602-53b4-9435-c2d7f078d37a",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.career.sub_send_job_card.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.career.sub_send_job_card\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: chat_id, job_match_id, is_serendipity, score, title, employer, location, board, url, reasoning.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "7711d9ba-e220-5558-b3b5-2010364a074b",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.career.sub_send_job_card",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.career.sub_send_job_card":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "index":  0,
+                                                                                        "node":  "Run Info",
+                                                                                        "type":  "main"
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

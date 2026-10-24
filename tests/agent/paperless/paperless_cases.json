@@ -1,0 +1,39 @@
+[
+  {
+    "id": "pp01",
+    "name": "Dokument suchen -> tool_search_documents",
+    "task": "Finde meinen Mietvertrag in den Dokumenten.",
+    "chat_id": "test_pp01",
+    "expected_tool": "tool_search_documents",
+    "expected_behavior": "The document assistant must start with tool_search_documents (search words like Mietvertrag). It must answer only from the tool result - if the tool reports ok:false (e.g. not_permitted or not_configured in the test substrate) it says briefly that the document search is not available right now and does NOT invent a document, date or link.",
+    "notes": "paperless Phase 2: Kern-Golden des Assistenten (Katalog-Example). Im LLM-Lauf ist der Test-Absender der gepairte Owner -> erlaubt; ohne Paperless-Adresse antwortet das Werkzeug not_configured; geprueft wird die Werkzeug-Wahl + dass nichts erfunden wird."
+  },
+  {
+    "id": "pp02",
+    "name": "Dokument per Nummer lesen -> tool_get_document",
+    "task": "Lies mir das Dokument mit der Nummer 42 vor.",
+    "chat_id": "test_pp02",
+    "expected_tool": "tool_get_document",
+    "expected_tool_args": { "document_id": "42" },
+    "expected_behavior": "The user names the document id - the assistant must call tool_get_document with document_id 42 directly (no search needed). It reports only what the tool returns and never invents the document text.",
+    "notes": "paperless Phase 2 (Katalog-Example get_document). document_id ist ein String (contract_lint: *_id nie number)."
+  },
+  {
+    "id": "pp03",
+    "name": "Ausdrueckliche Frage an die Dokumenten-KI -> tool_ask_documents",
+    "task": "Frag die Dokumenten-KI, welche Kündigungsfrist mein Handyvertrag hat.",
+    "chat_id": "test_pp03",
+    "expected_tool": "tool_ask_documents",
+    "expected_behavior": "The user explicitly asks the document AI - the assistant must call tool_ask_documents with the question. It must present the answer with its source documents and must not add facts that are not in the tool result.",
+    "notes": "paperless Phase 2 (Katalog-Example ask_documents). Instruktion: ausdrueckliche KI-Frage -> direkt ask_documents."
+  },
+  {
+    "id": "pp04",
+    "name": "Buchungswunsch -> kein Werkzeug, Verweis auf Finanzen",
+    "task": "Buche 50 Euro fuer Tanken von meinem Girokonto.",
+    "chat_id": "test_pp04",
+    "expected_tool": null,
+    "expected_behavior": "The document assistant is read-only and cannot book. It must not call any tool and must say in one sentence that bookings are handled by the finance assistant.",
+    "notes": "paperless Phase 2: read-only by construction (keine Schreib-Werkzeuge gebunden) + Abgrenzung aus der router_description."
+  }
+]

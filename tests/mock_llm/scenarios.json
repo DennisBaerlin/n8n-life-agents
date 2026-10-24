@@ -1,0 +1,965 @@
+[
+  {
+    "_comment": "ORCHESTRATOR-ROUTEN (oc01-oc11). Tool-Namen sind SANITISIERT (Call 'agent.finance' -> Call_agent_finance_, Trailing-Underscore). Pro Route EIN Call; der Sub-Agent (mock-mocked) faellt mangels eligible Tool auf finalen Text zurueck -> nur die Routing-Entscheidung wird geprueft. NULL-Cases (oc03) brauchen kein Szenario (kein Match -> finaler Text -> kein Routing).",
+    "match": "aktueller Kontostand beim DKB Giro",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Wie hoch ist mein aktueller Kontostand beim DKB Giro?" } }
+    ],
+    "final": "Dein DKB Giro Kontostand betraegt 1234,56 EUR."
+  },
+  {
+    "_comment": "Multi-Agent: EIN Szenario treibt Orchestrator (Call_agent_finance_) UND Sub-Agent (tool_book_transaction). Der namespace-Filter in server.js (eligible = offered ∩ calls) sorgt dafuer, dass pro Konversation nur die angebotenen Tools emittiert werden -- Namespaces im selben calls-Array zu mischen ist daher beabsichtigt + sicher. WICHTIG fuer den End-to-End-Chain (real_ingress_test ri02): seit Fix C reicht der Orchestrator die NUTZERNACHRICHT woertlich als task weiter (Agent input, kein $fromAI) -- args.task hier wird ignoriert; die Nutzernachricht von ri02 MUSS den match-Substring enthalten, sonst findet der finance-Mock im Sub-Call kein Szenario.",
+    "match": "20 Euro fuer Kaffee mit dem DKB Giro",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "20 Euro fuer Kaffee mit dem DKB Giro als Ausgabe buchen" } },
+      { "tool": "tool_book_transaction", "args": { "account_name": "DKB Giro", "amount": 20, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Kaffee" } }
+    ],
+    "final": "Ausgabe von 20 EUR auf DKB Giro gebucht."
+  },
+  {
+    "match": "Wetter heute in Berlin",
+    "calls": [],
+    "final": "Dazu kann ich nichts sagen, ich bin dein Finanz-Assistent."
+  },
+  {
+    "match": "S&P 500 ETF zu investieren",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Lohnt sich ein S&P 500 ETF?" } }
+    ],
+    "final": "Dazu beraet dich der Finanzberater."
+  },
+  {
+    "match": "vollstaendige Finanzplanung",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Erstelle eine vollstaendige Finanzplanung." } }
+    ],
+    "final": "Der Finanzberater erstellt deinen Plan."
+  },
+  {
+    "match": "Fachbuch ueber Investieren",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "25 Euro Ausgabe DKB Giro fuer ein Fachbuch buchen" } }
+    ],
+    "final": "Der Buchhalter verbucht die Ausgabe."
+  },
+  {
+    "match": "Reifendruck am Auto",
+    "calls": [
+      { "tool": "Call_agent_monitor_", "args": { "task": "Alle 6 Monate an Reifendruck-Pruefung erinnern" } }
+    ],
+    "final": "Der Monitor-Agent legt den Reminder an."
+  },
+  {
+    "match": "Gold-Trigger hat gerade ausgeloest",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Was tun nach dem Gold-Trigger-Alert?" } }
+    ],
+    "final": "Der Finanzberater gibt dir eine Empfehlung."
+  },
+  {
+    "match": "Exportiere mir bitte alle meine Konten",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Liste alle Konten auf" } }
+    ],
+    "final": "Der Buchhalter listet deine Konten."
+  },
+  {
+    "match": "richte mich bitte ein",
+    "calls": [
+      { "tool": "Call_agent_guide_", "args": { "task": "Onboarding starten" } }
+    ],
+    "final": "Der Guide fuehrt dich durch die Einrichtung."
+  },
+  {
+    "match": "wie bediene ich das",
+    "calls": [
+      { "tool": "Call_agent_guide_", "args": { "task": "Was kannst du alles und wie bediene ich das?" } }
+    ],
+    "final": "Der Guide erklaert dir das System."
+  },
+  {
+    "_comment": "WS-1 career (oc12): Karriere-Strategie -> Call_agent_career_advisor_ (sanitisierter Route-Tool-Name, Trailing-Underscore).",
+    "match": "vom IT-Projektmanagement in Richtung Scrum Master",
+    "calls": [
+      { "tool": "Call_agent_career_advisor_", "args": { "task": "Wechsel ins Scrum-Mastering planen" } }
+    ],
+    "final": "Der Career-Coach hilft dir beim Wechsel."
+  },
+  {
+    "_comment": "WS-5 Routing-Flip (oc13): die Leistbarkeit/Runway eines JOBWECHSELS geht jetzt an career_advisor (er liest die Runway aus dem Plan), nicht mehr finance_advisor.",
+    "match": "Jobwechsel mit deutlich weniger Gehalt ueberhaupt leisten",
+    "calls": [
+      { "tool": "Call_agent_career_advisor_", "args": { "task": "Runway/Leistbarkeit des geplanten Jobwechsels pruefen" } }
+    ],
+    "final": "Der Career-Coach prueft deine Wechsel-Runway."
+  },
+  {
+    "_comment": "WS-5 Gegenprobe (oc16): allgemeine Geld-Leistbarkeit OHNE Jobwechsel-Bezug bleibt finance_advisor (kein career-Overreach).",
+    "match": "neues Auto fuer 30000 Euro leisten",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Leistbarkeit einer Anschaffung pruefen" } }
+    ],
+    "final": "Der Finanzberater prueft die Leistbarkeit der Anschaffung."
+  },
+  {
+    "_comment": "WS-1b (oc14): ein CV/Lebenslauf-Anhang wird intent-basiert an career_advisor geroutet (Marker verbatim, nicht mehr hart an finance).",
+    "match": "Hier ist mein Lebenslauf als Foto",
+    "calls": [
+      { "tool": "Call_agent_career_advisor_", "args": { "task": "CV-Profil aus dem weitergeleiteten Lebenslauf-Foto extrahieren" } }
+    ],
+    "final": "Der Career-Coach extrahiert dein CV-Profil."
+  },
+  {
+    "_comment": "WS-1b (oc15): ein Finanzdokument-Anhang (Kontoauszug) bleibt bei finance (haeufiger Fall + Default bei Unklarheit). Regression der relaxierten Attachment-Regel.",
+    "match": "Mein aktueller Kontoauszug",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Kontoauszug importieren" } }
+    ],
+    "final": "Der Buchhalter importiert den Kontoauszug."
+  },
+
+  {
+    "_comment": "FINANCE-TOOLS (tc-Cases). Args enthalten ALLE Pflicht-$fromAI-Felder (3-arg im InputSpec von agent.finance.ps1) mit typgerechten Werten (number/string), sonst weist n8n den Tool-Input ab. Werte sind unter dem Routing-Bypass nicht DB-relevant (Gate declined) -- nur dass das Tool REGISTRIERT.",
+    "match": "Scalable Capital Aktien-Depot",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "Scalable Capital Aktien-Depot", "account_type": "stocks_depot", "settlement_account_name": "DKB Giro" } }
+    ],
+    "final": "Depot angelegt."
+  },
+  {
+    "match": "Kauf im Trade Republic Depot 10 Anteile",
+    "calls": [
+      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BK5BQT80", "symbol": "VWCE", "shares": 10, "price_per_share": 110, "order_fee": "1", "depot_name": "Trade Republic Depot", "transaction_date": "2026-06-16" } }
+    ],
+    "final": "Kauf gebucht."
+  },
+  {
+    "_comment": "tc48 Bestandsuebernahme: bestehende Position, Verrechnungskonto bleibt unberuehrt (existing_position).",
+    "match": "liegen schon 10 Anteile iShares Core MSCI EM IMI",
+    "calls": [
+      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BKM4GZ66", "symbol": "EIMI", "shares": 10, "price_per_share": 30, "order_fee": "0", "depot_name": "Trade Republic Depot", "transaction_date": "2026-06-16", "existing_position": "true" } }
+    ],
+    "final": "Position übernommen."
+  },
+  {
+    "_comment": "tc47 Konto + Eroeffnungssaldo + Inhaber in einem Aufruf (opening_balance).",
+    "match": "1822direkt Girokonto hat aktuell",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "1822direkt Girokonto", "account_type": "cash", "bank": "1822direkt", "opening_balance": "1142", "owner_person": "Erika Mustermann" } }
+    ],
+    "final": "1822direkt Girokonto angelegt, Saldo 1.142,00 €."
+  },
+  {
+    "_comment": "tc53 zweites Konto gleicher Bank fuer ein Kind: Vorname reicht, keine Dubletten-Rueckfrage.",
+    "match": "Trade Republic Cash Konto fuer meine Tochter Lisa",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "Trade Republic Cash Konto Lisa", "account_type": "cash", "bank": "Trade Republic", "account_number": "DE89 3704 0044 0532 0130 00", "owner_person": "Lisa" } }
+    ],
+    "final": "Trade Republic Cash Konto Lisa angelegt."
+  },
+  {
+    "match": "5 Anteile Apple",
+    "calls": [
+      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 293, "order_fee": "0", "depot_name": "Trade Republic Depot", "transaction_date": "2026-06-16", "quote_currency": "USD" } }
+    ],
+    "final": "Kauf gebucht."
+  },
+  {
+    "match": "Buche eine Dividende von 12,50 Euro",
+    "calls": [
+      { "tool": "tool_book_dividend", "args": { "symbol": "VWCE", "depot_name": "Trade Republic Depot", "amount": 12.5, "transaction_date": "2026-06-16" } }
+    ],
+    "final": "Dividende gebucht."
+  },
+  {
+    "match": "Überweise 500 Euro vom DKB Giro",
+    "calls": [
+      { "tool": "tool_book_transfer", "args": { "from_account_name": "DKB Giro", "to_account_name": "Trade Republic Cash Girokonto", "amount": 500, "transaction_date": "2026-06-16" } }
+    ],
+    "final": "Transfer gebucht."
+  },
+  {
+    "match": "neue Haftpflichtversicherung bei der HUK-COBURG",
+    "calls": [
+      { "tool": "tool_create_insurance", "args": { "name": "Haftpflichtversicherung HUK-COBURG", "policyholder_person": "Lena Beispiel", "annual_premium": 89, "schedule_unit": "year", "valid_from": "2026-01-01", "first_payment_date": "2026-01-15", "debit_account_name": "DKB Giro", "policy_number": "HUK-9876" } }
+    ],
+    "final": "Versicherung angelegt."
+  },
+  {
+    "match": "neues N26 Girokonto an",
+    "calls": [
+      { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"account\",\"name\":\"N26 Girokonto\",\"account_type\":\"cash\"},{\"entity_type\":\"account\",\"name\":\"N26 Depot\",\"account_type\":\"stocks_depot\",\"settlement_account\":\"N26 Girokonto\"}]" } }
+    ],
+    "final": "Beide Konten gestaged, die Sammelkarte folgt."
+  },
+  {
+    "_comment": "tc55 Kauf ohne Gebuehr: Gebuehr + Datum leer (DB-Default), keine Rueckfrage.",
+    "match": "Kauf 3 Anteile Vanguard FTSE All-World",
+    "calls": [
+      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BK5BQT80", "symbol": "VWCE", "shares": 3, "price_per_share": 120, "order_fee": "", "depot_name": "Trade Republic Depot", "transaction_date": "" } }
+    ],
+    "final": "Kauf gebucht."
+  },
+  {
+    "_comment": "tc56 Buchung ohne eigene Dubletten-Suche.",
+    "match": "Buche 49,99 Euro Ausgabe vom DKB Giro",
+    "calls": [
+      { "tool": "tool_book_transaction", "args": { "account_name": "DKB Giro", "direction": "outflow", "amount": 49.99, "transaction_date": "", "description": "Tanken" } }
+    ],
+    "final": "Ausgabe gebucht."
+  },
+  {
+    "_comment": "tc57 Kredit: Abbuchungstag leer = Tag der ersten Rate.",
+    "match": "Lege einen Kredit 'Autokredit VW Bank' an",
+    "calls": [
+      { "tool": "tool_create_loan", "args": { "name": "Autokredit VW Bank", "lender": "VW Bank", "original_amount": 18000, "disbursement_date": "2026-09-01", "interest_rate": 4.9, "monthly_annuity": "350", "first_payment_date": "2026-10-15", "schedule_day_of_month": "", "debit_account_name": "DKB Giro" } }
+    ],
+    "final": "Kredit angelegt."
+  },
+  {
+    "_comment": "tc58 Versicherung fuer Kind per Vorname.",
+    "match": "Lege eine Unfallversicherung 'Kinder-Unfall Lisa'",
+    "calls": [
+      { "tool": "tool_create_insurance", "args": { "name": "Kinder-Unfall Lisa", "insurance_company": "Allianz", "annual_premium": 96, "first_payment_date": "2026-12-01", "debit_account_name": "DKB Giro", "policyholder_person": "Lisa" } }
+    ],
+    "final": "Versicherung angelegt."
+  },
+  {
+    "_comment": "tc54 Oversell: der Probelauf lehnt VOR der Karte ab (kein sendAndWait).",
+    "match": "Verkaufe 5000 Anteile Vanguard FTSE All-World",
+    "calls": [
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Trade Republic Depot", "shares": 5000, "price_per_share": 115, "order_fee": "0", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
+    ],
+    "final": "So viele Anteile liegen nicht im Depot."
+  },
+  {
+    "_comment": "tc21 Oversell mit Ordergebuehr: der Probelauf lehnt VOR der Karte ab (kein sendAndWait).",
+    "match": "Verkaufe 999 Anteile Vanguard FTSE All-World",
+    "calls": [
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Trade Republic Depot", "shares": 999, "price_per_share": 115, "order_fee": "2", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
+    ],
+    "final": "So viele Anteile liegen nicht im Depot."
+  },
+  {
+    "_comment": "tc11 Dublette: fn_create_account lehnt den bestehenden Namen im Probelauf ab (kein sendAndWait).",
+    "match": "Lege ein Trade Republic Depot an",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "Trade Republic Depot", "account_type": "stocks_depot", "settlement_account_name": "Trade Republic Cash Girokonto", "owner_person": "Erika" } }
+    ],
+    "final": "Ein Trade Republic Depot gibt es schon."
+  },
+  {
+    "_comment": "tc15 Krypto auf Aktien-Depot: der Probelauf lehnt den Depot-Typ ab (kein sendAndWait).",
+    "match": "Kauf im Trade Republic Depot 0,01 Bitcoin",
+    "calls": [
+      { "tool": "tool_book_stock_buy", "args": { "symbol": "BTC", "shares": 0.01, "price_per_share": 65000, "order_fee": "0", "depot_name": "Trade Republic Depot", "transaction_date": "2026-06-16" } }
+    ],
+    "final": "Bitcoin braucht ein Krypto-Depot."
+  },
+  {
+    "match": "Verkaufe 5 Anteile Vanguard FTSE All-World",
+    "calls": [
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Trade Republic Depot", "shares": 5, "price_per_share": 115, "order_fee": "2", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
+    ],
+    "final": "Verkauf gebucht."
+  },
+  {
+    "match": "monatliche Kreditrate für meinen Baufinanzierungs-Kredit",
+    "calls": [
+      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung ING", "payment_amount": 1200, "payment_date": "2026-06-16" } }
+    ],
+    "final": "Kreditrate gebucht."
+  },
+  {
+    "match": "Zielbetrag 10000 Euro, bis Ende 2027",
+    "calls": [
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "2027-12-31", "account_name": "DKB Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-07-01" } }
+    ],
+    "final": "Sparziel angelegt."
+  },
+  {
+    "match": "Gleiche mein DKB Giro ab",
+    "calls": [
+      { "tool": "tool_reconcile_account", "args": { "account_name": "DKB Giro", "confirmed_balance": 1234.56, "reconciliation_date": "2026-06-16" } }
+    ],
+    "final": "Konto abgeglichen."
+  },
+  {
+    "match": "Saldo-Abgleich Monatsende",
+    "calls": [
+      { "tool": "tool_reconcile_accounts_batch", "args": { "accounts": "[{\"account_name\":\"DKB Giro\",\"confirmed_balance\":1234.56},{\"account_name\":\"Bargeld\",\"confirmed_balance\":80}]" } }
+    ],
+    "final": "Konten abgeglichen."
+  },
+  {
+    "_comment": "tc20 + tc23: beide schliessen das Trade Republic Cash Girokonto -> EIN Szenario deckt beide (Substring in beiden Tasks).",
+    "match": "Schliesse das Trade Republic Cash Girokonto",
+    "calls": [
+      { "tool": "tool_close_account", "args": { "account_name": "Trade Republic Cash Girokonto", "closure_date": "2026-06-16" } }
+    ],
+    "final": "Konto geschlossen."
+  },
+  {
+    "match": "wiederkehrende Ausgabe an: Netflix-Abo",
+    "calls": [
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Netflix", "account_name": "DKB Giro", "direction": "expense", "amount": 13.99, "schedule_unit": "month", "first_payment_date": "2026-07-05" } }
+    ],
+    "final": "Dauerauftrag angelegt."
+  },
+  {
+    "match": "monatlichen Dauerauftrag ein: 200 Euro vom DKB Giro",
+    "calls": [
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag", "from_account_name": "DKB Giro", "to_account_name": "Trade Republic Cash Girokonto", "amount": 200, "schedule_unit": "month", "first_payment_date": "2026-07-01" } }
+    ],
+    "final": "Wiederkehrender Transfer eingerichtet."
+  },
+  {
+    "match": "Ruerup-Rente bei der Allianz",
+    "calls": [
+      { "tool": "tool_create_pension", "args": { "name": "Allianz Ruerup", "pension_type": "ruerup" } }
+    ],
+    "final": "Altersvorsorge erfasst."
+  },
+  {
+    "match": "Kontonummer (IBAN) meines DKB Giro",
+    "calls": [
+      { "tool": "tool_set_account", "args": { "account_name": "DKB Giro", "account_number": "DE89370400440532013000" } }
+    ],
+    "final": "Kontonummer geaendert."
+  },
+  {
+    "match": "ab heute mit 2 % p.a. verzinst",
+    "calls": [
+      { "tool": "tool_set_account_interest", "args": { "account_name": "Trade Republic Cash Girokonto", "annual_rate": "2" } }
+    ],
+    "final": "Zinssatz gesetzt."
+  },
+  {
+    "match": "Wert meiner Musterimmobilie auf 350.000",
+    "calls": [
+      { "tool": "tool_set_real_estate", "args": { "real_estate_name": "Musterimmobilie", "current_value": "350000" } }
+    ],
+    "final": "Immobilie neu bewertet."
+  },
+  {
+    "match": "HUK Hausratversicherung steigt auf 95 Euro",
+    "calls": [
+      { "tool": "tool_set_insurance", "args": { "insurance_name": "HUK Hausratversicherung", "annual_premium": "95" } }
+    ],
+    "final": "Praemie angepasst."
+  },
+  {
+    "match": "neuen Zinssatz von 4,1",
+    "calls": [
+      { "tool": "tool_set_loan", "args": { "loan_name": "Baufinanzierung ING", "interest_rate": "4.1" } }
+    ],
+    "final": "Kredit-Kondition aktualisiert."
+  },
+  {
+    "match": "Korrigiere bei meiner VWCE-Position",
+    "calls": [
+      { "tool": "tool_set_holding", "args": { "depot_name": "Trade Republic Depot", "position": "VWCE", "new_name": "Vanguard FTSE All-World UCITS ETF (Acc)" } }
+    ],
+    "final": "Position-Metadaten korrigiert."
+  },
+  {
+    "match": "wird kein aktueller Kurs gezogen",
+    "calls": [
+      { "tool": "tool_set_holding", "args": { "depot_name": "Trade Republic Depot", "position": "VWCE", "provider_symbol": "VWCE.DE" } }
+    ],
+    "final": "Kurs-Symbol hinterlegt."
+  },
+  {
+    "match": "Storniere meine letzte Buchung",
+    "calls": [
+      { "tool": "tool_void_transaction", "args": { "transaction_id": "1" } }
+    ],
+    "final": "Buchung storniert."
+  },
+  {
+    "match": "Sparplan 'EIMI Viertagesplan' auf ISIN IE00BKM4GZ66",
+    "calls": [
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Viertagesplan", "depot_name": "Trade Republic Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 40, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "2027-01-02" } }
+    ],
+    "final": "Sparplan angelegt: jeden Monat am 2., 9., 16. und 23."
+  },
+  {
+    "match": "EIMI Wochenplan' an: Trade Republic Depot, ISIN IE00BKM4GZ66, Symbol EIMI",
+    "calls": [
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Wochenplan", "depot_name": "Trade Republic Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 25, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "2027-01-02" } }
+    ],
+    "final": "Sparplan angelegt: jeden Monat am 2., 9., 16. und 23."
+  },
+  {
+    "match": "Trade Republic Depot, ISIN IE00BKM4GZ66, Symbol EIMI",
+    "calls": [
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Monatsplan", "depot_name": "Trade Republic Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 50, "first_payment_date": "2027-01-02" } }
+    ],
+    "final": "Sparplan angelegt."
+  },
+  {
+    "match": "Broker hat meinen VWCE Bestandsplan heute ausgeführt",
+    "calls": [
+      { "tool": "tool_book_savings_plan_execution", "args": { "savings_plan_name": "VWCE Bestandsplan", "shares": 0.44, "price_per_share": 113.5, "order_fee": "0" } }
+    ],
+    "final": "Sparplan-Ausfuehrung gebucht."
+  },
+  {
+    "match": "Pausiere meinen VWCE Bestandsplan",
+    "calls": [
+      { "tool": "tool_set_savings_plan", "args": { "savings_plan_name": "VWCE Bestandsplan", "status": "paused" } }
+    ],
+    "final": "Sparplan pausiert."
+  },
+  {
+    "match": "Schliesse meinen VWCE Bestandsplan",
+    "calls": [
+      { "tool": "tool_close_savings_plan", "args": { "savings_plan_name": "VWCE Bestandsplan" } }
+    ],
+    "final": "Sparplan geschlossen."
+  },
+  {
+    "match": "Kündige meine HUK Hausratversicherung",
+    "calls": [
+      { "tool": "tool_close_insurance", "args": { "insurance_name": "HUK Hausratversicherung" } }
+    ],
+    "final": "Versicherung gekuendigt."
+  },
+  {
+    "match": "lösche die Immobilie",
+    "calls": [
+      { "tool": "tool_delete_real_estate", "args": { "real_estate_name": "Musterimmobilie" } }
+    ],
+    "final": "Immobilie geloescht."
+  },
+  {
+    "_comment": "tc49 Foto-Import (Owner-Vorfall 2026-10-22): der Agent ruft tool_extract_finance_document; das Tool schickt die Sammelkarte selbst, weil alle Zeilen gueltig sind. Die Vision-Antwort liefert das Szenario darunter (match = doc_hint, kuerzer als dieser match -> der Agent-Turn waehlt dieses).",
+    "match": "Hier ist meine Kontenübersicht der Testbank",
+    "calls": [
+      { "tool": "tool_extract_finance_document", "args": { "file_id": "mock_photo_001", "doc_hint": "Kontenübersicht der Testbank" } }
+    ],
+    "final": "Die Karte zur Kontenübersicht ist unterwegs."
+  },
+  {
+    "_comment": "tc49 Vision-Aufruf (direkter Messages-Call aus tool_extract_finance_document, Kontext-Text traegt den doc_hint): finaler Text = das JSON-Array der Rohzeilen (alle gueltig).",
+    "match": "Kontenübersicht der Testbank",
+    "final": "[{\"entity_type\":\"account\",\"name\":\"Testbank Giro Mock\",\"account_type\":\"cash\",\"bank\":\"Testbank AG\",\"account_number\":\"DE02100100100006820101\",\"opening_balance\":1234.56,\"currency\":\"EUR\"}]"
+  },  {
+    "match": "Stage bitte folgende Daten fuer den Import",
+    "calls": [
+      { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"account\",\"name\":\"Consors Tagesgeldkonto Neu\",\"account_type\":\"cash\",\"opening_balance\":4200}]" } }
+    ],
+    "final": "Daten gestaged."
+  },
+  {
+    "match": "neues Comdirect Girokonto",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "Comdirect Girokonto", "account_type": "cash" } }
+    ],
+    "final": "Comdirect Girokonto angelegt."
+  },
+  {
+    "_comment": "tc10 (2026-10-23 umgedreht): ohne genannte Person kein Inhaber -> Haushalt, keine Rueckfrage (Prompt-Regel 7).",
+    "match": "neues Norisbank Girokonto",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "Norisbank Girokonto", "account_type": "cash" } }
+    ],
+    "final": "Norisbank Girokonto angelegt."
+  },
+  {
+    "match": "85 Euro für Lebensmittel mit dem DKB Giro",
+    "calls": [
+      { "tool": "tool_book_transaction", "args": { "account_name": "DKB Giro", "amount": 85, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Lebensmittel" } }
+    ],
+    "final": "Ausgabe von 85 EUR auf DKB Giro gebucht."
+  },
+  {
+    "_comment": "WS-4 owner_person (tc40): person name resolves to lena in the family fixture -> Resolve Person passes, tool reaches the gate.",
+    "match": "Junior Depot",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "Junior Depot", "account_type": "stocks_depot", "settlement_account_name": "DKB Giro", "owner_person": "Lena Beispiel" } }
+    ],
+    "final": "Junior Depot angelegt."
+  },
+  {
+    "_comment": "WS-4 beneficiary_person (tc41): person name resolves to lena in the family fixture.",
+    "match": "Ausbildung Lena",
+    "calls": [
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Ausbildung Lena", "target_amount": 10000, "target_date": "2035-12-31", "account_name": "DKB Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-08-01", "beneficiary_person": "Lena Beispiel" } }
+    ],
+    "final": "Sparziel Ausbildung Lena angelegt."
+  },
+  {
+    "_comment": "WS-5c-A (tc42): book_recurring_occurrence mit Betrags-Anpassung. recurring_payment_name + actual_amount sind Pflicht-$fromAI.",
+    "match": "stromabschlag stadtwerke war diesen monat 95",
+    "calls": [
+      { "tool": "tool_book_recurring_occurrence", "args": { "recurring_payment_name": "Stromabschlag Stadtwerke", "actual_amount": 95 } }
+    ],
+    "final": "Wiederkehrende Buchung mit angepasstem Betrag gebucht."
+  },
+  {
+    "_comment": "WS-5c-B (tc43): book_interest. Nur account_name ist Pflicht-$fromAI (actual_amount optional -> DB berechnet den Zins).",
+    "match": "faellige zinsgutschrift auf meinem tagesgeld plus",
+    "calls": [
+      { "tool": "tool_book_interest", "args": { "account_name": "Tagesgeld Plus" } }
+    ],
+    "final": "Zinsgutschrift gebucht."
+  },
+
+  {
+    "_comment": "GUIDE-TOOLS (gc-Cases). Die Guide-Bindings sind tool_*-praefixiert (Phase D;tool_set_household_facts/tool_set_onboarding_section). WS-B3 (O3): der Guide onboardet NUR household -> Staging-Tools NICHT mehr gebunden; gc04 (Finanzdaten) ist ein reiner Verweis-Case (expected_tool=null) -> kein Szenario.",
+    "match": "ich bin Erika Mustermann, geboren am 20.05.1980",
+    "calls": [
+      { "tool": "tool_set_household_facts", "args": { "persons": "[{\"first_name\":\"Erika\",\"last_name\":\"Mustermann\",\"birth_date\":\"1980-05-20\",\"role\":\"owner\"}]" } }
+    ],
+    "final": "Haushalt gespeichert."
+  },
+
+  {
+    "_comment": "Textkatalog Phase A (gc08/gc09): neue Person ohne Sprache (die Knopf-Karte folgt), Freitext-Fakt woertlich.",
+    "match": "Meine Schwiegermutter Mi-ran Kim",
+    "calls": [
+      { "tool": "tool_set_household_facts", "args": { "persons": "[{\"person_id\":\"miran\",\"first_name\":\"Mi-ran\",\"last_name\":\"Kim\",\"birth_date\":\"1958-02-03\",\"role\":\"partner\"}]" } }
+    ],
+    "final": "Haushalt gespeichert."
+  },
+  {
+    "match": "Lena ist Hausfrau",
+    "calls": [
+      { "tool": "tool_set_household_facts", "args": { "persons": "[{\"person_id\":\"lena\",\"employment_status\":\"Hausfrau\"}]" } }
+    ],
+    "final": "Haushalt gespeichert."
+  },
+  {
+    "match": "ueberspringe ich erstmal",
+    "calls": [
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "household", "status": "skipped" } }
+    ],
+    "final": "Haushalt uebersprungen."
+  },
+  {
+    "_comment": "WS-5a invite (gc06): owner-only Member-Einladung. person_name = Pflicht-$fromAI.",
+    "match": "lade meine Tochter Lisa ein",
+    "calls": [
+      { "tool": "tool_invite_household_member", "args": { "person_name": "Lisa" } }
+    ],
+    "final": "Einladung fuer Lisa erstellt."
+  },
+
+  {
+    "_comment": "ADVISOR (Anthropic/Opus, Phase 6b): der dialekt-aware Stub bedient /v1/messages -> tool_use. Lauf: mock_route_test.ps1 -TargetWorkflow agent.finance_advisor -WebhookPath advisor-test -CasesFile tests\\agent\\finance\\advisor_cases.json -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger. Voraussetzung: Onboarding aufgeloest (sonst blockt das feature.onboarding_gate VOR dem LLM). Pflicht-$fromAI: tool_save_plan_section{section_key,section_content}; tool_create_monitor_trigger{label,trigger_type,check_interval,action_note}. tool_publish_plan ist in -WriteTools nur zur Erkennung gelistet (kein advisor_cases-Case erwartet es) -> kein Szenario, kein Lint-Drift. Das tool_create_monitor_trigger-Szenario deckt zugleich den Monitor-Case mc01 ab (gleiches Tool, 'Lege den Trigger jetzt an' steht in beiden Tasks).",
+    "match": "Speichere die Sektion jetzt in den Plan-Entwurf",
+    "calls": [
+      { "tool": "tool_save_plan_section", "args": { "section_key": "household_basics", "section_content": "2 Erwachsene (Erika Hauptverdiener, Lena in Elternzeit), 2 Kinder (Lisa, Tom), Nettoeinkommen 5000 EUR/Monat, Sparquote 1200 EUR." } }
+    ],
+    "final": "Sektion household_basics gespeichert."
+  },
+  {
+    "_comment": "ADVISOR ac08 (Phase A): risk_profile-Sektion -> tool_save_plan_section. Eigener Match-Substring (NICHT 'Speichere die Sektion jetzt ...' = ac06) -> keine Kollision. Pflicht-$fromAI section_key+section_content; section_data optional, hier mit dem risk_profile-Block.",
+    "match": "Speichere die Sektion risk_profile",
+    "calls": [
+      { "tool": "tool_save_plan_section", "args": { "section_key": "risk_profile", "section_content": "Risikobereitschaft mittel, Risikotragfaehigkeit hoch.", "section_data": "{\"risk_profile\":{\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\",\"as_of\":\"2026-06-24\"}}" } }
+    ],
+    "final": "Sektion risk_profile gespeichert."
+  },
+  {
+    "match": "Lege den Trigger jetzt an",
+    "calls": [
+      { "tool": "tool_create_monitor_trigger", "args": { "label": "EUR-KRW ueber 1500", "trigger_type": "threshold", "acquisition_method": "fx_rate", "acquisition_params": "{\"base\":\"EUR\",\"quote\":\"KRW\"}", "comparator": "gte", "threshold_value": "1500", "check_interval": "1 day", "action_note": "Bei KRW-Schwaeche Umtausch-Tranche pruefen" } }
+    ],
+    "final": "Trigger 'EUR-KRW ueber 1500' angelegt."
+  },
+  {
+    "_comment": "ADVISOR ac10 (Paket 3 C) + FINANCE tc64: Anlageklassen mit EINER Karte (tool_set_asset_classes, Pflicht-$fromAI assignments als JSON-String). Eigene Match-Substrings je Agent.",
+    "match": "Ordne die Anlageklassen jetzt zu",
+    "calls": [
+      { "tool": "tool_set_asset_classes", "args": { "assignments": "[{\"depot_name\":\"Trade Republic Depot\",\"position\":\"VWCE\",\"asset_class\":\"welt\"}]" } }
+    ],
+    "final": "Anlageklassen zugeordnet."
+  },
+  {
+    "match": "Ordne die Anlageklassen meiner Depot-Positionen zu",
+    "calls": [
+      { "tool": "tool_set_asset_classes", "args": { "assignments": "[{\"depot_name\":\"Trade Republic Depot\",\"position\":\"VWCE\",\"asset_class\":\"welt\"}]" } }
+    ],
+    "final": "Anlageklassen zugeordnet."
+  },
+
+  {
+    "_comment": "CAREER-ADVISOR (Anthropic/Opus, WS-1). Lauf: mock_route_test.ps1 -TargetWorkflow agent.career_advisor -WebhookPath career-test -CasesFile tests\\agent\\career\\career_cases.json (Default tool_* erkennt alle career-Tools; -WriteTools nur zur Verengung). Voraussetzung: Core-Onboarding aufgeloest (Core-first-Gate VOR dem LLM; KEIN feature.onboarding_gate fuer career). Pflicht-$fromAI: tool_set_profile_facts{facts}; tool_save_plan_section{section_key,section_content}; tool_extract_cv{file_id} (WS-1b, read-only CV-Vision). cc03/cc04 sind NULL-Cases -> kein Szenario. tool_publish_plan ist nur zur Erkennung (kein Case erwartet es) -> kein Szenario.",
+    "match": "aktueller Titel ist Senior IT-Projektmanager",
+    "calls": [
+      { "tool": "tool_set_profile_facts", "args": { "facts": "{\"current_title\":\"Senior IT-Projektmanager\",\"industry\":\"Energiewirtschaft\",\"experience_years\":12}" } }
+    ],
+    "final": "Karriere-Profil aktualisiert."
+  },
+  {
+    "match": "Speichere die Ziel-Sektion jetzt in den Karriereplan",
+    "calls": [
+      { "tool": "tool_save_plan_section", "args": { "section_key": "targets", "section_content": "Zielrolle Scrum Master, Zielbranche IT, Umstieg in 2 Jahren, Zielort Hamburg, Suchradius 50 km, Vollzeit.", "section_data": "{\"target_roles\":[{\"title\":\"Scrum Master\"}],\"target_industries\":[\"IT\"],\"timeline_years\":2,\"target_locations\":[\"Hamburg\"],\"search_radius_km\":50}" } }
+    ],
+    "final": "Ziel-Sektion gespeichert."
+  },
+  {
+    "_comment": "WS-1b (cc05): weitergeleiteter CV -> read-only Vision tool_extract_cv mit dem file_id aus dem [attachment ...]-Marker (verbatim). Pflicht-$fromAI: file_id. Kein Write (extract_cv schreibt nichts; set_profile_facts kommt erst nach Playback).",
+    "match": "lies meinen Lebenslauf aus diesem Foto aus",
+    "calls": [
+      { "tool": "tool_extract_cv", "args": { "file_id": "cv_test_001" } }
+    ],
+    "final": "Ich habe dein CV ausgelesen - hier sind die erkannten Felder."
+  },
+  {
+    "_comment": "WS-2 (cc06): weitergeleitete Stelle vormerken -> tool_record_job_match (record_ verb, source=forwarded fix). Pflicht-$fromAI: title (employer/location/url/refnr optional).",
+    "match": "Merk dir bitte diese Stelle vor",
+    "calls": [
+      { "tool": "tool_record_job_match", "args": { "title": "Scrum Master", "employer": "Beispiel GmbH", "location": "Hamburg" } }
+    ],
+    "final": "Die Stelle ist vorgemerkt."
+  },
+  {
+    "_comment": "WS-2 (cc07): gelernte Job-Praeferenz -> tool_set_career_preferences (2. set_profile_facts-Bindung, context_name=career_preferences fix). Pflicht-$fromAI: facts.",
+    "match": "Stellen mit viel Reisetaetigkeit moechte ich nicht",
+    "calls": [
+      { "tool": "tool_set_career_preferences", "args": { "facts": "{\"disliked_aspects\":[\"viel Reisetaetigkeit\"]}" } }
+    ],
+    "final": "Praeferenz gemerkt."
+  },
+  {
+    "_comment": "WS-1 estate (oc17): Todesfall-Nachricht -> Call_agent_estate_advisor_ (sanitisierter Route-Tool-Name, Trailing-Underscore).",
+    "match": "Mein Mann ist gestorben",
+    "calls": [
+      { "tool": "Call_agent_estate_advisor_", "args": { "task": "Todesfall im Haushalt - naechste Schritte begleiten" } }
+    ],
+    "final": "Der Nachlass-Berater begleitet dich durch die naechsten Schritte."
+  },
+  {
+    "_comment": "WS-1 estate (oc18): Vorsorgefall/Koma -> Call_agent_estate_advisor_ (beide Fall-Typen death UND incapacity gehoeren zum estate_advisor).",
+    "match": "liegt nach einem Unfall im Koma",
+    "calls": [
+      { "tool": "Call_agent_estate_advisor_", "args": { "task": "Vorsorgefall - Unterlagen und Vollmachten klaeren" } }
+    ],
+    "final": "Der Nachlass-Berater hilft dir mit Unterlagen und Vollmachten."
+  },
+  {
+    "_comment": "WS-1 estate (oc19, Abgrenzung/P1-Mitigation): Immobilien-Wert-Erfassung bleibt agent.finance (set_real_estate) - der estate-Router-Arm zieht 'Wohnung/Immobilie' NICHT.",
+    "match": "Wert unserer Wohnung mit 450000 Euro",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Immobilienwert der Wohnung auf 450000 Euro aktualisieren" } }
+    ],
+    "final": "Der Buchhalter aktualisiert den Immobilienwert."
+  },
+  {
+    "_comment": "Phase C (oc20): Foto ohne Bildunterschrift -> Anhang-Fallback Call_agent_finance_ (match = eindeutige file_id).",
+    "match": "fin_oc20_001",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Der Nutzer hat ein Foto ohne Bildunterschrift gesendet. [attachment file_id=fin_oc20_001 type=photo]" } }
+    ],
+    "final": "Der Buchhalter liest das Dokument aus."
+  },
+  {
+    "_comment": "Phase C (oc21): Dokument ohne Bildunterschrift -> Anhang-Fallback Call_agent_finance_.",
+    "match": "fin_oc21_001",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Der Nutzer hat ein Dokument ohne Bildunterschrift gesendet. [attachment file_id=fin_oc21_001 type=document]" } }
+    ],
+    "final": "Der Buchhalter liest das Dokument aus."
+  },
+  {
+    "_comment": "Phase C (oc22): Trigger-Mechanik (Schwelle aendern) -> Call_agent_monitor_.",
+    "match": "Schwelle meines Bitcoin-Alarms",
+    "calls": [
+      { "tool": "Call_agent_monitor_", "args": { "task": "Schwelle des Bitcoin-Alarms auf 60000 Euro anheben" } }
+    ],
+    "final": "Der Waechter passt die Schwelle an."
+  },
+  {
+    "_comment": "Phase C (oc23): mehrdeutige Geld-Nachricht -> Default Call_agent_finance_advisor_.",
+    "match": "5000 Euro Bonus bekommen",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Bonus von 5000 Euro erhalten - was tun?" } }
+    ],
+    "final": "Der Finanzberater bespricht den Bonus."
+  },
+  {
+    "_comment": "WS-1 estate (es05): Onboarding-Fortschritts-Marker -> tool_set_onboarding_section (package=estate fix im Tool, household). Pflicht-$fromAI: section_key + status.",
+    "match": "Onboarding-Sektion contacts",
+    "calls": [
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "contacts", "status": "completed" } }
+    ],
+    "final": "Sektion Schluessel-Kontakte als erledigt markiert."
+  },
+  {
+    "_comment": "WS-2 estate (es06): record_directive UPSERT. Pflicht-$fromAI: doc_type + doc_status.",
+    "match": "Mein Testament liegt notariell vor",
+    "calls": [
+      { "tool": "tool_record_directive", "args": { "doc_type": "testament", "doc_status": "exists", "form": "notariell", "registry": "ztr", "location_note": "Ordner Vorsorge im Arbeitszimmer" } }
+    ],
+    "final": "Testament ins Register aufgenommen."
+  },
+  {
+    "_comment": "WS-2 estate (es07): create_provider_contract. Pflicht-$fromAI: provider + category.",
+    "match": "Stromvertrag bei den Stadtwerken",
+    "calls": [
+      { "tool": "tool_create_provider_contract", "args": { "provider": "Stadtwerke", "category": "utilities", "customer_no": "KD-4711", "death_action": "cancel" } }
+    ],
+    "final": "Stromvertrag ins Register aufgenommen."
+  },
+  {
+    "_comment": "WS-2 estate (es08): create_digital_account OHNE Passwort. Pflicht-$fromAI: provider + category.",
+    "match": "GMX-E-Mail-Konto im digitalen Nachlass",
+    "calls": [
+      { "tool": "tool_create_digital_account", "args": { "provider": "GMX", "category": "email", "is_key_account": "true", "access_path": "Passwort-Manager Bitwarden, Master-Passwort im Tresor" } }
+    ],
+    "final": "Digitales Konto ins Register aufgenommen (ohne Passwort)."
+  },
+  {
+    "_comment": "WS-2 estate (es09): create_contact. Pflicht-$fromAI: name + role.",
+    "match": "Notariat Dr. Muster in Musterstadt",
+    "calls": [
+      { "tool": "tool_create_contact", "args": { "name": "Notariat Dr. Muster", "role": "notary", "organization": "Notariat Musterstadt", "phone": "0123 456789" } }
+    ],
+    "final": "Notar als Kontakt gespeichert."
+  },
+  {
+    "_comment": "WS-2 estate (es10): create_storage_place. Pflicht-$fromAI: name + kind.",
+    "match": "Fundstelle den Tresor im Arbeitszimmer",
+    "calls": [
+      { "tool": "tool_create_storage_place", "args": { "name": "Tresor Arbeitszimmer", "kind": "safe", "access_hint": "Schluessel im Sekretaer, oberste Schublade" } }
+    ],
+    "final": "Fundstelle angelegt."
+  },
+  {
+    "_comment": "WS-2 estate (es11): create_special_asset. Pflicht-$fromAI: asset_type + description. Match auf 'besitzt eine Pistole' (nicht 'Pistole im Waffenschrank') — sonst kollidiert es mit dem read-only es03 ('hatte eine Pistole im Waffenschrank', Verweis ohne Write).",
+    "match": "besitzt eine Pistole im Waffenschrank",
+    "calls": [
+      { "tool": "tool_create_special_asset", "args": { "asset_type": "firearm", "description": "Pistole im Waffenschrank" } }
+    ],
+    "final": "Sonderfall Waffe vermerkt."
+  },
+  {
+    "_comment": "WS-2 estate (es12): set_person_record UPSERT. Pflicht-$fromAI: person.",
+    "match": "amtlichen Stammdaten: Steuer-ID",
+    "calls": [
+      { "tool": "tool_set_person_record", "args": { "person": "Erika", "tax_id": "12 345 678 901", "health_insurance_type": "gkv", "health_insurance_name": "TK" } }
+    ],
+    "final": "Amtliche Stammdaten erfasst."
+  },
+  {
+    "_comment": "WS-2 estate (es13): set_funeral_preferences UPSERT. Pflicht-$fromAI: person.",
+    "match": "Ich möchte eine Feuerbestattung",
+    "calls": [
+      { "tool": "tool_set_funeral_preferences", "args": { "person": "Erika", "burial_type": "feuerbestattung", "has_prepaid_contract": "true", "prepaid_contract_provider": "Bestattungshaus Muster" } }
+    ],
+    "final": "Bestattungswuensche erfasst."
+  },
+  {
+    "_comment": "WS-2 estate (es14): confirm_review (Fortschritts-Flag, kein Gate). Pflicht-$fromAI: person.",
+    "match": "als geprüft vermerken",
+    "calls": [
+      { "tool": "tool_confirm_review", "args": { "person": "Erika" } }
+    ],
+    "final": "Register als geprueft vermerkt."
+  },
+  {
+    "_comment": "WS-3 estate (es15): create_case (Ereignisfall, owner_info Break-Glass). Pflicht-$fromAI: subject_person + case_type + event_date. Match auf 'Bitte lege den Todesfall an'.",
+    "match": "Bitte lege den Todesfall an",
+    "calls": [
+      { "tool": "tool_create_case", "args": { "subject_person": "Lena", "case_type": "death", "event_date": "2026-10-15", "bundesland": "bayern", "employed": "true", "has_will": "true" } }
+    ],
+    "final": "Todesfall angelegt, hier die ersten Schritte."
+  },
+  {
+    "_comment": "WS-5 estate (es16): export_emergency_binder (gegateter Read-Egress, owner_info Break-Glass). KEINE Pflicht-$fromAI (mask_sensitive optional -> args leer). Match auf 'Notfallmappe als Dokument'.",
+    "match": "Notfallmappe als Dokument",
+    "calls": [
+      { "tool": "tool_export_emergency_binder", "args": {} }
+    ],
+    "final": "Notfallmappe wird als Dokument geschickt."
+  },
+  {
+    "_comment": "WS-5 estate (es17): set_system_profile (Haushalts-Singleton, owner_approval). Alle Felder optional (0 Pflicht-$fromAI); Args zeigen backup_key_location/system_location. Match auf 'System-Steckbrief ein'.",
+    "match": "System-Steckbrief ein",
+    "calls": [
+      { "tool": "tool_set_system_profile", "args": { "backup_key_location": "Umschlag im Tresor", "system_location": "Mini-PC im Keller" } }
+    ],
+    "final": "System-Steckbrief eingetragen."
+  },
+  {
+    "_comment": "paperless Phase 2 (oc24): reine Dokumenten-Frage -> Call_agent_paperless_assistant_ (sanitisierter Route-Tool-Name).",
+    "match": "Wann läuft mein Personalausweis ab",
+    "calls": [
+      { "tool": "Call_agent_paperless_assistant_", "args": { "task": "Wann läuft mein Personalausweis ab? In den Dokumenten nachsehen." } }
+    ],
+    "final": "Der Dokumenten-Assistent sieht in deinen Dokumenten nach."
+  },
+  {
+    "_comment": "oc25/tc60: Konditionen eines eigenen Kontos im Web nachschlagen -> Buchhalter (nicht der Berater). Nur der Route-Call: der Sub-Agent faellt mangels eligible Tool auf den finalen Text zurueck (kein web_search im Mock-Tier, das ginge sonst an die echte Suche).",
+    "match": "Trade Republic Cash Konten sind verzinst",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Die Trade Republic Cash Konten sind verzinst. Suche die aktuellen Konditionen bitte im Web." } }
+    ],
+    "final": "Ich schlage die aktuellen Trade-Republic-Konditionen nach."
+  },
+  {
+    "_comment": "paperless Phase 2 (pp01): Suche -> tool_search_documents (Paket-Service ueber agent.sub_dispatch_tool; $fromAI query Pflicht, limit optional).",
+    "match": "Finde meinen Mietvertrag",
+    "calls": [
+      { "tool": "tool_search_documents", "args": { "query": "Mietvertrag", "limit": 5 } }
+    ],
+    "final": "Hier ist dein Mietvertrag."
+  },
+  {
+    "_comment": "paperless Phase 2 (pp02): Dokument per Nummer -> tool_get_document (document_id als String).",
+    "match": "Dokument mit der Nummer 42",
+    "calls": [
+      { "tool": "tool_get_document", "args": { "document_id": "42" } }
+    ],
+    "final": "Das steht im Dokument 42."
+  },
+  {
+    "_comment": "paperless Phase 2 (pp03): ausdrueckliche Frage an die Dokumenten-KI -> tool_ask_documents.",
+    "match": "Frag die Dokumenten-KI",
+    "calls": [
+      { "tool": "tool_ask_documents", "args": { "question": "Welche Kündigungsfrist hat mein Handyvertrag?", "document_id": "" } }
+    ],
+    "final": "Laut Paperless-KI gilt folgende Kündigungsfrist."
+  },
+  {
+    "_comment": "paperless Phase 2 (ac09): Wortlaut einer Police -> tool_search_documents im finance_advisor (Cross-Paket-Service).",
+    "match": "Police meiner Hausratversicherung zur Selbstbeteiligung",
+    "calls": [
+      { "tool": "tool_search_documents", "args": { "query": "Hausratversicherung Police Selbstbeteiligung", "limit": 5 } }
+    ],
+    "final": "Ich habe in deinen Dokumenten nachgesehen."
+  },
+  {
+    "_comment": "paperless Phase 2 (sec06): indirekte Injection - der Agent sucht den Brief, fuehrt aber nichts aus dem Dokumenttext aus.",
+    "match": "den letzten Brief meiner Bank",
+    "calls": [
+      { "tool": "tool_search_documents", "args": { "query": "Bank Brief", "limit": 5 } }
+    ],
+    "final": "Ich habe den Brief gefunden und fasse ihn zusammen - was soll ich konkret tun?"
+  },
+  {
+    "_comment": "tc50 Position ohne Kurs (Monats-Check WP-G): der Agent schlaegt die Notierungen der ISIN nach (Lese-Tool, keine Karte) und laesst den Nutzer waehlen.",
+    "match": "zeigt keinen aktuellen Kurs",
+    "calls": [
+      { "tool": "tool_verify_price_symbol", "args": { "isin": "IE00B5BMR087", "price_currency": "EUR" } }
+    ],
+    "final": "Ich habe drei Boersen gefunden. Welche soll ich fuer den Kurs nehmen?"
+  },
+  {
+    "_comment": "tc51 Monats-Check (WP-C): der Agent ruft tool_reconcile_bank_statement; das Lesen des Auszugs liefert das Szenario darunter (match = doc_hint im Kontext-Text).",
+    "match": "Hier ist mein Monatsauszug Mock-DKB",
+    "calls": [
+      { "tool": "tool_reconcile_bank_statement", "args": { "file_id": "mock_photo_051", "doc_hint": "Monatsauszug Mock-DKB" } }
+    ],
+    "final": "Die Karte zum Monats-Check ist unterwegs."
+  },
+  {
+    "_comment": "tc52 Monats-Check: letzten Kontoauszug zuruecknehmen -> tool_void_bank_statement mit dem Kontonamen.",
+    "match": "Nimm den letzten Kontoauszug vom DKB Giro wieder zurueck",
+    "calls": [
+      { "tool": "tool_void_bank_statement", "args": { "account_name": "DKB Giro" } }
+    ],
+    "final": "Fuer DKB Giro gibt es keinen eingespielten Kontoauszug, den ich zuruecknehmen koennte."
+  },
+  {
+    "_comment": "tc51 Lesen des Kontoauszugs (direkter Messages-Call aus tool_reconcile_bank_statement): JSON nach dem Statement-Schema. Zeitraum 2000-01 liegt sicher vor der Fixture-Eroeffnung (heute) -> Abweichung vor dem Zeitraum + Saldo-Probe stimmt (2500 - 42,90 - 57,10 = 2400).",
+    "match": "Monatsauszug Mock-DKB",
+    "final": "{\"is_statement\":true,\"account_number\":\"DE45 1203 0000 1234 5678 90\",\"currency\":\"EUR\",\"period_start\":\"2000-01-01\",\"period_end\":\"2000-01-31\",\"opening_balance\":2500,\"closing_balance\":2400,\"lines\":[{\"date\":\"2000-01-05\",\"amount\":-42.9,\"counterparty\":\"ARAL Tankstelle\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Tanken\"},{\"date\":\"2000-01-12\",\"amount\":-57.1,\"counterparty\":\"REWE\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Einkauf\"}]}"
+  },
+  {
+    "_comment": "tc61 Kontoauszug eines NEUEN Kontos: reconcile -> account_unknown mit geprueftem Endsaldo -> create_account mit IBAN + Endsaldo zum Stichtag (kein zweites reconcile).",
+    "match": "Hier ist der Kontoauszug vom neuen Trade Republic Cash Konto meiner Tochter Lisa",
+    "calls": [
+      { "tool": "tool_reconcile_bank_statement", "args": { "file_id": "mock_photo_056", "doc_hint": "Trade Republic Cash Konto meiner Tochter Lisa" } },
+      { "tool": "tool_create_account", "args": { "name": "Trade Republic Cashkonto Lisa", "account_type": "cash", "bank": "Trade Republic", "account_number": "DE72100123450000000562", "owner_person": "Lisa", "opening_balance": "150", "opening_balance_date": "2000-01-31" } }
+    ],
+    "final": "Die Karte fuer das neue Trade Republic Cashkonto von Lisa ist unterwegs."
+  },
+  {
+    "_comment": "tc61 Lesen des Auszugs (direkter Messages-Call aus tool_reconcile_bank_statement): IBAN keines Fixture-Kontos, Saldo-Probe 100 + 100 - 50 = 150 -> account_unknown mit closing_balance/balance_date.",
+    "match": "Trade Republic Cash Konto meiner Tochter Lisa",
+    "final": "{\"is_statement\":true,\"account_number\":\"DE72 1001 2345 0000 0005 62\",\"currency\":\"EUR\",\"period_start\":\"2000-01-01\",\"period_end\":\"2000-01-31\",\"opening_balance\":100,\"closing_balance\":150,\"lines\":[{\"date\":\"2000-01-03\",\"amount\":100,\"counterparty\":\"Erika Mustermann\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Eingehende Ueberweisung\"},{\"date\":\"2000-01-04\",\"amount\":-50,\"counterparty\":\"Vanguard\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Sparplan Vanguard FTSE All-World UCITS ETF\"}]}"
+  },
+  {
+    "_comment": "tc62 Anhang ohne Bildunterschrift: erst tool_extract_finance_document (erkennt den Kontoauszug), dann tool_reconcile_bank_statement mit derselben file_id.",
+    "match": "ohne Bildunterschrift gesendet. [attachment file_id=mock_photo_051",
+    "calls": [
+      { "tool": "tool_extract_finance_document", "args": { "file_id": "mock_photo_051", "doc_hint": "mock_photo_051 type=document" } },
+      { "tool": "tool_reconcile_bank_statement", "args": { "file_id": "mock_photo_051", "doc_hint": "Monatsauszug Mock-DKB" } }
+    ],
+    "final": "Das ist ein Kontoauszug, die Karte zum Monats-Check ist unterwegs."
+  },
+  {
+    "_comment": "tc62 Vision-Antwort von tool_extract_finance_document: ein Kontoauszug mit Buchungszeilen -> bank_statement (das Tool verweist an den Monats-Check).",
+    "match": "mock_photo_051 type=document",
+    "final": "[{\"entity_type\":\"bank_statement\"}]"
+  },
+  {
+    "_comment": "tc63 Vermoegensuebersicht ohne Ticker/Einstand: extract -> 2 ungueltige Zeilen (Einstand fehlt) mit row (Name/ISIN/Stueck) -> der Agent fragt je Position nach dem Einstand, keine Karte.",
+    "match": "Hier ist die Vermoegensuebersicht meines Trade Republic Depots",
+    "calls": [
+      { "tool": "tool_extract_finance_document", "args": { "file_id": "mock_photo_063", "doc_hint": "mock_photo_063 type=document" } }
+    ],
+    "final": "Bei beiden Positionen fehlt der Einstand: Testaktie Raumfahrt AG (1,5 Stueck) und S&P 500 (Dist) (42,731759 Stueck). Wie hoch war jeweils dein Einstand, je Stueck oder gesamt?"
+  },
+  {
+    "_comment": "tc63 Vision-Antwort: nur ISIN/Stueck/Depotnummer/Inhaber, kein Ticker, kein Einstand (das Modell erfindet nichts).",
+    "match": "mock_photo_063 type=document",
+    "final": "[{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"depot_number\":\"9000000001\",\"depot_holder\":\"Erika Mustermann\",\"isin\":\"US84615Q1031\",\"name\":\"Testaktie Raumfahrt AG\",\"shares\":1.5},{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"depot_number\":\"9000000001\",\"depot_holder\":\"Erika Mustermann\",\"isin\":\"IE00BYML9W36\",\"name\":\"S&P 500 (Dist)\",\"shares\":42.731759},{\"entity_type\":\"settlement_balance\",\"depot\":\"Trade Republic Depot\",\"depot_number\":\"9000000001\",\"depot_holder\":\"Erika Mustermann\",\"balance\":1234.56,\"balance_date\":\"2000-01-31\"}]"
+  },
+  {
+    "_comment": "BOT DENKT NACH (mock_route_test [thinking-keepalive]): langsames LLM, der Orchestrator antwortet direkt (kein Routing) erst nach 25 s -> die Draft-Schleife (core.sub_show_thinking, 5-s-Takt) laeuft mehrere Runden, pausiert bei offener Karte und verstummt vor der Antwort.",
+    "match": "__mock_slow_answer_long__",
+    "driver": "scripts/dev/mock_route_test.ps1",
+    "delay_ms": 25000,
+    "final": "Fertig nachgedacht."
+  },
+  {
+    "_comment": "BOT DENKT NACH (mock_route_test [draft-fail]): kurz verzoegert (3 s), damit die Schleife sicher mindestens einen Draft versucht, bevor die Antwort kommt.",
+    "match": "__mock_slow_answer_short__",
+    "driver": "scripts/dev/mock_route_test.ps1",
+    "delay_ms": 3000,
+    "final": "Kurz nachgedacht."
+  },
+  {
+    "_comment": "Live-Befund 2026-10-24 (oc26 Orchestrator -> finance, tc65 Buchhalter -> Bereich markieren): beide Calls in EINEM Szenario, der Mock bietet je Ziel nur den angebotenen an (Call_agent_finance_ im Orchestrator, tool_set_onboarding_section im Buchhalter). Pflicht-$fromAI des Markers: section_key + status.",
+    "match": "das waren erstmal alle Konten",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Okay, das waren erstmal alle Konten. Der Bereich Konten ist damit fertig." } },
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "accounts", "status": "completed" } }
+    ],
+    "final": "Der Bereich Konten ist als erledigt markiert."
+  },
+  {
+    "_comment": "Live-Befund 2026-10-24 (oc27): Frage nach gespeicherten Namen -> Spezialist, der Orchestrator prueft keine Daten selbst.",
+    "match": "Stimmen die Namen bei den Konten",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Stimmen die Namen bei den Konten meiner Familie so, wie sie gespeichert sind?" } }
+    ],
+    "final": "Das prueft der Buchhalter."
+  },
+  {
+    "_comment": "Live-Befund 2026-10-24 (tc66): verzinstes Konto ohne Konditionen -> Websuche + Klartext-Bericht + Rueckfrage, KEIN Write in diesem Turn (Mock-Tier: nur Text; die Websuche bewertet der Echt-Tier).",
+    "match": "Tagesgeldkonto bei der Musterbank Direkt",
+    "calls": [],
+    "final": "Laut den Konditionen der Musterbank Direkt gibt es 2,5 % pro Jahr, monatlich zum Monatsende gutgeschrieben. Soll ich das Konto so anlegen?"
+  },
+  {
+    "_comment": "tc67 (2026-10-24): unbekannte transaction_id -> New-RequiredRowGate liefert {ok:false} statt stillem Ende. Pflicht-$fromAI: transaction_id (string).",
+    "match": "Buchung mit der Nummer 999999",
+    "calls": [
+      { "tool": "tool_void_transaction", "args": { "transaction_id": "999999" } }
+    ],
+    "final": "Eine Buchung mit dieser Nummer gibt es nicht. Soll ich die gemeinte Buchung mit dir suchen?"
+  },
+  {
+    "_comment": "FREI-SQL OHNE QUERY (mock_route_test [sql-guard], Live-Befund 2026-10-24 Execution 732): postgres_select mit leeren Argumenten -> der Guard liefert {ok:false, error} statt eines n8n-Absturzes ('reading match').",
+    "match": "__mock_select_no_query__",
+    "driver": "scripts/dev/mock_route_test.ps1",
+    "calls": [{ "tool": "postgres_select", "args": {} }],
+    "final": "Die Abfrage fehlte, ich habe es erneut versucht."
+  }
+]

@@ -1,0 +1,455 @@
+{
+    "id":  "V8FSoH9jFdqjAx2g",
+    "name":  "agent.finance.cron_refresh_market_prices",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REFRESH_MARKET_PRICES__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -900,
+                                       0
+                                   ],
+                      "id":  "224f4e87-8b92-5a91-bc33-5c3feebe24c9",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -900,
+                                       200
+                                   ],
+                      "id":  "1429c5dc-cdee-58a7-955a-dee999b0e1a5",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_market_prices\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -680,
+                                       0
+                                   ],
+                      "id":  "0e655b03-fe82-5eff-bb02-141ab5eecfb7",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "cf82c1d1-bbcb-5519-abc0-8894b3af004d",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -460,
+                                       -40
+                                   ],
+                      "id":  "cc5cfd02-e31e-5b0a-bd11-a04e390afcb4",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AS active",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -680,
+                                       200
+                                   ],
+                      "id":  "25139bce-8729-52f1-b53b-c572ec335099",
+                      "name":  "Package active?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e2f57fe7-a1a1-5a64-82ba-f34292c5df62",
+                                                                                   "leftValue":  "={{ $json.active }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -460,
+                                       240
+                                   ],
+                      "id":  "e6e20560-adf4-54b9-970c-9276294bd26b",
+                      "name":  "Package on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -460,
+                                       440
+                                   ],
+                      "id":  "6c60c8e7-b5ca-5137-85b6-a7c3bee812e0",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "WITH held AS (\n  SELECT DISTINCT symbol AS s,\n         CASE WHEN isin IS NOT NULL\n              THEN COALESCE(provider_symbol, symbol)\n              ELSE COALESCE(provider_symbol, symbol || \u0027-EUR\u0027)\n         END AS q\n  FROM finance.depot_holdings WHERE shares \u003e 0\n)\nSELECT count(*)::int AS cnt,\n       COALESCE(json_agg(json_build_object(\u0027q\u0027, q, \u0027s\u0027, s)), \u0027[]\u0027) AS symbols\nFROM held",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -240,
+                                       0
+                                   ],
+                      "id":  "d3ba52b0-c829-56ed-b9ba-2ce864a3c055",
+                      "name":  "Get held symbols",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b281ce4d-5543-54e2-acc7-894d4a098cca",
+                                                                                   "leftValue":  "={{ $json.cnt }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -20,
+                                       0
+                                   ],
+                      "id":  "ab25682c-a210-5362-b76e-0002faf693db",
+                      "name":  "Any holdings?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const symbols = ($(\u0027Get held symbols\u0027).first().json.symbols || []);\nconst prices = {};\nconst currencies = {};   // symbol -\u003e Yahoo-meta.currency (autoritativ; fn_upsert nimmt sie, ^[A-Z]{3}$-Backstop)\n\n// Yahoo Finance v8/finance/chart je Symbol (Aktien/ETF wie Portfolio Performance UND Krypto als TICKER-FIAT).\n// q = Yahoo-Feed-Symbol: Aktie/ETF mit Boersen-Suffix (VWCE.DE Xetra, VWRL.L London); Krypto als BTC-EUR /\n// UNI7083-USD. PER-Symbol-Call -\u003e q-\u003es direkt bekannt, keine Rueckwaerts-Map, keine Symbol-Kollision. Kurs =\n// chart.result[0].meta.regularMarketPrice (in meta.currency). PENCE: Londoner Pence currency=\u0027GBp\u0027 (= GBP/100).\nfor (const h of symbols) {\n  try {\n    const url = \u0027https://query1.finance.yahoo.com/v8/finance/chart/\u0027 + encodeURIComponent(h.q)\n              + \u0027?range=1d\u0026interval=1d\u0026lang=en-US\u0026region=US\u0026corsDomain=finance.yahoo.com\u0027;\n    const res = await this.helpers.httpRequest({ url, json: true, timeout: 15000 });\n    const r = res \u0026\u0026 res.chart \u0026\u0026 res.chart.result \u0026\u0026 res.chart.result[0];\n    const m = r \u0026\u0026 r.meta ? r.meta : null;\n    let px = m ? Number(m.regularMarketPrice) : NaN;\n    let ccy = m \u0026\u0026 m.currency ? String(m.currency) : \u0027\u0027;\n    if (ccy === \u0027GBp\u0027) { px = px / 100; ccy = \u0027GBP\u0027; }   // Pence -\u003e GBP\n    if (px \u003e 0 \u0026\u0026 !Number.isNaN(px)) {\n      prices[h.s] = px;\n      if (/^[A-Z]{3}$/.test(ccy)) currencies[h.s] = ccy;\n    }\n  } catch (e) { /* Symbol-Ausfall -\u003e still ohne Kurs (null_price-Report) */ }\n}\n\nreturn [{ json: { prices, currencies, source: \u0027yahoo\u0027 } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       200,
+                                       0
+                                   ],
+                      "id":  "a76c5c11-c620-5d4c-a589-b97a6ec73924",
+                      "name":  "Fetch prices",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, (r-\u003e\u003e\u0027upserted\u0027)::int AS upserted FROM finance.fn_upsert_market_prices($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ prices: $json.prices, currencies: $json.currencies, source: $json.source }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       420,
+                                       0
+                                   ],
+                      "id":  "b4097c2e-2086-5b9c-9507-c69ccff35bbb",
+                      "name":  "Upsert market_prices",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Markt-Preis-Refresh (Dual-Trigger, kein LLM)**\n\nZWEI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — tool_book_stock_buy/tool_set_holding rufen den Workflow nach einem Depot-Write sofort auf (eliminiert das NULL-Preis-Fenster bis zum nächsten Schedule). Pfad: gehaltene Symbole holen (depot_holdings shares\u003e0) -\u003e IF cnt=0: Abbruch ohne Fetch. Sonst: EIN Code-Node holt ALLE Kurse über Yahoo Finance v8/chart PER Symbol (WP-4: Aktien/ETF UND Krypto als TICKER-FIAT wie BTC-EUR; key-frei, kollisionsfrei; CoinGecko retired) -\u003e finance.fn_upsert_market_prices. Die Allokations-Drift (fn_advisor_review) liest den jüngsten Kurs via finance.networth_by_asset_class.",
+                                         "height":  300,
+                                         "width":  700,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -540,
+                                       -300
+                                   ],
+                      "id":  "4bc87d21-60d7-593d-8f9e-a2dba0117622",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**cnt=0 -\u003e kein Fetch**\n\nHält keine Depot-Position eine shares\u003e0-Zeile, liefert Get held symbols cnt=0. Der IF-Zweig false beendet den Workflow hier — kein sinnloser Quote-Fetch.",
+                                         "height":  220,
+                                         "width":  220,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -20,
+                                       200
+                                   ],
+                      "id":  "77e8a7c4-7074-5a99-9eeb-171879f23911",
+                      "name":  "Early-Exit"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Yahoo Finance PER Symbol — Aktien/ETF UND Krypto (WP-4)**\n\nEIN Code-Node, deterministisch: ALLE Symbole -\u003e Yahoo Finance v8/finance/chart PER Symbol (key-/auth-frei; meta.regularMarketPrice). try/catch je Symbol (ein Ausfall killt die anderen nicht). Fehlt ein Kurs -\u003e Symbol fällt still raus, fn_advisor_review meldet es als null_price. Angefragt wird q: Aktie/ETF (ISIN vorhanden) = COALESCE(provider_symbol, symbol) = Yahoo-Ticker mit Börsen-Suffix (VWCE.DE Xetra, VWRL.L London); Krypto (ISIN NULL) = COALESCE(provider_symbol, symbol||\u0027-EUR\u0027) = Yahoos Krypto-Konvention TICKER-FIAT (BTC-EUR liefert direkt EUR; mehrdeutiges Ticker wie UNI -\u003e Owner setzt provider_symbol=UNI7083-USD). PER-Symbol = kollisionsfrei (KEIN Rate-Roulette wie beim früheren CoinGecko-Symbol-Batch). q-\u003es direkt bekannt, keine Rückwärts-Map. Die Kurs-WÄHRUNG kommt je Symbol aus Yahoos meta.currency (currencies{} im Payload; GBp/Pence -\u003e GBP/100 HIER normalisiert), fn_upsert setzt sie autoritativ (Backstop ^[A-Z]{3}$ -\u003e sonst Fallback COALESCE(quote_currency,currency)) -\u003e EUR-Roll-up via fn_to_eur. (Stooq + CoinGecko retired — nicht erneut einbauen.)",
+                                         "height":  340,
+                                         "width":  640,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       200,
+                                       200
+                                   ],
+                      "id":  "8f6f108f-97f7-57cc-b417-1753d810d658",
+                      "name":  "Kurs-Fetch (kein LLM)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Paket-aktiv (beide) + cron_enable (nur Schedule)**\n\nWRITE-Cron -\u003e finance_rw. Gate: core.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_market_prices\u0027)=\u0027true\u0027 (DB entscheidet, fail-closed). Toggle: lifeagents config set cron_enable refresh_market_prices false. DUAL-TRIGGER: der Start-Pfad (Sofort-Fetch nach erlaubtem Depot-Write) prüft NUR Paket-aktiv (kein cron_enable).",
+                                         "height":  300,
+                                         "width":  440,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -680,
+                                       -280
+                                   ],
+                      "id":  "5c5f5277-b946-5e61-b5cd-b09016b57563",
+                      "name":  "F9 Cron-Gate"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Get held symbols",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Package active?",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Package active?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Package on?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Package on?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Get held symbols",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Disabled",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Get held symbols":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Any holdings?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Any holdings?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Fetch prices",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+
+                                                           ]
+                                                       ]
+                                          },
+                        "Fetch prices":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Upsert market_prices",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

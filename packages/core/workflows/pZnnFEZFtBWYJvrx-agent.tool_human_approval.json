@@ -1,0 +1,2244 @@
+{
+    "id":  "pZnnFEZFtBWYJvrx",
+    "name":  "agent.tool_human_approval",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "summary"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "approval_tier"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "bae5397b-db4c-5c0e-8d8e-80b2cdee128c",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_hitl_texts($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ summary: $(\u0027Start\u0027).item.json.summary, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       240,
+                                       -720
+                                   ],
+                      "id":  "df81845d-e056-5696-9b2d-0a4cb10f87d1",
+                      "name":  "Render texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForEachItem",
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}// Compose messages (Get-HitlComposeJs): Summary + Gate-Texte je Empfaenger in dessen Sprache.\nconst R = $(\u0027Render texts\u0027).first().json.r || {};\nconst S = $(\u0027Start\u0027).first().json.summary;\nconst LANGS = R.languages || {};\n// Telegram-Limit 4096 Zeichen je Nachricht: ist eine Karte laenger, wird sie in Teile \u003c= PART_MAX gepackt (inkl.\n// \"Teil n/N\"-Zeile, Reserve PART_TAG). Kopf (Stufe-2-/Info-Praefix + Titel) steht in Teil 1, der Schwanz (Hinweise +\n// Knopf-Hinweis) komplett im LETZTEN Teil (der mit den Knoepfen); getrennt wird an Block-Grenzen (heading = neuer\n// Block), notfalls an Zeilen; eine Einzelzeile ueber dem Limit wird hart gekuerzt. pre = Teile 1..N-1 (das Gate\n// sendet sie vor der Karte), text = letzter Teil. Kurze Karten: pre = [] und text exakt wie bisher.\nconst PART_MAX = 4000;\nconst PART_TAG = 40;\nfunction make(B) {\n  if (!B) return null;\n  const U = uiRender(B, LANGS);\n  const { T, has, t, isEmpty, fill, val } = U;\n  function summary() {\n    if (typeof S === \u0027string\u0027) return { head: \u0027\u0027, blocks: [S.split(\u0027\\n\u0027)], notes: [] };\n    if (!S || typeof S !== \u0027object\u0027) return { head: \u0027\u0027, blocks: [], notes: [] };\n    const blocks = [];\n    const notes = [];\n    const push = (line) =\u003e { if (!blocks.length) blocks.push([]); blocks[blocks.length - 1].push(line); };\n    for (const l of (Array.isArray(S.lines) ? S.lines : []).filter(Boolean)) {\n      if (l.kind === \u0027note\u0027) { notes.push(fill(t(l.value), l.params)); continue; }\n      // raw: fertige Zeile ohne Label (z. B. die Bestaetigungszeile einer Paket-validate_fn) — ein String oder ein\n      // typisierter Wert (tpl der validate_fn, Textkatalog Phase C), dann in der Sprache des Empfaengers gerendert\n      if (l.kind === \u0027raw\u0027) {\n        if (!isEmpty(l.value)) push(\u0027• \u0027 + (typeof l.value === \u0027object\u0027 ? val(l.value) : String(l.value)));\n        continue;\n      }\n      // label_fallback: lesbarer Ersatz fuer offene Felder ohne Katalog-Key (z. B. neue Roh-Fakten-Keys)\n      const lab = has(l.label) ? T[l.label] : (l.label_fallback || String(l.label));\n      if (l.kind === \u0027heading\u0027) {\n        blocks.push([lab + (isEmpty(l.value) ? \u0027:\u0027 : \u0027: \u0027 + String(l.value))]);\n        continue;\n      }\n      push(\u0027• \u0027 + lab + \u0027: \u0027 + val(l) + (l.is_default ? \u0027 \u0027 + t(\u0027core.fmt.default_suffix\u0027) : \u0027\u0027));\n    }\n    return { head: S.title ? fill(t(S.title), S.title_params) : \u0027\u0027, blocks, notes };\n  }\n  const SM = summary();\n  // Text wie bisher: Kopf, Leerzeile, Zeilen (vor jeder Ueberschrift eine Leerzeile), Leerzeile, Hinweise.\n  function joinBlocks(bs) { return bs.map((b) =\u003e b.join(\u0027\\n\u0027)).join(\u0027\\n\\n\u0027); }\n  function parts(prefix, suffix) {\n    const head = [prefix, SM.head].filter((x) =\u003e !isEmpty(x)).join(\u0027\\n\\n\u0027);\n    const tail = [SM.notes.join(\u0027\\n\\n\u0027), suffix].filter((x) =\u003e !isEmpty(x)).join(\u0027\\n\\n\u0027);\n    const whole = [head, joinBlocks(SM.blocks), tail].filter((x) =\u003e !isEmpty(x)).join(\u0027\\n\\n\u0027);\n    if (whole.length \u003c= PART_MAX) return Array.of(whole);\n    const max = PART_MAX - PART_TAG;\n    const cut = (s) =\u003e (s.length \u003e max ? s.slice(0, max - 1) + \u0027…\u0027 : s);\n    const out = [];\n    let cur = cut(head);\n    const add = (piece, sep) =\u003e {\n      if (isEmpty(piece)) return;\n      const cand = isEmpty(cur) ? piece : cur + sep + piece;\n      if (cand.length \u003c= max) { cur = cand; return; }\n      if (!isEmpty(cur)) out.push(cur);\n      cur = piece;\n    };\n    for (const b of SM.blocks) {\n      const txt = b.join(\u0027\\n\u0027);\n      if (txt.length \u003c= max) { add(txt, \u0027\\n\\n\u0027); continue; }\n      add(cut(b[0]), \u0027\\n\\n\u0027);\n      for (const line of b.slice(1)) add(cut(line), \u0027\\n\u0027);\n    }\n    const tl = cut(tail);\n    if (!isEmpty(tl)) {\n      if (!isEmpty(cur) \u0026\u0026 (cur + \u0027\\n\\n\u0027 + tl).length \u003e max) { out.push(cur); cur = tl; }\n      else cur = isEmpty(cur) ? tl : cur + \u0027\\n\\n\u0027 + tl;\n    }\n    if (!isEmpty(cur)) out.push(cur);\n    return out.map((p, i) =\u003e fill(t(\u0027core.hitl.part\u0027), { n: i + 1, total: out.length }) + \u0027\\n\u0027 + p);\n  }\n  function msg(prefix, suffix) { const p = parts(prefix, suffix); return { text: p[p.length - 1], pre: p.slice(0, -1) }; }\n  return { lang: B.lang, msg, t, fill };\n}\nconst O = make(R.owner) || make({ lang: \u0027en\u0027, locale: \u0027en-GB\u0027, t: {} });\nconst M = make(R.member) || O;\nconst mname = (R.member \u0026\u0026 R.member.name) || \u0027\u0027;\nconst chrome = (X) =\u003e ({ approve: X.t(\u0027core.hitl.approve\u0027), cancel: X.t(\u0027core.hitl.cancel\u0027),\n  unauthorized: X.t(\u0027core.hitl.unauthorized\u0027) });\nconst oText = O.msg(\u0027\u0027, O.t(\u0027core.hitl.hint\u0027));\nconst oStage2 = O.msg(O.fill(O.t(\u0027core.hitl.member_requests\u0027), { name: mname }), O.t(\u0027core.hitl.hint\u0027));\nconst oInfo = O.msg(O.fill(O.t(\u0027core.hitl.member_confirmed\u0027), { name: mname }), \u0027\u0027);\nconst mText = M.msg(\u0027\u0027, M.t(\u0027core.hitl.hint\u0027));\nreturn { json: {\n  owner: Object.assign({ lang: O.lang, text: oText.text, pre: oText.pre,\n    stage2: oStage2.text, stage2_pre: oStage2.pre, info: oInfo.text, info_pre: oInfo.pre }, chrome(O)),\n  member: Object.assign({ lang: M.lang, text: mText.text, pre: mText.pre }, chrome(M)),\n} };"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       460,
+                                       -720
+                                   ],
+                      "id":  "4c9e5987-9297-5906-8b50-9afef76f7c59",
+                      "name":  "Compose messages"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Texte in der Sprache des Empfängers (Textkatalog)**\n\nRender texts (core_ro, core.fn_hitl_texts) liefert je MÖGLICHEM Empfänger Sprache, Intl-Locale und alle Texte: Owner-Sprache über fn_owner_person_id, Mitglied nur bei numerischer chat_id, die zu einem Nicht-Owner auflöst (dieselbe Quelle wie Is member?). Compose messages (Get-HitlComposeJs) rendert daraus das strukturierte Summary des Tools (New-HitlSummary: Keys + typisierte Rohwerte; Beträge/Daten per Intl im Locale) + Hinweis + Knöpfe; ein String-Summary (Test-Harness) geht unverändert durch (über dem Telegram-Limit an Zeilen in Teile geteilt, Sticky Lange Karten). Mitglied bekommt seine Sprache, der Owner (Stufe 2 / Info) seine. Beide Knoten OHNE onError (Fehler = harter Stop, kein Write). SICHERHEIT: die Texte entscheiden NIE über Empfänger oder Tipp-Berechtigung — chatId/approverIds hängen nur an Resolve sender bzw. $OWNER_CHAT_ID (der Builder bricht sonst ab). Nach dem Tipp: removeButtons (n8n schriebe sonst fest englisch \"Approved by ...\"); die Bestätigung ist die Antwort des Agenten.",
+                                         "height":  420,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       180,
+                                       -1180
+                                   ],
+                      "id":  "480c6beb-0c3c-597c-9e66-bc52097af548",
+                      "name":  "Doc Texte je Sprache"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "af5246b3-ebf0-50bb-89bc-ed666b4d4741",
+                                                                                   "leftValue":  "={{ String(($(\u0027Start\u0027).item.json.chat_id) || \u0027\u0027) }}",
+                                                                                   "rightValue":  "^[0-9]+$",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "regex"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       240,
+                                       0
+                                   ],
+                      "id":  "de6ce7ac-e2ec-5dd7-adf3-30099103e1a1",
+                      "name":  "Sender numeric?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS sender;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ uid: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       460,
+                                       120
+                                   ],
+                      "id":  "3e2529ed-97f2-5ef5-89c6-1590f790bb72",
+                      "name":  "Resolve sender",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "4e2dc466-b942-5c98-ba1f-228bc3d69d03",
+                                                                                   "leftValue":  "={{ $(\u0027Resolve sender\u0027).item.json.sender.found === true \u0026\u0026 $(\u0027Resolve sender\u0027).item.json.sender.role !== \u0027owner\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       680,
+                                       120
+                                   ],
+                      "id":  "1492197c-3653-5551-a0f3-525b755b2555",
+                      "name":  "Is member?"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "message":  "={{ ($(\u0027Compose messages\u0027).first().json.owner.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.owner.approve }}",
+                                                                                "disapproveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.owner.cancel }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "__OWNER_CHAT_ID__",
+                                         "unauthorizedReplyText":  "={{ $(\u0027Compose messages\u0027).first().json.owner.unauthorized }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false,
+                                                         "limitWaitTime":  {
+                                                                               "values":  {
+                                                                                              "limitType":  "afterTimeInterval",
+                                                                                              "resumeAmount":  10,
+                                                                                              "resumeUnit":  "minutes"
+                                                                                          }
+                                                                           }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       680,
+                                       -160
+                                   ],
+                      "id":  "af3cd5d6-9a7e-5217-a8e3-7b21ce4cbf83",
+                      "name":  "Owner approval",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "ce89ce82-e083-54f9-ae75-f3544bceaa73"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "faac84e7-52e6-5d6c-aa84-3406626f56be",
+                                                                                     "name":  "approved",
+                                                                                     "value":  "={{ ($(\u0027Owner approval\u0027).first().json.data || {}).approved === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       900,
+                                       -160
+                                   ],
+                      "id":  "6cc4f806-e428-534a-b6bd-4f9f15c81af5",
+                      "name":  "Return owner"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "fallbackOutput":  "extra"
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "a7f3c266-70a4-5dd6-93a9-4728a8cf6b12",
+                                                                                                                    "leftValue":  "={{ $(\u0027Start\u0027).item.json.approval_tier }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "owner_only"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "owner_only",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "91675e47-62ef-5c6e-99c0-475714c4006c",
+                                                                                                                    "leftValue":  "={{ $(\u0027Start\u0027).item.json.approval_tier }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "owner_approval"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "owner_approval",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "ca2a9175-06b2-5ce4-a7b9-093a8f28fb2a",
+                                                                                                                    "leftValue":  "={{ $(\u0027Start\u0027).item.json.approval_tier }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "owner_info"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "owner_info",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "eb550d08-722c-5d9a-876e-7a1406d9085b",
+                                                                                                                    "leftValue":  "={{ $(\u0027Start\u0027).item.json.approval_tier }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "self"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "self",
+                                                                          "renameOutput":  true
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       900,
+                                       120
+                                   ],
+                      "id":  "c376f50c-1045-5fb7-9739-7fb59e3d8ce4",
+                      "name":  "Tier switch"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7e6e80f4-bd66-58b4-b5c4-2e017462064b",
+                                                                                     "name":  "approved",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b03d6b88-31d7-52a4-a38d-03d7684cb1ad",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "owner_only",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1140,
+                                       0
+                                   ],
+                      "id":  "f5910bce-8a7c-59f4-b1eb-f70ae85a9f79",
+                      "name":  "Return blocked"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id) }}",
+                                         "message":  "={{ ($(\u0027Compose messages\u0027).first().json.member.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.member.approve }}",
+                                                                                "disapproveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.member.cancel }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id || \u0027-1\u0027) }}",
+                                         "unauthorizedReplyText":  "={{ $(\u0027Compose messages\u0027).first().json.member.unauthorized }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false,
+                                                         "limitWaitTime":  {
+                                                                               "values":  {
+                                                                                              "limitType":  "afterTimeInterval",
+                                                                                              "resumeAmount":  10,
+                                                                                              "resumeUnit":  "minutes"
+                                                                                          }
+                                                                           }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1140,
+                                       160
+                                   ],
+                      "id":  "767d9535-3780-59d7-913b-4e1f8c849551",
+                      "name":  "Member approval",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "c5724577-974e-582f-954f-b49f260747c9"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "dff82972-c668-570c-91e6-65012c79ea69",
+                                                                                   "leftValue":  "={{ ($(\u0027Member approval\u0027).first().json.data || {}).approved === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1360,
+                                       160
+                                   ],
+                      "id":  "0b85282a-15e1-5bac-8488-aaed7bf6a2b4",
+                      "name":  "Member approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "message":  "={{ ($(\u0027Compose messages\u0027).first().json.owner.stage2).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.owner.approve }}",
+                                                                                "disapproveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.owner.cancel }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "__OWNER_CHAT_ID__",
+                                         "unauthorizedReplyText":  "={{ $(\u0027Compose messages\u0027).first().json.owner.unauthorized }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false,
+                                                         "limitWaitTime":  {
+                                                                               "values":  {
+                                                                                              "limitType":  "afterTimeInterval",
+                                                                                              "resumeAmount":  10,
+                                                                                              "resumeUnit":  "minutes"
+                                                                                          }
+                                                                           }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1580,
+                                       120
+                                   ],
+                      "id":  "86cfeb84-49e9-57ec-a4c2-46d975bd9962",
+                      "name":  "Owner co-approval",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "68ae5e1c-ccdb-5156-ad97-31a60f9b7b83"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e98fa281-674e-573e-92b6-ead76aa36145",
+                                                                                     "name":  "approved",
+                                                                                     "value":  "={{ ($(\u0027Owner co-approval\u0027).first().json.data || {}).approved === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1800,
+                                       120
+                                   ],
+                      "id":  "9db26826-d245-58f8-b09f-4617b9cf89b3",
+                      "name":  "Return co-approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id) }}",
+                                         "message":  "={{ ($(\u0027Compose messages\u0027).first().json.member.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.member.approve }}",
+                                                                                "disapproveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.member.cancel }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id || \u0027-1\u0027) }}",
+                                         "unauthorizedReplyText":  "={{ $(\u0027Compose messages\u0027).first().json.member.unauthorized }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false,
+                                                         "limitWaitTime":  {
+                                                                               "values":  {
+                                                                                              "limitType":  "afterTimeInterval",
+                                                                                              "resumeAmount":  10,
+                                                                                              "resumeUnit":  "minutes"
+                                                                                          }
+                                                                           }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1140,
+                                       380
+                                   ],
+                      "id":  "de64a05f-1ea9-5dac-b32e-9f3004326700",
+                      "name":  "Member info",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "fae1c926-2dd4-5c38-b645-081259b231e4"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "cc475071-61c0-5101-babe-9180a86ec7e0",
+                                                                                   "leftValue":  "={{ ($(\u0027Member info\u0027).first().json.data || {}).approved === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1360,
+                                       380
+                                   ],
+                      "id":  "de3c7256-7229-5ba9-beae-ec42d0c7b2be",
+                      "name":  "Member approved (info)?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($(\u0027Compose messages\u0027).first().json.owner.info).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1580,
+                                       380
+                                   ],
+                      "id":  "1b4a82f2-6947-5c73-8659-ca335fc047b3",
+                      "name":  "Owner info",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7d3da1c4-49c3-572c-8c10-f3d490117156",
+                                                                                     "name":  "approved",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1800,
+                                       380
+                                   ],
+                      "id":  "8568aa07-5ee5-540f-90ad-42d8a58cf54b",
+                      "name":  "Return info"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c252323e-fd3f-53e2-871b-3b52fa7e2d59",
+                                                                                     "name":  "approved",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1580,
+                                       280
+                                   ],
+                      "id":  "153c1f2c-3f96-54f0-a59f-0a4875e00962",
+                      "name":  "Return declined"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id) }}",
+                                         "message":  "={{ ($(\u0027Compose messages\u0027).first().json.member.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.member.approve }}",
+                                                                                "disapproveLabel":  "={{ $(\u0027Compose messages\u0027).first().json.member.cancel }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id || \u0027-1\u0027) }}",
+                                         "unauthorizedReplyText":  "={{ $(\u0027Compose messages\u0027).first().json.member.unauthorized }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false,
+                                                         "limitWaitTime":  {
+                                                                               "values":  {
+                                                                                              "limitType":  "afterTimeInterval",
+                                                                                              "resumeAmount":  10,
+                                                                                              "resumeUnit":  "minutes"
+                                                                                          }
+                                                                           }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1140,
+                                       600
+                                   ],
+                      "id":  "443128d6-77e0-54aa-91ce-5607ea999b0d",
+                      "name":  "Member self",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "a6a1abb6-12d1-5b42-89fd-77c6a9177d44"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c496c4d7-a68c-5d7d-bf2b-644c58546d72",
+                                                                                     "name":  "approved",
+                                                                                     "value":  "={{ ($(\u0027Member self\u0027).first().json.data || {}).approved === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1360,
+                                       600
+                                   ],
+                      "id":  "38dfb70f-73d1-5416-b48c-9db1e7155b57",
+                      "name":  "Return self"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Maker-Checker HITL-Gate (WS-5b)**\n\nCross-agent. Jeder Write ruft dieses Gate VOR dem Write (Inputs: summary, chat_id, approval_tier). DREI Zweige: (A) chat_id nicht-numerisch [Test-Sentinel] -\u003e OWNER-Pfad. (B) numerisch -\u003e Resolve sender (core_ro, fn_resolve_sender); DB-Fehler = harter Stop (KEIN onError -\u003e errorWorkflow alarmiert den Owner, kein Write = fail-closed). found:true UND role!=owner = VERIFIZIERTES MITGLIED -\u003e Member-Pfad; sonst (owner / found:false) -\u003e OWNER-Pfad (ein Tap, heutiges Verhalten). MEMBER-PFAD nach approval_tier: owner_only -\u003e sofort {approved:false} (KEIN Send; tool_save_plan_section/tool_publish_plan/tool_set_context_facts/tool_invite_household_member haben zusätzlich den DB-Backstop in der fn); owner_approval -\u003e Member bestätigt, DANN Owner gibt frei (Vier-Augen); owner_info -\u003e Member bestätigt + Owner-Info-Send; self -\u003e Member bestätigt seine EIGENEN Daten, KEIN Owner-Send (nur agent.tool_set_own_context_facts: die fn setzt per_user fest, approval_lint (e) prüft es). SICHERHEITS-INVARIANTE: ein Send an einen NICHT-Owner passiert NUR im positiv verifizierten Member-Pfad; jeder andere Ausgang sendet fix an $OWNER_CHAT_ID ODER blockiert. Single-User heute: nur Owner gepairt -\u003e fn_resolve_sender liefert role=owner -\u003e immer OWNER-Pfad (No-Op). approval_tier-Quelle: approval_matrix-Block im Manifest des aufrufenden Pakets (fail-closed-Lint). KNÖPFE: Bestätigen im Chat (chatApproval, beim Deploy entschieden) = callback_data, der Tipp kommt über Telegram -\u003e Orchestrator-Trigger -\u003e /webhook-waiting-telegram (HMAC an diese Execution gebunden); sonst Link-Knöpfe. approverIds je Send = NUR dessen Empfänger (Owner-Sends: Owner-chat_id, Member-Sends: die verifizierte Person) -\u003e ein fremder Tipp setzt nicht fort (Hinweis-Popup), und im Vier-Augen-Pfad beantwortet ein wiederholter Member-Tipp die Owner-Stufe nicht. TEXTE: alle Nachrichten, Knöpfe und das Popup kommen aus Compose messages in der Sprache des jeweiligen Empfängers (Sticky Texte je Sprache); sie bestimmen nie den Empfänger. KARTE-OFFEN-SPERRE: jeder Send ist von Open/Close pending umrahmt (Sticky Karte-offen-Sperre). LANGE KARTEN: vor jedem Send ggf. die Teile 1..N-1 (Sticky Lange Karten).",
+                                         "height":  420,
+                                         "width":  880,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       60,
+                                       -380
+                                   ],
+                      "id":  "d4bc7b79-dc96-5b2b-b17c-98be3ab370ee",
+                      "name":  "Doc HITL Dual-Control"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Zwei sequentielle Send-and-Wait (owner_approval)**\n\nDer Vier-Augen-Pfad sendet ZWEI sendAndWait nacheinander (Member -\u003e Owner) in EINER Execution -\u003e das bekannte ~3-5min Telegram-Socket-Hang-Fenster (Memory telegram-socket-fix-watch, GH #24007) verdoppelt sich. Mitigation: limitWaitTime=10min an JEDEM sendAndWait -\u003e Timeout resumed OHNE Approval -\u003e data.approved leer -\u003e approved=FALSE (fail-closed, kein Write). Kein Datenverlust (Write erst nach beiden Freigaben). Ein Tipp NACH dem Timeout bewirkt nichts mehr (n8n antwortet 409, der Knopf dreht kurz). Freitext statt Knopf / Karte per Text ersetzen: BACKLOG \"Konversationelle HITL-Bestätigung\" (Trigger dort).",
+                                         "height":  360,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1540,
+                                       -60
+                                   ],
+                      "id":  "a8877975-7a0f-5de3-bb2e-8c47de14f564",
+                      "name":  "Doc Zwei-Send-Risiko"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Karte-offen-Sperre (agent.hitl_pending, Fix C)**\n\nProblem: solange eine Karte offen ist, parkt n8n die ganze Kette Orchestrator -\u003e Agent -\u003e Tool -\u003e dieses Gate; das Chat-Gedächtnis entsteht erst am Lauf-Ende. Eine Text-/Sprachnachricht startete einen zweiten Lauf ohne die Kartenrunde (\"vergessene\" Werte, 2026-10-22). Lösung: vor JEDEM sendAndWait legt \"Open pending (\u003cSend\u003e)\" eine Zeile für den URSPRUNGS-Chat der Anfrage an (agent.fn_create_hitl_pending; Start.chat_id, nicht der Karten-Empfänger: im Vier-Augen-Pfad ist der Mitglieds-Chat gesperrt, nicht der Owner; own_card=false bei der Owner-Stufe -\u003e das Mitglied bekommt \"wartet auf Freigabe\" statt \"tippe dort\"). \"Close pending (\u003cSend\u003e)\" löscht NICHT, sondern gibt nach Tipp/Timeout frei (fn_set_hitl_pending_released: Gnadenfrist 2 Min) - die Kette dahinter antwortet erst noch und schreibt ihr Gedächtnis; der Orchestrator löscht die Zeile nach seiner Antwort (Finish card lock). Der Orchestrator-Pre-Router (Card open check, fn_get_hitl_pending_state) antwortet bei offener Zeile mit festem Hinweis statt einen Agenten zu starten. Ablauf (expires_at = jetzt + WAIT_MIN + 6) ist die Wahrheit: gestoppte/gescheiterte Läufe räumt die TTL bzw. core.sub_error_notify (Freigabe mit Gnadenfrist 0 per execution.id). Beide Knoten onError=continue = fail-open (Effizienz-Sperre, schützt keinen Write). Test-Sentinel (nicht-numerische chat_id) -\u003e keine Zeile. Bekannt: die Sperre greift schon, bevor die Karte sichtbar ist (Telegram-Send-Hänger), und Text in der Sekunde vor dem Insert läuft normal durch. Bewusst OHNE Sperre: sendAndWait-Karten der Finanz-Crons (remind_interest) - hinter ihnen ist keine Unterhaltung geparkt. Nach dem Send liest jeder Nachfolger das Ergebnis per Name ($(\u0027\u003cSend\u003e\u0027).first()), weil $json dann die Close-Ausgabe ist.",
+                                         "height":  420,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -420,
+                                       -380
+                                   ],
+                      "id":  "b7a7b089-364b-535a-9f7a-4f798e6f68d7",
+                      "name":  "Doc Karte-offen-Sperre"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Lange Karten in Teilen (Telegram-Limit 4096)**\n\nEine Karte über ~4000 Zeichen (z. B. ein Import mit vielen Einträgen, je Eintrag alle Felder) packt Compose messages in Teile \"Teil n/N\": Kopf (Titel bzw. \"Mitglied X beantragt\") in Teil 1, Hinweise + Knopf-Hinweis komplett im letzten Teil; getrennt an Eintrags-Grenzen, notfalls an Zeilen, eine überlange Einzelzeile wird gekürzt. Je Send-Pfad nach Open pending: Has parts? -\u003e Split parts -\u003e Send parts (sendMessage, dasselbe Ziel wie die Karte) -\u003e Parts sent (Limit 1) -\u003e Karte mit den Knöpfen. So wird nie ein Teil ungesehen mitbestätigt. Kurze Karten: Has parts? = nein, alles wie bisher. Scheitert ein Teil: Gate-Stopp (kein Write). Bekannt: bei einem Telegram-Hänger kann retryOnFail Teile doppelt senden.",
+                                         "height":  380,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -420,
+                                       180
+                                   ],
+                      "id":  "9746e890-4e5c-5a15-a32b-0e331eff3631",
+                      "name":  "Doc Lange Karten"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_create_hitl_pending($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), execution_id: $execution.id, ttl_minutes: 16, own_card: (() =\u003e { try { return $(\u0027Resolve sender\u0027).first().json.sender.role === \u0027owner\u0027; } catch (e) { return false; } })() }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       570,
+                                       -310
+                                   ],
+                      "id":  "c51aa980-5abf-565e-b5ea-5368d9987db4",
+                      "name":  "Open pending (Owner approval)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_set_hitl_pending_released($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, grace_minutes: 2 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       790,
+                                       -310
+                                   ],
+                      "id":  "29510ee8-b261-533f-81fe-63f2498c5157",
+                      "name":  "Close pending (Owner approval)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_create_hitl_pending($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), execution_id: $execution.id, ttl_minutes: 16, own_card: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1030,
+                                       10
+                                   ],
+                      "id":  "aadf58a8-65ec-5675-b95b-5da484f69aac",
+                      "name":  "Open pending (Member approval)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_set_hitl_pending_released($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, grace_minutes: 2 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1250,
+                                       10
+                                   ],
+                      "id":  "7aaeede3-b476-5de1-bb7c-a0bb2fdd360d",
+                      "name":  "Close pending (Member approval)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_create_hitl_pending($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), execution_id: $execution.id, ttl_minutes: 16, own_card: false }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1470,
+                                       -30
+                                   ],
+                      "id":  "ce059787-d393-5d32-9c9a-8081da38144d",
+                      "name":  "Open pending (Owner co-approval)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_set_hitl_pending_released($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, grace_minutes: 2 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1690,
+                                       -30
+                                   ],
+                      "id":  "2e640790-d165-553e-acf6-c2d069bfd98f",
+                      "name":  "Close pending (Owner co-approval)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_create_hitl_pending($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), execution_id: $execution.id, ttl_minutes: 16, own_card: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1030,
+                                       230
+                                   ],
+                      "id":  "cbcb3e97-c7c5-55c8-a6ac-a3f47a1202ae",
+                      "name":  "Open pending (Member info)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_set_hitl_pending_released($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, grace_minutes: 2 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1250,
+                                       230
+                                   ],
+                      "id":  "480f6a71-1392-5c8e-93f3-cc05dbd4f49e",
+                      "name":  "Close pending (Member info)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_create_hitl_pending($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), execution_id: $execution.id, ttl_minutes: 16, own_card: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1030,
+                                       450
+                                   ],
+                      "id":  "08ded131-8b14-580e-ad83-f71f06567a95",
+                      "name":  "Open pending (Member self)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_set_hitl_pending_released($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, grace_minutes: 2 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1250,
+                                       450
+                                   ],
+                      "id":  "e15f7847-02cb-5b8e-bd5c-80dc65d4198c",
+                      "name":  "Close pending (Member self)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "140ee4a3-8957-5556-b9de-f2bb156a354c",
+                                                                                   "leftValue":  "={{ (($(\u0027Compose messages\u0027).first().json.owner.pre) || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       350,
+                                       10
+                                   ],
+                      "id":  "b8f903d3-2687-506f-88c3-c548a9f460e4",
+                      "name":  "Has parts (Owner approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForAllItems",
+                                         "jsCode":  "return (($(\u0027Compose messages\u0027).first().json.owner.pre) || []).map((part) =\u003e ({ json: { part } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       460,
+                                       70
+                                   ],
+                      "id":  "a444d737-faac-5eaa-8fd0-641857725a1f",
+                      "name":  "Split parts (Owner approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.part).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       570,
+                                       70
+                                   ],
+                      "id":  "3eb52e80-0336-53f9-b22c-4ed1d9a6d3f9",
+                      "name":  "Send parts (Owner approval)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "maxItems":  1
+                                     },
+                      "type":  "n8n-nodes-base.limit",
+                      "typeVersion":  1,
+                      "position":  [
+                                       680,
+                                       70
+                                   ],
+                      "id":  "2c97a0d0-bcda-502d-a526-2e546956af94",
+                      "name":  "Parts sent (Owner approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "04863ee1-a554-5ebb-832f-243af770d477",
+                                                                                   "leftValue":  "={{ (($(\u0027Compose messages\u0027).first().json.member.pre) || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       810,
+                                       330
+                                   ],
+                      "id":  "0ddcc2cd-dd82-5f0c-ad19-14dc5e8abc81",
+                      "name":  "Has parts (Member approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForAllItems",
+                                         "jsCode":  "return (($(\u0027Compose messages\u0027).first().json.member.pre) || []).map((part) =\u003e ({ json: { part } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       920,
+                                       390
+                                   ],
+                      "id":  "76a6c7a6-748e-5232-a89c-8bf4e89922da",
+                      "name":  "Split parts (Member approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id) }}",
+                                         "text":  "={{ ($json.part).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1030,
+                                       390
+                                   ],
+                      "id":  "5fe34e6a-eb55-50f5-9b03-fee4ab094310",
+                      "name":  "Send parts (Member approval)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "maxItems":  1
+                                     },
+                      "type":  "n8n-nodes-base.limit",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1140,
+                                       390
+                                   ],
+                      "id":  "37f02c37-8d52-55a6-aac6-2aff60a6df00",
+                      "name":  "Parts sent (Member approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c5c6e076-6ece-550b-b00a-5504d2cb6bc8",
+                                                                                   "leftValue":  "={{ (($(\u0027Compose messages\u0027).first().json.owner.stage2_pre) || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1250,
+                                       290
+                                   ],
+                      "id":  "43d02273-93fd-5552-b7fb-22d07d7d3e7d",
+                      "name":  "Has parts (Owner co-approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForAllItems",
+                                         "jsCode":  "return (($(\u0027Compose messages\u0027).first().json.owner.stage2_pre) || []).map((part) =\u003e ({ json: { part } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1360,
+                                       350
+                                   ],
+                      "id":  "5c4c51b5-a982-5625-85d2-09061621b355",
+                      "name":  "Split parts (Owner co-approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.part).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1470,
+                                       350
+                                   ],
+                      "id":  "fa5101f9-653e-5a79-9bed-958227dab051",
+                      "name":  "Send parts (Owner co-approval)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "maxItems":  1
+                                     },
+                      "type":  "n8n-nodes-base.limit",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1580,
+                                       350
+                                   ],
+                      "id":  "7f32dae6-ce68-5cf5-b58d-f7972058a6e9",
+                      "name":  "Parts sent (Owner co-approval)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7db405bb-3c1d-5bea-8395-2a12f9144826",
+                                                                                   "leftValue":  "={{ (($(\u0027Compose messages\u0027).first().json.member.pre) || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       810,
+                                       550
+                                   ],
+                      "id":  "81faede3-fcab-512e-b1b7-c824f60486b4",
+                      "name":  "Has parts (Member info)"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForAllItems",
+                                         "jsCode":  "return (($(\u0027Compose messages\u0027).first().json.member.pre) || []).map((part) =\u003e ({ json: { part } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       920,
+                                       610
+                                   ],
+                      "id":  "cea369e0-4015-5978-9ed8-9f403b4b15b1",
+                      "name":  "Split parts (Member info)"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id) }}",
+                                         "text":  "={{ ($json.part).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1030,
+                                       610
+                                   ],
+                      "id":  "26a0cc62-4c8d-5922-ae5d-d516ec624b88",
+                      "name":  "Send parts (Member info)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "maxItems":  1
+                                     },
+                      "type":  "n8n-nodes-base.limit",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1140,
+                                       610
+                                   ],
+                      "id":  "8167b1fb-bd53-5ee7-b8b2-006379ea6fbd",
+                      "name":  "Parts sent (Member info)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7edfa32d-c8fa-5373-bc5a-05399ac300ea",
+                                                                                   "leftValue":  "={{ (($(\u0027Compose messages\u0027).first().json.member.pre) || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       810,
+                                       770
+                                   ],
+                      "id":  "d3516a6f-ec1c-51ff-b1aa-5ee57fea8778",
+                      "name":  "Has parts (Member self)"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForAllItems",
+                                         "jsCode":  "return (($(\u0027Compose messages\u0027).first().json.member.pre) || []).map((part) =\u003e ({ json: { part } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       920,
+                                       830
+                                   ],
+                      "id":  "3ceb22a2-1bc0-5561-8aba-95de8db282a5",
+                      "name":  "Split parts (Member self)"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Resolve sender\u0027).first().json.sender.chat_id) }}",
+                                         "text":  "={{ ($json.part).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1030,
+                                       830
+                                   ],
+                      "id":  "f8801943-3e86-5692-b2d3-b24a31fbc3db",
+                      "name":  "Send parts (Member self)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "maxItems":  1
+                                     },
+                      "type":  "n8n-nodes-base.limit",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1140,
+                                       830
+                                   ],
+                      "id":  "2f968bf0-5518-5355-95af-c0e7259422cd",
+                      "name":  "Parts sent (Member self)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "10852e77-1c14-550c-b7e2-4764651d8dac",
+                                                                                   "leftValue":  "={{ (($(\u0027Compose messages\u0027).first().json.owner.info_pre) || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1250,
+                                       550
+                                   ],
+                      "id":  "eadf7908-f78a-5d02-b458-8a05084b2d37",
+                      "name":  "Has parts (Owner info)"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForAllItems",
+                                         "jsCode":  "return (($(\u0027Compose messages\u0027).first().json.owner.info_pre) || []).map((part) =\u003e ({ json: { part } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1360,
+                                       610
+                                   ],
+                      "id":  "93073790-44a1-5e05-8abd-7652bf989774",
+                      "name":  "Split parts (Owner info)"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.part).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1470,
+                                       610
+                                   ],
+                      "id":  "8e128993-2e68-53b5-8738-26dbe1d4d5d0",
+                      "name":  "Send parts (Owner info)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "maxItems":  1
+                                     },
+                      "type":  "n8n-nodes-base.limit",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1580,
+                                       610
+                                   ],
+                      "id":  "b4e60c8c-11a1-5670-8983-0e5581118e05",
+                      "name":  "Parts sent (Owner info)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Render texts",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Render texts":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Compose messages",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Compose messages":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Sender numeric?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Sender numeric?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Resolve sender",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Open pending (Owner approval)",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Resolve sender":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Is member?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Is member?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Tier switch",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Open pending (Owner approval)",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Owner approval":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Close pending (Owner approval)",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Close pending (Owner approval)":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Return owner",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                        "Tier switch":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Return blocked",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Open pending (Member approval)",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Open pending (Member info)",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Open pending (Member self)",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Return blocked",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Member self":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Close pending (Member self)",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Close pending (Member self)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Return self",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Member approval":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Close pending (Member approval)",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Close pending (Member approval)":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Member approved?",
+                                                                                     "type":  "main"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
+                        "Member approved?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Open pending (Owner co-approval)",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Return declined",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Owner co-approval":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Close pending (Owner co-approval)",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Close pending (Owner co-approval)":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "index":  0,
+                                                                                       "node":  "Return co-approval",
+                                                                                       "type":  "main"
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                        "Member info":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Close pending (Member info)",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Close pending (Member info)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Member approved (info)?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Member approved (info)?":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Has parts (Owner info)",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ],
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Return declined",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Owner info":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Return info",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Open pending (Owner approval)":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Has parts (Owner approval)",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
+                        "Open pending (Member approval)":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Has parts (Member approval)",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                        "Open pending (Owner co-approval)":  {
+                                                                 "main":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Has parts (Owner co-approval)",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                             },
+                        "Open pending (Member info)":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Has parts (Member info)",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Open pending (Member self)":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Has parts (Member self)",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Has parts (Owner approval)":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Split parts (Owner approval)",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ],
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Owner approval",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Split parts (Owner approval)":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Send parts (Owner approval)",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Send parts (Owner approval)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Parts sent (Owner approval)",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Parts sent (Owner approval)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Owner approval",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Has parts (Member approval)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Split parts (Member approval)",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ],
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Member approval",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Split parts (Member approval)":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Send parts (Member approval)",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
+                        "Send parts (Member approval)":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Parts sent (Member approval)",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Parts sent (Member approval)":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Member approval",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Has parts (Owner co-approval)":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Split parts (Owner co-approval)",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ],
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Owner co-approval",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
+                        "Split parts (Owner co-approval)":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Send parts (Owner co-approval)",
+                                                                                     "type":  "main"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
+                        "Send parts (Owner co-approval)":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Parts sent (Owner co-approval)",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                        "Parts sent (Owner co-approval)":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Owner co-approval",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                        "Has parts (Member info)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Split parts (Member info)",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ],
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Member info",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Split parts (Member info)":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Send parts (Member info)",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Send parts (Member info)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Parts sent (Member info)",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Parts sent (Member info)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Member info",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Has parts (Member self)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Split parts (Member self)",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ],
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Member self",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Split parts (Member self)":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Send parts (Member self)",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Send parts (Member self)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Parts sent (Member self)",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Parts sent (Member self)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Member self",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Has parts (Owner info)":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Split parts (Owner info)",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ],
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Owner info",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Split parts (Owner info)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Send parts (Owner info)",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Send parts (Owner info)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Parts sent (Owner info)",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Parts sent (Owner info)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Owner info",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

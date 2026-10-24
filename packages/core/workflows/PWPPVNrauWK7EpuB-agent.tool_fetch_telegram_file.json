@@ -1,0 +1,271 @@
+{
+    "id":  "PWPPVNrauWK7EpuB",
+    "name":  "agent.tool_fetch_telegram_file",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "file_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -640,
+                                       0
+                                   ],
+                      "id":  "42560f4f-c0c6-5cf1-9452-122c1bd7b992",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "843e9388-8132-516b-a056-344c3fd5f420",
+                                                                                   "leftValue":  "={{ ($(\u0027Start\u0027).item.json.file_id || \u0027\u0027).trim().length }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -420,
+                                       0
+                                   ],
+                      "id":  "3ee9c4c9-28a7-5a74-b808-ec6a78236d84",
+                      "name":  "File id empty?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "018273aa-5183-5093-9ebd-13f69faa8fc7",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "053bea95-4e95-52e4-8e4f-5dbece2e5283",
+                                                                                     "name":  "error",
+                                                                                     "value":  "No file_id given.",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b4261d93-11ec-5e85-9fd3-fbceb9bbd3ca",
+                                                                                     "name":  "b64",
+                                                                                     "value":  "",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9154fd3b-09c5-5c09-8e12-2a63b6b5d921",
+                                                                                     "name":  "mime",
+                                                                                     "value":  "",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -200,
+                                       -160
+                                   ],
+                      "id":  "405325f2-2c60-5301-bbd5-170427f81034",
+                      "name":  "No file id"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "file",
+                                         "fileId":  "={{ $(\u0027Start\u0027).item.json.file_id }}",
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -200,
+                                       60
+                                   ],
+                      "id":  "6aa16120-92ba-5cb3-a96f-0783aea4d5d9",
+                      "name":  "Get document",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const item = items[0];\nconst meta = item.binary \u0026\u0026 item.binary.data ? item.binary.data : null;\nif (!meta) return [{ json: { ok: false, error: \u0027no binary file received from Telegram\u0027, b64: \u0027\u0027, mime: \u0027\u0027 } }];\nconst buf = await this.helpers.getBinaryDataBuffer(0, \u0027data\u0027);\nif (!buf || !buf.length) return [{ json: { ok: false, error: \u0027empty file\u0027, b64: \u0027\u0027, mime: \u0027\u0027 } }];\nif (buf.length \u003e 10 * 1024 * 1024) return [{ json: { ok: false, error: \u0027file too large (max 10 MB)\u0027, b64: \u0027\u0027, mime: \u0027\u0027 } }];\nconst mime = meta.mimeType || \u0027image/jpeg\u0027;\nif (mime === \u0027image/heic\u0027 || mime === \u0027image/heif\u0027) return [{ json: { ok: false, error: \u0027HEIC/HEIF images are not supported - ask the user to send it as a normal photo (JPG/PNG) or as PDF\u0027, b64: \u0027\u0027, mime: \u0027\u0027 } }];\nconst allowed = [\u0027image/jpeg\u0027,\u0027image/png\u0027,\u0027image/webp\u0027,\u0027image/gif\u0027,\u0027application/pdf\u0027];\nif (!allowed.includes(mime)) return [{ json: { ok: false, error: \u0027unsupported file type \u0027 + mime + \u0027 (send a photo or PDF)\u0027, b64: \u0027\u0027, mime: \u0027\u0027 } }];\nif (mime !== \u0027application/pdf\u0027 \u0026\u0026 Math.ceil(buf.length / 3) * 4 \u003e 5 * 1024 * 1024) return [{ json: { ok: false, error: \u0027image too large (max 5 MB) - ask the user to send a smaller photo or a PDF\u0027, b64: \u0027\u0027, mime: \u0027\u0027 } }];\nreturn [{ json: { ok: true, b64: buf.toString(\u0027base64\u0027), mime, error: \u0027\u0027 } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       20,
+                                       60
+                                   ],
+                      "id":  "daf9e0bd-0326-505c-95df-8536d9b12538",
+                      "name":  "To base64"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5bcc4a8a-4f59-5dff-9c57-1445adbed5fa",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "={{ $json.ok }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e6516d8b-3b91-552f-984c-4901b6220e16",
+                                                                                     "name":  "b64",
+                                                                                     "value":  "={{ $json.b64 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4e3bc487-f63a-5a15-b75e-f1fccff50d84",
+                                                                                     "name":  "mime",
+                                                                                     "value":  "={{ $json.mime }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1292ab2b-4285-5d11-a8d1-80b4bbb6111a",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       240,
+                                       0
+                                   ],
+                      "id":  "5d233369-20cb-53da-8dd3-a524379e41e4",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**agent.tool_fetch_telegram_file (Baustein, KEIN LLM)**\n\nEingang file_id (Telegram Foto ODER Dokument/PDF) -\u003e Get document (Download, resource=file) -\u003e To base64 (Binär-Validierung: Größe \u003c=10 MB, Bilder \u003c=5 MB als base64 (~3,75 MB roh), MIME jpeg/png/webp/gif + application/pdf — die Grenzen der Claude-Vision; HEIC/HEIF freundlich abgelehnt) -\u003e Return { ok, b64, mime, error }. Leere file_id / unbrauchbare Datei -\u003e { ok:false, error } als DATEN (inline-konsumiert, KEIN Tool-Error). REINES PLUMBING: keine Vision, kein LLM, kein API-Key -- die Bezahl-API-/Vision-Privacy lebt im Finanz-Konsumenten (tool_extract_finance_document). DUAL-USE: inline per executeWorkflow ODER als Agent-Tool bindbar.",
+                                         "height":  300,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -660,
+                                       -300
+                                   ],
+                      "id":  "7b5584b9-9a55-5f0d-95e0-e4ea9ebe0e17",
+                      "name":  "Doc: Telegram-Datei holen"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "File id empty?",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "File id empty?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "No file id",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Get document",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Get document":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "To base64",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "To base64":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "No file id":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Return",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

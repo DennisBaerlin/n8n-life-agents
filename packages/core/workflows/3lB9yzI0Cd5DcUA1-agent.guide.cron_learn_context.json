@@ -1,0 +1,878 @@
+{
+    "id":  "3lB9yzI0Cd5DcUA1",
+    "name":  "agent.guide.cron_learn_context",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_LEARN_CONTEXT__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1320,
+                                       0
+                                   ],
+                      "id":  "f0ddb3fd-b245-585c-ae1e-100c7a615fda",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_package_active(\u0027core\u0027) AND COALESCE(core.fn_config_get(\u0027core\u0027,\u0027cron_enable\u0027,\u0027learn_context\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "11e94d21-72a3-5789-afdd-5b4c355ba6b6",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "296f6f08-3fdf-5edf-8709-a004ed3153c6",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "28a0f0c6-6d97-5bed-b060-392ad5422635",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -880,
+                                       200
+                                   ],
+                      "id":  "a64c2d69-cee2-53f1-a142-b9250326cba7",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH c AS MATERIALIZED (SELECT * FROM core.fn_collect_chat_since())\nSELECT\n  COALESCE(jsonb_agg(jsonb_build_object(\u0027agent_name\u0027, c.agent_name, \u0027source_id\u0027, c.source_id, \u0027content\u0027, c.content)\n                     ORDER BY c.agent_name, c.source_id), \u0027[]\u0027::jsonb)::text AS rows,\n  COALESCE((SELECT jsonb_agg(jsonb_build_object(\u0027agent_name\u0027, s.a, \u0027last_seen_id\u0027, s.m))\n            FROM (SELECT c2.agent_name AS a, max(c2.source_id) AS m FROM c c2 GROUP BY c2.agent_name) s),\n           \u0027[]\u0027::jsonb)::text AS watermarks,\n  count(*)::int AS n,\n  -- Install-UX-Phase 6: die erlaubten Ziel-Kontexte kommen aus DENSELBEN Guards wie der Schreibpfad\n  -- (fact: core.fn_facts_context_allowed = family + household-Fakten-Kontexte AKTIVER Pakete; note:\n  -- core.fn_note_context_allowed) — kein Paket-Literal im Prompt, kein Vorschlag fuer ein inaktives Paket.\n  (SELECT string_agg(x.n, \u0027, \u0027 ORDER BY x.n) FROM (SELECT \u0027family\u0027 AS n UNION SELECT v.context_name FROM core.context_validators v WHERE core.fn_facts_context_allowed(v.context_name)) x) AS fact_contexts,\n  (SELECT string_agg(cc.name, \u0027, \u0027 ORDER BY cc.name) FROM agent.core_contexts cc WHERE core.fn_note_context_allowed(cc.name)) AS note_contexts,\n  -- Textkatalog Phase C: Karten-/Knopf-Texte + Owner-Sprache (fuer die rationale) — read-only, VOR jedem Write\n  core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027core.learn.intro\u0027,\u0027core.learn.btn_off\u0027,\u0027core.learn.fact_new\u0027,\u0027core.learn.fact_update\u0027,\u0027core.learn.note\u0027,\u0027core.learn.btn_save\u0027,\u0027core.learn.btn_discard\u0027]::text[])))::text AS ui\nFROM c;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "090bbb0d-fae5-5c9c-93c2-d94daebc3b15",
+                      "name":  "Collect chat",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ec192ff2-59f1-50cc-b1a7-2cd18c7f5cfe",
+                                                                                   "leftValue":  "={{ $json.n }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gte"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "2f1e2080-2cc7-5452-a92a-f4d74b85c14f",
+                      "name":  "New material?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -440,
+                                       200
+                                   ],
+                      "id":  "b4d22727-e3af-51e5-8345-87f4de2ca474",
+                      "name":  "No new chat"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"core\",\"key\":\"learn_context\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -220,
+                                       0
+                                   ],
+                      "id":  "7558fb35-7e24-58e4-ba58-a409b48b6801",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const rows = $(\u0027Collect chat\u0027).item.json.rows || \u0027[]\u0027;\nconst factCtx = $(\u0027Collect chat\u0027).item.json.fact_contexts || \u0027family\u0027;\nconst noteCtx = $(\u0027Collect chat\u0027).item.json.note_contexts || \u0027family\u0027;\n// rationale erscheint auf der Lern-Karte des Owners -\u003e in seiner Sprache (Textkatalog Phase C); value bleibt verbatim\nlet ui = {};\ntry { ui = JSON.parse($(\u0027Collect chat\u0027).item.json.ui || \u0027{}\u0027); } catch (e) { ui = {}; }\nconst lang = ui.language_label || \u0027en\u0027;\nconst instr = [\n  \u0027You extract DURABLE, long-term-relevant facts and insights from a household\\\u0027s recent chat with their personal assistants (finances, career, estate planning and more), to build a private long-term memory.\u0027,\n  \u0027Input: a JSON array of recent USER messages, each { agent_name, source_id, content }.\u0027,\n  \u0027Emit ONE candidate per genuinely durable item worth remembering long-term. Two kinds:\u0027,\n  \u0027- target_kind \"fact\": a structured household fact for a known slot. context_name MUST be one of: \u0027 + factCtx + \u0027 (\"family\" = person identity / household; any other = the per-person facts profile of an installed package). Provide person_slug (the lowercase person id), field (e.g. birth_date, last_name, citizenship, language) and value = the RAW value the user stated, verbatim in the language the user used (never translated). Exception: field language = the code (de|en|ko). NEVER a computed/derived value (no ages, calendar years, projections, nominal amounts) - only the raw fact.\u0027,\n  \u0027- target_kind \"note\": a richer insight that fits no fixed slot (plans, preferences, life events, intentions). context_name MUST be one of: \u0027 + noteCtx + \u0027. value = a short note (one sentence) in the language of the source message. For notes NEVER include computed or derived numbers.\u0027,\n  \u0027For EACH candidate copy agent_name and source_id VERBATIM from the source message it came from (so the same item is never relearned).\u0027,\n  \u0027Only emit clearly durable items - skip small talk, questions, transient details, and anything already obvious. If nothing is worth remembering, return [].\u0027,\n  \u0027Return ONLY a JSON array, no prose and no markdown code fences:\u0027,\n  \u0027[{ \"target_kind\": \"fact|note\", \"context_name\": \"...\", \"person_slug\": \"...\", \"field\": \"...\", \"value\": \"...\", \"agent_name\": \"...\", \"source_id\": 123, \"rationale\": \"...\" }]\u0027,\n  \u0027rationale = a short phrase in the language \u0027 + lang + \u0027: what you learned and from which message.\u0027\n].join(\u0027\\n\u0027);\nreturn [{ json: { prompt: instr + \u0027\\n\\nRecent user messages (JSON):\\n\u0027 + rows } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "d81267f7-f9b6-50d6-989b-8173f1f758dc",
+                      "name":  "Build prompt"
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ $json.prompt }}"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.chainLlm",
+                      "typeVersion":  1.7,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "fd4fef63-c2a8-54d1-8340-696dc3ad9f0f",
+                      "name":  "Extract candidates",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let raw = ($input.first().json \u0026\u0026 $input.first().json.text) || \u0027\u0027;\nraw = String(raw).replace(/^\\s*```(?:json)?/i, \u0027\u0027).replace(/```\\s*$/i, \u0027\u0027).trim();\nlet candidates = [];\ntry { const p = JSON.parse(raw); if (Array.isArray(p)) candidates = p; } catch (e) { candidates = []; }\nlet watermarks = [];\ntry { watermarks = JSON.parse($(\u0027Collect chat\u0027).item.json.watermarks || \u0027[]\u0027); } catch (e) { watermarks = []; }\nreturn [{ json: { candidates: candidates, watermarks: watermarks } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "0bca0005-d4b3-5d5e-8339-f8cb6694241d",
+                      "name":  "Build payload"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, (r-\u003e\u003e\u0027new_pending\u0027)::int AS new_pending, (r-\u003e\u0027inserted\u0027)::text AS inserted FROM agent.fn_record_learn_candidates($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ candidates: $(\u0027Build payload\u0027).item.json.candidates, watermarks: $(\u0027Build payload\u0027).item.json.watermarks }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "bacbc5ed-967d-536d-8a18-6f45d360c657",
+                      "name":  "Record candidates",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fab478df-125c-5abd-9506-310516e3cf34",
+                                                                                   "leftValue":  "={{ $json.new_pending }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gte"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "a5116a71-db92-55e9-b3d9-b9a6de60dc90",
+                      "name":  "New pending?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       200
+                                   ],
+                      "id":  "d83c10fa-df83-5397-89d8-823d6c0fe787",
+                      "name":  "Nothing new"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ (String(((JSON.parse($(\u0027Collect chat\u0027).first().json.ui || \u0027{}\u0027).t) || {})[\u0027core.learn.intro\u0027] || \u0027core.learn.intro\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027count\u0027: ($(\u0027Record candidates\u0027).item.json.new_pending) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String(((JSON.parse($(\u0027Collect chat\u0027).first().json.ui || \u0027{}\u0027).t) || {})[\u0027core.learn.btn_off\u0027] || \u0027core.learn.btn_off\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_off:learn_context"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "547d99d0-90f7-57f9-8c85-edec902c7d53",
+                      "name":  "Send intro",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const ins = JSON.parse($(\u0027Record candidates\u0027).item.json.inserted || \u0027[]\u0027);\nlet ui = {};\ntry { ui = JSON.parse($(\u0027Collect chat\u0027).first().json.ui || \u0027{}\u0027); } catch (e) { ui = {}; }\nconst { t, fill } = uiRender(ui);\nconst out = [];\nfor (const c of ins) {\n  let line;\n  if (c.target_kind === \u0027fact\u0027) {\n    line = fill(t(c.kind === \u0027update\u0027 ? \u0027core.learn.fact_update\u0027 : \u0027core.learn.fact_new\u0027),\n      { context: c.context_name, person: c.person_slug, field: c.field, value: c.proposed_value });\n  } else {\n    line = fill(t(\u0027core.learn.note\u0027), { context: c.context_name, value: c.proposed_value });\n  }\n  if (c.rationale) { line = line + \u0027\\n(\u0027 + c.rationale + \u0027)\u0027; }\n  out.push({ json: { id: c.id, line: line, btn_save: t(\u0027core.learn.btn_save\u0027), btn_discard: t(\u0027core.learn.btn_discard\u0027) } });\n}\nreturn out;"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "e8c5de1b-5cd9-5419-a2cd-5a719bdfd917",
+                      "name":  "Build cards"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.line).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_save }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027learn:ok:\u0027 + $json.id }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_discard }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027learn:no:\u0027 + $json.id }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "7b88e869-6891-54e4-a3f0-e731cfce7890",
+                      "name":  "Send card",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Lern-Loop\n**Opt-in Tages-Lern-Loop (Phase C): schlägt nur vor, schreibt NIE core_contexts (M1)**\n\nSichtet täglich (schedule.learn_context) die jüngste Owner-Chat-Historie und SCHLÄGT dauerhaft relevante Erkenntnisse als Kandidaten VOR. STRUKTURELLE Leitplanke gegen das Auto-Memory-Risiko: dieser Cron schreibt AUSSCHLIESSLICH agent.guide_learn_candidates + guide_learn_watermark (via agent.fn_record_learn_candidates) und NIE agent.core_contexts (M1, lint-erzwungen). Der EINZIGE core_contexts-Schreibpfad ist die owner-gegatete Approve-fn (Orchestrator-Callback learn:ok:\u003cid\u003e). Opt-in: cron_enable.learn_context default false; aktiviert am Onboarding-Ende ([Lernen aktivieren]) oder per Konsole. PRIVACY: die Extraktion läuft über die bezahlte Anthropic-API (model.learn_context, Claude) -\u003e Privacy-Hard-Rule erfüllt (kein Training auf Kundeninhalten, Finanzdaten).",
+                                         "height":  360,
+                                         "width":  760,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1360,
+                                       -420
+                                   ],
+                      "id":  "48a29e92-e3b0-5c48-a84d-d1db85b905d8",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Opt-in F9-Gate (fail-closed)**\n\ncore.fn_package_active(core) AND core.fn_config_get(core,cron_enable,learn_context)=true. Fehlende Zeile -\u003e NULL -\u003e COALESCE false (fail-closed). Toggle ohne Rebuild: lifeagents config set cron_enable learn_context true, oder der \"Lernen aus\"-Knopf an der Karte (cron_off:learn_context -\u003e Orchestrator-Callback -\u003e core.fn_set_cron_enable).",
+                                         "height":  220,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1120,
+                                       -210
+                                   ],
+                      "id":  "e311b28e-1790-5cff-a695-25cf46466f30",
+                      "name":  "Doc F9-Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.fn_collect_chat_since (off-canvas) + Watermark**\n\nLiefert je Quelltabelle (ALLE agent.*_chat_memory ausser orchestrator = Duplikat-Quelle; dynamisch, ein neuer Paket-Agent dockt ohne Edit an) die NEUEN Owner-Nachrichten: id\u003eguide_learn_watermark.last_seen_id, nur message type=human + nicht-leerer data.content, NUR die Session des Owners (Owner ungepairt -\u003e nichts, fail-closed; Mitglieder- und Harness-Sessions raus). Fehlende Watermark = 0 (eine neue Agent-Tabelle zählt ab ihrem ersten Gespräch); die einmalige Startmarke der mit Phase B neu hinzugekommenen Quellen setzt core:V023 (keine Alt-Historie ans Modell). New material? prüft count -\u003e kein neues Material -\u003e Ende (kein LLM-Cost). Der Watermark-Vorschub passiert NICHT hier, sondern atomar in fn_record_learn_candidates (derselben Tx wie der Insert -\u003e at-most-once-lossy).",
+                                         "height":  360,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -700,
+                                       -210
+                                   ],
+                      "id":  "e88d1a83-d5b0-5c01-9bf6-ee89b4a17a6d",
+                      "name":  "Doc Collect"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**agent.fn_record_learn_candidates (off-canvas, EINE Tx)**\n\nDas LLM liefert nur Rohwerte; slot_key/kind/expires_at leitet die DB ab. Pro Kandidat: (a) fact -\u003e Kontext-Prüfung core.fn_facts_context_allowed (family + household-Fakten-Kontexte AKTIVER Pakete; dieselbe Liste bekommt das LLM schon im Prompt, Collect chat) + Denylist-Vorfilter (kanonische fn_validate_household_facts -\u003e abgeleitete Felder raus); note -\u003e Knowledge-Allowlist core.fn_note_context_allowed (managed_by=agent + kuratierte Liste). (b) NOOP vs gespeicherte facts / \"## Gelernt\"-Substring. (c) Dedup x3: in-batch, vs pending, vs kürzlich rejected (\u003cexpiry_days = durable Rejection-Memory). (d) Cap LIMIT learn_context.daily_cap des Kalendertags (Prio update\u003enew). (e) Insert ON CONFLICT (agent,source,slot) DO NOTHING (Idempotenz). (f) Watermark GREATEST je agent_name. pg_advisory_xact_lock serialisiert Doppelläufe.",
+                                         "height":  360,
+                                         "width":  700,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       560,
+                                       -300
+                                   ],
+                      "id":  "4d840eaf-3136-5ae9-876e-eb207454b657",
+                      "name":  "Doc Record"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Per-Eintrag-HITL (kein Send-and-Wait)**\n\nnew_pending\u003e0 -\u003e EINE Intro-Karte mit karten-weitem [Lernen aus]=cron_off:learn_context, dann je gespeichertem Kandidat (fn-Rückgabe inserted[]) eine Karte mit [Speichern]=learn:ok:\u003cid\u003e [Verwerfen]=learn:no:\u003cid\u003e. Die Callbacks löst der Orchestrator (deterministisch, owner_only) -\u003e learn:ok dispatcht nach target_kind (fact-\u003efn_set_context_facts | note-\u003ecore.fn_append_context_note). ASYNCHRONER Nudge: KEIN Send-and-Wait -\u003e eine übersehene Karte ist KEINE Ablehnung; Kandidaten bleiben pending bis expires_at.",
+                                         "height":  360,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1080,
+                                       -300
+                                   ],
+                      "id":  "fc5ebe29-9dc6-59fc-86c3-5cbce37e9245",
+                      "name":  "Doc Karten"
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-haiku-5-5",
+                                                       "cachedResultName":  "Claude Haiku 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "medium"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       -120,
+                                       520
+                                   ],
+                      "id":  "401610d6-76c2-5be7-a62a-0492827f9990",
+                      "name":  "claude-haiku-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-sonnet-5-5",
+                                                       "cachedResultName":  "Claude Sonnet 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "medium"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       56,
+                                       520
+                                   ],
+                      "id":  "8d08734f-d925-5c37-b7fc-4fcee957e23b",
+                      "name":  "claude-sonnet-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-opus-5-5",
+                                                       "cachedResultName":  "Claude Opus 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "medium"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       232,
+                                       520
+                                   ],
+                      "id":  "48f9b13f-ea64-5d12-b520-a90a8c569b1c",
+                      "name":  "claude-opus-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "numberInputs":  3,
+                                         "rules":  {
+                                                       "rule":  [
+                                                                    {
+                                                                        "modelIndex":  1,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "cabc94ec-4104-5131-b6d2-c63076022333",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).item.json.model.learn_context }}",
+                                                                                                                  "rightValue":  "claude-haiku-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  2,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "147e919f-42f7-59c0-9d8a-88e24d6c0e7a",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).item.json.model.learn_context }}",
+                                                                                                                  "rightValue":  "claude-sonnet-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  3,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "91c1ce87-37ab-5650-8fbf-49985145ddd0",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).item.json.model.learn_context }}",
+                                                                                                                  "rightValue":  "claude-opus-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    }
+                                                                ]
+                                                   }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.modelSelector",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       360
+                                   ],
+                      "id":  "9c89356a-9978-5bdc-aa99-9e97a1fc84b7",
+                      "name":  "Model Selector"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Collect chat",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Collect chat":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "New material?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "New material?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Load model config",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "No new chat",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Build prompt",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Build prompt":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Extract candidates",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Extract candidates":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Build payload",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Build payload":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Record candidates",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Record candidates":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "New pending?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "New pending?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Send intro",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Nothing new",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Send intro":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Build cards",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Build cards":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send card",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "claude-haiku-latest":  {
+                                                    "ai_languageModel":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Model Selector",
+                                                                                     "type":  "ai_languageModel"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                },
+                        "claude-sonnet-latest":  {
+                                                     "ai_languageModel":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  1,
+                                                                                      "node":  "Model Selector",
+                                                                                      "type":  "ai_languageModel"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                 },
+                        "claude-opus-latest":  {
+                                                   "ai_languageModel":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  2,
+                                                                                    "node":  "Model Selector",
+                                                                                    "type":  "ai_languageModel"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                               },
+                        "Model Selector":  {
+                                               "ai_languageModel":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Extract candidates",
+                                                                                "type":  "ai_languageModel"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

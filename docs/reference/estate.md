@@ -1,0 +1,69 @@
+# Referenz zu `packages/estate/CLAUDE.md` — Schema-Semantik, Ereignisfall, Review, Notfallmappe, Write-Tools-Katalog
+
+On-demand lesen; **keine Regeln** (die stehen in `packages/estate/CLAUDE.md`). Spalten/CHECKs in `packages/estate/db/estate.tables_init.sql`, fn-Verträge in `docs/fn_catalog.md`.
+
+## Schema `estate` — Nicht-Offensichtliches
+
+| Tabelle | Zweck / Schlüssel-Invarianten |
+|---|---|
+| `directive_types` | Dev-besessener Seed-Katalog der 9 deutschen Vorsorge-Dokumenttypen (deutsche Rechtsbegriffe als Schlüssel). `recommendation` essential\|recommended\|situational = Gap-Erwartungsmenge (essential+recommended je Erwachsenem; situational nie genudgt). Seed per `ON CONFLICT DO UPDATE` (dev-besessen, anders als `finance.currencies`) |
+| `directives` | Dokumente-Register (nur Metadaten): `UNIQUE(owner_person_id, doc_type) NULLS NOT DISTINCT` = ein Eintrag je (Person\|Haushalt, Typ) und UPSERT-Key von `record_directive`; `owner_person_id` NULL = gemeinschaftliche Urkunde (Berliner Testament); `doc_status` exists\|does_not_exist\|planned (kein Default); `form`/`registry`(ztr\|zvr); `storage_place_id` FK RESTRICT; `authorized_person` Freitext (Bevollmächtigte dürfen haushalts-extern sein) |
+| `provider_contracts` | Nicht-finance-Verträge: `category`-CHECK, Kundennummern, `death_action` cancel\|transfer\|keep (NULL = offener Gap), lose finance-Referenz ohne FK |
+| `digital_accounts` | Digitaler Nachlass ohne Passwörter: `is_key_account` (E-Mail zuerst), `desired_action` (NULL = Gap), `legacy_contact_status`, `seed_backup_location` CHECK-gekoppelt an `category='crypto'` |
+| `contacts` | Schlüssel-Kontakte, `role`-CHECK (notary…trusted_person), kein UNIQUE auf role |
+| `person_records` | 1 Zeile je Person (PK): Steuer-ID `^\d{11}$`, RV-Nr `^\d{8}[A-Z]\d{3}$` (kanonisch ohne Leerzeichen; Tool normalisiert), GKV/PKV, `last_reviewed_at` |
+| `funeral_preferences` | 1 Zeile je Person (PK): Bestattungsart (deutsche Werte), Vorsorgevertrag Tri-State, Wünsche |
+| `storage_places` | Fundstellen (safe\|bank_deposit_box\|folder\|digital\|other); `access_hint` ohne Codes; FK-Ziel von directives (RESTRICT, deshalb kein delete-Tool) |
+| `special_assets` | Sonderfall-Stubs vehicle\|business_interest\|firearm\|pet — geschlossene Liste, jeder Typ mappt auf eine Checklisten-Condition (bewusst kein `other`: ein offener Typ löste still nichts aus) |
+| `onboarding_state` | household-Form (PK `section_key`), Sektionen aus `packages/estate/onboarding/sections.json`; kein Pflicht-Onboarding-Gate am Agenten (fail-open für den Notfall-Pfad) |
+| `system_profile` | Haushalts-Singleton: `scope text PK DEFAULT 'household' CHECK (scope='household')` = strukturell 0/1 Zeile; Felder = Fundort-Verweise (backup_key-Offline-Kopie, System-Standort, Admin/Restore-Zugang, Restore-Hinweis), nie das Geheimnis |
+| `task_templates` / `cases` / `case_tasks` | s. Ereignisfall |
+
+Rollen `estate_rw`/`estate_ro` + core_ro-Aufsichtsfenster via `core.fn_provision_package_roles('estate')`; Nachweis `tests/db/estate/test_estate_isolation.sql`; Register-Invarianten `test_estate_directives.sql` + `test_estate_registers.sql`.
+
+## Register-Write-Tools — Mechanik
+
+- **Verb-/HITL-Modell:** `record_`/`create_` = HITL `owner_info` (member-tauglich), `set_`/`delete_` = `owner_approval` (`approval_matrix`-Block in `packages/estate/manifest.json`), `confirm_review` + `set_onboarding_section` = Fortschritts-Flag ohne Gate. Jede Write-fn prüft den adults_only-Backstop über `core.fn_check_write_permission('adults_only', chat_id, NULL)` (Kind → `{ok:false}` ohne Write, je fn ein Kind-Reject-db_test). Cred aller Tools = `estate_rw`. Person via `core.fn_resolve_person` (Name→Slug), nie `$fromAI`-Slug.
+- **Gap-Report** (`estate.fn_gap_report()` + Views `v_directive_gaps`/`v_register_gaps`): eine Quelle für Renderer (Lücken-Sektion) + Review. Erwartungsmenge = `directive_types` essential+recommended je Erwachsenem (Haushalts-Urkunde deckt beide Partner) + offene Feld-Gaps (death_action/desired_action/Schlüsselkonto ohne access_path/fehlende Personen-Zeilen) + konkrete finance-Feld-Gaps (policy_number/insurance_type/beneficiary/claim_deadline_hours je Police, ownership/has_transmortal_poa je Konto). Doppel-guardet (`fn_package_active`+`to_regprocedure`) + Pfad-Guard (`insufficient_privilege` → `finance.status='not_readable_on_this_path'`): unter `estate_ro` ist Schema finance D10-gesperrt → ehrliche Degradation; der volle finance-Blick läuft über den `estate_overview`-DEFINER-Renderer.
+- `tool_set_onboarding_section` ist der Fortschritts-Flag (household, kein HITL) und steht nicht im Katalog (Parität finance).
+
+## Agent `agent.estate_advisor` + Renderer
+
+- Clone-and-Trim von `agent.career_advisor` (`packages/estate/build/workflows/agent.estate_advisor.ps1`): `New-AdvisorGateChain` (Depth + Package-Active + Core-first), danach bewusst kein paket-lokales Onboarding-Gate (der Ereignisfall ist der Moment höchsten Bedarfs; Core-first bleibt, ohne `agent.persons` kein Register-Subjekt). Selector `model.estate_advisor` (Default `claude-opus-latest`), Fenster 15, `maxIterations 12`, Memory `agent.estate_advisor_chat_memory`. Reads: `postgres_select` (estate_ro, nur Schema `estate`, inkl. Gap-Views) + `load_context` (`estate_overview` + Gap-Report) + `web_search`. Writes: die Register-Tools als `ai_tool` (`New-AdvisorToolNode`, Input an zwei Stellen). Router-Arm order 5 aus `provides.agents` (NOT-Klausel „Immobilien/estate agent/Makler → finance").
+- **Renderer `estate.fn_render_estate_overview`** (`fn(text)->text`, RAISE-frei): baut den einen Lese-Kontext `estate_overview` render-at-fetch aus allen Register-Tabellen + konsumiert die drei finance-Lese-fns doppel-guardet → Absenz = sichtbare Absenz-Zeile. Leeres Register → ehrlicher Leer-Hinweis; `OFFEN` = Gap-Marker. `estate_overview` ist household (keine `context_scopes`-Zeile → nie suffigiert, Fan-out leer; `test_fn_render_estate_overview.sql`), protected. Instructions: `packages/estate/contexts/estate_advisor_instructions.md`.
+- Tests/Harness: `tests/agent/estate/estate_cases.json` · `e2e_cases.json` · db-Tests je Write-fn inkl. Kind-Reject + NULLS-Falle + Gap-Report · `tests/db/cross/test_role_permissions.sql` §7 · orch-Goldens oc17/oc18/oc19 · infra ic14 · Harness `estate-test`.
+
+## Ereignisfall — cases/case_tasks + Fristen-Engine
+
+- **Tabellen** (Baseline-Init): `task_templates` (dev-besessener death/incapacity-Seed `ON CONFLICT DO UPDATE`: `case_type`, `phase`, `deadline_anchor` event/knowledge, `offset_*`, `condition_key`, `fan_out`, `hardness`, `retired`-Soft-Delete) · `cases` (`subject_person_id` FK RESTRICT; `knowledge_date` CHECK ≥ event; `bundesland` geschlossene 16er-Liste; `flags` jsonb; `status` open/completed/cancelled/superseded + `closed_at`; partial UNIQUE(subject) WHERE status='open') · `case_tasks` (Snapshot title/phase/due_date; `template_key` FK RESTRICT [NULL=manuell]; `subject_ref NOT NULL DEFAULT ''` + UNIQUE(case_id, template_key, subject_ref) = idempotente Instanziierung ohne NULL-Falle). Auto-Complete-Trigger `fn_case_tasks_autocomplete`: letzte offene Task done/n.a. → Fall `completed`+`closed_at`; cancelled/superseded terminal.
+- **Fristen-Engine** (R__fn, IMMUTABLE, reine Arithmetik): `fn_public_holidays` (Gauß-Ostern + 16-Länder-CASE, nur landesweite Feiertage) · `fn_add_business_days` (§ 28 PStG: Sa/So/Feiertage zählen nicht) · `fn_compute_due_date` (Monate kalendarisch §§ 187/188 BGB; NULL-Offset = unverzüglich; v1 ohne § 193-Verschiebung, konservativ).
+- **Instanziierung:** `fn_case_template_rows(facts)` (SRF) ist die eine Quelle des Soll-Task-Satzes (Condition-Matrix: derived `adult_subject`/`finance_absent`/`minor_children` + `flags`; Condition false ⟹ Task sichtbar `not_applicable`; `fan_out` je `special_asset` eine Task `subject_ref='asset:<id>'`). `fn_instantiate_case_tasks` (INSERT…SELECT…ON CONFLICT) + `fn_preview_case` (Dry-Run + Validierung) konsumieren sie — Create und HITL-Preview aus derselben fn (kein TOCTOU).
+- **Write-fns:** `fn_create_case` (ruft `fn_preview_case`, Auto-Supersede offener incapacity→death in einer Tx, subject_is_sender-Guard via `core.fn_person_chat_id`, bundesland fail-closed) · `fn_cancel_case` · `fn_set_case` (partiell + additiver Reconcile, flags nur additiv) · `fn_set_case_task`/`fn_create_case_task` (Fortschritts-Flag). `fn_handle_case_task_callback` = est:-Callback-Handler.
+- **Cron `agent.estate.cron_remind_case_tasks`** (täglich, Uhrzeit = Manifest `schedule.remind_case_tasks`, always-on `cron_enable.remind_case_tasks`, kein Chat-Toggle): no-op ohne offenen Fall; fällige/überfällige Tasks als eine aggregierte Karte, Latch je Task (`core.fn_should_notify`, Cooldown 3 Tage); `est:`-Buttons (est:done/est:skip) für die dringlichste Task. Keine `monitor_triggers`-Zeilen.
+- **est:-Callback (member-permeabel):** Prefix `est` → `estate.fn_handle_case_task_callback` (`callback_handlers`-Manifest-Zeile `{handler_fn, member_permeable:true}`); der Handler löst den Sender auf und delegiert an `fn_set_case_task` (adults_only = haushalts-skopiert: jeder Erwachsene handelt an jedem offenen Fall = Break-Glass überlebender Partner).
+- Tests: `test_fn_public_holidays`/`_add_business_days`/`_compute_due_date`/`_case_template_rows`/`_create_case`/`_cancel_case`/`_set_case`/`_set_case_task`/`_create_case_task`/`_handle_case_task_callback` + `test_estate_cases_schema` + `test_role_permissions §7b3`.
+
+## Jahres-Review — `fn_advisor_review` + eigener Enable-Cron
+
+- **`estate.fn_advisor_review(domain, person_id, observations)`** (STABLE, RAISE-frei): estate = Haushalt → `person_id` ignoriert. Gelatchte Alerts: (A) Register-Staleness je Erwachsenem (`person_records.last_reviewed_at` älter als `advisor.estate_review_days`=365, metric_key `review_staleness:<pid>`; `fn_confirm_review` re-armt; NULL `last_reviewed_at` feuert nicht — die Register-Lücke deckt Unvollständigkeit) · (B) fehlende Vorsorge-Dokumente je Erwachsenem (`v_directive_gaps`, metric_key `directive_gaps:<pid>`, re-armt bei 0 Lücken) · (C) finance-Nachlass-Feld-Gaps (Singleton `finance_gaps`, guarded — finance absent ⟹ kein Alert). Digest (ungelatcht): adults_total/reviews_recorded/stale_review_count/directive_gap_count/register_gap_count/finance_gap_count/finance_status + `text`. Läuft unter dem Haupt-RW-Cred.
+- **`agent.estate.cron_review_register`** (`cron.review_register.ps1`): eigener dünner always-on Cron — die geteilten Advisor-Crons sind default-OFF und nur über den finance-/career-Publish-Knopf einschaltbar; estate hat kein Publish → ohne eigenen Cron liefe der Review nie. Monatlich (`schedule.review_register`), gegatet (`fn_package_active('estate')` AND `cron_enable.review_register`), ruft `core.fn_advisor_review_evaluate('estate', NULL, '{}')`, phrast um (`model.advisor_review`) und sendet. `cron_enable.review_register` Default TRUE — der Latch macht ihn selbst-still → kein Chat-Toggle, kein `cron_labels`-Eintrag. Cred Haupt-RW.
+- `plan_context='estate_overview'` ist ein realer Primär-Anker (render-at-fetch), nie Publish-Ziel — anders als finance/career (`core.advisors_init.sql`-Kommentar, `docs/package-contract.md` §8).
+- Tests: `test_fn_advisor_review.sql` (Staleness-Schwelle + NULL-Grenze, Dokument-Lücken + Re-Arm, finance-Gap-Guard, Digest, household-Fan-out, Latch send-once).
+
+## Notfallmappe + System-Steckbrief + /notfall
+
+- `fn_set_system_profile` (INVOKER, adults_only zuerst, Singleton-UPSERT partiell); Tool `set_system_profile` = owner_approval.
+- **`export_emergency_binder`** (erster gegateter READ-Egress): das ganze Register als ein weiterleitbares Telegram-Dokument (deckt Beide-Partner-Fall + System-Ausfall). Break-Glass: `export`/`create_case`/`cancel_case` laufen auf `owner_info` (Selbst-Autorisierung + Owner-Audit) statt Vier-Augen — der einzige Zweit-Genehmiger (Owner) ist im Vorsorge-/Todesfall der Betroffene, `owner_approval` deadlockte (NIST/HIPAA Break-the-Glass); kompensierende Kontrolle = HITL-Tap + Chat-History. PII-Egress an Member ist bis zum Member-Callback-Auth-WS strukturell gegated (BACKLOG). `adults_only` doppelt: n8n-IF `Adult?` (UX-Pre-Gate) und RAISE-Backstop in `fn_render_emergency_binder` (DEFINER → `core.fn_check_write_permission` direkt).
+- **Geteilter Renderer:** `estate.fn_render_register_body(p_mask boolean)` = die eine Register-Rendering-Logik (11 Sektionen + System-Steckbrief + Maskierung Steuer-ID/RV-Nr.); Overview (`fn_render_estate_overview` = Wrapper `(false)`) und Binder (`fn_render_emergency_binder` DEFINER, Druck-Header + `(mask)`) rufen sie (`test_fn_render_register_body`: `Overview == body(false)`). Egress-Pfad: DEFINER-Render → Convert to File (.md-Binary `data`) → Telegram sendDocument (`New-TelegramSendDocumentNode`). Cred `estate_rw`.
+- **`/notfall`** = der erste Nicht-Core-Slash-Command: Manifest-`commands`-Block mit `dispatch:{agent,task}` → `build.ps1 $CommandDispatchList` generiert den Switch-Case + Dispatch-Arm → `agent.estate_advisor` (synthetischer Task, `call_depth=1`); visibility=all (Hinterbliebener = Member). Onboarding-Sektion 7 `system_profile` in `sections.json`.
+- Tests: `test_fn_set_system_profile.sql`, `test_fn_render_emergency_binder.sql`, `test_fn_render_register_body.sql`, `test_role_permissions.sql §7b4`, Routing-Goldens es16/es17, `real_ingress` `/notfall`; export → e2e; set_system_profile kein e2e (Singleton nicht sentinel-scopebar).
+
+## Manifest-Besonderheiten
+
+- `advisors` deklariert (estate → `estate_overview`/`estate.fn_advisor_review`/`agent.estate_advisor`), eigener Enable-Cron `cron_review_register`.
+- Katalog: Kategorie „Nachlass & Vorsorge" + eine `tail`-Sektion (Muster career).
+- Backup `schema_dump: true` (hochsensible, nirgends sonst existierende Eingabe); `directive_types` konvergiert nach Restore per Re-Seed (`DO UPDATE`).
+
+## Write-Tools-Katalog
+
+Die estate-Tools stehen im paket-übergreifenden Katalog `docs/reference/packages.md` *Write-Tools-Katalog*.

@@ -1,0 +1,41 @@
+# Provisioning runs on Debian — shell scripts/templates MUST be LF (CRLF breaks the
+# shebang and `set` parsing). The repo's core.autocrlf=true would otherwise rewrite them.
+provisioning/** text eol=lf
+*.sh text eol=lf
+# The repo standardizes on LF everywhere (the index is already all-LF; idiomatic for OSS, and
+# PowerShell 5.1 + the n8n tooling all read LF fine). Explicit per-type rules so the convention
+# survives a fresh clone regardless of core.autocrlf. Encoding (UTF-8 / BOM for *.ps1) is governed
+# by .editorconfig, not here — git does not touch the byte-order mark.
+*.ps1  text eol=lf
+*.psd1 text eol=lf
+# tests/mock_telegram/server.js runs under Node IN the Debian test container — keep LF like the rest.
+*.js   text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.sql  text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.tpl  text eol=lf
+*.toml text eol=lf
+*.example text eol=lf
+# Extensionless Dockerfile (test-substrate base image, built on Linux) — keep LF like the rest of the tree.
+Dockerfile text eol=lf
+# Extensionless GitHub meta files (CODEOWNERS) — keep LF like the rest of the tree.
+.github/CODEOWNERS text eol=lf
+# Extensionless linter config (shellcheck rc) — keep LF like the rest of the tree.
+config/shellcheckrc text eol=lf
+# Dotfile-named linter config (sqlfluff) — no extension `*.sqlfluff` rule would match `.sqlfluff`.
+config/.sqlfluff text eol=lf
+# Showcase-Site (docs/site): Hugo emits LF; without explicit rules core.autocrlf=true would check
+# out CRLF and permanently break the build_site.ps1 -Verify regen-diff (Site-Phase 2026-07-02).
+*.html text eol=lf
+*.css  text eol=lf
+*.svg  text eol=lf
+# Binaere Test-Dokumente (tests/mock_telegram/docs): ein PDF traegt Byte-Offsets (xref) -> nie Zeilenenden umschreiben.
+*.pdf binary
+*.png binary
+# Release-Signierschluessel (provisioning/keys, OpenPGP binaer): die provisioning/**-Zeile oben darf ihn nie als Text
+# normalisieren, sonst passt der Bund nicht mehr zu RELEASE_KEY_B64 in install.sh (contract_lint 24).
+*.gpg binary
+*.sig binary

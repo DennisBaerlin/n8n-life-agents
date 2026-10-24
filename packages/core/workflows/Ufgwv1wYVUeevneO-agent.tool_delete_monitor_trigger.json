@@ -1,0 +1,545 @@
+{
+    "id":  "Ufgwv1wYVUeevneO",
+    "name":  "agent.tool_delete_monitor_trigger",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "label"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "964f8a7e-ec25-5cf2-8546-236ce3fae276",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5790e258-5dd6-5dd2-9510-a3fcd979131a",
+                                                                                     "name":  "domain",
+                                                                                     "value":  "={{ String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_monitor__\u0027 : ($(\u0027Start\u0027).item.json.domain || \u0027general\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       180,
+                                       0
+                                   ],
+                      "id":  "994bae40-3625-5619-ac3a-b48bbbe0380a",
+                      "name":  "Resolve domain"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT r.id, r.hit_count, r.candidates::text AS candidates, t.trigger_type, t.status AS cur_status, (SELECT COUNT(*) FROM agent.monitor_observations o WHERE o.trigger_id = r.id)::int AS obs_count FROM agent.fn_resolve_monitor_trigger(($1::jsonb)-\u003e\u003e\u0027label\u0027, ($1::jsonb)-\u003e\u003e\u0027domain\u0027, false) AS r LEFT JOIN agent.monitor_triggers t ON t.id = r.id;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ label: $(\u0027Start\u0027).item.json.label, domain: $(\u0027Resolve domain\u0027).item.json.domain }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       360,
+                                       0
+                                   ],
+                      "id":  "e0c38b54-284f-5662-876d-0987c411633f",
+                      "name":  "Resolve trigger",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5d60d085-27ce-5ae3-bd12-bd7e23486ba0",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       540,
+                                       0
+                                   ],
+                      "id":  "bd6f961d-e880-532d-976d-615b78941e83",
+                      "name":  "Found?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "2f011716-4c5d-5519-8b9a-75e654344828",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "75e2568f-ce3f-5fb8-b04e-06ba2f350e2b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Resolve trigger\u0027).item.json.hit_count === 0 ? \u0027No trigger with this label in this domain. List existing triggers via postgres_select on agent.monitor_triggers and ask the user.\u0027 : \u0027Label is ambiguous across domains - specify the domain. Candidates: \u0027 + $(\u0027Resolve trigger\u0027).item.json.candidates }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       720,
+                                       -200
+                                   ],
+                      "id":  "121228c5-2d83-5a91-ae10-5fdc3941bb5c",
+                      "name":  "Not found"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "9022edb7-818c-5dee-84c4-59ae9dfadea5",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027core.hitl.delete_monitor_trigger\u0027, lines: [ { label: \u0027core.label.label\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.label) }, { label: \u0027core.label.domain\u0027, kind: \u0027text\u0027, value: ($(\u0027Resolve domain\u0027).item.json.domain) }, { label: \u0027core.label.type\u0027, kind: \u0027tpl\u0027, value: (\u0027core.tpl.type_with_status\u0027), params: { status: ({ kind: \u0027enum\u0027, value: ($(\u0027Resolve trigger\u0027).item.json.cur_status), enum: \u0027core.enum.trigger_status\u0027 }), type: ({ kind: \u0027enum\u0027, value: ($(\u0027Resolve trigger\u0027).item.json.trigger_type), enum: \u0027core.enum.trigger_type\u0027 }) } }, { label: \u0027core.label.observation_history\u0027, kind: \u0027tpl\u0027, value: (\u0027core.tpl.monitor_obs_deleted\u0027), params: { n: ($(\u0027Resolve trigger\u0027).item.json.obs_count) } }, { kind: \u0027note\u0027, value: \u0027core.note.monitor_delete_final\u0027 } ].filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       720,
+                                       0
+                                   ],
+                      "id":  "0fceb69d-d203-562a-aa48-0fc818f390dd",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       900,
+                                       0
+                                   ],
+                      "id":  "a0c76cf5-c2d5-54a3-bde8-d76b55e51933",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "dd131445-aabd-533d-aad3-74603d61b3fc",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1080,
+                                       0
+                                   ],
+                      "id":  "04eaf445-a08e-5b80-b265-a879b9f8b990",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "9923fab3-73c1-5f59-bc06-3d6e7918b7a0",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "82d93718-2f66-55c2-b0b0-82e166a15e67",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9fd634f3-a041-5192-9320-15396a62cf39",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the delete_monitor_trigger action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1260,
+                                       200
+                                   ],
+                      "id":  "5c289319-d5d2-52ef-b3a9-bf9bfef808ea",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, (r-\u003e\u003e\u0027observations_deleted\u0027)::int AS observations_deleted FROM agent.fn_delete_monitor_trigger($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1260,
+                                       0
+                                   ],
+                      "id":  "f84ea1c5-2e0a-5498-a2a8-081bd3de2121",
+                      "name":  "Delete trigger (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "96bf81e4-547f-50e8-81c3-5573681dbd25",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1440,
+                                       0
+                                   ],
+                      "id":  "0555697f-65e8-522d-ae48-54d43a5d4991",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "2be28e6f-0ffa-5602-8f20-fe40d59d2ad9",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fb2c3caa-02c0-5216-b166-ff4e42b8eef2",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Delete trigger (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1620,
+                                       200
+                                   ],
+                      "id":  "58bdfe22-8805-562f-8d17-e4b42df29c72",
+                      "name":  "Delete rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "426c4434-8240-5a03-94bc-74a3857def14",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3902fbfd-99a3-510b-966b-6b5c4bea002f",
+                                                                                     "name":  "trigger_id",
+                                                                                     "value":  "={{ $json.trigger_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "112778b9-b624-5b42-825e-05d6eb379122",
+                                                                                     "name":  "observations_deleted",
+                                                                                     "value":  "={{ $json.observations_deleted }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1620,
+                                       0
+                                   ],
+                      "id":  "50a7aa77-d347-5f12-a19f-eff57a4a0d9e",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**HITL + agent.fn_delete_monitor_trigger (Hard-DELETE)**\n\nNur agent.monitor bindet dieses Tool. Trigger sind CONFIG, kein Ledger -\u003e Hard-DELETE legitim; monitor_observations gehen per FK ON DELETE CASCADE mit (Count steht in Summary + Rückgabe). Auflösung per (domain, label) VOR dem Gate (0/\u003e1 Treffer = ToolError, kein Gate-Spam). Stilllegen statt löschen = tool_set_monitor_trigger status=disabled.",
+                                         "height":  240,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -380
+                                   ],
+                      "id":  "4e928689-5c15-5323-8517-58be7fc85582",
+                      "name":  "Doc Delete Trigger"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve domain",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve domain":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Resolve trigger",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Resolve trigger":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Found?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Found?":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Build Approval Summary",
+                                                            "type":  "main"
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Not found",
+                                                            "type":  "main"
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Delete trigger (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Delete trigger (atomic)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Write ok?",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Delete rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

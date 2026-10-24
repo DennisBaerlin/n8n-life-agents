@@ -1,0 +1,26 @@
+# EditorConfig — https://editorconfig.org . The repo standardizes on LF + UTF-8.
+# Line endings are authoritatively enforced by .gitattributes; this guides editors to match,
+# so files arrive at the linters already conformant.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# PowerShell: UTF-8 WITH BOM. PS 5.1 falls back to Windows-1252 without it and the parser breaks
+# on non-ASCII (umlauts, em-dash). 4-space indent is the PowerShell community default.
+[*.{ps1,psd1}]
+charset = utf-8-bom
+indent_size = 4
+
+# Markdown: keep trailing whitespace — two trailing spaces are a meaningful hard line break.
+[*.md]
+trim_trailing_whitespace = false
+
+# Bash provisioning core + SQL: 2-space stays from [*]; nothing special, listed for clarity.
+[*.{sh,sql}]
+indent_size = 2

@@ -1,0 +1,390 @@
+[
+  {
+    "id": "ic01",
+    "name": "load_context: Finance mit Manifest",
+    "harness_path": "load-ctx-test",
+    "target_name": "agent.tool_load_context",
+    "body": { "agent_name": "finance", "include_manifest": "true" },
+    "check_node": "Return",
+    "check_field": "system_prompt",
+    "must_be_nonempty": true,
+    "must_contain": "Available lazy contexts",
+    "must_not_contain": null,
+    "must_equal": null,
+    "notes": "include_manifest=true -> Lazy-Manifest muss in system_prompt enthalten sein."
+  },
+  {
+    "id": "ic02",
+    "name": "load_context: Orchestrator ohne Manifest",
+    "harness_path": "load-ctx-test",
+    "target_name": "agent.tool_load_context",
+    "body": { "agent_name": "orchestrator", "include_manifest": "false" },
+    "check_node": "Return",
+    "check_field": "system_prompt",
+    "must_be_nonempty": true,
+    "must_contain": null,
+    "must_not_contain": "Available lazy contexts",
+    "must_equal": null,
+    "notes": "include_manifest=false -> Manifest-Abschnitt darf NICHT erscheinen (Orchestrator hat kein load_context-Tool)."
+  },
+  {
+    "id": "ic03",
+    "name": "load_config: model.finance befuellt",
+    "harness_path": "load-config-test",
+    "target_name": "core.sub_load_config",
+    "body": {},
+    "check_node": "Build Config Object",
+    "check_field": "model.finance",
+    "must_be_nonempty": true,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": null,
+    "notes": "Pivot-Pipeline: core.sub_load_config muss model.finance als nicht-leeres Feld zurueckgeben. Exakter Wert liegt in core.config -> test_config_model_selector.sql prueft ihn per DB-Join."
+  },
+  {
+    "id": "ic06",
+    "name": "load_config: model.orchestrator befuellt",
+    "harness_path": "load-config-test",
+    "target_name": "core.sub_load_config",
+    "body": {},
+    "check_node": "Build Config Object",
+    "check_field": "model.orchestrator",
+    "must_be_nonempty": true,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": null,
+    "notes": "Pivot-Pipeline: model.orchestrator muss nicht-leer sein. Exakter Wert + Tier/Index-Constraint -> test_config_model_selector.sql."
+  },
+  {
+    "id": "ic07",
+    "name": "load_config: transcription.provider befuellt",
+    "harness_path": "load-config-test",
+    "target_name": "core.sub_load_config",
+    "body": {},
+    "check_node": "Build Config Object",
+    "check_field": "transcription.provider",
+    "must_be_nonempty": true,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": null,
+    "notes": "Pivot-Pipeline: transcription.provider muss nicht-leer sein (konfigurierter Backend-Provider)."
+  },
+  {
+    "id": "ic08",
+    "name": "depth gate: call_depth >= 2 -> max_call_depth ohne LLM",
+    "harness_path": "finance-test",
+    "target_name": "agent.finance",
+    "body": { "task": "Tier-4-Infra-Test Depth-Gate - bitte ignorieren", "chat_id": "test_ic08", "call_depth": 2 },
+    "check_node": "Max call depth",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "max_call_depth",
+    "notes": "Anti-Loop-Backstop: call_depth=2 -> Depth gate (true) -> Max call depth {ok:false, error:'max_call_depth'} VOR jedem LLM-Call. Dass dieser Node lief (statt Load Config/Model) beweist den Short-Circuit (IF routet genau einen Zweig). Pass-through (call_depth=0) ist von jedem finance_cases-Routing-Test implizit abgedeckt."
+  },
+  {
+    "id": "ic09",
+    "name": "web_search: leere Query -> ToolError ohne API-Call",
+    "harness_path": "websearch-test",
+    "target_name": "agent.tool_web_search",
+    "body": { "query": "", "chat_id": "test_ic09" },
+    "check_node": "Empty query",
+    "check_field": "error",
+    "must_be_nonempty": true,
+    "must_contain": "empty",
+    "must_not_contain": null,
+    "must_equal": null,
+    "notes": "Deterministischer Fehlerpfad: Query empty? -> Empty query {ok:false} VOR dem Anthropic-HTTP-Call (kostet nichts). Der echte Erfolgspfad kostet einen Such-Call -> nicht im Tier-4-Standardlauf; der Shape-Pfad laeuft gegen den Mock (ic41)."
+  },
+  {
+    "id": "ic10",
+    "name": "expert_panel: invalides personas-JSON -> ToolError ohne LLM",
+    "harness_path": "panel-test",
+    "target_name": "agent.tool_expert_panel",
+    "body": { "question": "Testfrage", "dossier": "Testdossier", "personas": "{kaputt", "chat_id": "test_ic10" },
+    "check_node": "Invalid input",
+    "check_field": "error",
+    "must_be_nonempty": true,
+    "must_contain": "not valid JSON",
+    "must_not_contain": null,
+    "must_equal": null,
+    "notes": "Deterministischer Validierungspfad: Prepare lanes faengt den JSON-Parse-Fehler -> Input ok? false -> Invalid input. Keine Modell-Lane laeuft (kein LLM-Cost)."
+  },
+  {
+    "id": "ic11",
+    "name": "advisor depth gate: call_depth >= 2 -> max_call_depth ohne LLM",
+    "harness_path": "advisor-test",
+    "target_name": "agent.finance_advisor",
+    "body": { "task": "Tier-4-Infra-Test Depth-Gate Advisor - bitte ignorieren", "chat_id": "test_ic11", "call_depth": 2 },
+    "check_node": "Max call depth",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "max_call_depth",
+    "notes": "Derselbe Anti-Loop-Backstop am zweiten Agenten (gte-Pfad, Make-If-Alias) - Pflicht fuer jeden neuen AGENT-Workflow."
+  },
+  {
+    "id": "ic12",
+    "name": "monitor depth gate: call_depth >= 2 -> max_call_depth ohne LLM",
+    "harness_path": "monitor-test",
+    "target_name": "agent.monitor",
+    "body": { "task": "Tier-4-Infra-Test Depth-Gate Monitor - bitte ignorieren", "chat_id": "test_ic12", "call_depth": 2 },
+    "check_node": "Max call depth",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "max_call_depth",
+    "notes": "Anti-Loop-Backstop am dritten Agenten (agent.monitor) - Pflicht fuer jeden neuen AGENT-Workflow."
+  },
+  {
+    "id": "ic13",
+    "name": "career advisor depth gate: call_depth >= 2 -> max_call_depth ohne LLM",
+    "harness_path": "career-test",
+    "target_name": "agent.career_advisor",
+    "body": { "task": "Tier-4-Infra-Test Depth-Gate Career-Advisor - bitte ignorieren", "chat_id": "test_ic13", "call_depth": 2 },
+    "check_node": "Max call depth",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "max_call_depth",
+    "notes": "Anti-Loop-Backstop am Career-Advisor (geteilte Eingangs-Naht New-AdvisorGateChain, gte-Pfad) - Pflicht fuer jeden neuen AGENT-Workflow (WS-1 career)."
+  },
+  {
+    "id": "ic14",
+    "name": "estate advisor depth gate: call_depth >= 2 -> max_call_depth ohne LLM",
+    "harness_path": "estate-test",
+    "target_name": "agent.estate_advisor",
+    "body": { "task": "Tier-4-Infra-Test Depth-Gate Estate-Advisor - bitte ignorieren", "chat_id": "test_ic14", "call_depth": 2 },
+    "check_node": "Max call depth",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "max_call_depth",
+    "notes": "Anti-Loop-Backstop am Estate-Advisor (geteilte Eingangs-Naht New-AdvisorGateChain, gte-Pfad) - Pflicht fuer jeden neuen AGENT-Workflow (WS-1 estate)."
+  },
+  {
+    "id": "ic16",
+    "name": "dispatcher: call_depth=2 wird an den Paket-Agenten durchgereicht -> max_call_depth ohne LLM",
+    "harness_path": "dispatch-test",
+    "target_name": "agent.finance",
+    "body": { "workflow_id": "S4gO9s0FAm6oFQYr", "package": "finance", "task": "Tier-4-Infra-Test Dispatcher-Depth - bitte ignorieren", "chat_id": "test_ic16", "call_depth": 2 },
+    "check_node": "Max call depth",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "max_call_depth",
+    "notes": "Install-UX-Phase 4: der Orchestrator ruft Paket-Agenten nur noch ueber agent.sub_dispatch_agent (Ausdrucks-ID). Beweist (a) der Dispatcher startet das Ziel per workflow_id (aktives Paket) und (b) reicht call_depth unveraendert durch -> das Depth-Gate des Agenten greift weiter (Anti-Loop ueber den Zusatz-Hop). workflow_id = feste id von agent.finance (build-stabil)."
+  },
+  {
+    "id": "ic17",
+    "name": "dispatcher: Paket nicht installiert -> freundliche Absage ohne Agent-Call",
+    "harness_path": "dispatch-test",
+    "target_name": "agent.sub_dispatch_agent",
+    "body": { "workflow_id": "S4gO9s0FAm6oFQYr", "package": "zz_not_installed", "task": "Tier-4-Infra-Test Dispatcher-Absage - bitte ignorieren", "chat_id": "test_ic17", "call_depth": 1 },
+    "check_node": "Not available",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "not_installed",
+    "notes": "Install-UX-Phase 4: core.fn_package_status liefert reason=not_installed fuer ein Paket ohne Registry-Zeile -> Package usable? false -> Not available {ok:false, error, output}. Kein Agent-Start (Run agent laeuft nicht) -> deterministisch, kein LLM. Der Fall 'Core-only-Bot bleibt nutzbar' im Kleinen."
+  },
+  {
+    "id": "ic18", "name": "paperless search: Treffer + Anzahl (Mock)", "requires": "mock_paperless",
+    "harness_path": "paperless-search-test", "target_name": "agent.paperless.tool_search_documents",
+    "body": { "args": "{\"query\":\"Mietvertrag\",\"limit\":5}", "chat_id": "test_ic18" },
+    "check_node": "Shape results", "check_field": "returned",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": 2,
+    "notes": "paperless Phase 2 (E1): GET /api/documents/?query= gegen den Mock -> 2 Treffer, Shape-Code liefert ok:true + documents[]."
+  },
+  {
+    "id": "ic19", "name": "paperless search: Namensaufloesung, Unsichtbares weggelassen", "requires": "mock_paperless",
+    "harness_path": "paperless-search-test", "target_name": "agent.paperless.tool_search_documents",
+    "body": { "args": "{\"query\":\"Mietvertrag\"}", "chat_id": "test_ic19" },
+    "check_node": "Shape results", "check_field": "documents.document_type",
+    "must_be_nonempty": true, "must_contain": "Vertrag", "must_not_contain": "95", "must_equal": null,
+    "notes": "Spike-(d)-Fund: Typ 95 ist fuer den Bot-Nutzer unsichtbar (document_types?id__in liefert ihn nicht) -> Name weglassen, nie Fehler; Typ 5 -> 'Vertrag'. limit fehlt -> Default 5 aus dem Manifest."
+  },
+  {
+    "id": "ic20", "name": "paperless search: Treffer-Ausschnitt ohne HTML", "requires": "mock_paperless",
+    "harness_path": "paperless-search-test", "target_name": "agent.paperless.tool_search_documents",
+    "body": { "args": "{\"query\":\"Mietvertrag\",\"limit\":1}", "chat_id": "test_ic20" },
+    "check_node": "Shape results", "check_field": "documents.snippet",
+    "must_be_nonempty": true, "must_contain": "Mietvertrag", "must_not_contain": "<b>", "must_equal": null,
+    "notes": "__search_hit__.highlights enthaelt <b>…</b> -> im Shape-Code gestrippt (Spike d)."
+  },
+  {
+    "id": "ic21", "name": "paperless search: Pflichtfeld fehlt -> invalid_args", "requires": "mock_paperless",
+    "harness_path": "paperless-search-test", "target_name": "agent.paperless.tool_search_documents",
+    "body": { "args": "{\"limit\":3}", "chat_id": "test_ic21" },
+    "check_node": "Invalid args", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "invalid_args",
+    "notes": "Parse args prueft gegen manifest.json provides.services.search_documents.inputs (query Pflicht) -> {ok:false, error:invalid_args, hint} als Daten."
+  },
+  {
+    "id": "ic22", "name": "paperless search: Netzfehler -> paperless_unreachable", "requires": "mock_paperless",
+    "harness_path": "paperless-search-test", "target_name": "agent.paperless.tool_search_documents",
+    "body": { "args": "{\"query\":\"__reset__\"}", "chat_id": "test_ic22" },
+    "check_node": "Search failed", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "paperless_unreachable",
+    "notes": "Mock bricht die Verbindung ab -> HTTP-Node onError=continue (nach 1 Retry) -> pErr ohne statusCode -> paperless_unreachable."
+  },
+  {
+    "id": "ic34", "name": "paperless search: HTML-Seite statt API (HTTP 200) -> paperless_error, nie 0 Treffer", "requires": "mock_paperless",
+    "harness_path": "paperless-search-test", "target_name": "agent.paperless.tool_search_documents",
+    "body": { "args": "{\"query\":\"__html__\"}", "chat_id": "test_ic34" },
+    "check_node": "Shape results", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "paperless_error",
+    "notes": "Cold-Eyes A: unter der Adresse antwortet ein anderer Webserver (Login-/Proxy-Seite) mit 200 + HTML -> Fehler 'Adresse sieht nicht wie Paperless aus' statt still 'keine Dokumente'."
+  },
+  {
+    "id": "ic23", "name": "paperless get: langer Text wird gekappt", "requires": "mock_paperless",
+    "harness_path": "paperless-get-test", "target_name": "agent.paperless.tool_get_document",
+    "body": { "args": "{\"document_id\":\"11\"}", "chat_id": "test_ic23" },
+    "check_node": "Shape document", "check_field": "truncated",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": true,
+    "notes": "E2: content > 15 000 Zeichen -> auf 15 000 gekappt + truncated:true."
+  },
+  {
+    "id": "ic24", "name": "paperless get: unbekanntes Dokument -> not_found", "requires": "mock_paperless",
+    "harness_path": "paperless-get-test", "target_name": "agent.paperless.tool_get_document",
+    "body": { "args": "{\"document_id\":\"404\"}", "chat_id": "test_ic24" },
+    "check_node": "Document failed", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "not_found",
+    "notes": "E6: 404 (fehlt oder fuer den Bot-Nutzer unsichtbar) -> not_found."
+  },
+  {
+    "id": "ic25", "name": "paperless get: abgelehnter Zugang -> paperless_auth_failed", "requires": "mock_paperless",
+    "harness_path": "paperless-get-test", "target_name": "agent.paperless.tool_get_document",
+    "body": { "args": "{\"document_id\":\"401\"}", "chat_id": "test_ic25" },
+    "check_node": "Document failed", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "paperless_auth_failed",
+    "notes": "E6: 401/403 -> paperless_auth_failed (Mock-Ausloeser id 401, weil das Werkzeug immer den gueltigen Token sendet)."
+  },
+  {
+    "id": "ic26", "name": "paperless get: alte API-Version -> paperless_api_version_unsupported", "requires": "mock_paperless",
+    "harness_path": "paperless-get-test", "target_name": "agent.paperless.tool_get_document",
+    "body": { "args": "{\"document_id\":\"406\"}", "chat_id": "test_ic26" },
+    "check_node": "Document failed", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "paperless_api_version_unsupported",
+    "notes": "E6: 406 (Accept version=10 unbekannt = Paperless < 3.0) -> paperless_api_version_unsupported."
+  },
+  {
+    "id": "ic27", "name": "paperless get: keine Ziffern-ID -> invalid_args", "requires": "mock_paperless",
+    "harness_path": "paperless-get-test", "target_name": "agent.paperless.tool_get_document",
+    "body": { "args": "{\"document_id\":\"Mietvertrag\"}", "chat_id": "test_ic27" },
+    "check_node": "Invalid args", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "invalid_args",
+    "notes": "Werkzeug-eigene Zusatzpruefung: document_id nur Ziffern (kein Pfad-Basteln in der URL)."
+  },
+  {
+    "id": "ic28", "name": "paperless ask: Antwort + Quellen aus dem Trailer", "requires": "mock_paperless",
+    "harness_path": "paperless-ask-test", "target_name": "agent.paperless.tool_ask_documents",
+    "body": { "args": "{\"question\":\"Welche Kuendigungsfrist hat der Mietvertrag?\"}", "chat_id": "test_ic28" },
+    "check_node": "Shape answer", "check_field": "references.title",
+    "must_be_nonempty": true, "must_contain": "Mietvertrag", "must_not_contain": null, "must_equal": null,
+    "notes": "E3: text/event-stream als Text gelesen, am Trailer __PAPERLESS_CHAT_METADATA__ getrennt -> references[{id,title,link}]."
+  },
+  {
+    "id": "ic29", "name": "paperless ask: Antwort ohne Trailer -> ganze Antwort", "requires": "mock_paperless",
+    "harness_path": "paperless-ask-test", "target_name": "agent.paperless.tool_ask_documents",
+    "body": { "args": "{\"question\":\"__no_trailer__ Frage\",\"document_id\":\"\"}", "chat_id": "test_ic29" },
+    "check_node": "Shape answer", "check_field": "answer",
+    "must_be_nonempty": true, "must_contain": "ohne Quellen", "must_not_contain": "__PAPERLESS", "must_equal": null,
+    "notes": "Trailer fehlt -> ganze Antwort, references leer; leeres optionales document_id ('') = nicht gesetzt."
+  },
+  {
+    "id": "ic30", "name": "paperless ask: KI in Paperless aus -> paperless_ai_disabled", "requires": "mock_paperless",
+    "harness_path": "paperless-ask-test", "target_name": "agent.paperless.tool_ask_documents",
+    "body": { "args": "{\"question\":\"__ai_off__\"}", "chat_id": "test_ic30" },
+    "check_node": "Shape answer", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "paperless_ai_disabled",
+    "notes": "E6: 400 'AI is required' -> paperless_ai_disabled (Suche/Lesen bleiben nutzbar)."
+  },
+  {
+    "id": "ic31", "name": "Werkzeug-Vermittler: erlaubter Absender -> Werkzeug laeuft", "requires": "mock_paperless",
+    "harness_path": "dispatch-tool-test", "target_name": "agent.sub_dispatch_tool",
+    "body": { "service": "paperless:search_documents", "args": "{\"query\":\"Mietvertrag\"}", "chat_id": "__OWNER_CHAT_ID__" },
+    "check_node": "Ensure result", "check_field": "ok",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": true,
+    "notes": "paperless Phase 2: core.services traegt 'paperless:search_documents' (Seeder Objekt-Form) -> core.fn_resolve_service: Paket aktiv + Owner (adults_only) -> Run tool per Ausdrucks-ID -> Ergebnis 1:1."
+  },
+  {
+    "id": "ic32", "name": "Werkzeug-Vermittler: unbekannter Absender -> not_permitted (fail-closed)",
+    "harness_path": "dispatch-tool-test", "target_name": "agent.sub_dispatch_tool",
+    "body": { "service": "paperless:search_documents", "args": "{\"query\":\"Mietvertrag\"}", "chat_id": "test_ic32" },
+    "check_node": "Not available", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "not_permitted",
+    "notes": "Nicht aufgeloester Absender -> unresolved_sender (Paritaet core.fn_dispatch_callback); das Paket-Werkzeug laeuft NICHT."
+  },
+  {
+    "id": "ic33", "name": "Werkzeug-Vermittler: unbekannter Service -> unknown_service",
+    "harness_path": "dispatch-tool-test", "target_name": "agent.sub_dispatch_tool",
+    "body": { "service": "paperless:nope", "args": "{}", "chat_id": "__OWNER_CHAT_ID__" },
+    "check_node": "Not available", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "unknown_service",
+    "notes": "Keine core.services-Zeile (Bau-Drift / Paket deinstalliert: fn_pkg_purge_data loescht die Zeilen) -> unknown_service, nie Absturz."
+  },
+  {
+    "id": "ic35", "name": "Sprachnachricht: Download scheitert -> voice_unavailable statt Absturz", "requires": "mock_telegram",
+    "harness_path": "voice-test", "target_name": "agent.tool_transcribe_telegram_voice",
+    "body": { "file_id": "mock_bad_file" },
+    "check_node": "Voice unavailable", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "voice_unavailable",
+    "notes": "Modell-Phase 2: der Telegram-Mock lehnt getFile fuer die file_id mock_bad_file mit HTTP 400 ab -> Download-Node nimmt seinen Fehler-Ausgang (onError=continueErrorOutput, maxTries=1) -> {ok:false, error:voice_unavailable}. Kein LLM."
+  },
+  {
+    "id": "ic36", "name": "Sprachnachricht: Transkription scheitert (kein Google-Schluessel bzw. Mock 404) -> voice_unavailable", "requires": ["mock_telegram", "mock_llm"],
+    "harness_path": "voice-test", "target_name": "agent.tool_transcribe_telegram_voice",
+    "body": { "file_id": "mock_voice_ok" },
+    "check_node": "Voice unavailable", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "voice_unavailable",
+    "notes": "Modell-Phase 2: Download klappt (Telegram-Mock), die Gemini-Transkription scheitert deterministisch — ohne Google-Schluessel fehlt die Credential, mit Schluessel zeigt sie auf den Mock-LLM, der unmarkierte Audio-Dateien mit 404 beantwortet -> Fehler-Ausgang -> {ok:false, error:voice_unavailable}. Kein echter API-Call."
+  },
+  {
+    "id": "ic39", "name": "Sprachnachricht: Transkription klappt -> Return.text ist das Transkript (nicht null)", "requires": ["mock_telegram", "mock_llm", "mock_llm.cred_id"],
+    "harness_path": "voice-test", "target_name": "agent.tool_transcribe_telegram_voice",
+    "body": { "file_id": "mock_voice_speech" },
+    "check_node": "Return", "check_field": "text",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "Mock-Transkript: Wie hoch ist mein Kontostand?",
+    "notes": "Regression 2026-10-21 (Owner-Sprachnachricht kam als 'null' beim Orchestrator an): der Gemini-Audio-Knoten liefert das Transkript verschachtelt in content.parts[].text, der Return las $json.text. Der Mock-LLM spielt Upload + generateContent in echter API-Form nach (nur fuer markierte Test-Dateien). mock_llm.cred_id = die Gemini-Credential existiert (TEST_GOOGLE_API_KEY in .env). Kein echter API-Call."
+  },
+  {
+    "id": "ic40", "name": "Sprachnachricht: leeres Transkript -> voice_empty statt leerem Auftrag", "requires": ["mock_telegram", "mock_llm", "mock_llm.cred_id"],
+    "harness_path": "voice-test", "target_name": "agent.tool_transcribe_telegram_voice",
+    "body": { "file_id": "mock_voice_silent" },
+    "check_node": "Transcript empty", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "voice_empty",
+    "notes": "Mock-LLM antwortet fuer mock_voice_silent mit einem Kandidaten ohne Text (stille Aufnahme) -> Extract transcript = '' -> Transcript present? false -> {ok:false, error:voice_empty} (kein Ausfall, eigener Code). Kein echter API-Call."
+  },
+  {
+    "id": "ic37", "name": "expert_panel: Lane A antwortet mit dem zur Laufzeit konfigurierten Modell (Mock)", "requires": "mock_llm",
+    "harness_path": "panel-test", "target_name": "agent.tool_expert_panel",
+    "body": { "question": "Infra-Testfrage Panel", "dossier": "Infra-Testdossier", "personas": "[{\"role\":\"tax advisor\"},{\"role\":\"risk manager\"}]", "chat_id": "test_ic37" },
+    "check_node": "Assemble panel", "check_field": "opinions.0.model",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "claude-sonnet-5-5",
+    "notes": "Festwert-Phase 2: Load model config liest model.panel_a (Default claude-sonnet-latest) bei jedem Lauf aus core.config, der Lane-A-Umschalter (Praefix 'Lane A ') waehlt den Knoten, der Mock-LLM antwortet (Text 'done' -> Assemble nimmt ihn als Meinung der ersten Persona), das Etikett ist die gewaehlte Modell-Id. Weicht die Substrat-Config vom Standard ab, aendert sich das erwartete Etikett mit. Kein echter API-Call."
+  },
+  {
+    "id": "ic38", "name": "expert_panel: Lane B antwortet mit dem zur Laufzeit konfigurierten Modell (Mock)", "requires": "mock_llm",
+    "harness_path": "panel-test", "target_name": "agent.tool_expert_panel",
+    "body": { "question": "Infra-Testfrage Panel", "dossier": "Infra-Testdossier", "personas": "[{\"role\":\"tax advisor\"},{\"role\":\"risk manager\"}]", "chat_id": "test_ic38" },
+    "check_node": "Assemble panel", "check_field": "opinions.1.model",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "claude-opus-5-5",
+    "notes": "Festwert-Phase 2: zweiter Umschalter im selben Workflow (Praefix 'Lane B ', model.panel_b Default claude-opus-latest) — beweist eindeutige Knoten-Namen + Verdrahtung beider Umschalter und das Laufzeit-Etikett der zweiten Meinung. Kein echter API-Call."
+  },
+  {
+    "id": "ic41", "name": "web_search: Query geht mit heutigem Datum an das Suchmodell, Shape ok (Mock)", "requires": "mock_llm",
+    "harness_path": "websearch-test", "target_name": "agent.tool_web_search",
+    "body": { "query": "Infra-Testquery Websuche", "chat_id": "test_ic41" },
+    "check_node": "Shape results", "check_field": "results",
+    "must_be_nonempty": true, "must_contain": "=== ANSWER ===", "must_not_contain": null, "must_equal": null,
+    "notes": "Erfolgs-/Shape-Pfad ohne echten Such-Call: der Mock antwortet ohne Szenario mit 'done' (Szenarien sind an Agenten-Cases gebunden, mock_lint C2). Beweist, dass der jsonBody-Ausdruck mit dem Datums-Praefix ('Today is ' + $now.toISODate() + '. Query: ...') evaluiert (ein Ausdrucksfehler kippt den HTTP-Node) und Shape results {ok:true} mit Antwort-Block liefert."
+  }
+]

@@ -1,0 +1,575 @@
+{
+    "id":  "dtJw57UUdS9gHcsp",
+    "name":  "agent.tool_set_context_facts",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "context_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "facts"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "persons"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "household"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "content"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "scope"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "57285532-877c-5e7d-95f7-d6309b717d55",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5e3ee271-e340-5805-8723-3c58d834ebd6",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027core.hitl.set_context_facts\u0027, title_params: { context: ({ kind: \u0027key\u0027, value: (((c) =\u003e (c === \u0027family\u0027 ? \u0027core\u0027 : ({\"career_profile\":\"career\",\"career_planning\":\"career\",\"career_preferences\":\"career\",\"finance_profile\":\"finance\"}[c] || \u0027core\u0027)) + \u0027.facts.\u0027 + c + \u0027.\u0027)($(\u0027Start\u0027).item.json.context_name || \u0027family\u0027)) + \u0027title\u0027, fallback: String($(\u0027Start\u0027).item.json.context_name || \u0027?\u0027) }) }, lines: [  ].concat((() =\u003e {\n  const S = $(\u0027Start\u0027).item.json;\n  const pre = (((c) =\u003e (c === \u0027family\u0027 ? \u0027core\u0027 : ({\"career_profile\":\"career\",\"career_planning\":\"career\",\"career_preferences\":\"career\",\"finance_profile\":\"finance\"}[c] || \u0027core\u0027)) + \u0027.facts.\u0027 + c + \u0027.\u0027)($(\u0027Start\u0027).item.json.context_name || \u0027family\u0027));\n  const parse = (s, d) =\u003e { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };\n  const facts = parse(S.facts, {});\n  const persons = parse(S.persons, Array.isArray(facts.persons) ? facts.persons : []);\n  const hh = parse(S.household, (facts.household \u0026\u0026 typeof facts.household === \u0027object\u0027) ? facts.household : {});\n  const ORDER = [\u0027role\u0027, \u0027birth_date\u0027, \u0027employment_status\u0027, \u0027citizenships\u0027, \u0027language\u0027];\n  const SKIP = [\u0027person_id\u0027, \u0027first_name\u0027, \u0027last_name\u0027, \u0027as_of\u0027, \u0027_meta\u0027];\n  const human = k =\u003e (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, \u0027 \u0027);\n  const one = it =\u003e {\n    if (it === null || it === undefined) return \u0027?\u0027;\n    if (typeof it === \u0027object\u0027) {\n      const nm = it.name || it.title || JSON.stringify(it);\n      const sub = it.level || (it.salary_expectation_eur != null ? (\u0027~\u0027 + it.salary_expectation_eur + \u0027 €\u0027) : \u0027\u0027);\n      return sub ? (nm + \u0027 (\u0027 + sub + \u0027)\u0027) : nm;\n    }\n    return String(it);\n  };\n  const line = (k, v) =\u003e {\n    const b = { label: pre + k, label_fallback: human(k) };\n    if (v === null) return Object.assign(b, { kind: \u0027removed\u0027, value: null });\n    if (k === \u0027role\u0027) return Object.assign(b, { kind: \u0027enum\u0027, enum: \u0027core.enum.role\u0027, value: v });\n    if (k === \u0027language\u0027) return Object.assign(b, { kind: \u0027language\u0027, value: v });\n    if (typeof v === \u0027boolean\u0027) return Object.assign(b, { kind: \u0027bool\u0027, value: v });\n    if (typeof v === \u0027string\u0027 \u0026\u0026 /^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return Object.assign(b, { kind: \u0027date\u0027, value: v });\n    if (Array.isArray(v)) return Object.assign(b, { kind: \u0027text\u0027, value: v.map(one).join(\u0027, \u0027) });\n    if (v !== undefined \u0026\u0026 typeof v === \u0027object\u0027) return Object.assign(b, { kind: \u0027text\u0027, value: JSON.stringify(v) });\n    return Object.assign(b, { kind: \u0027text\u0027, value: v });\n  };\n  const sorted = o =\u003e Object.keys(o).filter(k =\u003e !SKIP.includes(k)).sort((a, b) =\u003e {\n    const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b); return (ia \u003c 0 ? 99 : ia) - (ib \u003c 0 ? 99 : ib); });\n  const L = [];\n  for (const p of persons) {\n    const nm = [p.first_name, p.last_name].filter(Boolean).join(\u0027 \u0027) || p.person_id || \u0027?\u0027;\n    L.push({ kind: \u0027heading\u0027, label: \u0027core.label.person\u0027, value: nm });\n    for (const k of sorted(p)) L.push(line(k, p[k]));\n  }\n  const hk = sorted(hh);\n  if (hk.length) { L.push({ kind: \u0027heading\u0027, label: \u0027core.facts.family.household\u0027, value: \u0027\u0027 });\n    for (const k of hk) L.push(line(k, hh[k])); }\n  for (const k of sorted(facts).filter(k =\u003e k !== \u0027persons\u0027 \u0026\u0026 k !== \u0027household\u0027)) L.push(line(k, facts[k]));\n  if ((S.content || \u0027\u0027).trim()) L.push({ kind: \u0027note\u0027, value: \u0027core.hitl.note.prose_replaced\u0027 });\n  if (!L.length) L.push({ kind: \u0027note\u0027, value: \u0027core.hitl.note.no_facts\u0027 });\n  return L;\n})()).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "538e9662-56ff-554a-83d5-cbfb935e6139",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_only"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "5495dc89-22cb-5324-b528-126407a7af93",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3cf2f704-340d-5c01-a366-f2262122061e",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "a4f8dccb-dcc5-5d46-906d-f34669b6f305",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b2ee8c66-35be-5fe8-828f-745a1ef1fe15",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "29090562-7cc3-54ea-9c29-dddea24d0fb7",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9b39ad66-6f9d-5c5c-8d6c-ce6a72e10bbd",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_context_facts action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       200
+                                   ],
+                      "id":  "c00db14e-c998-5cd3-b91b-5640aebba0df",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027context_name\u0027 AS context_name, (r-\u003e\u003e\u0027created\u0027)::boolean AS created, (r-\u003e\u003e\u0027persons_count\u0027)::int AS persons_count, r-\u003e\u003e\u0027last_confirmed_at\u0027 AS last_confirmed_at, COALESCE(r-\u003e\u0027language_missing\u0027, \u0027[]\u0027::jsonb) AS language_missing FROM agent.fn_set_context_facts($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ context_name: $(\u0027Start\u0027).item.json.context_name || \u0027family\u0027, facts: (() =\u003e { try { return (o =\u003e Object.keys(o).length ? o : undefined)(Object.assign({}, $(\u0027Start\u0027).item.json.facts ? JSON.parse($(\u0027Start\u0027).item.json.facts) : {}, $(\u0027Start\u0027).item.json.persons ? { persons: JSON.parse($(\u0027Start\u0027).item.json.persons) } : {}, $(\u0027Start\u0027).item.json.household ? { household: JSON.parse($(\u0027Start\u0027).item.json.household) } : {})); } catch (e) { return \u0027__invalid_json__\u0027; } })(), content: $(\u0027Start\u0027).item.json.content || \u0027\u0027, scope: $(\u0027Start\u0027).item.json.scope || undefined, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "d82b096d-3719-50db-9baa-54e575086c56",
+                      "name":  "Set context facts (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "4f00c7bd-4b07-5d33-b35e-6588e568f0a9",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "69f7caf5-3924-58c4-8b4d-d7040f719a4a",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3a52c17a-228d-5e34-859a-d74bf935a592",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7ef0bc53-66e8-5294-8078-8e40c7abce8f",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "347ad083-b4ec-50f0-a61a-2937b29ab6a2",
+                      "name":  "Write failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "61de9699-f79c-5f46-8bc5-9fa2b9a77bfc",
+                                                                                   "leftValue":  "={{ ($(\u0027Set context facts (atomic)\u0027).first().json.language_missing || []).length }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       -120
+                                   ],
+                      "id":  "9af37a16-4377-59bc-b605-44a7d6fc8738",
+                      "name":  "Language missing?"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForAllItems",
+                                         "jsCode":  "return ($(\u0027Set context facts (atomic)\u0027).first().json.language_missing || []).map(pid =\u003e ({ json: { person_id: String(pid) } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1540,
+                                       -220
+                                   ],
+                      "id":  "94a719d0-6e7c-5dce-a2e9-c7ac7d32d667",
+                      "name":  "Language picker items"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Lp7kQ2wXr9TvBn4M",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Lp7kQ2wXr9TvBn4M",
+                                                            "cachedResultName":  "core.sub_send_language_picker"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "person_id":  "={{ $json.person_id }}",
+                                                                              "chat_id":  "__OWNER_CHAT_ID__"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       -220
+                                   ],
+                      "id":  "e679a887-a8a3-58cc-a9db-483362c4e9e4",
+                      "name":  "Send language picker",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "4ad1fcee-406d-5abe-9fe2-3a12e9b7217c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "03ce7b5a-b602-5a84-909b-c60577d796f1",
+                                                                                     "name":  "context_name",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.context_name }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c926ba29-b8d2-5e64-88d1-76892fd7d81a",
+                                                                                     "name":  "created",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.created }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "31c143ba-86df-5a02-a024-ff8d2468764a",
+                                                                                     "name":  "persons_count",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.persons_count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "519e442e-d6e8-5676-acf4-8a72f7663a68",
+                                                                                     "name":  "last_confirmed_at",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.last_confirmed_at }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "13c3d34a-461d-53aa-8247-56dbe4cda064",
+                      "name":  "Return",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**agent.tool_set_context_facts — Fakten-Schreibweg für Haushalts-Kontexte (HITL, owner_only)**\n\nDer Guide ruft ihn als tool_set_household_facts (persons/household, scope=household fest). Persönliche per_user-Kontexte laufen über agent.tool_set_own_context_facts (Stufe self, gleicher Graph via New-ContextFactsToolGraph). Eingang: context_name, facts | persons | household (JSON-Strings), content, scope, chat_id. Ausgang: {ok, context_name, created, persons_count, last_confirmed_at} bzw. {ok:false, reason} / cancelled. Die Bestätigungs-Labels kommen aus dem Textkatalog des besitzenden Pakets (\u003cpkg\u003e.facts.\u003cctx\u003e.*, Paket-Zuordnung build-time aus den context_validators-Blöcken).",
+                                         "height":  240,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -260,
+                                       -300
+                                   ],
+                      "id":  "01326d19-de27-598d-83b4-fa8ea96cdf2b",
+                      "name":  "Doc Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**HITL-Gate + fn_set_context_facts**\n\nVor dem Write: Playback-Summary -\u003e agent.tool_human_approval (Approve/Decline). Approve -\u003e agent.fn_set_context_facts: family = hart owner_only (zuerst); household-Kontexte (family + registrierte household-Kontexte AKTIVER Pakete) MÜSSEN als Installer-Skelett existieren (fehlt die Zeile -\u003e ok:false, kein Insert); per_user-Kontexte -\u003e Zeile \u003cbase\u003e__\u003cperson_id\u003e beim ersten Write (Person aus der chat_id, nie LLM). Merge: persons per person_id (as_of-Stempel), household flach, sonst ersetzen; null löscht den Key; persons:null/household:null/_meta -\u003e ok:false. Validierung Core-Validator + Paket-Validator -\u003e ok:false ohne Write; Trigger trg_validate_household_facts ist der strukturelle Backstop. Decline -\u003e cancelled, nichts geschrieben.",
+                                         "height":  280,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       440,
+                                       -300
+                                   ],
+                      "id":  "a3d836e1-5504-57af-8f10-2547c9c7aba9",
+                      "name":  "Doc HITL + DB-Validierung"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Sprache neuer Personen per Knopf**\n\nfn_set_context_facts liefert language_missing = Personen, die DIESER Write in family neu angelegt hat und die keine Sprache tragen (Handles). Language missing? -\u003e Language picker items (je Person ein Item) -\u003e Send language picker (core.sub_send_language_picker, an den Owner): eine Karte mit je einem Knopf pro unterstützter Sprache; der Tipp setzt die Sprache über agent.fn_set_person_language. Fail-open (onError continue): der Write ist schon gespeichert. Return läuft genau einmal (executeOnce) und liest die Werte aus dem Write-Knoten.",
+                                         "height":  300,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1300,
+                                       -560
+                                   ],
+                      "id":  "6662dd23-b68f-5601-ad7e-f0ce9be6515d",
+                      "name":  "Doc Sprach-Picker"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Build Approval Summary",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set context facts (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Set context facts (atomic)":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Write ok?",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Language missing?",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Write failed",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Language missing?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Language picker items",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ],
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Return",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Language picker items":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Send language picker",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Send language picker":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Return",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

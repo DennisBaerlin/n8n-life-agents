@@ -1,0 +1,128 @@
+{
+    "id":  "M2RRWspZlTplVbtT",
+    "name":  "agent.guide.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "guide-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "491d1537-ff3f-5a27-a8ee-df85eb22eac6",
+                      "name":  "Test Webhook",
+                      "webhookId":  "942550b3-5e9e-580e-80b7-b7a3306c1799",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "XoSQPFWjY70o6llv",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/XoSQPFWjY70o6llv",
+                                                            "cachedResultName":  "agent.guide"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "task":  "={{ $(\u0027Test Webhook\u0027).item.json.body.task }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}",
+                                                                              "call_depth":  "={{ $(\u0027Test Webhook\u0027).item.json.body.call_depth }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "9a1ec978-9b57-5a97-9298-2432362efac0",
+                      "name":  "Run agent.guide",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "3e969dbf-1947-5f2d-9dc0-fd8150ab6766",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.guide.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.guide\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: task, chat_id, call_depth.\nnumerische chat_id (per Get-TestChatId) + Gate-Resolve ueber Mock-Telegram; kein test_-Bypass mehr.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "a6fdbb7c-2c00-5824-90cf-efdfa4094d22",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.guide",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.guide":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Run Info",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

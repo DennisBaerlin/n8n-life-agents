@@ -1,0 +1,160 @@
+[
+  {
+    "kind": "cron_text",
+    "id": "ctk01",
+    "name": "Abweichungs-Wächter an den Owner (ko): Fußzeile + Abschalten-Knopf; Grundtext (Sparziel hinter Plan) + Sprache ans Modell",
+    "workflow": "agent.advisor.cron_drift_check",
+    "schedule_key": "drift_check",
+    "cron_enable": "drift_check",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source LIKE 'advisor:%';",
+      "DELETE FROM finance.savings_goals WHERE name = 'CRONTEXT G1';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at) VALUES ('CRONTEXT G1', 10000, CURRENT_DATE + 30, 'active', now() - interval '300 days');"
+    ],
+    "expect_keys": ["core.advisor.footer_off"],
+    "expect_buttons": ["core.advisor.btn_off"],
+    "llm_expect": { "keys": ["core.advisor.drift_title", "finance.advisor.savings_pace"], "language": true }
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk02",
+    "name": "Quartals-Bericht an den Owner (ko): Fußzeile + Knopf; Digest-Zeilen + Sprache ans Modell",
+    "workflow": "agent.advisor.cron_review",
+    "schedule_key": "plan_review",
+    "cron_enable": "plan_review",
+    "recipient": "owner",
+    "expect_keys": ["core.advisor.footer_off"],
+    "expect_buttons": ["core.advisor.btn_off"],
+    "llm_expect": { "keys": ["finance.advisor.digest_cashflow", "finance.advisor.digest_goals"], "language": true }
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk03",
+    "name": "Lern-Vorschläge an den Owner (ko): Intro + Karte + Knöpfe; rationale-Sprache im Extraktions-Prompt",
+    "workflow": "agent.guide.cron_learn_context",
+    "schedule_key": "learn_context",
+    "cron_enable": "learn_context",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM agent.guide_learn_candidates WHERE agent_name = 'crontext';",
+      "DELETE FROM agent.guide_learn_watermark WHERE agent_name = 'crontext';",
+      "DROP TABLE IF EXISTS agent.crontext_chat_memory;"
+    ],
+    "seed_sql": [
+      "CREATE TABLE agent.crontext_chat_memory (id serial PRIMARY KEY, session_id varchar(255) NOT NULL, message jsonb NOT NULL);",
+      "INSERT INTO agent.crontext_chat_memory (session_id, message) VALUES ('__OWNER_UID__', '{\"type\": \"human\", \"data\": {\"content\": \"CRONTEXT-LERN-7Q: Wir feiern unseren Hochzeitstag immer im Mai.\"}}'::jsonb);"
+    ],
+    "mock_llm_scenario": {
+      "match": "CRONTEXT-LERN-7Q",
+      "calls": [],
+      "final": "[{\"target_kind\": \"note\", \"context_name\": \"family\", \"value\": \"CRONTEXT Hochzeitstag im Mai\", \"agent_name\": \"crontext\", \"source_id\": 1, \"rationale\": \"CRONTEXT rationale\"}]"
+    },
+    "expect_keys": ["core.learn.intro", "core.learn.note"],
+    "expect_buttons": ["core.learn.btn_off", "core.learn.btn_save", "core.learn.btn_discard"],
+    "llm_expect": { "keys": [], "language": true }
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk04",
+    "name": "Trigger-Monitor an den Owner (ko): Titel, AUSGELÖST, Termin erreicht, Hinweis",
+    "workflow": "agent.monitor.cron_check_triggers",
+    "schedule_key": "monitor_triggers",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM agent.monitor_triggers WHERE domain = '__e2e_monitor__' AND label LIKE 'CRONTEXT%';",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from';",
+      "UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
+    ],
+    "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from';",
+      "UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
+      "INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, acquisition_spec, due_date, check_interval, action_note) VALUES ('__e2e_monitor__', 'CRONTEXT T1', 'date', 'none', '{}'::jsonb, CURRENT_DATE, interval '1 day', 'CRONTEXT A1');"
+    ],
+    "expect_keys": ["core.monitor.title", "core.monitor.fired", "core.monitor.date_reached", "core.monitor.action", "core.monitor.fired_note"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk05",
+    "name": "Nachfassen beim Einrichten an den Owner (ko): Stufe-1-Text + Knöpfe Weiter / Nicht mehr erinnern (Roter Faden)",
+    "workflow": "agent.guide.cron_onboarding_nudge",
+    "schedule_key": "onboarding_nudge",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'onboarding_nudge';",
+      "DELETE FROM agent.reminder_prefs WHERE cron_key = 'onboarding_nudge';",
+      "UPDATE finance.onboarding_state SET status = 'completed', status_changed_at = now() WHERE section_key = 'accounts';"
+    ],
+    "seed_sql": [
+      "UPDATE agent.guide_onboarding_state SET status_changed_at = now() - interval '20 days';",
+      "UPDATE finance.onboarding_state SET status_changed_at = now() - interval '20 days';",
+      "UPDATE estate.onboarding_state SET status_changed_at = now() - interval '20 days';",
+      "UPDATE career.onboarding_state SET status_changed_at = now() - interval '20 days';",
+      "UPDATE finance.onboarding_state SET status = 'unknown' WHERE section_key = 'accounts';"
+    ],
+    "expect_keys": ["core.nudge.stage1"],
+    "expect_buttons": ["core.nudge.btn_continue", "core.nudge.btn_stop"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk06",
+    "name": "Weiter-Karte nach fertigem Bereich an den Owner (ko): Kopfzeile '<Bereich> ist eingerichtet' + Übersicht (Roter Faden)",
+    "harness": "onboarding-progress-test",
+    "recipient": "owner",
+    "harness_body": { "package": "finance", "area_completed_now": true, "area_all_skipped": false },
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'onboarding';",
+      "UPDATE estate.onboarding_state SET status = 'completed' WHERE section_key = 'documents';"
+    ],
+    "seed_sql": ["UPDATE estate.onboarding_state SET status = 'unknown' WHERE section_key = 'documents';"],
+    "expect_keys": ["core.onboarding.menu.done_area", "core.onboarding.menu.title"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk07",
+    "name": "Alles eingerichtet an den Owner (ko): Abschluss-Kopfzeile + einmaliges Lern-Angebot mit Knopf (Roter Faden)",
+    "harness": "onboarding-progress-test",
+    "recipient": "owner",
+    "harness_body": { "package": "finance", "area_completed_now": true, "area_all_skipped": false },
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'onboarding';",
+      "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key = 'learn_context';"
+    ],
+    "expect_keys": ["core.onboarding.menu.done_everything", "core.offer.learning"],
+    "expect_buttons": ["core.offer.btn_learning"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk08",
+    "name": "Es kann losgehen an das Mitglied (Lena, ko), wenn der Owner den Haushalt abschließt; Knopf zu ihren eigenen Bereichen (Roter Faden)",
+    "harness": "onboarding-progress-test",
+    "harness_actor": "owner",
+    "recipient": "person:lena",
+    "harness_body": { "package": "core", "area_completed_now": true, "area_all_skipped": false },
+    "reset_sql": ["DELETE FROM core.notification_state WHERE source = 'onboarding';"],
+    "expect_keys": ["core.onboarding.ready.member", "core.onboarding.ready.member_areas"],
+    "expect_buttons": ["core.onboarding.ready.btn_areas"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk09",
+    "name": "/reminders-Menue an den Owner (ko): Titel, Owner-Einleitung, Fenster, Waechter-Hinweis, Pflicht-Zeile (Roter Faden Paket B)",
+    "harness": "reminders-menu-test",
+    "recipient": "owner",
+    "harness_body": {},
+    "expect_keys": ["core.reminders.title", "core.reminders.intro_owner", "core.reminders.window", "core.reminders.monitor_note",
+                    "core.reminders.mandatory", "finance.cron.reconcile_accounts.label", "estate.cron.remind_case_tasks.label"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk10",
+    "name": "/reminders-Menue an das Mitglied (Lena, ko): Mitglieder-Einleitung, Job-Vorschlaege, Einrichtungs-Erinnerung (Roter Faden Paket B)",
+    "harness": "reminders-menu-test",
+    "recipient": "person:lena",
+    "harness_body": {},
+    "reset_sql": ["DELETE FROM agent.reminder_prefs WHERE person_id = 'lena';"],
+    "expect_keys": ["core.reminders.title", "core.reminders.intro_member", "career.cron.score_jobs.label", "core.cron.onboarding_nudge.label"]
+  }
+]

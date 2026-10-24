@@ -1,0 +1,789 @@
+{
+    "id":  "xAu6lURYEnKIDYTS",
+    "name":  "agent.estate.tool_create_contact",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "owner_person"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "role"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "organization"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "phone"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "email"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "address"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "notes"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "e8f0b188-5f1a-5a2a-9c8d-577fc1f3cd34",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT hit_count FROM estate.fn_resolve_contact(($1::jsonb)-\u003e\u003e\u0027name\u0027, ($1::jsonb)-\u003e\u003e\u0027role\u0027);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, role: $(\u0027Start\u0027).item.json.role }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       -200
+                                   ],
+                      "id":  "d460f13c-7dee-5c59-a0f0-ff1174657b17",
+                      "name":  "Check duplicate",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "cc7d8660-b8ad-51ae-bd0a-bee149e72a7b",
+                                                                                   "leftValue":  "={{ $(\u0027Check duplicate\u0027).item.json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gte"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       -200
+                                   ],
+                      "id":  "cd1c5d76-552a-59e7-bc9b-e96f7cb59f5b",
+                      "name":  "Contact exists?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0bc8362a-719d-5ae3-b6c5-5a6b727df49a",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "88f56d6c-9cff-5db0-b366-6c12aed3bf31",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=A contact named \u0027{{ $(\u0027Start\u0027).item.json.name }}\u0027 with this role already exists. I will NOT create a duplicate. Use the update tool to change it.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -300
+                                   ],
+                      "id":  "be010a40-3efc-5994-aa07-4573ef8acabc",
+                      "name":  "Contact exists"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027owner_person\u0027, \u0027\u0027));",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ owner_person: $(\u0027Start\u0027).item.json.owner_person }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       180
+                                   ],
+                      "id":  "d06dff15-0fcb-51dc-a146-7970fb38389d",
+                      "name":  "Resolve Person",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d471a78d-55b8-5f87-a436-32fc70c1ad11",
+                                                                                   "leftValue":  "={{ !!$(\u0027Start\u0027).item.json.owner_person \u0026\u0026 $(\u0027Resolve Person\u0027).item.json.hit_count !== 1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       180
+                                   ],
+                      "id":  "30c0f4c9-a50e-5f89-b7df-9d247922d7ad",
+                      "name":  "Person invalid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "9123ab32-0092-53e5-b788-bbdac9aabde3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "baa92f4e-12ef-54f8-8d2d-b524a95c6a6b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The person \u0027{{ $(\u0027Start\u0027).item.json.owner_person }}\u0027 could not be uniquely resolved. Ask which household member, or leave empty for a household contact.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       320
+                                   ],
+                      "id":  "8e5653b6-5603-59d1-8dd9-48292957c0fc",
+                      "name":  "Person unresolved"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027estate.fn_create_contact(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, role: $(\u0027Start\u0027).item.json.role, name: $(\u0027Start\u0027).item.json.name, organization: $(\u0027Start\u0027).item.json.organization, phone: $(\u0027Start\u0027).item.json.phone, email: $(\u0027Start\u0027).item.json.email, address: $(\u0027Start\u0027).item.json.address, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "8fd70191-5f30-5325-888d-cb517f451f30",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "dff28157-66f4-550b-a386-9f13b6b3e568",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "6f206246-457a-5488-ac5a-46332d7c743b",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1d04163b-a2f8-519e-8dd2-9696115adcf0",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "015415a6-cd73-5d3c-8706-71493ce8fcb8",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a98fcf54-24ec-521c-8787-66aa504adaa7",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "90537b18-d75e-533c-b5c2-a6dcf6cd305c",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "96aa319b-8a1f-571f-aa44-afd470868d86",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "0c7259ad-a890-588a-8a72-18575837e495",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027contact_id\u0027)::bigint AS contact_id FROM estate.fn_create_contact(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, role: $(\u0027Start\u0027).item.json.role, name: $(\u0027Start\u0027).item.json.name, organization: $(\u0027Start\u0027).item.json.organization, phone: $(\u0027Start\u0027).item.json.phone, email: $(\u0027Start\u0027).item.json.email, address: $(\u0027Start\u0027).item.json.address, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "0ee71fef-283a-589a-b045-0401118afc70",
+                      "name":  "Create contact (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "32eb0f5e-e653-5f40-b15f-b51f7c8c0f88",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027estate.hitl.create_contact\u0027, lines: [ { label: \u0027estate.label.role\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.role), enum: \u0027estate.enum.contact_role\u0027 }, { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.name) }, { label: \u0027estate.label.organization\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.organization) }, (($(\u0027Resolve Person\u0027).item.json.full_name) ? { label: \u0027estate.label.for_person\u0027, kind: \u0027text\u0027, value: ($(\u0027Resolve Person\u0027).item.json.full_name) } : null), ((!$(\u0027Resolve Person\u0027).item.json.full_name) ? { label: \u0027estate.label.for_person\u0027, kind: \u0027key\u0027, value: (\u0027estate.value.household\u0027) } : null), { label: \u0027estate.label.phone\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.phone) }, { label: \u0027estate.label.email\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.email) }, { label: \u0027estate.label.address\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.address) }, { label: \u0027estate.label.notes\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "2e66bc1f-5f47-5b66-af4c-2f22628cd99c",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "535545ea-1154-5a74-b366-b4a980ecabc9",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "333fa589-2887-5500-b666-827697154eda",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "d5d6a2a3-7019-519f-9eda-2702c4710933",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "470f43c3-6df7-53b2-9785-e6c9527c62a2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a73179b2-53fb-57e2-b434-03fb34980eb5",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "65862151-7653-5b40-8298-94e823813fd3",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the create_contact action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       200
+                                   ],
+                      "id":  "5f3a5572-e67a-5bc3-9c34-a363177b89fb",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "80247c36-a470-5b70-80f6-422ee559071d",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "2acee344-8ae9-544c-adff-f013fd8c0940",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "fd2c166e-26e4-5ce0-bf49-7235bf5893a1",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "197d6751-43af-598d-9a3c-499edd14ba31",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create contact (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       200
+                                   ],
+                      "id":  "442392d8-f976-57c8-adaf-2bc1051a816c",
+                      "name":  "Contact rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "adbcda1f-c990-599e-96e3-0c821740fb59",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "63f8d3ad-7888-5e12-bb3d-7fba227c1885",
+                                                                                     "name":  "contact_id",
+                                                                                     "value":  "={{ $(\u0027Create contact (atomic)\u0027).item.json.contact_id }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "89c30ea4-bd6e-5955-9345-9a1c495719b3",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = estate.fn_create_contact mit denselben Werten, immer zurückgerollt. ok:false (z. B. Pflichtfeld fehlt, Person nicht erwachsen/berechtigt) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -320
+                                   ],
+                      "id":  "ef0d7356-b17c-5050-ab69-b5c43dc57b74",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_create_contact (atomar, 1 INSERT)**\n\nPflicht-Dubletten-Node blockt EXAKT gleichen Name+Rolle VOR dem Gate; mehrere Kontakte je Rolle sind legitim (kein UNIQUE auf role — zwei Vertrauenspersonen mit verschiedenen Namen sind ok). estate.fn_create_contact schreibt atomar; adults_only-DB-Backstop. updated_at pflegt der Touch-Trigger.",
+                                         "height":  240,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1980,
+                                       -280
+                                   ],
+                      "id":  "aa3d23f3-096d-5138-987c-23b8397fa2ed",
+                      "name":  "create_ + adults_only-Backstop"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Check duplicate",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Check duplicate":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Contact exists?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Contact exists?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Contact exists",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Resolve Person",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Resolve Person":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Person invalid?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Person invalid?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Person unresolved",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create contact (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Create contact (atomic)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Write ok?",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Contact rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

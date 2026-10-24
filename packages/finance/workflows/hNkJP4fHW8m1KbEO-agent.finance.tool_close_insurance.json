@@ -1,0 +1,658 @@
+{
+    "id":  "hNkJP4fHW8m1KbEO",
+    "name":  "agent.finance.tool_close_insurance",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "insurance_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "b5c05ab7-7087-59b2-87b7-921c63ea9f6f",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT i.insurance_company, ip.full_name AS policyholder, i.annual_premium, i.status::text AS ins_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id = i.recurring_payment_id) AS tx_count FROM finance.insurances i LEFT JOIN core.fn_household_persons() ip ON ip.person_id = i.policyholder_person_id WHERE i.name ILIKE (($1::jsonb)-\u003e\u003e\u0027insurance_name\u0027) LIMIT 1;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_name: $(\u0027Start\u0027).item.json.insurance_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "fa08c0d0-c581-5b6e-bb56-f6bfefd540dd",
+                      "name":  "Read Insurance",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "03c21a03-65e4-587d-97c3-25e2d10e2163",
+                                                                                   "leftValue":  "={{ $json.tx_count !== undefined \u0026\u0026 $json.tx_count !== null }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       330,
+                                       -160
+                                   ],
+                      "id":  "d5b5fef8-65c3-5fc1-8271-983f8e67a651",
+                      "name":  "Insurance found?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "87ea6283-1510-5688-9532-b4e765e9bf5d",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9b1e4be5-500b-5fb6-a61a-646eeacee1b6",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=No insurance named \u0027{{ $(\u0027Start\u0027).item.json.insurance_name }}\u0027 exists. List the insurances via postgres_select on finance.active_insurances and ask the user which one to close.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       440,
+                                       240
+                                   ],
+                      "id":  "84eda533-bfc9-5f37-9334-01931098b76a",
+                      "name":  "Insurance not found"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_close_insurance(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_name: $(\u0027Start\u0027).item.json.insurance_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "77c2146e-7871-5200-9e6e-fad966079c93",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3a8a4f6f-4c2f-5334-900a-6c142a186027",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "fcce4af6-8e05-527b-ae32-191315a2fcda",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d5566617-b708-562a-88be-13ee87959ba8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8c5068bc-9907-5140-8284-7bdb6da89c07",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f07065d2-d92b-5adf-8476-7a8ebadacde6",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3a1decce-a205-5df2-bdfa-1c8ea28014cc",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "01a765fd-4b55-5e64-9618-7fcc498a383e",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       200
+                                   ],
+                      "id":  "f8ed5e02-f30f-50c4-8636-5347fd8ce590",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027action\u0027 AS action, (r-\u003e\u003e\u0027tx_count\u0027)::int AS tx_count FROM finance.fn_close_insurance(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_name: $(\u0027Start\u0027).item.json.insurance_name, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "f5a2eb42-0219-531d-bb4c-828fd0e94784",
+                      "name":  "Close insurance (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8e5157be-bbf6-59a0-bd82-23e65d061aa1",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.close_insurance\u0027, title_params: { title: ({ kind: \u0027key\u0027, value: (($(\u0027Read Insurance\u0027).item.json.tx_count \u003e 0 ? \u0027finance.hitl.close_insurance_close\u0027 : \u0027finance.hitl.close_insurance_delete\u0027)) }) }, lines: [ { label: \u0027finance.label.insurance\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.insurance_name) }, { label: \u0027finance.label.company\u0027, kind: \u0027text\u0027, value: ($(\u0027Read Insurance\u0027).item.json.insurance_company) }, { label: \u0027finance.label.policyholder\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Read Insurance\u0027).item.json.policyholder ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Read Insurance\u0027).item.json.policyholder) } }, { label: \u0027finance.label.annual_contribution\u0027, kind: \u0027money\u0027, value: ($(\u0027Read Insurance\u0027).item.json.annual_premium), currency: (\u0027EUR\u0027) }, { label: \u0027core.label.status\u0027, kind: \u0027enum\u0027, value: ($(\u0027Read Insurance\u0027).item.json.ins_status), enum: \u0027finance.enum.insurance_status\u0027 }, { label: \u0027finance.label.booked_payments\u0027, kind: \u0027text\u0027, value: ($(\u0027Read Insurance\u0027).item.json.tx_count) }, { kind: \u0027note\u0027, value: (($(\u0027Read Insurance\u0027).item.json.tx_count \u003e 0 ? \u0027finance.note.close_insurance_soft\u0027 : \u0027finance.note.close_insurance_hard\u0027)) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "5e0a0fe9-ad21-5574-b825-5d5e13c69043",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "6d6877ce-974e-5342-abd1-ca993ebb4839",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7eda1aaf-6916-523c-90ef-30d53dc666f5",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "d1ff77e9-9ca3-50d0-8a95-cac6449a9d77",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "955017c1-f5cb-5676-a7f5-a353d295bf68",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4c1f5519-dd15-5bf9-a391-8d98af32fe33",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7abb0a65-7e4a-5d1f-902e-f73dfeeb0fd5",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the close_insurance action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       240
+                                   ],
+                      "id":  "3c18673b-0582-5d73-b064-6eaa569d4e63",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "89b69273-63ad-52fe-bf09-41280207873b",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "3afcad2e-4ca1-51a5-89b5-aebfe3728e4a",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "9e7282d5-02e0-5bb9-8c83-82903cd54cb6",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "93bdc8e3-30a3-57fc-9afa-f32058f7d04a",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Close insurance (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       240
+                                   ],
+                      "id":  "f0ab40b7-4048-574a-957a-613a72b8a397",
+                      "name":  "Close rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "81bd9d5c-dcf7-5e92-9676-9ac31911b641",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ce49f9f5-2223-54b8-aae9-abbf20afcf7f",
+                                                                                     "name":  "action",
+                                                                                     "value":  "={{ $(\u0027Close insurance (atomic)\u0027).item.json.action }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "43a32c31-6d7b-5834-8d0f-233e42855614",
+                                                                                     "name":  "tx_count",
+                                                                                     "value":  "={{ $(\u0027Close insurance (atomic)\u0027).item.json.tx_count }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "45a11207-30ff-5664-b715-a5cd84aa5ed9",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Smart-Close-Guard: tx_count entscheidet**\n\nfn zählt Transaktionen (recurring_payment_id = insurance.rp_id). tx_count=0: Hard-DELETE finance.insurances dann finance.recurring_payments (FK-Reihenfolge!); action=deleted. tx_count\u003e0: Soft-Close — insurance.status=cancelled + valid_to=heute; RP.status=paused + valid_to=heute; action=closed. RAISE EXCEPTION bei nicht gefunden/mehrdeutig.",
+                                         "height":  240,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1760,
+                                       -260
+                                   ],
+                      "id":  "9af45d9b-b7c7-523c-9576-f37db385ed26",
+                      "name":  "fn_close_insurance: Hard-DELETE vs. Soft-Close"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_close_insurance mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (korrigierbare Ablehnungen der fn; Versicherung nicht gefunden -\u003e schon vorher Insurance not found als Tool-Fehler, mehrdeutig kommt als Exception) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  220,
+                                         "width":  440,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       440,
+                                       -220
+                                   ],
+                      "id":  "1594c0e5-5a4e-5de7-9a3e-7107c34f7791",
+                      "name":  "Probelauf vor der Karte"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read Insurance",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read Insurance":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Insurance found?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Insurance found?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Dry run",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Insurance not found",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Close insurance (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Close insurance (atomic)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Write ok?",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Close rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

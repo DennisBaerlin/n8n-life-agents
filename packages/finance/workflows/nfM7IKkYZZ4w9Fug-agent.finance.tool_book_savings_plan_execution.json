@@ -1,0 +1,700 @@
+{
+    "id":  "nfM7IKkYZZ4w9Fug",
+    "name":  "agent.finance.tool_book_savings_plan_execution",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "savings_plan_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "shares"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "price_per_share"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "order_fee"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "0d4acced-33a1-52cf-8fc1-6edf5caf11af",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027symbol\u0027 AS symbol, r-\u003e\u003e\u0027security_name\u0027 AS security_name, (r-\u003e\u003e\u0027plan_amount\u0027)::numeric AS plan_amount, r-\u003e\u003e\u0027currency\u0027 AS currency, r-\u003e\u003e\u0027due_date\u0027 AS due_date FROM finance.fn_savings_plan_next_execution($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_plan_name: $(\u0027Start\u0027).item.json.savings_plan_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "b615074f-4df3-5afe-b13c-1d500569d01b",
+                      "name":  "Read Plan",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e6bf6a6a-0467-57ba-b729-19ee441f4be4",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       330,
+                                       -160
+                                   ],
+                      "id":  "988ae473-45c9-5db1-852c-6d28645ceea7",
+                      "name":  "Execution open?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "09770a4e-2f59-5fd7-93d5-e2cf883ff547",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5cc9d208-cc13-5c08-80a2-764cfe9e581b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Read Plan\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       440,
+                                       240
+                                   ],
+                      "id":  "a8b6d289-f18e-525c-b6b6-1f54d80162b3",
+                      "name":  "No open execution"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_savings_plan_execution(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_plan_name: $(\u0027Start\u0027).item.json.savings_plan_name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "4485a140-9d59-502a-9c22-dbff26b12357",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "cba59c36-b9a4-55b6-89fe-c18de1ef32f5",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "b47c403a-ab2e-5e32-9c78-790534639a82",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "48c11270-433b-5a65-99c6-ce5db56b4457",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8db67d91-b5a6-59ac-9756-38dd17f8c44e",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d287d8aa-f351-5803-89ab-651decbcec00",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4a8fa78f-c136-5fbd-97e3-0b0f0b237a29",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f7bcb187-384f-5a0c-91b0-04e1aec1da72",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       200
+                                   ],
+                      "id":  "69847cf7-e110-5707-9281-729ac4516e58",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027holding_id\u0027)::int AS holding_id, (r-\u003e\u003e\u0027buy_tx_id\u0027)::int AS buy_tx_id, r-\u003e\u003e\u0027due_date\u0027 AS due_date, (r-\u003e\u003e\u0027total_cost\u0027)::numeric AS total_cost, (r-\u003e\u003e\u0027plan_amount\u0027)::numeric AS plan_amount, (r-\u003e\u003e\u0027variance\u0027)::numeric AS variance FROM finance.fn_book_savings_plan_execution(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_plan_name: $(\u0027Start\u0027).item.json.savings_plan_name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "3590409e-8127-56b8-a7f9-69839ab35f3d",
+                      "name":  "Book execution (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "f681b30d-94ed-53f0-922c-df35e6d1ff53",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_savings_plan_execution\u0027, lines: [ { label: \u0027finance.label.plan\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.savings_plan_name) }, { label: \u0027finance.label.security\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Read Plan\u0027).item.json.security_name ? \u0027finance.tpl.symbol_name\u0027 : \u0027finance.tpl.plain\u0027)), params: { name: ($(\u0027Read Plan\u0027).item.json.security_name), symbol: ($(\u0027Read Plan\u0027).item.json.symbol), value: ($(\u0027Read Plan\u0027).item.json.symbol) } }, { label: \u0027finance.label.target_sum\u0027, kind: \u0027money\u0027, value: ($(\u0027Read Plan\u0027).item.json.plan_amount), currency: ($(\u0027Read Plan\u0027).item.json.currency) }, { label: \u0027finance.label.shares_pieces\u0027, kind: \u0027number\u0027, value: ($(\u0027Start\u0027).item.json.shares), digits: -1 }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.price_per_share), currency: ($(\u0027Read Plan\u0027).item.json.currency) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: (($(\u0027Start\u0027).item.json.order_fee || 0)), currency: ($(\u0027Read Plan\u0027).item.json.currency) }, { label: \u0027finance.label.actual_cost\u0027, kind: \u0027money\u0027, value: ((Math.round(($(\u0027Start\u0027).item.json.shares * $(\u0027Start\u0027).item.json.price_per_share + ($(\u0027Start\u0027).item.json.order_fee || 0)) * 100) / 100)), currency: ($(\u0027Read Plan\u0027).item.json.currency) }, ((((Math.abs(($(\u0027Start\u0027).item.json.shares * $(\u0027Start\u0027).item.json.price_per_share + ($(\u0027Start\u0027).item.json.order_fee || 0)) - $(\u0027Read Plan\u0027).item.json.plan_amount) / $(\u0027Read Plan\u0027).item.json.plan_amount) \u003e 0.05)) ? { kind: \u0027note\u0027, value: \u0027finance.note.deviation_target\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "292dcb19-0d32-5973-b7d9-cc073d8a8fa3",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "37580ebf-1ce8-50a9-aa11-1a663ee3e786",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "9b06404f-87ed-507d-b6d8-5533e8e73ae8",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "a09c57e5-be45-5750-ad35-4aa673560855",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "cad7bb60-3b4b-50fa-bc61-63e0e9a0261c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fe41fc08-2d33-59d1-bd4a-8029b7c5185f",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "97d70a7a-54b9-5452-97e1-849a39a4796d",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the book_savings_plan_execution action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       240
+                                   ],
+                      "id":  "08fd1fc0-b35e-55f7-a560-8513e879be2d",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "a5be99b6-4764-5448-9441-655e39e01173",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "9d527c14-1a06-5c22-9877-8b575bd994f1",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e7e52d4c-5da6-5211-99d8-9fd48a9c776f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3fbb95b0-a872-56d3-9bb7-2555186551ff",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Book execution (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       240
+                                   ],
+                      "id":  "186dcdf6-fc4b-5056-aea9-07072ba6812f",
+                      "name":  "Execution rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "84844ca7-d0d0-5ae0-b672-a0c3358f0af8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "eddddd26-c886-505e-92f0-2e5458175c40",
+                                                                                     "name":  "holding_id",
+                                                                                     "value":  "={{ $(\u0027Book execution (atomic)\u0027).item.json.holding_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "14ac25c5-945c-5a10-b679-009c1c3e6799",
+                                                                                     "name":  "buy_tx_id",
+                                                                                     "value":  "={{ $(\u0027Book execution (atomic)\u0027).item.json.buy_tx_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bce13f00-fd25-5bce-a9a2-42ef5a131dd8",
+                                                                                     "name":  "due_date",
+                                                                                     "value":  "={{ $(\u0027Book execution (atomic)\u0027).item.json.due_date }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b0f6ed78-7b6c-5e82-9a0f-35eee91198d6",
+                                                                                     "name":  "total_cost",
+                                                                                     "value":  "={{ $(\u0027Book execution (atomic)\u0027).item.json.total_cost }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "da9e2cc0-459b-5391-b82c-9c7ca46cb7a2",
+                                                                                     "name":  "variance",
+                                                                                     "value":  "={{ $(\u0027Book execution (atomic)\u0027).item.json.variance }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "75a1a7a2-f22c-5edb-a424-2bb16529ddd8",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nNach Read Plan läuft fn_book_savings_plan_execution mit denselben Werten als Probelauf, immer zurückgerollt. ok:false (Stückzahl/Kurs nicht positiv, Depot lehnt den Kauf ab) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  200,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       500,
+                                       -320
+                                   ],
+                      "id":  "240f5589-ba26-5ae4-84fa-7b5fce974fdb",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn: auto-due_date + rp_id-Stempel**\n\nKarte (Read Plan) und Buchung lesen dieselbe fn_savings_plan_next_execution: frühestes offenes Vorkommen über ALLE Glieder der Vorgänger-Kette des Plans (nach einer Betragsänderung mit Stichtag in der Zukunft liegt die noch anstehende Ausführung auf der alten Zeile, mit altem Betrag). Kauf-Transaktion bekommt recurring_payment_id = genau dieses Ketten-Glied + transaction_date = due_date. Dadurch verschwindet das Vorkommen beim nächsten Cron-Lauf automatisch aus der offenen Liste -- kein Write an fn_recurring_due_open nötig. DB-Trigger: shares + avg_purchase_price via Trigger (nie manuell schreiben).",
+                                         "height":  260,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1760,
+                                       -260
+                                   ],
+                      "id":  "386664a6-a839-594a-8cdf-b04ab1c48239",
+                      "name":  "fn_book_savings_plan_execution: Cron-Verknüpfung"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nExecution open? (vor der Karte): Plan nicht gefunden/mehrdeutig/nicht aktiv oder kein offenes Vorkommen (bereits gebucht oder noch nicht fällig) -\u003e ToolError, keine Bestätigung. Dry run ok? (vor der Karte): shares\u003c=0/price\u003c=0 oder Depot-Ablehnung -\u003e Dry run rejected, keine Karte. Write ok? (nach der Karte): dieselben Fälle erneut, falls sich seit der Karte etwas geändert hat -\u003e {ok:false, reason}. Abweichung \u003e 5 % wird in der Summary als Warnung angezeigt (kein harter Block).",
+                                         "height":  220,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2200,
+                                       -240
+                                   ],
+                      "id":  "0f025519-34ef-5879-812e-9a39c4a253b6",
+                      "name":  "Execution open? / Write ok? (korrigierbare Ablehnung)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read Plan",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read Plan":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Execution open?",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Execution open?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "No open execution",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Book execution (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Book execution (atomic)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Write ok?",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Execution rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -1,0 +1,207 @@
+{
+  "name": "core",
+  "version": "0.1.0",
+  "description": "Host package: orchestrator, shared agent framework, monitor heartbeat, guide onboarding driver, and the shared core services (human_approval, web_search, expert_panel, load_context/load_config, error_notify, transcribe_telegram_voice, fetch_telegram_file). Always installed and active.",
+  "core_api": "0.1.0",
+  "privileged": true,
+  "schema": "core",
+  "schemas": ["core", "agent"],
+  "provides": {
+    "_agents_comment": "Phase 0 WS-0c #4 + Phase C: provides.agents-Einträge sind OBJEKTE {name, router_description, order, fallback_for?}. name = Agent-Kurzname (-> Workflow agent.<name>); router_description = die Englisch (Schicht 1) Tool-Beschreibung, die der Orchestrator-Build-Def in den toolWorkflow-Call-Node backt - die EINE Adresse des Routing-Wissens eines Agenten (wofür, Grenzen 'NOT for ... -> agent.<x>', angenommene Anhang-Dokumentarten); Pflicht für jeden Agenten ausser 'orchestrator' (contract_lint 19). fallback_for (optional, Liste aus ['attachment']) = dieser Agent ist das Ziel, wenn die Art eines Anhangs unklar bleibt; jede Art höchstens EIN Agent über alle Pakete (build.ps1 bricht sonst ab). order = GLOBALE Routing-Reihenfolge über ALLE Pakete (build.ps1 sammelt die Union, schliesst 'orchestrator' aus = der Router routet nicht zu sich selbst, sortiert nach order). Ein neues Paket dockt einen Route-Agenten ohne Orchestrator-Edit an. Konsumenten des blossen NAMENS (deploy_workflows/pkg_teardown, Workflow-Prefix) lesen [.agents[].name].",
+    "agents": [
+      { "name": "orchestrator", "router_description": "", "order": 0 },
+      { "name": "monitor", "router_description": "Watchdog: create, change, list, repair, re-arm, disable or delete reminders and monitoring triggers on ANY topic (erinnere mich..., überwache..., benachrichtige mich wenn..., welche Trigger sind aktiv, repariere Trigger X), and technical questions about why an alert fired. NOT for advice about what to do after an alert - that goes to the domain advisor.", "order": 2 },
+      { "name": "guide", "router_description": "Onboarding and help: set up the household (who belongs to it), explain what the system can do, which functions are installed and how to add more. Route here for /onboarding, \"richte mich ein\", \"ich bin neu\", \"wie fange ich an\", \"wie geht es jetzt los\", \"was kann ich noch installieren\", follow-ups of the household setup and \"which area next\", and meta/how-do-I questions. NOT for concrete work inside an installed domain (bookings, advice, plans, register entries) and NOT for finishing or skipping a domain's onboarding area (\"dieser Bereich ist fertig\", \"da fehlt nichts mehr\") - that goes to that domain's agent.", "order": 3 }
+    ],
+    "tools": [
+      "load_context",
+      "human_approval",
+      "web_search",
+      "expert_panel",
+      "transcribe_telegram_voice",
+      "fetch_telegram_file",
+      "save_plan_section",
+      "publish_plan",
+      "create_monitor_trigger",
+      "list_monitor_triggers",
+      "set_monitor_trigger",
+      "delete_monitor_trigger",
+      "set_context_facts",
+      "set_own_context_facts",
+      "set_onboarding_section",
+      "invite_household_member"
+    ],
+    "crons": ["cron_check_triggers", "cron_drift_check", "cron_review", "cron_learn_context", "cron_onboarding_nudge"],
+    "routes": ["monitor", "guide"],
+    "config": ["api", "model", "feature", "monitor", "transcription", "schedule", "cron_enable", "advisor", "telegram", "learn_context"],
+    "models": ["ai_models"],
+    "services": {
+      "human_approval": "agent.tool_human_approval",
+      "load_context": "agent.tool_load_context",
+      "load_config": "core.sub_load_config",
+      "web_search": "agent.tool_web_search",
+      "expert_panel": "agent.tool_expert_panel",
+      "transcribe_telegram_voice": "agent.tool_transcribe_telegram_voice",
+      "fetch_telegram_file": "agent.tool_fetch_telegram_file",
+      "error_notify": "core.sub_error_notify",
+      "save_plan_section": "agent.tool_save_plan_section",
+      "publish_plan": "agent.tool_publish_plan",
+      "create_monitor_trigger": "agent.tool_create_monitor_trigger",
+      "list_monitor_triggers": "agent.tool_list_monitor_triggers",
+      "set_context_facts": "agent.tool_set_context_facts",
+      "set_own_context_facts": "agent.tool_set_own_context_facts",
+      "onboarding_progress": "core.sub_onboarding_progress"
+    }
+  },
+  "retired_workflows": {
+    "_comment": "Explizite Tombstones (Phase A, docs/package-contract.md §2): Workflows, die dieses Paket früher auslieferte und die aus dem Baum entfernt sind. deploy_workflows.sh retire_workflows löscht sie auf Bestands-Instanzen (GET-Namensabgleich, 404 = schon weg; aktiver Auslöser -> ein n8n-Neustart). Ein Eintrag bleibt dauerhaft (idempotent); contract_lint verbietet eine retired id im Baum.",
+    "list": [
+      { "id": "lS5BS3CK03TomL3C", "name": "agent.guide.tool_set_household_facts", "since": "2026-10-19" },
+      { "id": "QxFS84v1a2EQeyYN", "name": "agent.sub_export_bundle", "since": "2026-06-20" },
+      { "id": "geQMBB6pguhvpv1j", "name": "agent.sub_import_restore", "since": "2026-06-20" },
+      { "id": "xjQToEqSIekqfaYq", "name": "agent.orchestrator.test_harness", "since": "2026-06-16" }
+    ]
+  },
+  "consumes": {
+    "services": [],
+    "reads": []
+  },
+  "config": {
+    "_comment": "Per-Paket-Config (WS4a, docs/package-contract.md §3.6): core ist nur ein erweitertes privilegiertes Paket und deklariert seine Config genauso im Manifest. Der Host-Seeder (_seed_package_config) lädt sie paket-skopiert (package='core') in core.config; gelesen runtime via core.sub_load_config / core.fn_config_get; schedule.* beim Deploy eingesetzt (__CFG_SCHEDULE_*__); model.* liest jeder Workflow bei jedem Lauf (Agenten via core.sub_load_config, alle anderen via Pg-Knoten 'Load model config' -> core.fn_config_get), nichts wird beim Bauen eingebacken. type/minimum/maximum = Wert-Prüfung der DB, managed_by system = Systemwert. Jeder Eintrag {value, description, summary} (summary = deutscher Owner-Einzeiler für lifeagents config list). config.json ist retired.",
+    "api": {
+      "core_version": { "value": "0.4.0", "managed_by": "system", "description": "CORE_API_VERSION (SemVer) - the version of the Core<->Package contract surface (see docs/package-contract.md). A package manifest declares the minimum core_api it needs; core.fn_pkg_check_deps gates install/update with SemVer-caret compatibility (same major AND current >= required). Deliberately 0.x until a second package confirms the contract - in 0.x a minor bump may break (pre-1.0 SemVer). Read by core.fn_pkg_check_deps + exposed to package roles via the SECURITY DEFINER read-fn core.fn_core_api_version() (package roles cannot read core.config directly). Bump on any contract change; change = edit here + re-seed (provision.sh / substrate -Reset).", "summary": "Interne Versionsnummer der Paket-Schnittstelle – nicht ändern (setzt jedes Update neu)." }
+    },
+    "feature": {
+      "update_check": { "value": "true", "type": "boolean", "description": "Kill-switch for the daily release check (root timer lifeagents-update-check -> `lifeagents update --check`, provisioning/lib/update_runner.sh): when 'true', the owner gets ONE Telegram card per new stable release with the short summaries and an [Update now] button (callback upd:now:<tag> -> core.fn_handle_update_cb -> core.update_requests -> root runner). Read at RUNTIME inside core.fn_release_card (fail-closed: missing row = off). Disable: lifeagents config set feature update_check false. Installing still needs the tap - never automatic.", "summary": "Täglich nach neuen Versionen schauen und dir eine Update-Karte schicken (true/false)." },
+      "monitor_triggers": { "value": "true", "type": "boolean", "description": "Kill-switch for agent.monitor.cron_check_triggers (generic trigger monitoring). Read at RUNTIME (first node after the trigger) - disable = set 'false' + re-seed (provision.sh / substrate -Reset), no rebuild. Default TRUE (deviation from the cron_enable opt-in precedent, deliberate): without trigger rows the cron is naturally silent, and default-off would create the worst failure mode 'trigger created, flag forgotten, nothing monitored'.", "summary": "Hauptschalter für alle Wert-Beobachtungen, z. B. Kurs-Alarme (true/false)." }
+    },
+    "model": {
+      "advisor_review": { "value": "claude-haiku-latest", "description": "LLM for the generic Core-Advisor-Engine crons (agent.advisor.cron_drift_check + agent.advisor.cron_review) - PHRASING ONLY (rewrites the deterministic SQL drift/digest numbers into one short German Telegram message; on LLM failure the deterministic text is sent as-is). Default claude-haiku-latest (cheap, plenty for trivial rephrasing; effort low). Also phrases the estate yearly review (agent.estate.cron_review_register). Runtime selector (Haiku/Sonnet/Opus, read each run via Load model config): lifeagents config set model advisor_review <key>, no rebuild. Replaces the retired finance model.advisor_plan_review.", "summary": "KI-Modell für die Texte der Plan-Erinnerungen." },
+      "guide": { "value": "claude-sonnet-latest", "description": "LLM for the Guide agent (Help + Onboarding). Default claude-sonnet-latest (effort medium): onboarding is tool-heavy and reliable function-calling matters. Runtime selector (Haiku/Sonnet/Opus): lifeagents config set model guide <key>, no rebuild.", "summary": "KI-Modell für den Hilfe- und Einstiegs-Assistenten (/help, /onboarding)." },
+      "learn_context": { "value": "claude-sonnet-latest", "description": "LLM for the opt-in daily learn-context cron (agent.guide.cron_learn_context): extracts durable household facts + prose notes from recent chat into HITL candidates (per-entry approve/reject, never auto-written). Wired via the standard New-ModelSelectorBundle (per owner R2) -> RUNTIME-switchable like the agents (no rebuild): lifeagents config set model learn_context <key>. Default claude-sonnet-latest (effort medium). Privacy: runs over the paid Anthropic API (Commercial Terms: no training on customer content - finance data).", "summary": "KI-Modell, das aus deinen Chats Merk-Vorschläge für den Haushalt herausliest." },
+      "monitor": { "value": "claude-sonnet-latest", "description": "LLM for the Monitor agent (agent.monitor - trigger co-design, listing, repair). Tool-calling reliability matters (3 CRUD tools + postgres_select + web_search), hence the same Sonnet tier as the tool-heavy domain agents (effort medium); Opus is reserved for the advisors + panel lane B per cost policy. Runtime selector: lifeagents config set model monitor <key>, no rebuild.", "summary": "KI-Modell für den Beobachtungs-Assistenten (Kurs-Alarme anlegen und pflegen)." },
+      "monitor_acquisition": { "value": "claude-sonnet-latest", "description": "Model for the web_search VALUE ACQUISITION inside agent.monitor.cron_check_triggers and the probe path of the trigger tools (Claude Messages API + web_search server tool via New-AnthropicMessagesNode, strict JSON-only contract). Default claude-sonnet-latest. Cost: $10 per 1,000 searches + tokens (realistic trigger load ~100-150 searches/month). Runtime (read each run via Load model config, any Claude chat model): lifeagents config set model monitor_acquisition <key>, no rebuild.", "summary": "KI-Modell, das beobachtete Werte im Web nachschlägt." },
+      "orchestrator": { "value": "claude-haiku-latest", "description": "LLM for the Orchestrator/Router (simple routing -> light tier: claude-haiku-latest, effort low). Runtime selector: lifeagents config set model orchestrator <key>, no rebuild.", "summary": "KI-Modell, das jede Nachricht an den passenden Assistenten weiterleitet." },
+      "panel_a": { "value": "claude-sonnet-latest", "description": "Lane A model of agent.tool_expert_panel. Default claude-sonnet-latest. Lane A and Lane B deliberately run DIFFERENT models (owner decision 2026-10: Sonnet + Opus, no Google) for two independent opinions - keep A and B on different model keys (the panel tells the advisor when both lanes run the same model). Runtime selector (read each run via Load model config): lifeagents config set model panel_a <key>, no rebuild.", "summary": "Erstes KI-Modell der Zweitmeinungs-Runde." },
+      "panel_b": { "value": "claude-opus-latest", "description": "Lane B model of agent.tool_expert_panel. Default claude-opus-latest (the stronger second opinion next to the Sonnet Lane A; invoked rarely + at advisor discretion -> low cost). Keep A and B on different model keys. Runtime selector (read each run via Load model config): lifeagents config set model panel_b <key>, no rebuild.", "summary": "Zweites KI-Modell der Zweitmeinungs-Runde, stärkeres Modell." },
+      "web_search": { "value": "claude-sonnet-latest", "description": "Model behind agent.tool_web_search (Claude Messages API + web_search server tool via New-AnthropicMessagesNode). Default claude-sonnet-latest (effort medium). Cost: $10 per 1,000 searches + tokens (no free quota). Runtime (read each run via Load model config, any Claude chat model): lifeagents config set model web_search <key>, no rebuild.", "summary": "KI-Modell für die Websuche der Assistenten (kostet ca. 10 $ je 1.000 Suchen)." }
+    },
+    "monitor": {
+      "fail_alert_streak": { "value": "3", "type": "integer", "minimum": 1, "description": "Trigger monitoring: after this many CONSECUTIVE failed value acquisitions of one trigger, the daily alert message includes a problem entry ('repair via monitor agent'), repeated at every multiple. Read at RUNTIME inside agent.fn_monitor_evaluate; change = edit here + re-seed (provision.sh / substrate -Reset).", "summary": "Nach so vielen Fehlversuchen in Folge meldet eine Beobachtung ein Problem." }
+    },
+    "schedule": {
+      "drift_check": { "value": "0 10 * * *", "type": "cron", "description": "Cron expression for agent.advisor.cron_drift_check (generic Core-Advisor-Engine: daily Soll-Ist drift watcher, latched - sends only on a NEW breach). 10:00 = first slot of the reminder window, after the 06:00 FX / 07:00 price refresh so derived metrics see fresh data; runs before plan_review (10:05) so breaches are latched here first. Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan der täglichen Plan-Abweichungs-Prüfung (Cron; „0 10 * * *“ = täglich 10:00 Uhr)" },
+      "plan_review": { "value": "5 10 1 1,4,7,10 *", "type": "cron", "description": "Cron expression for agent.advisor.cron_review (generic Core-Advisor-Engine: periodic UNLATCHED full digest per advisor). Replaces the retired finance schedule.advisor_plan_review; recommended default quarterly (Jan/Apr/Jul/Oct 1st 10:05, after drift_check). Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan des Plan-Rückblicks (Cron; „5 10 1 1,4,7,10 *“ = quartalsweise am 1., 10:05)" },
+      "monitor_triggers": { "value": "10 * * * *", "type": "cron", "description": "Heartbeat cron expression for agent.monitor.cron_check_triggers. The heartbeat is only the RESOLUTION FLOOR - each trigger row carries its own check_interval/next_check_at (due-selection in agent.fn_monitor_due), so per-trigger cadences never need a change here. Minute 10 so the 06:10 run sees the 06:00 FX refresh. An idle heartbeat costs one SELECT returning zero rows. Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Grundtakt der Beobachtungs-Prüfung (Cron; „10 * * * *“ = stündlich zur Minute 10)" },
+      "learn_context": { "value": "20 10 * * *", "type": "cron", "description": "Cron expression for agent.guide.cron_learn_context (opt-in daily learn loop: sift recent chat -> propose durable facts/notes as HITL candidates). 10:20 daily. Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan der täglichen Merk-Vorschläge (Cron; „20 10 * * *“ = täglich 10:20 Uhr)" },
+      "onboarding_nudge": { "value": "30 10 * * *", "type": "cron", "description": "Cron expression for agent.guide.cron_onboarding_nudge (Roter Faden: gentle follow-up when a person's onboarding stalls - stage 1 after 3 idle days, stage 2 (last) after 10 idle days, then silence until a new package opens sections; core.fn_onboarding_nudges_due decides + latches). 10:30 = inside the reminder window (general.reminders_from/until), after the more important 10:xx reminders. Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan der Erinnerung an liegengebliebenes Einrichten (Cron; „30 10 * * *“ = täglich 10:30 Uhr)" }
+    },
+    "transcription": {
+      "provider": { "value": "google", "description": "Audio transcription backend: 'google' (Gemini) or 'groq' (Whisper).", "summary": "Dienst, der Sprachnachrichten in Text umwandelt: google oder groq." }
+    },
+    "telegram": {
+      "bot_username": { "value": "your_bot", "description": "Telegram bot @username (without the @) of THIS deployment's BotFather bot. Used to build the member-invitation deep link https://t.me/<bot_username>?start=<code> in agent.guide.tool_invite_household_member (WS-5a). Read at RUNTIME (a Postgres SELECT in the tool, NOT build-baked) so it is deployment-specific - the substrate mock and prod differ. Default placeholder 'your_bot'; set the real value per deployment: lifeagents config set telegram bot_username <name> (no rebuild).", "summary": "Name deines Telegram-Bots (ohne @) – für Einladungs-Links an Haushaltsmitglieder." }
+    },
+    "general": {
+      "reminders_from": { "value": "10", "type": "integer", "minimum": 0, "maximum": 23, "description": "Roter Faden (owner decision 2026-10-23): first full hour (household time zone) of the reminder window. Non-urgent proactive messages only go out between reminders_from and reminders_until: every reminder cron's default schedule lies inside the window (cron_toggle_lint), and the hourly watcher holds date pre-warnings / problem reports outside it (core.fn_in_reminder_window, read at RUNTIME). Value watchers (threshold/drawdown) the user ordered still alert immediately. Change: lifeagents config set general reminders_from <hour> (no rebuild; move the reminder schedules too).", "summary": "Ab dieser Uhrzeit (volle Stunde) schickt der Bot Erinnerungen, die nicht eilen." },
+      "reminders_until": { "value": "20", "type": "integer", "minimum": 1, "maximum": 24, "description": "Roter Faden (owner decision 2026-10-23): end hour (exclusive, household time zone) of the reminder window - see reminders_from. Must be greater than reminders_from (otherwise core.fn_in_reminder_window falls back to 10..20). Change: lifeagents config set general reminders_until <hour> (no rebuild).", "summary": "Ab dieser Uhrzeit (volle Stunde) schickt der Bot keine Erinnerungen mehr, die nicht eilen." }
+    },
+    "cron_enable": {
+      "drift_check": { "value": "false", "type": "boolean", "description": "F9 enable-flag for agent.advisor.cron_drift_check. The cron's entry gate runs core.fn_package_active('core') AND core.fn_config_get('core','cron_enable','drift_check')='true' (fail-closed). OPT-IN: default false until a plan is published (a drift watcher over an empty plan is noise). Enable at runtime: lifeagents config set cron_enable drift_check true (no rebuild).", "summary": "Schaltet die tägliche Plan-Abweichungs-Prüfung ein oder aus (true/false)." },
+      "plan_review": { "value": "false", "type": "boolean", "description": "F9 enable-flag for agent.advisor.cron_review (periodic full digest). OPT-IN: default false until a plan is published. Replaces the retired finance cron_enable.advisor_plan_review. Enable: lifeagents config set cron_enable plan_review true (no rebuild).", "summary": "Schaltet den regelmäßigen Plan-Rückblick ein oder aus (true/false)." },
+      "learn_context": { "value": "false", "type": "boolean", "description": "F9 enable-flag for agent.guide.cron_learn_context (opt-in learn loop). Entry gate: core.fn_package_active('core') AND core.fn_config_get('core','cron_enable','learn_context')='true' (fail-closed). OPT-IN: default false (highest-risk surface = auto-memory; default OFF until the owner activates). core.sub_onboarding_progress offers activation ONCE when all onboarding areas are set up ([Lernen aktivieren] -> cron_on:learn_context, owner only); each proposal card carries a [Lernen aus] off switch (cron_off:learn_context); re-enable via console: lifeagents config set cron_enable learn_context true (no rebuild).", "summary": "Schaltet die täglichen Merk-Vorschläge aus deinen Chats ein oder aus (true/false)." },
+      "onboarding_nudge": { "value": "true", "type": "boolean", "description": "F9 master switch for agent.guide.cron_onboarding_nudge (Roter Faden). PERSON-SCOPED reminder (cron_labels.person): each person switches their own copy with the [Don't remind me] button (rem:off:onboarding_nudge -> agent.reminder_prefs); this flag is only the console emergency switch for everybody (always-on, never a chat button). Disable for all: lifeagents config set cron_enable onboarding_nudge false (no rebuild).", "summary": "Notschalter der Einrichtungs-Erinnerung für alle (true/false); jede Person schaltet ihre per Knopf." }
+    },
+    "advisor": {
+      "drift_pace_pp": { "value": "10", "type": "number", "minimum": 0, "description": "Savings-goal PACE drift tolerance (percentage points) for the Core-Advisor-Engine drift check. A goal alerts when its expected progress (elapsed/total time) exceeds its actual progress_percent by more than this many pp (i.e. it is running this far behind schedule). Read at RUNTIME by finance.fn_advisor_review (COALESCE default 10); change = edit here + re-seed (provision.sh / substrate -Reset), no rebuild.", "summary": "Ab so vielen Prozentpunkten Rückstand meldet sich ein Sparziel als „hinter Plan“." },
+      "plan_stale_days": { "value": "365", "type": "integer", "minimum": 1, "description": "Plan-staleness threshold (days) for the Core-Advisor-Engine. The plan counts as stale (info-level drift) when now - financial_planning facts._meta.last_confirmed_at exceeds this. Read at RUNTIME by finance.fn_advisor_review (COALESCE default 365); change = edit here + re-seed, no rebuild.", "summary": "Nach so vielen Tagen erinnert der Finanzberater, deinen Finanzplan zu überprüfen." },
+      "price_stale_days": { "value": "7", "type": "integer", "minimum": 1, "description": "Market-price staleness threshold (days) for the WS2b allocation drift. The newest finance.market_prices row for a held symbol counts as stale when older than this (7 covers weekends + holiday bridges); a stale/missing price flags the rebalancing output as possibly inaccurate. Read at RUNTIME by finance.fn_advisor_review (COALESCE default 7); change = edit here + re-seed (provision.sh / substrate -Reset), no rebuild.", "summary": "Ab so vielen Tagen ohne neuen Kurs gilt ein Wertpapierpreis als veraltet." },
+      "tax_year_nudge": { "value": "true", "type": "boolean", "description": "Phase A: enable-flag (boolean string) for the tax_year_staleness nudge in the Core-Advisor-Engine drift check. When 'true' (default) and the plan was last confirmed in a PRIOR calendar year, finance.fn_advisor_review emits a once-a-year nudge to re-check the German tax parameters (Basiszins/Vorabpauschale, Freistellungsauftrag) that reset every January. Read at RUNTIME via core.fn_config_get with COALESCE default 'true' (so an unseeded substrate still fires). NOT numeric - a literal 'true'/'false'. Disable: lifeagents config set advisor tax_year_nudge false (no rebuild).", "summary": "Erinnert einmal im Jahr, Steuerwerte (z. B. Freistellungsauftrag) zu prüfen (true/false)." },
+      "risk_profile_stale_days": { "value": "365", "type": "integer", "minimum": 1, "description": "Phase A: staleness threshold (days) for the risk_profile_staleness nudge. The household risk profile counts as stale when now - financial_planning facts.risk_profile.as_of exceeds this (MiFID-style yearly re-assessment). Read at RUNTIME by finance.fn_advisor_review (COALESCE default 365); change = edit here + re-seed (provision.sh / substrate -Reset), no rebuild.", "summary": "Nach so vielen Tagen erinnert der Berater, deine Risiko-Einstellung neu zu prüfen." },
+      "cashflow_buffer_pct": { "value": "0.10", "type": "number", "minimum": 0, "maximum": 1, "description": "Phase L: soft savings-buffer threshold (fraction of monthly income) for the cashflow_coverage check. The hard deficit band (monthly_free < 0: obligations = spending + loan instalments exceed income) is unconditional; ADDITIONALLY, when monthly_free >= 0 but below this fraction of monthly_income, a soft nudge fires (50/30/20 logic; 0.10 ~ the German Sparquote norm, below the 20% target). Read at RUNTIME by finance.fn_advisor_review (COALESCE default 0.10); change = edit here + re-seed (provision.sh / substrate -Reset), no rebuild.", "summary": "Warnt, wenn monatlich weniger als dieser Anteil vom Einkommen übrig bleibt (0.10 = 10 %)." },
+      "cashflow_buffer_nudge": { "value": "true", "type": "boolean", "description": "Phase L: enable-flag (boolean string) for the SOFT savings-buffer band of cashflow_coverage only. When 'true' (default) and monthly_free is positive but below cashflow_buffer_pct * monthly_income, finance.fn_advisor_review emits a thin-buffer nudge. The HARD deficit band (monthly_free < 0) is ALWAYS on and not gated by this. Read at RUNTIME via core.fn_config_get COALESCE default 'true' (literal 'true'/'false', not numeric). Disable: lifeagents config set advisor cashflow_buffer_nudge false (no rebuild).", "summary": "Schaltet die Warnung „zu wenig Puffer am Monatsende“ ein oder aus (true/false)." },
+      "savings_squeeze_nudge": { "value": "true", "type": "boolean", "description": "Phase L: enable-flag (boolean string) for the savings_squeeze check (over-saving). When 'true' (default) and monthly_free >= 0 but monthly_account_change (free minus all savings rates) < 0, finance.fn_advisor_review warns that the savings rates are draining the checking balance even though spending and loan instalments are covered. Read at RUNTIME via core.fn_config_get COALESCE default 'true'. Disable: lifeagents config set advisor savings_squeeze_nudge false (no rebuild).", "summary": "Warnt, wenn das Sparen dein Girokonto leerzieht (true/false)." }
+    },
+    "learn_context": {
+      "daily_cap": { "value": "3", "type": "integer", "minimum": 0, "description": "Phase C: max NEW learn candidates surfaced per CALENDAR DAY (agent.fn_record_learn_candidates caps pending-of-the-day at this; priority update>new). Keeps the daily nudge small. Read at RUNTIME (core.fn_config_get, COALESCE default 3); change = edit here + re-seed (provision.sh / substrate -Reset), no rebuild.", "summary": "Höchstens so viele neue Merk-Vorschläge am Tag." },
+      "expiry_days": { "value": "7", "type": "integer", "minimum": 1, "description": "Phase C: learn-candidate lifetime (days). A pending candidate auto-expires (pending->expired) once expires_at passes (cleanup at the next cron run); ALSO the window during which a REJECTED candidate suppresses re-proposing the same slot (durable rejection memory). Read at RUNTIME (COALESCE default 7); change = edit here + re-seed, no rebuild.", "summary": "Nach so vielen Tagen verfällt ein unbeantworteter Merk-Vorschlag." }
+    }
+  },
+  "context_renderers": {
+    "_comment": "Generische Render-Registry (WS1b, docs/package-contract.md §3.3): bindet den Host-Kontext family an seine Header-only-fn(text) im agent-Layer. Paket-Kontexte registrieren ihren Renderer im eigenen Manifest (finance_profile -> finance.fn_render_finance_profile, Phase A). DEKLARATION (core) vs. AUSFÜHRUNG (Host seed_data._seed_context_renderers): der Core darf core.*/agent.* binden (own-schema-scoping; Pakete nur <pkg>.*). Die Engine core.fn_fetch_context dispatcht generisch + wrappt Banner/Stempel/Prosa.",
+    "family": "agent.fn_household_context"
+  },
+  "languages": {
+    "_comment": "Die EINE Liste der unterstützten Sprachen fester Nutzertexte (docs/package-contract.md §3.11). Host seed_data._seed_ui_languages upsertet sie in core.ui_languages (nie löschen, solange eine Person den Code trägt); jede packages/<pkg>/locales/ muss GENAU diese Codes vollständig haben (locale_lint). code = ISO 639-1, name = Eigenname (Picker-Knopf, HITL-Zeile), locale = Intl-Tag für Zahl/Datum, date_pattern = to_char-Muster für SQL-gerenderte Dokumente (core.fn_fmt_date; gleiche Ausgabe wie Intl im locale), aliases = freie Schreibweisen (lowercase) für agent.fn_normalize_language. Neue Sprache = Zeile hier + je Paket eine locales/<code>.json. core:V027 legt die ersten drei vorab an (locale_lint: V-Liste ⊆ diese Liste).",
+    "list": [
+      { "code": "de", "name": "Deutsch", "locale": "de-DE", "date_pattern": "DD.MM.YYYY", "ord": 1, "aliases": ["deutsch", "german", "allemand"] },
+      { "code": "en", "name": "English", "locale": "en-GB", "date_pattern": "DD/MM/YYYY", "ord": 2, "aliases": ["english", "englisch"] },
+      { "code": "ko", "name": "한국어", "locale": "ko-KR", "date_pattern": "YYYY. MM. DD.", "ord": 3, "aliases": ["korean", "koreanisch", "한국어", "한국말"] }
+    ]
+  },
+  "callback_handlers": {
+    "_comment": "Generische Callback-Dispatch-Registry (docs/package-contract.md §3, Muster estate est:); der Dispatcher core.fn_dispatch_callback re-resolvt den Absender selbst, die feine Autorisierung macht der Handler. 'lang' = Knöpfe des Sprach-Pickers (lang:<person_id>:<code>, core.sub_send_language_picker) -> agent.fn_set_person_language; member_permeable=true: ein Mitglied darf seine EIGENE Sprache setzen (Owner jede Person). 'onboarding' = Mitglieder-Pfad der /onboarding-Menü-Knöpfe (Owner: hartkodierter 'Callback action'-Arm im Orchestrator; ein aufgelöstes Mitglied kommt hierher). core.fn_handle_onboarding_cb entscheidet die feine Autorisierung (nur Privatchat, nur persönliche Pakete, Sektion im Katalog) und gibt route:'onboarding' -> der Orchestrator routet in den bestehenden 'Onboarding section?'-Switch. Bewusste Kollision mit dem Switch-Arm, erlaubt von contract_lint 9 nur mit member_permeable=true. Der Core darf agent.* binden (own-schema-scoping). 'upd' = Knöpfe der Release-Karte und der Update-Fehler-Hilfe (upd:now|retry:<tag>) -> core.fn_handle_update_cb legt einen Auftrag in core.update_requests an, den der root-Runner ausführt; owner-only (kein member_permeable).",
+    "lang": { "handler_fn": "agent.fn_set_person_language", "member_permeable": true },
+    "onboarding": { "handler_fn": "core.fn_handle_onboarding_cb", "member_permeable": true },
+    "rem": { "handler_fn": "core.fn_handle_reminder_cb", "member_permeable": true },
+    "upd": { "handler_fn": "core.fn_handle_update_cb" }
+  },
+  "cron_labels": {
+    "_comment": "Erinnerungs-Registry (Roter Faden 2026-10-23, docs/package-contract.md §8). DEKLARATION (hier) vs. AUSFÜHRUNG (Host seed_data._seed_cron_labels -> core.cron_labels). Jeder Cron, der dem Nutzer schreibt, steht hier (cron_toggle_lint) und erscheint in /reminders: list = Haushalts-Erinnerung (der Owner schaltet per cron_off-Knopf an der Karte oder im Menü, Default an oder aus), person = je Person (rem:on|off), mandatory = Pflicht (nur Anzeige). Texte im Katalog des Pakets: <pkg>.cron.<key>.label (Menü) + on_toast|off_toast|on_message|off_message (§3.11); der Hinweis im off-Send ist core.cron.off_reminders_hint. Ein neues Paket meldet seine Erinnerung an, indem es den Key hier + die Texte im Katalog deklariert - kein fn-/Orchestrator-Edit.",
+    "list": ["drift_check", "plan_review", "learn_context"],
+    "person": {
+      "_comment": "Roter Faden: PERSON-Reminder (core.cron_labels.scope='person'). Jede Person schaltet IHRE Zustellung selbst über rem:on|off:<key> (core.callback_handlers 'rem' -> core.fn_handle_reminder_cb -> agent.reminder_prefs); default_enabled = Zustand ohne eigene Einstellung. Der config.cron_enable.<key> ist hier always-on (Konsolen-Notschalter für alle, nie ein Chat-Knopf; core.fn_set_cron_enable lehnt person-Keys ab). Texte wie oben (<pkg>.cron.<key>.on_toast|off_toast). Die eine Prüf-Adresse je Person ist core.fn_reminder_allowed(key, person_id).",
+      "onboarding_nudge": { "default_enabled": true }
+    }
+  },
+  "protected_contexts": [
+    "family",
+    "capabilities_catalog",
+    "installed_packages",
+    "trigger_design",
+    "global_instructions",
+    "orchestrator_agent_instructions",
+    "guide_agent_instructions",
+    "monitor_agent_instructions",
+    "general_agent_instructions"
+  ],
+  "backup": {
+    "_comment": "Paket-Backup-Oberfläche (Phase 4b, docs/package-contract.md). Core hält seine Nutzerdaten im GETEILTEN Schema agent (Code+Nutzerdaten gemischt) -> KEIN schema_dump. full_tables = ganz sichern (wipe+restore, reine Nutzerdaten). filtered_tables = zeilen-gefiltert: pg_dump kann nicht zeilen-filtern, daher exportiert die CLI sie als jsonb (SELECT ... WHERE <cond>) und core.fn_backup_restore_filtered spielt sie regel-bewusst zurück (protected Contexts nur per UPDATE, family vor den Kontexten, die family-Personen referenzieren, monitor-Trigger entdoppelt). NICHT gesichert (Code/ephemer): *_instructions/capabilities_catalog (managed_by!=agent = Code aus dem Repo), ai_models/config, chat_memory, *_import_state/pairing_state, notification_state (geteilte Notify-Dedup, ephemer), hitl_pending (Karte-offen-Sperre, TTL), ingress_buffer (Eingangs-Bündelung, 2 min), thinking_lease (Denkt-nach-Schalter, TTL), monitor_observations.",
+    "full_tables": ["agent.advisor_plans", "agent.guide_onboarding_state", "agent.reminder_prefs"],
+    "filtered_tables": {
+      "agent.core_contexts": "managed_by = 'agent'",
+      "agent.monitor_triggers": "origin = 'user'"
+    }
+  },
+  "catalog": {
+    "_comment": "Per-Fragment-Katalog (WS-B7, docs/package-contract.md §3.5): dieses Paket besitzt die STRUKTUR seiner /help-Kategorien + Tail-Sektionen (id + ord); Titel, Beschreibungen, Beispiele und Tail-Texte stehen im Textkatalog (<pkg>.help.<id>.*, §3.11). build.ps1 rendert je Sprache ein Fragment (seed/capabilities_catalog/<lang>.fragment.md) und composet alle Fragmente nach `ord` (core = hoch -> Host-Chrome trägt zuletzt) in packages/core/seed/capabilities_catalog/<lang>.md. Tail = Capabilities ohne Tool.",
+    "ord": 900,
+    "categories": [
+      { "id": "monitoring", "ord": 10 }
+    ],
+    "tail": [
+      { "id": "commands", "ord": 200 }
+    ]
+  },
+  "commands": {
+    "_comment": "Single source of truth for the bot's slash commands (WS-5). Feeds (a) scripts/command_lint.ps1 (every non-hidden Command-router branch in agent.orchestrator is registered here; every entry is wired in the router AND documented in the /help catalog tail) and (b) setMyCommands (deploy_workflows.sh). visibility = who sees the command in their Telegram command menu: owner menu (BotCommandScope chat=OWNER) = visibility IN (owner,all); default menu = visibility IN (member,all); each menu is set once per catalog language (language_code) plus a fallback in the owner's language. The menu text is the text-catalog key <pkg>.cmd.<name> (§3.11, max 48 chars per language, command_lint). Hidden deterministic commands are intentionally NOT advertised and live on the command_lint allowlist, not here: /start (Telegram-special, auto-invoked on first contact), /hilfe (German alias of /help) and /sprache (German alias of /language).",
+    "list": [
+      { "cmd": "/help", "visibility": "all" },
+      { "cmd": "/onboarding", "visibility": "all" },
+      { "cmd": "/language", "visibility": "all" },
+      { "cmd": "/reminders", "visibility": "all" }
+    ]
+  },
+  "migrations": "db",
+  "approval_matrix": {
+    "_comment": "Maker-Checker-Stufe je Gate-Aufrufer dieses Pakets (WS-5b): Workflow-Name -> {tier, reason}. build.ps1 injiziert den tier in jeden Gate-Call-Node (fail-closed: Gate-Aufrufer ohne Eintrag = Build-Fehler), approval_lint prüft die gebauten JSONs. Stufen, Verb-Präfix-Strenge + Besitz-Regel -> docs/package-contract.md §3.10.",
+    "agent.tool_save_plan_section": { "tier": "owner_only", "reason": "Advisor-Plan schreiben — Owner-Vorgabe 6: Non-Owner darf beraten, aber Pläne nicht ändern. DB-Backstop in fn_advisor_save_section." },
+    "agent.tool_publish_plan": { "tier": "owner_only", "reason": "Advisor-Plan publizieren — Owner-Vorgabe 6. DB-Backstop in fn_advisor_publish_plan." },
+    "agent.guide.tool_invite_household_member": { "tier": "owner_only", "reason": "Einladungen ausstellen ist auth-relevant. Pre-Gate-Owner-Check in fn_check_household_invite (faktisch moot, Defense-in-Depth)." },
+    "agent.tool_set_context_facts": { "tier": "owner_only", "reason": "Der Fakten-Schreibweg für Haushalts-Kontexte (Guide-Bindung tool_set_household_facts; persönliche Kontexte laufen über agent.tool_set_own_context_facts, Stufe self): mergt bei family role/telegram_user_id = die Identitäts-Quelle selbst -> Member-Self-Eskalation möglich (MINOR-B), sonst identitäts-/plannahe Profil-PII. Strenger als der set_-Präfix. DB-Backstop in fn_set_context_facts (family hart owner_only, sonst context_scopes)." },
+    "agent.tool_set_own_context_facts": { "tier": "self", "reason": "Eigene persönliche Fakten (per_user, own_user_only) pflegt die Person selbst, ohne Owner-Beteiligung oder -Info (die Info-Nachricht trüge private Profildaten zum Owner). Strenge kommt aus der DB: agent.fn_set_own_context_facts setzt scope=per_user fest; household/family/Plan-Kontexte sind dort strukturell gesperrt. approval_lint: ein self-Workflow ruft nur diese fn und hat keinen scope-Eingang." },
+    "agent.tool_set_monitor_trigger": { "tier": "owner_approval", "reason": "set_: Monitor-Trigger ändern." },
+    "agent.tool_delete_monitor_trigger": { "tier": "owner_approval", "reason": "delete_: Monitor-Trigger löschen." },
+    "agent.tool_create_monitor_trigger": { "tier": "owner_info", "reason": "create_: Monitor-Trigger/Erinnerung anlegen (niedrigschwellig)." }
+  }
+}

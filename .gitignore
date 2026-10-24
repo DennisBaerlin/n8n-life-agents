@@ -1,0 +1,25 @@
+.env
+*.log
+node_modules/
+.DS_Store
+
+# Maschinen-lokale Mirrors + Snapshots (der getrackte Baum packages/*/workflows/ + packages/*/db/ ist Source of Truth)
+#   .local/agent_contexts/ = DB-core_contexts-Mirror (persoenliche Daten), .local/backups/ = Pre-Pull-Snapshots
+.local/
+
+# IDE-/Runtime-State: .claude/ ist grundsaetzlich lokal — ABER die geteilte Prozess-Tooling
+# (Skills, Hooks, path-scoped Rules, settings.json) wird getrackt (versioniert/reviewbar/CI-gefaehig).
+# Lokaler State/Secrets bleiben ignoriert: settings.local.json (per-Maschine permissions), plans/,
+# owner_grant.txt, sonstiges.
+.claude/*
+!.claude/skills/
+!.claude/hooks/
+!.claude/agents/
+!.claude/rules/
+!.claude/settings.json
+
+# Transientes AI-Judge-Bundle (letzter n8n_test.ps1-Lauf)
+tests/agent/judge_bundle.json
+
+# Hugo-Build-Lock (Laufzeit-Artefakt des Site-Builds, nie tracken)
+docs/site/.hugo_build.lock

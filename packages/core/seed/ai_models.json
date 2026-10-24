@@ -1,0 +1,62 @@
+[
+    {
+        "provider": "Anthropic",
+        "model_key": "claude-haiku-latest",
+        "n8n_model_id": "claude-haiku-5-5",
+        "selector_index": 1,
+        "mode": "chat",
+        "pricing_usd_per_mtok": {
+            "_source": "https://platform.claude.com/docs/en/about-claude/pricing (Stand 2026-10-20)",
+            "input": 0.10,
+            "cache_write_5m": 0.125,
+            "cache_write_1h": 0.20,
+            "cache_read": 0.01,
+            "output": 0.50,
+            "long_context": {
+                "above_input_tokens": 100000,
+                "input": 0.50,
+                "cache_write_5m": 0.625,
+                "cache_write_1h": 1.00,
+                "cache_read": 0.05,
+                "output": 2.50
+            }
+        }
+    },
+    {
+        "provider": "Anthropic",
+        "model_key": "claude-sonnet-latest",
+        "n8n_model_id": "claude-sonnet-5-5",
+        "selector_index": 2,
+        "mode": "chat",
+        "pricing_usd_per_mtok": {
+            "_source": "https://platform.claude.com/docs/en/about-claude/pricing (Stand 2026-10-20)",
+            "input": 2.00,
+            "cache_write_5m": 2.50,
+            "cache_write_1h": 4.00,
+            "cache_read": 0.10,
+            "output": 10.00
+        }
+    },
+    {
+        "provider": "Anthropic",
+        "model_key": "claude-opus-latest",
+        "n8n_model_id": "claude-opus-5-5",
+        "selector_index": 3,
+        "mode": "chat",
+        "pricing_usd_per_mtok": {
+            "_source": "https://platform.claude.com/docs/en/about-claude/pricing (Stand 2026-10-20)",
+            "input": 4.00,
+            "cache_write_5m": 5.00,
+            "cache_write_1h": 8.00,
+            "cache_read": 0.20,
+            "output": 20.00
+        }
+    },
+    {
+        "provider": "Google",
+        "model_key": "gemini-embedding-001",
+        "n8n_model_id": "models/gemini-embedding-001",
+        "selector_index": null,
+        "mode": "embedding"
+    }
+]

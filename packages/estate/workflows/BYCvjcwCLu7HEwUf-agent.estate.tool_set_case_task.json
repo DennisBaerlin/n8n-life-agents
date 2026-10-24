@@ -1,0 +1,230 @@
+{
+    "id":  "BYCvjcwCLu7HEwUf",
+    "name":  "agent.estate.tool_set_case_task",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "case_task_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "status"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "62966a39-54a0-5551-9e0c-9a32477a1589",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027case_task_id\u0027)::bigint AS case_task_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027case_status\u0027 AS case_status, (r-\u003e\u003e\u0027case_completed\u0027)::boolean AS case_completed FROM estate.fn_set_case_task($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, case_task_id: $(\u0027Start\u0027).item.json.case_task_id, status: $(\u0027Start\u0027).item.json.status }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "16f927f1-6d52-5a3b-942c-07369c9d9a53",
+                      "name":  "Set task (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "15a04e8a-9359-5b62-b86a-a4e142a6dd21",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "12d72542-2f90-538c-ae80-f112196a5674",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "77a32e35-88bc-5c13-9810-2046d1859833",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "59f7873a-c045-51a8-bc51-4aac7a4d5a0b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set task (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "45593475-86e7-5ca9-ad4c-e64b22da2f07",
+                      "name":  "Task update rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0895ed71-add6-5146-9ee8-e68d1a84410b",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9c8f6aff-2a03-55fc-8b20-8b6f781ce8c4",
+                                                                                     "name":  "case_task_id",
+                                                                                     "value":  "={{ $(\u0027Set task (atomic)\u0027).item.json.case_task_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bf2b5821-bf45-54af-bdf9-2079e62585d9",
+                                                                                     "name":  "status",
+                                                                                     "value":  "={{ $(\u0027Set task (atomic)\u0027).item.json.status }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f84e202a-857f-5f03-8bd0-c0e170582407",
+                                                                                     "name":  "case_status",
+                                                                                     "value":  "={{ $(\u0027Set task (atomic)\u0027).item.json.case_status }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4e1dd8f0-94ee-5f29-8604-3bb3e0c53052",
+                                                                                     "name":  "case_completed",
+                                                                                     "value":  "={{ $(\u0027Set task (atomic)\u0027).item.json.case_completed }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "d2656df6-7303-5e0f-9f7c-bd5a92f6505e",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_set_case_task (Task-Status; Auto-Complete-Trigger)**\n\nKEIN HITL-Gate (Fortschritts-Flag-Klasse wie confirm_review/set_onboarding_section -\u003e kein approval_matrix-Eintrag). Der adults_only-DB-Backstop (Kind -\u003e {ok:false}) + der \"Task in OFFENEM Fall\"-Guard sind die Absicherung. done -\u003e done_at. Wird die letzte offene Task done/n.a., kippt der Auto-Complete-Trigger den Fall auf completed (Post-State case_completed=true).",
+                                         "height":  280,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -240
+                                   ],
+                      "id":  "1a3f2541-4b1c-592a-a8a3-341f5848824d",
+                      "name":  "Fortschritts-Flag (KEIN HITL) + Auto-Complete"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Set task (atomic)",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Set task (atomic)":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Write ok?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Task update rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

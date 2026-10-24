@@ -1,0 +1,589 @@
+{
+    "id":  "n0YXjqgHqrcT7F5k",
+    "name":  "agent.tool_transcribe_telegram_voice",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "file_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -640,
+                                       0
+                                   ],
+                      "id":  "c5821616-0f72-5674-af6b-b14b91276525",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "vjyM3vnkavi5b0xU",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/vjyM3vnkavi5b0xU",
+                                                            "cachedResultName":  "core.sub_load_config"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -420,
+                                       0
+                                   ],
+                      "id":  "de5dd3db-0436-5c9c-b798-7b667f13fa40",
+                      "name":  "Load core.config"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "file",
+                                         "fileId":  "={{ $(\u0027Start\u0027).item.json.file_id }}",
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -200,
+                                       0
+                                   ],
+                      "id":  "ed5000ba-5ea0-50c7-878e-ffe265cdf0af",
+                      "name":  "Get Telegram voice file",
+                      "retryOnFail":  true,
+                      "maxTries":  1,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueErrorOutput",
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "fallbackOutput":  "extra"
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "8bb62ec3-8a61-5e45-b456-2ef6d29abae2",
+                                                                                                                    "leftValue":  "={{ $(\u0027Load core.config\u0027).item.json.transcription.provider }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "groq"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "groq",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "481b61f4-9292-5028-b8ab-208bf754a962",
+                                                                                                                    "leftValue":  "={{ $(\u0027Load core.config\u0027).item.json.transcription.provider }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "google"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "google",
+                                                                          "renameOutput":  true
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       40,
+                                       0
+                                   ],
+                      "id":  "404c678c-3a6f-5108-b8be-266d6870bbbf",
+                      "name":  "Which transcription model"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "de73be8a-4e67-5a43-9da9-daf2359d3ccc",
+                                                                                     "name":  "Groq_API",
+                                                                                     "value":  "YOUR_GROQ_API_KEY",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5671e44a-925a-517e-957a-55d78c8fc34f",
+                                                                                     "name":  "Telegram_access_token",
+                                                                                     "value":  "YOUR_TELEGRAM_BOT_ACCESS_TOKEN",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       280,
+                                       -160
+                                   ],
+                      "id":  "500aa79e-9b80-5c57-8ca2-1f7a87f2598b",
+                      "name":  "Groq credentials",
+                      "disabled":  true
+                  },
+                  {
+                      "disabled":  true,
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.groq.com/openai/v1/audio/transcriptions",
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "contentType":  "multipart-form-data",
+                                         "bodyParameters":  {
+                                                                "parameters":  [
+                                                                                   {
+                                                                                       "name":  "url",
+                                                                                       "value":  "=https://api.telegram.org/file/bot{{ $(\u0027Groq credentials\u0027).item.json.Telegram_access_token }}/{{ $(\u0027Get Telegram voice file\u0027).item.json.result.file_path }}"
+                                                                                   }
+                                                                               ]
+                                                            },
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "Authorization",
+                                                                                         "value":  "=Bearer {{ $(\u0027Groq credentials\u0027).item.json.Groq_API }}"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       500,
+                                       -160
+                                   ],
+                      "id":  "2a9a1661-488d-5d92-889f-08b624fdd6ef",
+                      "name":  "HTTP Request"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "audio",
+                                         "inputType":  "binary",
+                                         "modelId":  {
+                                                         "__rl":  true,
+                                                         "mode":  "list",
+                                                         "value":  "models/gemini-2.5-flash",
+                                                         "cachedResultName":  "models/gemini-2.5-flash"
+                                                     },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.googleGemini",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       60
+                                   ],
+                      "id":  "314d3940-e406-5444-a063-97d34c731cf8",
+                      "name":  "Transcribe via Gemini",
+                      "onError":  "continueErrorOutput",
+                      "credentials":  {
+                                          "googlePalmApi":  {
+                                                                "id":  "__CRED_GEMINI__",
+                                                                "name":  "Google Gemini(PaLM) Api account"
+                                                            }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e774b1d8-3724-5135-8ef5-942c6910ae47",
+                                                                                     "name":  "text",
+                                                                                     "value":  "={{ (typeof $json.text === \u0027string\u0027 ? $json.text : (($json.content \u0026\u0026 $json.content.parts) || []).map(p =\u003e p.text || \u0027\u0027).join(\u0027\u0027)).trim() }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       500,
+                                       0
+                                   ],
+                      "id":  "850e3dfb-c8cc-5984-ab0c-53b2042d94f2",
+                      "name":  "Extract transcript"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "6297eef9-6dfc-5716-815d-7e7957a0d377",
+                                                                                   "leftValue":  "={{ String(($json.text) || \u0027\u0027) }}",
+                                                                                   "rightValue":  "",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "notEquals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       620,
+                                       0
+                                   ],
+                      "id":  "2c3933bb-3e6a-52e6-b0cf-d5422ac9c559",
+                      "name":  "Transcript present?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "da79bdb6-0639-5e85-8fd1-b4ec4f84debe",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e913ce83-8bc1-50ea-a91c-5c3202fa38ee",
+                                                                                     "name":  "error",
+                                                                                     "value":  "voice_empty",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "30f7722c-6f97-5b0c-af93-9f8fd625eabd",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "Transkript leer",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       860,
+                                       -200
+                                   ],
+                      "id":  "85ba53a1-04da-5b17-93e2-a93012bb38fa",
+                      "name":  "Transcript empty"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8c522148-d02c-5c06-993c-d8882d2f2697",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cb6e9918-3503-518e-8fb6-0e166c5a1378",
+                                                                                     "name":  "text",
+                                                                                     "value":  "={{ $json.text }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       860,
+                                       0
+                                   ],
+                      "id":  "a5f4ece5-de50-50aa-973c-ff3c61047436",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "2050b239-9e87-5268-8aeb-3e8e87f0d8ce",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3e96ac08-9da6-5fbd-9654-51db9d534720",
+                                                                                     "name":  "error",
+                                                                                     "value":  "voice_unavailable",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4e9f4c65-e913-5ce8-8d29-023d0f233733",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "={{ (typeof $json.error === \u0027string\u0027 ? $json.error : (($json.error \u0026\u0026 $json.error.message) || $json.message || \u0027\u0027)) || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7153b364-d440-55c4-b8aa-40e622b0e393",
+                                                                                     "name":  "reason_code",
+                                                                                     "value":  "={{ ((typeof $json.error === \u0027string\u0027 ? $json.error : (($json.error \u0026\u0026 $json.error.message) || $json.message || \u0027\u0027)) || \u0027\u0027) ? \u0027\u0027 : \u0027provider_missing\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4748ee54-4668-5064-afba-98887aec0ef0",
+                                                                                     "name":  "provider",
+                                                                                     "value":  "={{ $(\u0027Load core.config\u0027).item.json.transcription.provider || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       860,
+                                       200
+                                   ],
+                      "id":  "f045d5a5-fc58-5e38-98f8-a48626f9e624",
+                      "name":  "Voice unavailable"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**agent.tool_transcribe_telegram_voice (Baustein, KEIN LLM-Agent)**\n\nEingang file_id (Telegram voice ODER audio -- Orchestrator reicht message.voice.file_id bzw. message.audio.file_id durch). Load core.config -\u003e Get Telegram voice file (Download) -\u003e Which transcription model (core.config transcription.provider): google -\u003e Transcribe via Gemini (Gemini-Audio, binary, gemini-2.5-flash; der EINZIGE verbliebene Google-Sprachmodell-Aufruf, Google-Schlüssel optional) -\u003e Extract transcript (Gemini liefert den Text verschachtelt in content.parts[].text, Groq direkt als .text; getrimmt) -\u003e Transcript present? -\u003e Return { ok, text }; leeres Transkript (stille Aufnahme) -\u003e Transcript empty { ok:false, error:voice_empty } (kein Ausfall: der Orchestrator bittet um Wiederholung, keine Owner-Meldung). FEHLERWEG: Download-Fehler, Transkriptions-Fehler (z. B. kein Google-Schlüssel) und unbekannter Anbieter (Switch-Fallback) -\u003e Voice unavailable { ok:false, error:voice_unavailable, reason } (onError=continueErrorOutput, Download maxTries=1 wegen GH #10763) -\u003e der Orchestrator antwortet freundlich + Owner-Info 1x/Tag. Groq-Pfad (HTTP Request) ist DEAKTIVIERT (Platzhalter-Key, 1:1 erhalten). DUAL-USE: inline per executeWorkflow (Orchestrator) ODER als Agent-Tool bindbar (gleicher executeWorkflowTrigger-Eingang).",
+                                         "height":  300,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -660,
+                                       -300
+                                   ],
+                      "id":  "b65b4a63-6a55-5589-bbed-aae89a088bee",
+                      "name":  "Doc: Telegram-Voice-Transkription"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load core.config",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load core.config":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Get Telegram voice file",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Get Telegram voice file":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Which transcription model",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ],
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Voice unavailable",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Which transcription model":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Groq credentials",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ],
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Transcribe via Gemini",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ],
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Voice unavailable",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Groq credentials":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "HTTP Request",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "HTTP Request":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Extract transcript",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Transcribe via Gemini":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Extract transcript",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ],
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Voice unavailable",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Extract transcript":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Transcript present?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Transcript present?":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Return",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Transcript empty",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

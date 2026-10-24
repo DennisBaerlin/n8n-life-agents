@@ -1,0 +1,660 @@
+{
+    "id":  "hLRDvySCAk6IvfRp",
+    "name":  "agent.estate.tool_delete_provider_contract",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "provider"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "category"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "79f8729c-2450-5c4a-8462-b7015716967a",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM estate.fn_resolve_provider_contract(($1::jsonb)-\u003e\u003e\u0027provider\u0027, NULLIF(($1::jsonb)-\u003e\u003e\u0027category\u0027,\u0027\u0027));",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ provider: $(\u0027Start\u0027).item.json.provider, category: $(\u0027Start\u0027).item.json.category }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "1cff0d6e-736b-54f4-9971-c66d2fef0c38",
+                      "name":  "Resolve Contract",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3e68f997-80db-506f-9ed9-11107c08b821",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "8e893051-312b-54f7-94c9-905992843bfb",
+                      "name":  "Contract unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "edf093c6-3737-5bb8-8117-ce641ac90a4f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "19dd157a-0256-5e41-b068-0ad06d007d73",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The contract \u0027{{ $(\u0027Start\u0027).item.json.provider }}\u0027 resolves to {{ $(\u0027Resolve Contract\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Contract\u0027).item.json.candidates) }}. Ask which one (add the category), or check the name.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "32963ad9-b991-551a-aa30-5e13bd34de30",
+                      "name":  "Contract ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027estate.fn_delete_provider_contract(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, provider: $(\u0027Start\u0027).item.json.provider, category: $(\u0027Start\u0027).item.json.category }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "b5db605f-f245-506d-8b09-12f2164e7a0f",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b6e4abad-da96-5851-820b-78a765fb48f0",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "e708dba2-82d2-506c-9a9b-49291814e355",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a78b51f4-a59e-514f-9205-b87f2dc0a717",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "990eb3f0-852f-50a2-a067-750742c3496d",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d5633c6c-2289-56b4-91d7-73b8aa0a05db",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "36bc6255-13b5-573e-b162-32c448d7dcb5",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "edfa5ba1-81e9-5f1c-88b1-4d8d075cec1f",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "706b76b0-de3e-503d-98ad-1d5cbb891553",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027action\u0027 AS action, (r-\u003e\u003e\u0027provider_contract_id\u0027)::bigint AS provider_contract_id FROM estate.fn_delete_provider_contract(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, provider: $(\u0027Start\u0027).item.json.provider, category: $(\u0027Start\u0027).item.json.category, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "a31974b6-7772-5a22-b02b-5b79c20ba826",
+                      "name":  "Delete contract (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "f192838f-7d52-5d05-9e63-e736375eb4d0",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027estate.hitl.delete_provider_contract\u0027, lines: [ { label: \u0027estate.label.provider\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.provider) }, (($(\u0027Start\u0027).item.json.category) ? { label: \u0027estate.label.category\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.category), enum: \u0027estate.enum.contract_category\u0027 } : null), { kind: \u0027note\u0027, value: \u0027estate.note.entry_deleted\u0027 } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "9f87aa1d-2657-5272-8a73-d83134db08d8",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "4b6cd490-1f04-50f3-b8d8-9ef134358c53",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "52c513a4-9d62-508e-ae07-539f2f01a904",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "33de889f-6efe-583e-a14a-e26ea967f432",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ea04d824-f4a0-5f0b-85d5-55b6903f223e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7375f3f9-d1bd-521a-9bdd-e3521ce91663",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d8bb900a-6d89-58e7-a1aa-bb42bc6d2eda",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the delete_provider_contract action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       200
+                                   ],
+                      "id":  "2766cb09-0622-5002-aaa3-5e83248c38a9",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b451e4ef-8a27-5259-8320-5da567cbb4e8",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "a6a41931-3c1c-56af-bf87-71924a8802f0",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5b6390ba-e648-57fa-95be-89b23a16aa98",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "24100e27-7a0a-5674-ac01-fa35a3704e52",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Delete contract (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       200
+                                   ],
+                      "id":  "52c1e96c-e558-59ea-be14-95d47af8b2af",
+                      "name":  "Delete rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8f38c700-da8b-5595-a473-1a089c654049",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "97645188-08e8-5e79-abd2-e9ece12e0d6f",
+                                                                                     "name":  "action",
+                                                                                     "value":  "={{ $(\u0027Delete contract (atomic)\u0027).item.json.action }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "89de3948-408e-5ce4-a201-1c24a105c9ad",
+                                                                                     "name":  "provider_contract_id",
+                                                                                     "value":  "={{ $(\u0027Delete contract (atomic)\u0027).item.json.provider_contract_id }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "5816b1ea-4614-548e-b6bd-cd3fb34c495f",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = estate.fn_delete_provider_contract mit denselben Werten, immer zurückgerollt (das Löschen bleibt NICHT stehen). ok:false (z. B. Person nicht erwachsen/berechtigt) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       660,
+                                       -240
+                                   ],
+                      "id":  "1d4acc38-29fa-59e9-ae6d-9fdb95612272",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_delete_provider_contract (Hard-DELETE)**\n\nResolve (Anbieter + optional Kategorie) -\u003e Contract unique? VOR dem Gate (0/\u003e1 -\u003e Rückfrage; kein RAISE/Owner-Alert). estate.fn_delete_provider_contract löscht hart (keine FK-Referenzen); re-resolvt intern; adults_only-DB-Backstop; not-found/ambig = RAISE (Backstop hinter dem Tool-Resolve).",
+                                         "height":  240,
+                                         "width":  500,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1980,
+                                       -240
+                                   ],
+                      "id":  "4781fed8-920a-5c4c-b1a4-26d920f75691",
+                      "name":  "delete_ Hard-DELETE + adults_only"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Contract",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Contract":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Contract unique?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Contract unique?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Dry run",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Contract ambiguous",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Delete contract (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Delete contract (atomic)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Write ok?",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Delete rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -1,0 +1,829 @@
+{
+    "id":  "hhm5IvDuI1eZaVEC",
+    "name":  "agent.finance.tool_book_transfer",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "from_account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "to_account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "to_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "transaction_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "purpose"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "99e02316-6e19-59a5-974e-29e32fdbca5a",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027from_account_name\u0027);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ from_account_name: $(\u0027Start\u0027).item.json.from_account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "7a8a25ff-1b5a-5931-a0ac-9c1805bf27e5",
+                      "name":  "Resolve From",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0983aa3c-5f9d-5a38-af32-ae74f1aa2f59",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "5f5c03ad-aaf1-52ed-bcc9-fefff83be9e9",
+                      "name":  "From unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "24e05bfb-57ea-575c-ae37-6643b293dc7c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8e5b32cf-813a-5c24-acda-c66ae0ca217e",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Source account \u0027{{ $(\u0027Start\u0027).item.json.from_account_name }}\u0027 resolves to {{ $(\u0027Resolve From\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve From\u0027).item.json.candidates) }}. Ask the user which exact account.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "f37c27ff-7501-5904-8fe1-f1fbf2c1300f",
+                      "name":  "From ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027to_account_name\u0027);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ to_account_name: $(\u0027Start\u0027).item.json.to_account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "3cded235-822e-5f0a-81f7-d246a6c2fa9a",
+                      "name":  "Resolve To",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "9921fdb2-c854-5be4-93c1-56f4646b4574",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "9340f379-1802-5ad5-992c-12c1c98f1bc0",
+                      "name":  "To unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "f905cc7f-a8f7-54f5-ab43-1d529253a958",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4e4d3be1-276b-521f-8598-ae979ec6ca0b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Target account \u0027{{ $(\u0027Start\u0027).item.json.to_account_name }}\u0027 resolves to {{ $(\u0027Resolve To\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve To\u0027).item.json.candidates) }}. Ask the user which exact account.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "5a73809a-3cba-5856-94a3-af631873d7b3",
+                      "name":  "To ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_transfer(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ from_account_id: $(\u0027Resolve From\u0027).item.json.id, to_account_id: $(\u0027Resolve To\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, to_amount: $(\u0027Start\u0027).item.json.to_amount, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, from_account_name: $(\u0027Start\u0027).item.json.from_account_name, to_account_name: $(\u0027Start\u0027).item.json.to_account_name, purpose: $(\u0027Start\u0027).item.json.purpose }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "660e64d1-381b-5d1a-a515-31d6b3c4dcbe",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fa3b7fd8-bd62-5649-9776-69748f2ff8a4",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "5a4ea78e-1183-53f4-aad3-932baf922784",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "de404a96-fc0d-5d02-b37c-05b49594912c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5b13ae21-4eed-5f30-a60d-91aff592f03e",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d0482fc1-2a8d-5dec-88b9-783f31faf5f9",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "297d9546-639a-5e8d-80da-67a15d283154",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "62974b72-2d1d-570f-a203-c7ac3691f301",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "6f807af2-52d1-5052-ae83-57420755214f",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027debit_tx_id\u0027)::int AS debit_tx_id, (r-\u003e\u003e\u0027credit_tx_id\u0027)::int AS credit_tx_id, (r-\u003e\u003e\u0027fx_rate\u0027)::numeric AS fx_rate, (r-\u003e\u003e\u0027from_balance\u0027)::numeric AS from_balance, (r-\u003e\u003e\u0027to_balance\u0027)::numeric AS to_balance, COALESCE(r-\u003e\u0027reserve_breach\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS reserve_breach FROM finance.fn_book_transfer(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ from_account_id: $(\u0027Resolve From\u0027).item.json.id, to_account_id: $(\u0027Resolve To\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, to_amount: $(\u0027Start\u0027).item.json.to_amount, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, from_account_name: $(\u0027Start\u0027).item.json.from_account_name, to_account_name: $(\u0027Start\u0027).item.json.to_account_name, purpose: $(\u0027Start\u0027).item.json.purpose, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "8a9aae13-1e48-5148-8909-22c8363e8a76",
+                      "name":  "Create transfer (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d4b5c033-028e-5807-898c-d3de0591428d",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_transfer\u0027, lines: [ { label: \u0027finance.label.from\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.from_account_name) }, { label: \u0027finance.label.to\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.to_account_name) }, { label: \u0027finance.label.amount_from\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: ($(\u0027Resolve From\u0027).item.json.currency) }, (($(\u0027Start\u0027).item.json.to_amount) ? { label: \u0027finance.label.target_amount_after\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.to_amount), currency: ($(\u0027Resolve To\u0027).item.json.currency) } : null), { label: \u0027finance.label.purpose\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.purpose) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "c7fc0c42-5ab3-5ca9-823f-744a3ad26a39",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "5725ade4-b269-53f0-a14d-28bc67367f53",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0ca4c0ac-e7fa-52f0-ac50-279b36f01c09",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "75fa5e76-c9de-544c-9bbe-5b6e2d482dd3",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "abc54f8f-4acb-540c-b298-aa5cd08448fc",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9048d5f9-6399-5369-8ebc-8375d0f1ace1",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b63e8ae8-2cb3-5d75-a57c-8c611c79b449",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the book_transfer action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       200
+                                   ],
+                      "id":  "4ae9d5e6-4cd3-5620-916e-129f811a631b",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "728f2886-71f2-5208-b457-00b9d427a925",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "d294c939-ead0-5ed8-bb54-ef96dc7cf00b",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8b9177fe-27a0-5a5c-bc0b-8bcb1d5654bc",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3ae41b99-b054-5c19-9a44-19ee7828755d",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create transfer (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       200
+                                   ],
+                      "id":  "325a2539-a984-508b-9f62-b72282039423",
+                      "name":  "Transfer rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "9d988676-e6c0-5b69-9767-bfac94421cf2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d7e9c89e-fd4a-5eca-827a-c2c266e5427a",
+                                                                                     "name":  "debit_tx_id",
+                                                                                     "value":  "={{ $(\u0027Create transfer (atomic)\u0027).item.json.debit_tx_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "190c4980-c613-5265-9012-a275516c4884",
+                                                                                     "name":  "credit_tx_id",
+                                                                                     "value":  "={{ $(\u0027Create transfer (atomic)\u0027).item.json.credit_tx_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c99dbd09-41df-501e-87cd-aa88c40d6d1c",
+                                                                                     "name":  "from_balance",
+                                                                                     "value":  "={{ $(\u0027Create transfer (atomic)\u0027).item.json.from_balance }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ee7d0b3f-50a8-5344-bab5-702ff03b988f",
+                                                                                     "name":  "to_balance",
+                                                                                     "value":  "={{ $(\u0027Create transfer (atomic)\u0027).item.json.to_balance }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "11c2ace9-2d83-5776-b1e6-c8b91e7057cd",
+                                                                                     "name":  "fx_rate",
+                                                                                     "value":  "={{ $(\u0027Create transfer (atomic)\u0027).item.json.fx_rate }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e8d98f7a-4a15-557b-8fdb-647886d013a4",
+                                                                                     "name":  "reserve_breach",
+                                                                                     "value":  "={{ $(\u0027Create transfer (atomic)\u0027).item.json.reserve_breach }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       0
+                                   ],
+                      "id":  "46e19860-cb2f-5f1d-9ef0-b11a582f138f",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_transfer mit denselben Werten, immer zurückgerollt. ok:false (gleiches Quell-/Zielkonto, amount\u003c=0, Cross-Currency ohne gültiges to_amount) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  240,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1100,
+                                       -260
+                                   ],
+                      "id":  "c10364dd-c843-51bb-a50f-193979714a1a",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**trg_finance_balance_update + Multi-Währung + reserve_breach**\n\nfn_book_transfer bucht beide Seiten atomar; je Buchung pflegt ein DB-Trigger den Saldo: Quellkonto (-) und Zielkonto (+). Kein manuelles Balance-Update. CROSS-CURRENCY: bei unterschiedlichen Kontowährungen wird jedes Bein in seiner Native-Währung gebucht (Soll -amount Quell-Wgr., Haben +to_amount Ziel-Wgr.); realisierter Kurs fx_rate=to_amount/amount auf beiden Beinen. WS-C2 Reserve-Wächter: fällt der QUELL-Saldo unter den für Sparziele reservierten Betrag, faltet die fn eine deutsche Hinweis-Note in reserve_breach (sonst leer) -\u003e der Agent spricht den Owner proaktiv an. Kein Block.",
+                                         "height":  240,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2420,
+                                       -200
+                                   ],
+                      "id":  "e483d26a-a2cf-5eb4-988f-3b4f1ad8d445",
+                      "name":  "DB-Automatik balance + Reserve-Wächter"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nGleiches Quell-/Zielkonto, amount\u003c=0 ODER Cross-Currency ohne gültiges to_amount liefert die fn als {ok:false, reason} -\u003e Transfer rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true bucht wirklich. Normalerweise fängt schon der Probelauf das vor der Karte ab.",
+                                         "height":  220,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2860,
+                                       -200
+                                   ],
+                      "id":  "1d686505-f0aa-51c7-a4c9-63ed3e3b671d",
+                      "name":  "Write ok? (korrigierbare Ablehnung)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve From",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve From":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "From unique?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "From unique?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Resolve To",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "From ambiguous",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Resolve To":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "To unique?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "To unique?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Dry run",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "To ambiguous",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create transfer (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Create transfer (atomic)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Write ok?",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Transfer rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

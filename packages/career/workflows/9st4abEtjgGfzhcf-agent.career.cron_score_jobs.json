@@ -1,0 +1,835 @@
+{
+    "id":  "9st4abEtjgGfzhcf",
+    "name":  "agent.career.cron_score_jobs",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_SCORE_JOBS__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1780,
+                                       0
+                                   ],
+                      "id":  "2952b5db-48aa-5e45-a741-800ab83a2471",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_package_active(\u0027career\u0027) AND COALESCE(core.fn_config_get(\u0027career\u0027,\u0027cron_enable\u0027,\u0027score_jobs\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1560,
+                                       0
+                                   ],
+                      "id":  "64a8f015-5354-5582-aa8d-7fce96d3083e",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "310dce54-d064-5387-b79f-2c1ae65f96b0",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -1340,
+                                       0
+                                   ],
+                      "id":  "f932b9b8-aada-509a-a4b9-72566cb1432a",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1120,
+                                       200
+                                   ],
+                      "id":  "797b23eb-058d-54e2-a7b7-c8b83afeb3a9",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"career\",\"key\":\"job_scorer\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1230,
+                                       -180
+                                   ],
+                      "id":  "dc80a8e5-b434-5277-8322-62ad58b8cc08",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT\n  p.person_id,\n  agent.fn_person_chat_id(p.person_id) AS chat_id,\n  -- Textkatalog Phase C: Prompt-Label der Empfaenger-Sprache fuer die Scorer-Begruendung (\"ko (한국어)\", eine Adresse:\n  -- agent.fn_ui_texts_for; Empfaenger = die Person hinter ihrer chat_id, Kette Person -\u003e Owner -\u003e en)\n  agent.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, agent.fn_person_chat_id(p.person_id)))-\u003e\u003e\u0027language_label\u0027 AS language_label,\n  (SELECT metadata-\u003e\u0027facts\u0027 FROM agent.core_contexts WHERE name = \u0027career_planning__\u0027    || p.person_id) AS planning,\n  (SELECT metadata-\u003e\u0027facts\u0027 FROM agent.core_contexts WHERE name = \u0027career_profile__\u0027      || p.person_id) AS profile,\n  (SELECT metadata-\u003e\u0027facts\u0027 FROM agent.core_contexts WHERE name = \u0027career_preferences__\u0027  || p.person_id) AS preferences,\n  COALESCE(NULLIF(core.fn_config_get(\u0027career\u0027,\u0027career\u0027,\u0027job_score_threshold\u0027),\u0027\u0027),\u00273\u0027)::int AS threshold,\n  COALESCE(NULLIF(core.fn_config_get(\u0027career\u0027,\u0027career\u0027,\u0027job_max_per_run\u0027),\u0027\u0027),\u00277\u0027)::int      AS max_per_run,\n  jsonb_build_object(\n    \u0027bundesagentur\u0027, COALESCE(NULLIF(core.fn_config_get(\u0027career\u0027,\u0027career\u0027,\u0027job_source_bundesagentur\u0027),\u0027\u0027) = \u0027true\u0027, true),\n    \u0027adzuna\u0027,        COALESCE(NULLIF(core.fn_config_get(\u0027career\u0027,\u0027career\u0027,\u0027job_source_adzuna\u0027),\u0027\u0027)        = \u0027true\u0027, true),\n    \u0027jsearch\u0027,       COALESCE(NULLIF(core.fn_config_get(\u0027career\u0027,\u0027career\u0027,\u0027job_source_jsearch\u0027),\u0027\u0027)       = \u0027true\u0027, true)\n  ) AS sources_enabled,\n  COALESCE(\n    (SELECT jsonb_object_agg(source, ids)\n     FROM (SELECT source, array_agg(external_id) AS ids\n           FROM career.job_matches\n           WHERE external_id IS NOT NULL AND person_id = p.person_id\n           GROUP BY source) s),\n    \u0027{}\u0027::jsonb) AS known\nFROM agent.fn_context_persons(\u0027career_planning\u0027) p\nWHERE agent.fn_person_chat_id(p.person_id) IS NOT NULL\n  -- Roter Faden Paket B: Job-Vorschlaege je Person (rem:on|off:score_jobs -\u003e agent.reminder_prefs, Default aus)\n  AND core.fn_reminder_allowed(\u0027score_jobs\u0027, p.person_id)",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1120,
+                                       0
+                                   ],
+                      "id":  "80718d4d-4abe-5f8b-ada0-c1eeaa462643",
+                      "name":  "Enumerate persons",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       -900,
+                                       0
+                                   ],
+                      "id":  "81b455dc-e686-56b8-b214-62225e020f35",
+                      "name":  "Loop persons"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -680,
+                                       -260
+                                   ],
+                      "id":  "8d3d4461-4628-5c95-9fd7-ad8e550ccfa6",
+                      "name":  "Done"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "46644bc3-2b82-5c70-99ad-8dd3bb6eff70",
+                                                                                   "leftValue":  "={{ $json.planning \u0026\u0026 Array.isArray($json.planning.target_roles) \u0026\u0026 $json.planning.target_roles.length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -680,
+                                       0
+                                   ],
+                      "id":  "82e4cfb7-fb05-552b-8441-701cbed318b2",
+                      "name":  "Have criteria?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const plan = $json.planning || {};\nconst roles = Array.isArray(plan.target_roles) ? plan.target_roles : [];\nconst was = roles.length ? String(roles[0].title || \u0027\u0027).trim() : \u0027\u0027;\nconst locs = Array.isArray(plan.target_locations) ? plan.target_locations : [];\nconst wo = locs.length ? String(locs[0] || \u0027\u0027).trim() : \u0027\u0027;\nconst umkreis = Number(plan.search_radius_km) \u003e 0 ? Math.round(Number(plan.search_radius_km)) : 50;\nconst enc = encodeURIComponent;\n\n// Bundesagentur (keyless; X-API-Key oeffentliche Konstante am Node)\nconst baP = [\u0027size=25\u0027, \u0027page=1\u0027];\nif (was) baP.push(\u0027was=\u0027 + enc(was));\nif (wo) { baP.push(\u0027wo=\u0027 + enc(wo)); baP.push(\u0027umkreis=\u0027 + umkreis); }\nconst ba_url = \u0027https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs?\u0027 + baP.join(\u0027\u0026\u0027);\n\n// Adzuna DE (app_id/app_key aus der httpCustomAuth-Cred -\u003e NICHT in der URL). distance = km.\nconst adzP = [\u0027results_per_page=50\u0027, \u0027max_days_old=14\u0027, \u0027sort_by=date\u0027, \u0027content-type=application/json\u0027];\nif (was) adzP.push(\u0027what=\u0027 + enc(was));\nif (wo) { adzP.push(\u0027where=\u0027 + enc(wo)); adzP.push(\u0027distance=\u0027 + umkreis); }\nconst adzuna_url = \u0027https://api.adzuna.com/v1/api/jobs/de/search/1?\u0027 + adzP.join(\u0027\u0026\u0027);\n\n// JSearch (Google-for-Jobs; x-rapidapi-key aus der httpHeaderAuth-Cred, Host-Header am Node). Ort in die Query.\nconst jsQuery = (was || \u0027Job\u0027) + (wo ? (\u0027 in \u0027 + wo + \u0027, Germany\u0027) : \u0027, Germany\u0027);\nconst jsP = [\u0027query=\u0027 + enc(jsQuery), \u0027country=de\u0027, \u0027language=de\u0027, \u0027page=1\u0027, \u0027num_pages=1\u0027, \u0027date_posted=week\u0027];\nconst jsearch_url = \u0027https://jsearch.p.rapidapi.com/search?\u0027 + jsP.join(\u0027\u0026\u0027);\n\nreturn [{ json: { ba_url, adzuna_url, jsearch_url,\n  profile: $json.profile || {}, preferences: $json.preferences || {}, planning: plan,\n  threshold: $json.threshold, max_per_run: $json.max_per_run,\n  known: $json.known || {}, sources_enabled: $json.sources_enabled || {},\n  person_id: $json.person_id, chat_id: $json.chat_id } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -460,
+                                       0
+                                   ],
+                      "id":  "38e301cc-daf2-5728-a746-b1fea7b65d5b",
+                      "name":  "Build query"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "GET",
+                                         "url":  "={{ $(\u0027Build query\u0027).first().json.ba_url }}",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "X-API-Key",
+                                                                                         "value":  "jobboerse-jobsuche"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+                                                         "timeout":  15000,
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "json"
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       -240,
+                                       -160
+                                   ],
+                      "id":  "34a8d039-3a42-5284-9b32-3c4e836e0a84",
+                      "name":  "Fetch BA",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "GET",
+                                         "url":  "={{ $(\u0027Build query\u0027).first().json.adzuna_url }}",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpCustomAuth",
+                                         "options":  {
+                                                         "timeout":  15000,
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "json"
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       -240,
+                                       0
+                                   ],
+                      "id":  "19b6d967-59fc-5688-85c5-3b5a65155b0f",
+                      "name":  "Fetch Adzuna",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "credentials":  {
+                                          "httpCustomAuth":  {
+                                                                 "id":  "__CRED_ADZUNA__",
+                                                                 "name":  "Adzuna Jobs API"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "GET",
+                                         "url":  "={{ $(\u0027Build query\u0027).first().json.jsearch_url }}",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "x-rapidapi-host",
+                                                                                         "value":  "jsearch.p.rapidapi.com"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+                                                         "timeout":  15000,
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "json"
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       -240,
+                                       160
+                                   ],
+                      "id":  "0754d34f-73be-5013-8286-397e6672475b",
+                      "name":  "Fetch JSearch",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_JSEARCH__",
+                                                                 "name":  "JSearch RapidAPI"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const bq = $(\u0027Build query\u0027).first().json;\nconst enabled = bq.sources_enabled || {};\nconst known = bq.known || {};\nconst knownSet = (src) =\u003e new Set((Array.isArray(known[src]) ? known[src] : []).map(String));\nfunction fetchJson(node) { try { const it = $(node).first(); return (it \u0026\u0026 it.json) ? it.json : null; } catch (e) { return null; } }\nconst postings = [];\n\n// --- Bundesagentur ---\nif (enabled.bundesagentur !== false) {\n  try {\n    const resp = fetchJson(\u0027Fetch BA\u0027);\n    const list = (resp \u0026\u0026 Array.isArray(resp.stellenangebote)) ? resp.stellenangebote : [];\n    const kn = knownSet(\u0027bundesagentur\u0027);\n    for (const j of list) {\n      const eid = (j \u0026\u0026 j.refnr != null) ? String(j.refnr) : null;\n      if (!eid || kn.has(eid)) continue;\n      const ort = (j.arbeitsort \u0026\u0026 (j.arbeitsort.ort || j.arbeitsort.plz)) ? [j.arbeitsort.ort, j.arbeitsort.plz].filter(Boolean).join(\u0027 \u0027) : null;\n      postings.push({ source: \u0027bundesagentur\u0027, board: null, external_id: eid,\n        title: String(j.titel || j.beruf || \u0027Stelle\u0027),\n        employer: j.arbeitgeber ? String(j.arbeitgeber) : null, location: ort,\n        url: \u0027https://www.arbeitsagentur.de/jobsuche/jobdetail/\u0027 + encodeURIComponent(eid),\n        raw: { entry: j.eintrittsdatum || null, published: j.aktuelleVeroeffentlichungsdatum || null, beruf: j.beruf || null } });\n    }\n  } catch (e) { /* BA -\u003e skip */ }\n}\n\n// --- Adzuna (board NULL by design: Adzuna legt kein Original-Board offen) ---\nif (enabled.adzuna !== false) {\n  try {\n    const resp = fetchJson(\u0027Fetch Adzuna\u0027);\n    const list = (resp \u0026\u0026 Array.isArray(resp.results)) ? resp.results : [];\n    const kn = knownSet(\u0027adzuna\u0027);\n    for (const j of list) {\n      const eid = (j \u0026\u0026 j.id != null) ? String(j.id) : null;\n      if (!eid || kn.has(eid)) continue;\n      postings.push({ source: \u0027adzuna\u0027, board: null, external_id: eid,\n        title: String(j.title != null ? j.title : \u0027Stelle\u0027),\n        employer: (j.company \u0026\u0026 j.company.display_name) ? String(j.company.display_name) : null,\n        location: (j.location \u0026\u0026 j.location.display_name) ? String(j.location.display_name) : null,\n        url: j.redirect_url ? String(j.redirect_url) : null,\n        raw: { created: j.created || null, salary_min: (j.salary_min != null ? j.salary_min : null), salary_max: (j.salary_max != null ? j.salary_max : null), category: (j.category \u0026\u0026 j.category.label) || null } });\n    }\n  } catch (e) { /* Adzuna -\u003e skip, andere laufen weiter */ }\n}\n\n// --- JSearch (board = job_publisher, IMMER gesetzt: LinkedIn/Indeed/…) ---\nif (enabled.jsearch !== false) {\n  try {\n    const resp = fetchJson(\u0027Fetch JSearch\u0027);\n    const list = (resp \u0026\u0026 Array.isArray(resp.data)) ? resp.data : [];\n    const kn = knownSet(\u0027jsearch\u0027);\n    for (const j of list) {\n      const eid = (j \u0026\u0026 j.job_id != null) ? String(j.job_id) : null;\n      if (!eid || kn.has(eid)) continue;\n      const ort = [j.job_city, j.job_country].filter(Boolean).join(\u0027, \u0027) || null;\n      postings.push({ source: \u0027jsearch\u0027, board: j.job_publisher ? String(j.job_publisher) : null, external_id: eid,\n        title: String(j.job_title != null ? j.job_title : \u0027Stelle\u0027),\n        employer: j.employer_name ? String(j.employer_name) : null, location: ort,\n        url: j.job_apply_link ? String(j.job_apply_link) : null,\n        raw: { posted: j.job_posted_at || null, remote: (j.job_is_remote != null ? j.job_is_remote : null), etype: j.job_employment_type || null } });\n    }\n  } catch (e) { /* JSearch -\u003e skip */ }\n}\n\nconst indexed = postings.map((p, i) =\u003e Object.assign({ i }, p));\nreturn [{ json: { postings: indexed,\n  profile: bq.profile || {}, preferences: bq.preferences || {}, planning: bq.planning || {},\n  threshold: bq.threshold, max_per_run: bq.max_per_run, person_id: bq.person_id, chat_id: bq.chat_id } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -20,
+                                       0
+                                   ],
+                      "id":  "b61965d9-c0e7-5e7e-9f97-cec906b0f82f",
+                      "name":  "Normalize postings"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "715822b8-d06f-56c2-acdc-f1374f734482",
+                                                                                   "leftValue":  "={{ $json.postings.length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       200,
+                                       0
+                                   ],
+                      "id":  "cfb822f6-f407-5db1-bd0d-bf8b0ad64214",
+                      "name":  "Any new?"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/v1/messages",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "anthropicApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "anthropic-version",
+                                                                                         "value":  "2023-06-01"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: ({\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"}[$(\u0027Load model config\u0027).first().json.model.job_scorer] || null), max_tokens: 16000, system: \"You rate how well each job posting fits a candidate, for a job-change copilot. For EACH posting output an integer score from 1 to 4 (1 = poor fit, 2 = weak, 3 = good, 4 = excellent) and ONE short reasoning sentence, written in the language named in the user message (the candidate language). Weigh: the candidate current role, skills and experience (profile); the target roles, industries and locations (planning); and the learned likes/dislikes (preferences) - a disliked aspect or industry lowers the score, a preferred aspect raises it. Return one entry per posting in scores, using the exact integer index i of each posting.\", messages: [{ role: \u0027user\u0027, content: (\u0027Candidate profile: \u0027 + JSON.stringify($json.profile || {}) + \u0027\\nTarget roles, industries and locations (planning): \u0027 + JSON.stringify($json.planning || {}) + \u0027\\nLearned preferences (likes/dislikes from feedback): \u0027 + JSON.stringify($json.preferences || {}) + \u0027\\nJob postings to score (each has an index i): \u0027 + JSON.stringify($json.postings) + \u0027\\nCandidate language for the reasoning sentences: \u0027 + ($(\u0027Loop persons\u0027).first().json.language_label || \u0027en\u0027) + \u0027\\nScore each posting now.\u0027) }], output_config: { effort: \u0027low\u0027, format: { type: \u0027json_schema\u0027, schema: {\"type\":\"object\",\"properties\":{\"scores\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"i\":{\"type\":\"integer\"},\"score\":{\"type\":\"integer\"},\"reasoning\":{\"type\":\"string\"} },\"required\":[\"i\",\"score\",\"reasoning\"],\"additionalProperties\":false} } },\"required\":[\"scores\"],\"additionalProperties\":false} } } }) }}",
+                                         "options":  {
+                                                         "timeout":  120000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       420,
+                                       0
+                                   ],
+                      "id":  "b7459d52-3c00-5dfb-aa75-3a3e2dcf0f7c",
+                      "name":  "Score postings",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const anthropicText = (r) =\u003e {\n  if (!r || !Array.isArray(r.content)) {\n    const m = (r \u0026\u0026 r.error \u0026\u0026 (r.error.message || r.error.type || r.error.description)) || \u0027no response\u0027;\n    return { ok: false, error: String(m).slice(0, 200) };\n  }\n  if (r.stop_reason === \u0027max_tokens\u0027) return { ok: false, error: \u0027answer truncated (max_tokens)\u0027 };\n  if (r.stop_reason === \u0027refusal\u0027) return { ok: false, error: \u0027model declined the request\u0027 };\n  if (r.stop_reason === \u0027pause_turn\u0027) return { ok: false, error: \u0027web search did not finish (pause_turn)\u0027 };\n  const text = r.content.filter(b =\u003e b \u0026\u0026 b.type === \u0027text\u0027 \u0026\u0026 b.text).map(b =\u003e b.text).join(\u0027\u0027).trim();\n  if (!text) return { ok: false, error: \u0027empty answer\u0027 };\n  return { ok: true, text };\n};\nconst stripFences = (t) =\u003e String(t).replace(/^\\s*```[a-z]*\\s*/i, \u0027\u0027).replace(/\\s*```\\s*$/, \u0027\u0027);const r = $(\u0027Score postings\u0027).first().json;\nconst prep = $(\u0027Normalize postings\u0027).first().json;\nconst postings = prep.postings || [];\nconst threshold = Number(prep.threshold) || 3;\nconst maxPerRun = Number(prep.max_per_run) || 7;\nlet scores = [];\ntry {\n  const res = anthropicText(r);\n  const parsed = res.ok ? JSON.parse(stripFences(res.text)) : [];\n  scores = Array.isArray(parsed) ? parsed : ((parsed \u0026\u0026 parsed.scores) || []);\n} catch (e) { scores = []; }\nconst byIdx = {};\nfor (const s of (Array.isArray(scores) ? scores : [])) { if (s \u0026\u0026 s.i != null) byIdx[String(s.i)] = s; }\nconst scored = postings.map(p =\u003e {\n  const s = byIdx[String(p.i)] || {};\n  const sc = Number(s.score);\n  return Object.assign({}, p, { score: (sc \u003e= 1 \u0026\u0026 sc \u003c= 4) ? Math.round(sc) : 1, score_reasoning: (s.reasoning ? String(s.reasoning) : null) });\n});\nconst above = scored.filter(p =\u003e p.score \u003e= threshold).sort((a, b) =\u003e b.score - a.score);\nconst surfaceSet = new Set(above.slice(0, maxPerRun).map(p =\u003e p.i));\nconst below = scored.filter(p =\u003e p.score \u003c threshold).sort((a, b) =\u003e b.score - a.score);\nconst serenIdx = below.length ? below[0].i : null;\nreturn scored.map(p =\u003e ({ json: {\n  source: p.source, board: p.board,\n  person_id: prep.person_id, chat_id: prep.chat_id,\n  external_id: p.external_id, title: p.title, employer: p.employer, location: p.location, url: p.url,\n  score: p.score, score_reasoning: p.score_reasoning,\n  is_serendipity: (p.i === serenIdx),\n  surface: surfaceSet.has(p.i) || (p.i === serenIdx),\n  raw: p.raw || {}\n} }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       640,
+                                       0
+                                   ],
+                      "id":  "ff397721-e58f-5a68-a902-5deb3199a7f2",
+                      "name":  "Apply scores"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, (r-\u003e\u003e\u0027job_match_id\u0027)::bigint AS job_match_id, (r-\u003e\u003e\u0027created\u0027)::boolean AS created FROM career.fn_record_job_match($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ source: $json.source, board: $json.board, external_id: $json.external_id, person_id: $json.person_id, title: $json.title, employer: $json.employer, location: $json.location, url: $json.url, score: $json.score, score_reasoning: $json.score_reasoning, is_serendipity: $json.is_serendipity, raw: $json.raw }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       860,
+                                       0
+                                   ],
+                      "id":  "2803ada8-637c-5366-beb8-ab778298f7fa",
+                      "name":  "Record match",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "8bea5606-c29c-5a1a-8c94-7bff92b5af29",
+                                                                                   "leftValue":  "={{ $(\u0027Record match\u0027).item.json.ok === true \u0026\u0026 $(\u0027Apply scores\u0027).item.json.surface === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1080,
+                                       0
+                                   ],
+                      "id":  "f47033e3-ed25-5a5d-a83b-fff2ddea4621",
+                      "name":  "Surface?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "MP2QuA5247ffwkUB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/MP2QuA5247ffwkUB",
+                                                            "cachedResultName":  "agent.career.sub_send_job_card"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Apply scores\u0027).item.json.chat_id }}",
+                                                                              "job_match_id":  "={{ $(\u0027Record match\u0027).item.json.job_match_id }}",
+                                                                              "is_serendipity":  "={{ $(\u0027Apply scores\u0027).item.json.is_serendipity }}",
+                                                                              "score":  "={{ $(\u0027Apply scores\u0027).item.json.score }}",
+                                                                              "title":  "={{ $(\u0027Apply scores\u0027).item.json.title }}",
+                                                                              "employer":  "={{ $(\u0027Apply scores\u0027).item.json.employer || \u0027\u0027 }}",
+                                                                              "location":  "={{ $(\u0027Apply scores\u0027).item.json.location || \u0027\u0027 }}",
+                                                                              "board":  "={{ $(\u0027Apply scores\u0027).item.json.board || \u0027\u0027 }}",
+                                                                              "url":  "={{ $(\u0027Apply scores\u0027).item.json.url || \u0027\u0027 }}",
+                                                                              "reasoning":  "={{ $(\u0027Apply scores\u0027).item.json.score_reasoning || \u0027\u0027 }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1300,
+                                       0
+                                   ],
+                      "id":  "18b74529-51f1-5bf7-8011-fd2c7d4ff5b0",
+                      "name":  "Send card"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Werktäglicher MULTI-SOURCE Job-Scan PRO PERSON (Bundesagentur + Adzuna + JSearch; Opt-in-Cron, Claude-Scorer)**\n\nF9-Gate (career aktiv UND cron_enable.score_jobs=true = Konsolen-Notschalter für alle; JE PERSON schaltet rem:on|off:score_jobs, Roter Faden Paket B) -\u003e Load model config (model.job_scorer bei JEDEM Lauf aus core.config; Wechsel: lifeagents config set model job_scorer \u003ckey\u003e) -\u003e Enumerate persons (agent.fn_context_persons(career_planning), nur Personen mit core.fn_reminder_allowed(score_jobs, person); je Person Suffix-Kontexte career_planning__/career_profile__/career_preferences__\u003cpid\u003e + eigene chat_id via agent.fn_person_chat_id; per-Quelle Enable-Flags sources_enabled + SOURCE-PARTITIONIERTER known-Set {source:[external_id]}; threshold/max_per_run aus core.config) -\u003e Loop persons (splitInBatches) -\u003e Have criteria? -\u003e Build query (EINE gemeinsame Query Rolle/Ort -\u003e je Quelle eine URL; die Aggregator-Keys stehen NUR in der Cred, nicht in der URL) -\u003e Fetch BA (keyless) / Fetch Adzuna (httpCustomAuth) / Fetch JSearch (httpHeaderAuth), linear, jeder onError=continue+retry (fehlender Key -\u003e Cred-Fehler fällt in onError -\u003e Quelle still übersprungen) -\u003e Normalize postings: je Quelle EIGENER try/catch, parse -\u003e normalisierte Form, url VERBATIM aus dem Quell-Link, board (jsearch=job_publisher, sonst NULL), Dedup gegen den EIGENEN known-Set der Quelle, disabled -\u003e ignoriert, merge + ephemerer Index i -\u003e Score postings: EIN gebatchter Claude-Call (model.job_scorer, Denk-Tiefe niedrig, Structured Output {scores:[{i,score,reasoning}]}) bewertet ALLE neuen Postings DIESER Person 1..4, echot den Index i -\u003e Apply scores -\u003e Record match je Posting (career.fn_record_job_match, source/board/external_id, person_id TRUSTED CRON) -\u003e Surface? (Top max_per_run \u003e= Schwelle GLOBAL über alle Quellen + 1 Serendipity) -\u003e Send card an die EIGENE chat_id (via \u003cboard\u003e nur bei jsearch). ROLLE: Haupt-RW-Cred. PRIVACY: Profil/Präferenzen (PII) NUR in den Scorer (bezahlte Anthropic-API, kein Training auf Inhalten); die Aggregatoren bekommen NUR Rolle+Ort, kein PII.",
+                                         "height":  420,
+                                         "width":  1100,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1820,
+                                       -420
+                                   ],
+                      "id":  "5a7920a8-be69-52e1-a659-3f8698d883c7",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Bundesagentur (keyless) + Adzuna (StepStone/DE) + JSearch (LinkedIn) -\u003e Normalize merged + dedupt je Quelle**\n\nDrei feste Quell-Nodes (linear, jeder onError=continue+retry). Adzuna = httpCustomAuth (app_id/app_key als qs aus der Cred); JSearch = httpHeaderAuth (x-rapidapi-key aus der Cred, x-rapidapi-host am Node). Fehlt ein Key -\u003e Cred-Fehler -\u003e onError -\u003e Quelle still übersprungen (BA läuft immer). Normalize: je Quelle EIGENER try/catch (eine kaputte Quelle killt die anderen NICHT); Dedup gegen den SOURCE-PARTITIONIERTEN known-Set (BA-refnr / Adzuna-id / JSearch-job_id = verschiedene Schlüsselräume -\u003e ein source-blinder Set unterdrückte fälschlich echte Treffer). url je Quelle VERBATIM aus dem gelieferten Link (Adzuna redirect_url, JSearch job_apply_link — Aggregator-ToS; BA konstruiert jobdetail/\u003crefnr\u003e). board: NUR jsearch (job_publisher, IMMER); adzuna legt KEIN Board offen (NULL by design), BA/forwarded NULL. Per-Quelle abschaltbar via core.config career.job_source_\u003csrc\u003e (Konsole; die Fetch läuft weiter, das Ergebnis wird in Normalize ignoriert — Quota-Skip-der-Call ist BACKLOG).",
+                                         "height":  380,
+                                         "width":  640,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -240,
+                                       -320
+                                   ],
+                      "id":  "11e86f27-c292-5453-8c8c-bfc606014027",
+                      "name":  "Multi-Source: 3 Quellen -\u003e EIN Digest"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Apply scores: ALLE gescort + recorded; surface drosselt nur die Sends (Top max_per_run + 1 Serendipity über ALLE Quellen)**\n\nDer Scorer echot den ephemeren Per-Run-Index i (nicht external_id -\u003e keine Cross-Quellen-Kollision im Mapping). Es werden ALLE neuen Postings via career.fn_record_job_match recorded (Dedup verhindert künftiges Re-Scoring; UPSERT-Key (source, external_id, person_id)). surface=true nur für die Top max_per_run (\u003e= Schwelle) GLOBAL über alle Quellen + GENAU 1 Serendipity (höchstes UNTER der Schwelle). Überzählige \u003e= Schwelle sind RECORDED (kein stiller Verlust) -\u003e der Advisor zeigt sie via career.v_job_matches. Fehlt ein Score -\u003e Default 1. source/board/external_id/person_id/chat_id werden durch die Kette gefädelt, weil der Record-Postgres-Node das Item ersetzt.",
+                                         "height":  340,
+                                         "width":  620,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       640,
+                                       -300
+                                   ],
+                      "id":  "2c659e07-f2b3-5a9f-8044-c21dfbc95358",
+                      "name":  "Cap = Karten-Drossel GLOBAL (kein Datenverlust)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Send card = Sub agent.career.sub_send_job_card je Treffer an die EIGENE chat_id (Texte in der Sprache der Person)**\n\nDer Sub rendert die Karte (Textkatalog: Kopf, \"via \u003cboard\u003e\" nur bei jsearch, Feedback-Hinweis, Abschalten-Knopf in der Sprache der Person; die Scorer-Begründung schreibt das Modell schon in dieser Sprache, language_label aus Enumerate persons). Buttons: 👍 -\u003e job:up:\u003cjob_match_id\u003e, 👎 -\u003e job:down:\u003cjob_match_id\u003e (dynamisch; der Orchestrator dispatcht den job:-Prefix generisch an career.fn_handle_job_feedback -\u003e status interested/dismissed, Eigentümer-Check person_id=sender). Abschalten -\u003e cron_off:score_jobs (statisch, cron_toggle_lint). chat_id = $(Apply scores).item.json.chat_id (per Person, NICHT __OWNER_CHAT_ID__). Der Karten-TEXT zeigt \"🔗 via \u003cboard\u003e\" NUR wenn ein Board offengelegt ist (jsearch -\u003e \"via LinkedIn\"); adzuna-Treffer (auch StepStone-Inhalte) tragen KEIN Board-Label (Adzuna verrät es nicht). Die optionale Freitext-Grund-Einladung steht im Karten-TEXT -\u003e Advisor ordnet den Grund der zuletzt bewerteten Stelle zu -\u003e set_career_preferences (HITL owner_only).",
+                                         "height":  340,
+                                         "width":  640,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1300,
+                                       -300
+                                   ],
+                      "id":  "d1f27d31-d518-59df-8f6f-cada8a5e35d1",
+                      "name":  "Treffer-Karte (Feedback-Loop, per-Person)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Enumerate persons",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Enumerate persons":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Loop persons",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Loop persons":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Done",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Have criteria?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Have criteria?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Build query",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Loop persons",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Build query":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Fetch BA",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Fetch BA":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Fetch Adzuna",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Fetch Adzuna":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Fetch JSearch",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Fetch JSearch":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Normalize postings",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Normalize postings":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Any new?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Any new?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Score postings",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Loop persons",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Score postings":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Apply scores",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Apply scores":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Record match",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Record match":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Surface?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Surface?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Send card",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Loop persons",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Send card":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Loop persons",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

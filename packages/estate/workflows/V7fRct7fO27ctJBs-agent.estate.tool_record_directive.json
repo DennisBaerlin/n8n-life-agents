@@ -1,0 +1,687 @@
+{
+    "id":  "V7fRct7fO27ctJBs",
+    "name":  "agent.estate.tool_record_directive",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "owner_person"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "doc_type"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "doc_status"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "form"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "registry"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "storage_place_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "location_note"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "authorized_person"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "notes"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "e795adae-4704-53be-b00c-ead335010968",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027owner_person\u0027, \u0027\u0027));",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ owner_person: $(\u0027Start\u0027).item.json.owner_person }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       180
+                                   ],
+                      "id":  "4c31b1f1-85a9-5f8c-8cc1-8a99880ad75a",
+                      "name":  "Resolve Person",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f0a7ad61-4094-5fb6-968d-1f81d25d31a1",
+                                                                                   "leftValue":  "={{ !!$(\u0027Start\u0027).item.json.owner_person \u0026\u0026 $(\u0027Resolve Person\u0027).item.json.hit_count !== 1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       180
+                                   ],
+                      "id":  "9c225518-a64e-556c-89a4-f6fc557d2712",
+                      "name":  "Person invalid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "6faa0cde-a302-505c-86fb-4202a1cdaf2c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "34c43cf8-3ee3-5808-be8f-901eb65f3697",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The person \u0027{{ $(\u0027Start\u0027).item.json.owner_person }}\u0027 could not be uniquely resolved ({{ $(\u0027Resolve Person\u0027).item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify($(\u0027Resolve Person\u0027).item.json.candidates) }}. Ask which household member, or leave empty for a joint/household document (Berliner Testament).",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       320
+                                   ],
+                      "id":  "719e073a-f00d-5747-bb62-1c167e71a1ab",
+                      "name":  "Person unresolved"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027estate.fn_record_directive(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, doc_type: $(\u0027Start\u0027).item.json.doc_type, doc_status: $(\u0027Start\u0027).item.json.doc_status, form: $(\u0027Start\u0027).item.json.form, registry: $(\u0027Start\u0027).item.json.registry, storage_place_name: $(\u0027Start\u0027).item.json.storage_place_name, location_note: $(\u0027Start\u0027).item.json.location_note, authorized_person: $(\u0027Start\u0027).item.json.authorized_person, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "6df32b36-3907-56e8-9dd4-aa6060072566",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "95a0539b-a83c-5c93-9328-db7779ae41e5",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "a2b97fb4-cefb-5420-a903-5f19cc6c7a2e",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "28d7c334-06d6-53af-ba0d-38d98ca6f084",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7cd20293-22d0-5fa9-be46-264e9e9d9ae6",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "34f9542c-b03a-54ae-8ff6-5ecbc65ef895",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d3e2c7ac-dbf0-56a4-aaf7-c5db9bd6507d",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "60a199db-901b-5893-bfad-f489ef09b18d",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "32cc86cd-0357-5e2b-a64b-4697a7e23f62",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027directive_id\u0027)::bigint AS directive_id, (r-\u003e\u003e\u0027created\u0027)::boolean AS created, r-\u003e\u003e\u0027doc_status\u0027 AS doc_status FROM estate.fn_record_directive(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, doc_type: $(\u0027Start\u0027).item.json.doc_type, doc_status: $(\u0027Start\u0027).item.json.doc_status, form: $(\u0027Start\u0027).item.json.form, registry: $(\u0027Start\u0027).item.json.registry, storage_place_name: $(\u0027Start\u0027).item.json.storage_place_name, location_note: $(\u0027Start\u0027).item.json.location_note, authorized_person: $(\u0027Start\u0027).item.json.authorized_person, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "5741c027-fccc-5b33-9140-1868135dd3c1",
+                      "name":  "Record directive (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d77c0b00-2eea-5b0d-aa6a-09ac35e80378",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027estate.hitl.record_directive\u0027, lines: [ (($(\u0027Resolve Person\u0027).item.json.full_name) ? { label: \u0027core.label.person\u0027, kind: \u0027text\u0027, value: ($(\u0027Resolve Person\u0027).item.json.full_name) } : null), ((!$(\u0027Resolve Person\u0027).item.json.full_name) ? { label: \u0027core.label.person\u0027, kind: \u0027key\u0027, value: (\u0027estate.value.household_joint\u0027) } : null), { label: \u0027estate.label.document\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.doc_type), enum: \u0027estate.enum.doc_type\u0027 }, { label: \u0027core.label.status\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.doc_status), enum: \u0027estate.enum.doc_status\u0027 }, { label: \u0027estate.label.form\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.form), enum: \u0027estate.enum.doc_form\u0027 }, { label: \u0027estate.label.registry\u0027, kind: \u0027text\u0027, value: (($(\u0027Start\u0027).item.json.registry ? String($(\u0027Start\u0027).item.json.registry).toUpperCase() : null)) }, { label: \u0027estate.label.storage_place\u0027, kind: \u0027text\u0027, value: (($(\u0027Start\u0027).item.json.storage_place_name || $(\u0027Start\u0027).item.json.location_note)) }, { label: \u0027estate.label.authorized_person\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.authorized_person) }, { label: \u0027estate.label.notes\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "20c4bea5-ddde-5991-88db-3f6fb096e067",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "e2c59972-5dbe-5e28-9494-07ab95af0663",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "38fc7402-c42f-57a3-bee3-6ed305c54c2f",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "54d67d75-ff12-5c11-93c2-ca2d602812c0",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "70abb21b-46dd-5a32-8b0f-235a79ce8f39",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1a643c85-3567-56e0-99fd-a8df9d583ef1",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c4279308-7158-599a-9ae2-3625a294c3c9",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the record_directive action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       200
+                                   ],
+                      "id":  "1ce8d531-a54a-582f-a4c3-24871d67dd58",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "4d64e63e-f1bb-5497-bae6-34b4193a8caf",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "05fadf8c-e788-5785-92ef-b094f22ee03d",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8fdb1617-f9ba-517e-8c12-fb34d0c79f48",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bb4f9a50-1952-5292-be43-1b5ab6372a27",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Record directive (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       200
+                                   ],
+                      "id":  "b8d2521b-be13-51ca-b7c1-24edf1afe5f6",
+                      "name":  "Directive rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "749bec10-c5b4-540d-a334-91cbe167aba0",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "50cbd669-d0e3-5d05-afaf-8aa22e214c0b",
+                                                                                     "name":  "directive_id",
+                                                                                     "value":  "={{ $(\u0027Record directive (atomic)\u0027).item.json.directive_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e462301f-c4bc-5fe5-8e12-3d55673dc687",
+                                                                                     "name":  "created",
+                                                                                     "value":  "={{ $(\u0027Record directive (atomic)\u0027).item.json.created }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1691ea5b-b8e9-5b15-8ebb-cabae0549fc4",
+                                                                                     "name":  "doc_status",
+                                                                                     "value":  "={{ $(\u0027Record directive (atomic)\u0027).item.json.doc_status }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "cb7db4e6-0cc4-5952-a3c3-aba50fb96d3a",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = estate.fn_record_directive mit denselben Werten, immer zurückgerollt. ok:false (z. B. Fundstelle nicht eindeutig auflösbar, Person nicht erwachsen/berechtigt) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -320
+                                   ],
+                      "id":  "6e329fd6-2982-5042-b9cd-ae1a419c1578",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_record_directive (atomar, UPSERT auf owner_person_id+doc_type)**\n\nSchreibt estate.fn_record_directive atomar: UPSERT auf UNIQUE NULLS NOT DISTINCT (owner_person_id, doc_type) -\u003e genau EIN Eintrag je (Person|Haushalt, Typ); Re-Record aktualisiert (created=false). owner_person_id leer = Haushalts-Urkunde (NULL). storage_place_name löst die fn intern auf (0/\u003e1 -\u003e {ok:false}). adults_only-DB-Backstop (Kind -\u003e {ok:false} ohne Write). doc_status IMMER übernommen, Rest partiell (COALESCE). \"Entfernen\" = doc_status does_not_exist (kein delete_directive). updated_at pflegt der Touch-Trigger.",
+                                         "height":  240,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1980,
+                                       -280
+                                   ],
+                      "id":  "f4275f65-2cca-5525-b9d4-1f57735d51b5",
+                      "name":  "UPSERT + adults_only-Backstop"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Person",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Person":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Person invalid?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Person invalid?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Person unresolved",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Record directive (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Record directive (atomic)":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Write ok?",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Directive rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

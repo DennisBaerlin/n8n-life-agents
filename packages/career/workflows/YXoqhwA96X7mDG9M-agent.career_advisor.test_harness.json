@@ -1,0 +1,128 @@
+{
+    "id":  "YXoqhwA96X7mDG9M",
+    "name":  "agent.career_advisor.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "career-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "ef2c7bab-478c-5dd9-8f3b-fa253e44fede",
+                      "name":  "Test Webhook",
+                      "webhookId":  "a506c7f8-5d87-5ff9-acd7-2d6fe75bff2f",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PlIL7Ut6tQDSBzyw",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PlIL7Ut6tQDSBzyw",
+                                                            "cachedResultName":  "agent.career_advisor"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "task":  "={{ $(\u0027Test Webhook\u0027).item.json.body.task }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}",
+                                                                              "call_depth":  "={{ $(\u0027Test Webhook\u0027).item.json.body.call_depth }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "ebc66321-fcfe-59f4-9914-76a7831e8c98",
+                      "name":  "Run agent.career_advisor",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "e0e8b875-2b5d-5823-856c-c9e055f6d53b",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.career_advisor.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.career_advisor\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: task, chat_id, call_depth.\nnumerische chat_id (per Get-TestChatId) + Gate-Resolve ueber Mock-Telegram; kein test_-Bypass mehr.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "c6e10fb7-7da8-585d-baad-5d058348e786",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.career_advisor",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.career_advisor":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Run Info",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

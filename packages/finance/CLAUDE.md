@@ -1,0 +1,61 @@
+# Finance-Paket — Domänen-Regeln (lädt beim Arbeiten in `packages/finance/`)
+
+Buchhalter (`agent.finance`, CQRS) + Berater (`agent.finance_advisor`, bucht nie; einzige Daten-Ausnahme `tool_set_asset_classes` = Anlageklassen im Planungs-Flow). SoT `packages/finance/db/*.sql` + `packages/finance/db/migrations/`; paket-übergreifende Gesetze → `packages/CLAUDE.md` + `.claude/rules/sql.md`; Core-Maschinen → `packages/core/CLAUDE.md`; fn-Kontrakte → `docs/fn_catalog.md`. Mechanik, Tabellen-/View-Semantik → `docs/reference/finance.md` (on-demand); **Write-Tools-Katalog** aller Pakete → `docs/reference/packages.md`.
+
+## Advisor (finance-Delta zu `agent.advisor_plans`)
+
+- Ein Event-Fold (Sofort-Hinweis im `{ok:true}`-Envelope eines Write-`fn_*`) ist nur gerechtfertigt, wenn **alle vier** gelten: Wert im Schreib-Pfad billig vorhanden (Variable oder ein Single-Row-View-Read) · durch einen Nutzer-Schreibvorgang ausgelöst (nicht Zeit/Kurs-Cron) · sofort handlungsrelevant · nicht-blockierend. Sonst rein periodisch (`fn_advisor_review`). Fold-Matrix → `docs/reference/finance.md`.
+- Das Tool reicht nur `r->'<key>'->>'note'` durch (null-sicher); persistent-negative Folds laufen über `core.fn_should_notify` (Meldung nur beim Übergang).
+- Jeder `alert` und der `digest` tragen ein paket-gerendertes deutsches `text`-Feld — die generischen Core-Crons kennen keine finance-Felder. Drift nur über handelbare Blöcke (Depot + Cash); Immobilie/Vorsorge/p2p/Festgeld nie im Drift. Block-Join auf den stabilen `key`, nie auf den Namen.
+- `risk_profile` bleibt grob (`low|medium|high`), kein gespeicherter Horizont (Core-Denylist), kein `risk_need`.
+
+## Recurring- & Zins-Scheduler
+
+- „Gebucht" wird aus `finance_transactions` abgeleitet; nur „übersprungen" ist materialisiert (`recurring_payment_skips`, `interest_skips`). Interne Transfer-rps (`target_account_id` gesetzt, `amount` negativ) zählen nicht im Cashflow — Ausnahme: Sparziel-Raten in einen Topf zählen als Sparen (`recurring_cashflow_classified`); `fn_book_recurring_occurrence` delegiert sie an `fn_book_recurring_transfer`, Kredit-rps an `fn_book_loan_payment` (Tilgung + rp-Stempel; eine reguläre Rate über das Tool schließt das nächstgelegene offene Vorkommen).
+- **Identität eines Vorkommens ist `recurring_due_date` (Fälligkeit), nicht `transaction_date`:** gebucht wird am Ist-Datum (Kontoauszug: fällig 01.10., abgebucht 02.10.); Doppel-Riegel, „gebucht"-Prüfungen und Split-/Reopen-Stichtage keyen auf die Fälligkeit. Ohne explizite Fälligkeit setzt `trg_finance_default_recurring_due_date` das Buchungsdatum. **Saldo-Abgleich ist eine Grenze:** Buchungsdatum ≤ `last_reconciled_at` eines Bein-Kontos → `{ok:false, code:'reconciled'}` (`fn_reconciled_reason`, je Bein), und `fn_reconcile_account` materialisiert offene Vorkommen ≤ Stichtag − 10 als Skip — sonst zählt eine nachgeholte Buchung doppelt.
+- **Gültigkeit ist halboffen `[valid_from, valid_to)`:** `valid_to` = erster nicht mehr gültiger Tag; Nutzer-/LLM-Eingaben sind das inklusive Ende, die fn speichert +1 Tag. `first_payment_date` ist nur der Rhythmus-Anker, Vorkommen vor `valid_from` sind nie fällig. Splits nur über `fn_split_recurring_payment` (erbt Ziel-Konto, Status, Ende, Anker), Reaktivieren einer beendeten rp nur über `fn_reopen_recurring_payment` (Folge-Zeile, Lücke nie fällig).
+- **Vorgänger-Kette (`predecessor_id`):** Split und Reopen verketten; Besitzer-Entitäten zeigen immer auf den **Kopf** (`fn_repoint_recurring_owners`). Wer von einer rp auf ihre Entität schließt, nimmt `fn_recurring_lineage_head(rp)`; Historie/Doppel-Prüfung über `fn_recurring_lineage(rp)` — ein altes Vorkommen bleibt so Sparplan/Kredit.
+- Karte, Erinnerung und Buchung lesen denselben Betrag: `fn_savings_plan_next_execution` (Sparplan), `fn_recurring_occurrence_amount` (Erinnerung; letzte, kleinere Kreditrate = Ablösebetrag, danach `fn_mark_loan_paid_off`).
+- **`interest_period_end` ist der Scheduler-Schlüssel**, nicht `transaction_date`. NULL = generische Zinseinnahme (für den Scheduler unsichtbar, zählt in die Basis) — bewusst **kein** harter `interest ⟹ period_end NOT NULL`-CHECK (bräche den generischen Pfad).
+- **Zins-Kadenz kommt aus `fn_interest_regimes`** (Lauf gleicher Kadenz; ein Satzwechsel erbt sie, ein Kadenzwechsel verankert neu, ohne Gutschrift am Wechseltag; sein Rest läuft in die erste neue Periode, `fn_interest_effective_period_start`). `period_start` = größte Rastergrenze < `period_end` (`fn_interest_period_start`), nie aus gebuchten/übersprungenen Tx; offen ist nur, was nach der jüngsten erledigten Periode liegt; Skip ist ersatzlos (keine Doppelverzinsung).
+- **Negativ-/Strafzins (Verwahrentgelt) ist `category='fee'`**, nie der Zins-Pfad (`fn_interest_amount_due` bleibt habensaldo-only; BGH 04.02.2025). ACT/ACT bewusst nicht implementiert; Tagessaldo-Staffel innerhalb einer Periode out-of-scope.
+- `schedule_day_of_month` ∈ `1–28 | -1 | NULL` (CHECK); „der 30." = Monatsletzter (`-1`).
+- **Feste Monatstage** (`schedule_days_of_month`, ≥ 2 Tage, nur `month`, nie zusammen mit dem Einzeltag): „wöchentlich" bei einer Bank mit festen Ausführungstagen ist **kein** `week`, sondern `month` + Tage (z. B. Trade Republic: 4 feste Tage = 4×/Monat). Sparplan-Rhythmen leitet nur `fn_resolve_plan_schedule` aus dem Depot-Kalender `accounts.plan_execution_days` ab (NULL = unbekannt → einmal nachfragen; `'{}'` = echte 7-Tage-Abstände; Vorbelegung bekannter Banken nur in `fn_broker_plan_days`). Split/Reopen erben die Tage.
+- **Begünstigte(r) leer = Inhaber des tragenden Kontos** (Sparplan: Depot, Sparziel: Topf) über `fn_default_beneficiary`; die Karte liest den Namen aus dem Probelauf.
+
+## Monats-Check (Kontoauszug → eine Karte)
+
+- **Plan/Apply mit Fingerprint:** `fn_statement_prepare` (STABLE) rechnet Karte + Buchungsplan; `fn_apply_bank_statement` sperrt das Konto, rechnet **dieselbe** Prepare erneut und bricht bei abweichendem `fingerprint` mit `stale_preview` ab. Neue Karten-Inhalte gehören in die Prepare (eine Adresse), nie in den Workflow.
+- **Matching** allein in `fn_statement_match`: Stufe 0 (schon gebucht) → A (Schlüssel aus `recurring_payment_keys`) → B (Betrag ±5 %, min. 2 €, Datum −5/+10, Namens-Token), gierig deterministisch. `sepa_mandate` ist global eindeutig, `counterparty_iban` nur je rp (Gehalt/Bonus teilen den Gegenpart); interne Transfers lernen keinen Schlüssel, ihr Gegenpart ist `accounts.account_number`.
+- **Rest = DB-Differenz:** Die Lump-Buchung macht `fn_reconcile_account` auf den Endsaldo (nie aus LLM-Zeilen summiert); Drift vor dem Zeitraum wird vorher separat auf `cut` abgeglichen. `bank_statements` speichert nur Aggregate (keine Zeilen, keine Mandate); Fehlendes sind Skips.
+- **Void** nur für den jüngsten Auszug eines Kontos (`last_reconciled_at = period_end`), stellt `prev_*`, Skips und gelernte Schlüssel wieder her.
+- **Vorschau/Warnung:** `fn_account_outlook` ist die eine Rechen-Adresse für Tool-Antwort und Advisor-Alert `account_coverage:<konto>` (nur Konten mit Auszug); `recurring_missing:<kopf>` = jüngste zwei Termine der Kette übersprungen.
+
+## DB-Hard-Guarantees
+
+- Tools schreiben **nie** `balance`, `shares`, `average_purchase_price`, `monthly_equivalent`, Loan-`annuity_rate`/`monthly_*` — Trigger/GENERATED pflegen sie. Neuer Wert-Guard ⟹ in der fn (`{ok:false}`) **und** als spiegelnder CHECK.
+- **`set_*`:** partielles UPDATE (`COALESCE(NULLIF(p->>'feld',''), spalte)`); Status-Kaskade (Entität `paused`/`cancelled`/`paid_out` → verknüpfte `recurring_payment` mit-pausieren, sonst Cashflow-Leiche); Recurring-Sync in-place; Validity-Split nur im standalone `fn_set_recurring_payment`. **Hard-DELETE** nur für referenzfreie Fehlanlagen (Ledger-FKs RESTRICT → `{ok:false}`).
+- Beträge nativ in Konto-/Holding-Währung, EUR nur als Reporting (`fn_to_eur`, Views liefern `*_eur`); Monats-Normalisierung nur über `fn_monthly_equivalent`/`fn_days_per_month`. Ein fehlender Kurs fällt nie still aus einer Summe: Roll-ups tragen `has_fx_gap`.
+- **Kontotyp:** Depot-Konten tragen nie eine Buchung, Kreditkonten nur mit `loan_id` (Trigger `trg_finance_reject_account_type_txn`); freie Buchung/Übertrag/Abgleich prüfen vorher `fn_bookable_account_reason` (`{ok:false}`).
+- **Schulden = `fn_loan_is_outstanding`** (Kredit `active` oder `paused`) — jede Schulden-Summe nutzt dieses Prädikat.
+- `savings_goal_reserve_entries` ist append-only (nie UPDATE/DELETE einer Zahl, außer Ziel-CASCADE; ein stornierter Kauf bekommt eine Gegenzeile `kind='void'`); die Reserve ist Cash-Tag + Depot-Journal, beide derived; der Depot-**Marktwert** ist nur Deckung, nie die gespeicherte Reserve. `depot_holdings.asset_class` hat keinen FK (Format-CHECK + `unmapped`/`null_tag`-Report sind der Backstop).
+- Views: Marktwert-Spalten sind NULL ohne Live-Kurs (kein Buchwert-Fallback außer im Summen-Roll-up); Reserve-Deckungs-Views melden bei NULL-Preis `breach=TRUE`, nie still FALSE; `tradeable` gilt nur für `depot`+`cash`. Der Kurs-Cron ist deterministisch — ISIN→Symbol-Auflösung nur einmalig beim Kauf (HITL), nie im Feed.
+- Sparziel-Lebenszyklus = drei getrennte Ereignisse (erreicht ≠ erfüllt ≠ abgebrochen); `completed` nur bei Reserve ~0 (oder `force`). Cleanup über die Menge der Funder, nie „die" rp hartkodiert. Ein neues Sparziel braucht einen Topf (`reserve_account_id`, cash/fixed_deposit) — Gesetz in `fn_create_savings_goal`, gilt auch für den Import.
+- **Cashflow:** Konsum, Tilgung und Sparen trennt allein `finance.recurring_cashflow_classified`; Summen, Alarme, Notreserve und Runway lesen daraus (nie selbst klassifizieren). Kredit-Monatszins nur über `fn_loan_monthly_interest`.
+
+## Tool-Bau (finance)
+
+- Bau-Regeln → `packages/CLAUDE.md` *Tool-Bau*; jedes neue/geänderte Tool in `packages/finance/build/workflows/tools/<tool>.ps1`, nie Hand-Edit am JSON. Katalog → `docs/reference/packages.md` *Write-Tools-Katalog*, Verantwortungs-Split → `docs/reference/finance.md`.
+
+### Trade-Fee-Regel (Aktien/ETF/Crypto)
+
+- Order-Gebühr ist in `amount` **gefaltet** und zusätzlich in `order_fee` gespeichert (Netto-Kurswert = `amount + order_fee`). Buy = eine Tx `category='buy'`, `amount = -(shares*price + fee)`; Sell = eine Tx `category='sell'`, `amount = +(shares*price - fee)`.
+- `average_purchase_price` = gleitender Durchschnitt (`fn_holding_avg_cost`, chronologisch): Verkäufe senken die Kostenbasis anteilig, ein Nachkauf nach (Teil-/Voll-)Verkauf mittelt mit dem Rest-Bestand → Sell-Gebühren verfälschen das avg nie. `category='fee'` nur für Nicht-Trade-Gebühren (Depot-/Kontoführung). Der Agent fragt aktiv nach der Order-Gebühr.
+- **Kostenbasis je Kauf:** normal = `|amount|` (abgebuchter Cent-Betrag inkl. Gebühr, Broker-Konvention); **nur Bestandsübernahme** speichert `unit_price` (der genannte Einstand) und rechnet `shares × unit_price + fee` — nie aus einem gerundeten Betrag zurückrechnen. Einheitswerte (Kurs, „1 Einheit in EUR") nur über `fn_to_eur_unrounded`, Beträge über `fn_to_eur` (Cent).
+
+### „Kein-Schritt-vergessen": Invarianten-Checkliste
+
+- Entität mit wiederkehrenden Kosten/Einnahmen (insurance, loan, savings goal, Konto-/Depotgebühren) ⟹ `finance_recurring_payments`-Zeile anlegen **und** den `*_id`-FK füllen; **immer `schedule_day_of_month` erfassen** (Agent fragt aktiv). `cashflow_summary` und `loan_summary` nie addieren (Doppelzählung).
+- Depot-Transaktion ⟹ `holding_id` gesetzt. Neues Konto ⟹ balance-Zeile entsteht per Trigger, nie manuell.
+- **`create_*` ⟹ `Check duplicate name`-Node (Pflicht, Muster `tools/create_account.ps1`)** — Backstop, weil `name` keine UNIQUE hat und der unscharfe Agent-Dedup ausfallen kann (real passiert). `create_*` legt nur Neues an; Bestehendes ändern → `set_*`-Tool; Decline = reiner Abbruch; Name→ID-Lookups behandeln 0/>1 Treffer.
+- Neuer/geänderter `fn_*` ⟹ `test_fn_<tool>.sql` zuerst; neues Tool live ⟹ Golden-Case in `tests/agent/finance/finance_cases.json` + „Not yet available"-Liste kürzen.

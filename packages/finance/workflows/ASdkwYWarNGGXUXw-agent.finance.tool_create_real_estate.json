@@ -1,0 +1,789 @@
+{
+    "id":  "ASdkwYWarNGGXUXw",
+    "name":  "agent.finance.tool_create_real_estate",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "current_value"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "value_updated_at"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "owner_person"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "status"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "notes"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "bcab215e-7ad4-53d5-9aac-1978d6900c8d",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT COUNT(*)::int AS hit_count FROM finance.real_estate WHERE name = ($1::jsonb)-\u003e\u003e\u0027name\u0027 AND status = \u0027active\u0027;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       -200
+                                   ],
+                      "id":  "3108c4c3-7582-59cc-9e79-80699a89aea6",
+                      "name":  "Check duplicate name",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "91f75f61-e5b1-500b-8769-bb6d1bc448a4",
+                                                                                   "leftValue":  "={{ $(\u0027Check duplicate name\u0027).item.json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gte"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       -200
+                                   ],
+                      "id":  "bfb3cd0f-fc49-5f95-891d-6286452bbce1",
+                      "name":  "Real estate exists?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "cfd01c2c-f74a-568d-8456-02152750fc23",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9e7007eb-c77c-533f-a9e4-29d99bde61fb",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=An active real-estate asset named \u0027{{ $(\u0027Start\u0027).item.json.name }}\u0027 already exists. I will NOT create a duplicate. Use a different name or the dedicated update tool.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -300
+                                   ],
+                      "id":  "ac39db12-12cb-5f81-b25a-cafe88e6a24a",
+                      "name":  "Real estate exists"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027owner_person\u0027, \u0027\u0027));",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ owner_person: $(\u0027Start\u0027).item.json.owner_person }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       180
+                                   ],
+                      "id":  "2b194f00-159c-54bf-bbe3-08de0d8c6e9e",
+                      "name":  "Resolve Person",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d8907219-e153-51e9-bbf1-aefaf23ffae4",
+                                                                                   "leftValue":  "={{ !!$(\u0027Start\u0027).item.json.owner_person \u0026\u0026 $(\u0027Resolve Person\u0027).item.json.hit_count !== 1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       180
+                                   ],
+                      "id":  "e972ec82-4ea8-5544-ba24-d7c80c09e39f",
+                      "name":  "Person invalid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "835971ad-73b2-58ff-a109-547b9bc74404",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "874b5ae2-a7cc-515d-83ee-6715a03f92d8",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The owner person \u0027{{ $(\u0027Start\u0027).item.json.owner_person }}\u0027 could not be uniquely resolved ({{ $(\u0027Resolve Person\u0027).item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify($(\u0027Resolve Person\u0027).item.json.candidates) }}. Ask which household member, or leave empty for a joint/household asset.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       320
+                                   ],
+                      "id":  "4d7987dd-3051-5602-9a40-41e498e26b29",
+                      "name":  "Person unresolved"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_create_real_estate(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "42412bf3-5551-5f92-9591-ba63b85e45d8",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "11f8021b-9204-5d1f-94de-35f1e8e3b938",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "db8e780e-e359-5c1a-bec1-bf97dd1c858e",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5661587c-ab67-58f5-a59b-5b85f1ad89ad",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a5e60d4c-f18c-5718-a45f-d7fefc8e2782",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "41d963ad-c5a0-5b5d-a7ba-4fcbdfad337e",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4b472d3e-d87e-535b-9d41-175b77846a6f",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d6192004-27c9-52b4-bd0f-7871e5909094",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "18b69dfd-566f-514e-b368-4ae179d81073",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027real_estate_id\u0027)::int AS real_estate_id FROM finance.fn_create_real_estate(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "92f0f88b-3a78-5f5b-a899-0c39c752aa8e",
+                      "name":  "Create real estate (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ac750c9d-42da-56cf-b1e7-4fc06dc4a6fe",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.create_real_estate\u0027, lines: [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.name) }, { label: \u0027finance.label.current_value\u0027, kind: \u0027money\u0027, value: (($(\u0027Start\u0027).item.json.current_value || null)), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.valuation_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.value_updated_at) }, { label: \u0027finance.label.owner_person\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Resolve Person\u0027).item.json.full_name) } }, { label: \u0027core.label.status\u0027, kind: \u0027enum\u0027, value: (($(\u0027Start\u0027).item.json.status || \u0027active\u0027)), enum: \u0027finance.enum.status\u0027, is_default: !!(!$(\u0027Start\u0027).item.json.status) }, { label: \u0027finance.label.notes\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "b9c0b0c7-c313-5b54-8cad-3cd1179f3534",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "570c9d00-7946-54b5-99a8-e490d70efdcf",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b1b307e4-8eb3-5b51-baf9-4c830a8a01bc",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "57edd7fc-a8ce-5cd1-99f7-660404dfb8f7",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a88db9fc-095c-5d9d-9fcb-0a80557f4684",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "266ca595-2705-58c4-bc4a-bcb1732ffa68",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "23032b63-9190-56db-8f78-e70a3485e139",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the create_real_estate action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       200
+                                   ],
+                      "id":  "0c620180-df9b-5794-9a77-a44f04157495",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c06d997c-f0ce-5e97-ae87-a45b25780faf",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "5f6dd585-5b5b-5cc5-a7b6-bd6d6a6af3e7",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3cac656f-9955-51b7-8ee3-69dd3fcb4d09",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "997c280f-d154-5029-898d-58aa544751dc",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create real estate (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       240
+                                   ],
+                      "id":  "fae16c1c-db5c-5023-a4b2-4b295e89cfe9",
+                      "name":  "Create rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "143994e2-43f4-5976-b74b-75c9ad1c75a3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0b631a09-7e45-50fc-a6d8-02a09ba9c60d",
+                                                                                     "name":  "real_estate_id",
+                                                                                     "value":  "={{ $json.real_estate_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "af892c22-a734-5986-864e-ddc02cf55ff0",
+                                                                                     "name":  "name",
+                                                                                     "value":  "={{ $(\u0027Start\u0027).item.json.name }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "b7290a37-1e46-5dfc-b3a4-621dbb081f10",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Human-in-the-Loop + finance.fn_create_real_estate**\n\nVor dem Write: Werteliste -\u003e agent.tool_human_approval (Approve/Decline). Approve -\u003e finance.fn_create_real_estate atomar (1 INSERT). Unbekannter Status -\u003e {ok:false} ohne Write -\u003e Write ok? -\u003e Create rejected (reason an den Agenten). Eine Immobilie hat keinen Saldo/Trigger (kein finance.account_balances-Eintrag) -\u003e hier keine DB-Automatik-Sticky nötig.",
+                                         "height":  200,
+                                         "width":  380,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1980,
+                                       -200
+                                   ],
+                      "id":  "d1c66d32-e538-57a7-a714-222fa979bcb6",
+                      "name":  "Doc HITL + atomar"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_create_real_estate mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (unbekannter Status und weitere korrigierbare Ablehnungen) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  220,
+                                         "width":  440,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       660,
+                                       -480
+                                   ],
+                      "id":  "9cc57093-8ea4-5b81-b6c4-2630ff4e9d79",
+                      "name":  "Probelauf vor der Karte"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Check duplicate name",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Check duplicate name":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Real estate exists?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Real estate exists?":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Real estate exists",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Resolve Person",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Resolve Person":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Person invalid?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Person invalid?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Person unresolved",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create real estate (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Create real estate (atomic)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Write ok?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "kind": "cron_text",
+    "id": "ctc01",
+    "name": "Job-Treffer-Karte an das Mitglied (Lena, ko): Kopf, via-Zeile, Feedback-Hinweis, Abschalten-Knopf",
+    "harness": "job-card-test",
+    "recipient": "person:lena",
+    "harness_body": {
+      "job_match_id": 999999, "is_serendipity": false, "score": 4, "title": "CRONTEXT Data Engineer",
+      "employer": "Beispiel GmbH", "location": "Berlin", "board": "LinkedIn", "url": "https://example.org/job/1",
+      "reasoning": "CRONTEXT reasoning"
+    },
+    "expect_keys": ["career.jobcard.match", "career.jobcard.via", "career.jobcard.feedback_hint"],
+    "expect_buttons": ["career.jobcard.btn_off"]
+  }
+]

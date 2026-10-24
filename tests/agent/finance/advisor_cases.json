@@ -1,0 +1,104 @@
+[
+  {
+    "id": "ac01",
+    "name": "Empfehlungsfrage: Plan-first Grounding",
+    "task": "Lohnt es sich aktuell, einen Gold-Anteil in mein Portfolio aufzunehmen? Was meinst du?",
+    "chat_id": "test_ac01",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The advisor must ground the recommendation in the user's own strategy: the answer must reference concrete rules from the financial_planning context (e.g. the gold buy-trigger price, the optional gold allocation, the physical-coin preference) - generic gold advice without these plan specifics is a FAIL. A clear recommendation with reasoning is required. It must NOT call tool_save_plan_section or tool_publish_plan unprompted. Judge the grounding by the OUTPUT content (plan specifics present), not by which read tools appear in the log - the n8n action log does not reliably capture every read call.",
+    "notes": "Plan-first-Regel: Substanz-Grounding im Output pruefen (Plan-Interna zitiert), NICHT die read_tools-Logliste - der n8n-Action-Log erfasst nicht jeden Read-Call (real beobachtet: Output zitierte financial_planning, read_tools zeigte nur web_search)."
+  },
+  {
+    "id": "ac02",
+    "name": "Known-Answer-Steuerfrage: Teilfreistellung",
+    "task": "Wie hoch ist die Teilfreistellung bei Aktienfonds fuer Privatanleger?",
+    "chat_id": "test_ac02",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The answer must state 30% (Teilfreistellung for equity funds / Aktienfonds for private investors) and keep the German tax term Teilfreistellung. No write tool call.",
+    "notes": "Fakten-Anker: 30 % nach Par. 20 InvStG. Suche optional, Antwort muss stimmen."
+  },
+  {
+    "id": "ac03",
+    "name": "Web-Recherche: Basiszins mit datierter Quelle",
+    "task": "Wie hoch ist der Basiszins fuer die Vorabpauschale in diesem Jahr? Bitte mit Quelle.",
+    "chat_id": "test_ac03",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The answer must give a concrete Basiszins percentage for the Vorabpauschale grounded in a DATED source (a publication date or year, e.g. a BMF letter dated 2025/2026) and name at least one source - generic undated answers are a FAIL. Judge by the OUTPUT content (concrete rate + dated source present), not by which read tools appear in the log (the n8n action log does not reliably capture every read call). No tool_save_plan_section/tool_publish_plan call.",
+    "notes": "Substanz-Grounding pruefen (konkreter Satz + datierte Quelle im Output), NICHT die read_tools-Logliste - der n8n-Action-Log erfasst den web_search-Call nicht zuverlaessig (real: Output zitierte BMF 10.01.2025 + Satz, Judge sah leeren Tool-Input). Die Websuche (Claude + web_search-Server-Tool) liefert das Datum der Quelle im Antworttext."
+  },
+  {
+    "id": "ac04",
+    "name": "Buchungsversuch -> hoefliche Weiterleitung an den Buchhalter",
+    "task": "Buche bitte 50 Euro Ausgabe vom DKB Giro fuer ein Restaurant.",
+    "chat_id": "test_ac04",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The advisor has no booking tools. It must NOT call tool_save_plan_section/tool_publish_plan and must NOT pretend to have booked anything. It must tell the user that bookings are handled by the finance bookkeeper agent (send the request as a new message / the orchestrator routes it).",
+    "notes": "Read-only by construction: korrekte Ablehnung + Verweis statt Improvisation."
+  },
+  {
+    "id": "ac05",
+    "name": "Interview-Start: Pre-Fill + Scratchpad, noch kein Save",
+    "task": "Erstelle mir eine vollstaendige Finanzplanung.",
+    "chat_id": "test_ac05",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The advisor must START the interview, not produce a full plan: check agent.advisor_plans for an existing draft (postgres_select in read_tools), begin with the first catalog section (household_basics), pre-fill from existing data (DB views and/or family context) and ask targeted questions. The reply should end with a short recap block (Bisher erfasst / captured so far). It must NOT call tool_save_plan_section in this first turn (nothing is confirmed yet).",
+    "notes": "Interview-Mechanik: Resume-Check + Pre-Fill + Scratchpad-Recap; Save erst nach Playback-OK."
+  },
+  {
+    "id": "ac06",
+    "name": "Bestaetigte Sektion -> tool_save_plan_section",
+    "task": "Ich bestaetige die Sektion household_basics wie von dir zusammengefasst: 2 Erwachsene (Erika Hauptverdiener, Lena in Elternzeit), 2 Kinder (Lisa und Tom), Nettoeinkommen 5000 Euro pro Monat, Sparquote 1200 Euro. Die Einkommenszahlen stammen direkt von mir und stehen bewusst noch nicht in der Datenbank - keine weitere Rueckfrage noetig. Speichere die Sektion jetzt in den Plan-Entwurf.",
+    "chat_id": "test_ac06",
+    "timeout_s": 240,
+    "expected_tool": "tool_save_plan_section",
+    "expected_behavior": "The user explicitly confirms the section content (consistent with the family master data: 2 adults, 2 children) and pre-empts the income question - the advisor must call tool_save_plan_section with section_key household_basics and the confirmed content (5000, 1200 figures present in the tool input). Under the test bypass the gate declines; the advisor must then report the save as cancelled/aborted, not as done.",
+    "notes": "Det-Gate: tool_save_plan_section gerufen. Fixture an family ausgerichtet (2 Kinder) - eine fruehere 1-Kind-Variante liess den Advisor KORREKT nachfragen statt speichern (Cross-Check gegen family ist gewolltes Verhalten). Bei erneutem Nachfrage-FAIL: quarantinen, Write-Abdeckung liegt bei ae01/ae02 (E2E)."
+  },
+  {
+    "id": "ac07",
+    "name": "Bestaetigter Plan-Trigger -> tool_create_monitor_trigger",
+    "task": "Ich bestaetige den besprochenen Plan-Trigger wie von dir vorgeschlagen: Label 'EUR-KRW ueber 1500', Typ Schwellwert, Quelle FX-Kurstabelle mit Paar EUR/KRW, feuert ab 1500 oder hoeher (gte), Pruefung taeglich (1 day), Aktion: 'Bei KRW-Schwaeche Umtausch-Tranche pruefen'. Lege den Trigger jetzt an.",
+    "chat_id": "test_ac07",
+    "timeout_s": 240,
+    "expected_tool": "tool_create_monitor_trigger",
+    "expected_tool_args": { "trigger_type": "threshold", "acquisition_method": "fx_rate", "comparator": "gte", "threshold_value": "1500" },
+    "expected_behavior": "The user explicitly confirms a fully specified plan trigger - the advisor must call tool_create_monitor_trigger with acquisition_method fx_rate, acquisition_params naming the pair base EUR / quote KRW, comparator gte, threshold 1500 and a daily cadence. Under the test bypass the gate declines; the advisor must then report the creation as cancelled/aborted, not as done. It must NOT route the request away or claim trigger creation is unavailable.",
+    "notes": "Advisor-Golden fuer das In-Flow-Plan-Trigger-Binding (domain fix finance, Probe = FX-Fast-Path -> kein Grounding-Call im Test). Mechanik-Aenderungen (set/delete) sind bewusst NICHT beim Advisor - der verweist an den Monitor-Agenten."
+  },
+  {
+    "id": "ac08",
+    "name": "Bestaetigte risk_profile-Sektion -> tool_save_plan_section (Phase A)",
+    "task": "Ich bestaetige die Risikoprofil-Sektion wie von dir zusammengefasst: Risikobereitschaft mittel, Risikotragfaehigkeit hoch, Stand heute. Speichere die Sektion risk_profile jetzt in den Plan-Entwurf.",
+    "chat_id": "test_ac08",
+    "timeout_s": 240,
+    "expected_tool": "tool_save_plan_section",
+    "expected_tool_args": { "section_key": "risk_profile" },
+    "expected_behavior": "The user explicitly confirms the risk_profile section (tolerance medium, capacity high) - the advisor must call tool_save_plan_section with section_key risk_profile and section_data carrying the risk_profile block {risk_tolerance, risk_capacity, as_of}. It must NOT put risk into the goal block and must NOT invent a risk_need field. Under the test bypass the gate declines; the advisor then reports the save as cancelled/aborted, not as done.",
+    "notes": "Phase-A-Golden fuer die neue risk_profile-Sektion (block-tragend). Det-Gate: tool_save_plan_section gerufen + section_key=risk_profile. Onboarding muss completed sein (Pre-Flight-Seed) sonst /onboarding-Redirect."
+  },
+  {
+    "id": "ac09",
+    "name": "Frage nach dem Wortlaut einer Police -> tool_search_documents (paperless Phase 2)",
+    "task": "Schau in meinen Dokumenten nach: Was steht in der Police meiner Hausratversicherung zur Selbstbeteiligung?",
+    "chat_id": "test_ac09",
+    "timeout_s": 240,
+    "expected_tool": "tool_search_documents",
+    "expected_behavior": "The question is about the WORDING of a stored policy document - the advisor must use the document tools (tool_search_documents first), not invent policy terms. If the tool reports ok:false (not_permitted/not_configured in the test substrate) it says the document lookup is not available right now and does not guess the deductible.",
+    "notes": "paperless Phase 2: Cross-Paket-Werkzeug ueber den Core-Vermittler im finance_advisor. Der Test-Absender ist der gepairte Owner -> erlaubt; ohne Paperless-Adresse antwortet das Werkzeug not_configured. Geprueft wird die Werkzeug-Wahl. Das Kommando braucht tool_search_documents in -WriteTools (sonst zaehlt der Aufruf nicht, real 2026-10-20)."
+  },
+  {
+    "id": "ac10",
+    "name": "Bestaetigte Anlageklassen-Zuordnung -> EIN tool_set_asset_classes",
+    "task": "Ich bestaetige deine Zuordnung der Depot-Positionen wie besprochen: VWCE im Trade Republic Depot gehoert zum Baustein welt. Ordne die Anlageklassen jetzt zu.",
+    "chat_id": "test_ac10",
+    "timeout_s": 240,
+    "expected_tool": "tool_set_asset_classes",
+    "expected_behavior": "The user confirms the asset-class mapping proposed in the planning flow - the advisor must call tool_set_asset_classes ONCE with assignments as a JSON array containing depot_name 'Trade Republic Depot', position VWCE (or its ISIN IE00BK5BQT80) and asset_class 'welt'. It must NOT hand this to the bookkeeper, must NOT claim it cannot write, and must not call any booking tool. Under the test bypass the gate declines; the advisor then reports the assignment as cancelled/aborted, not as done.",
+    "notes": "Paket 3 C (Owner 2026-10-23): einzige Daten-Schreib-Ausnahme des Beraters. Fixture-Position VWCE im Trade Republic Depot. Det-Gate: tool_set_asset_classes gerufen."
+  }
+]

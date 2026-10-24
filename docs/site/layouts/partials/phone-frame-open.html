@@ -1,0 +1,19 @@
+{{/* iPhone-Mockup-Rahmen (reines CSS/SVG, keine Bilddateien) — OEFFNENDE Haelfte.
+     Text-Inklusion als Open/Close-Paar: der Chat-Inhalt steht zwischen beiden Partials.
+     Params: .time (Statusbar-Uhrzeit) · .label (aria-label des Mockups). */}}
+<div class="phone" role="img" aria-label="{{ .label }}">
+  <div class="screen">
+    <div class="dynamic-island"></div>
+    <div class="statusbar">
+      <span>{{ .time }}</span>
+      <span class="icons">
+        <svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true"><rect x="0" y="7" width="3" height="4" rx="1" fill="#211D1D"/><rect x="4.5" y="5" width="3" height="6" rx="1" fill="#211D1D"/><rect x="9" y="2.5" width="3" height="8.5" rx="1" fill="#211D1D"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="#211D1D"/></svg>
+        <svg width="16" height="11" viewBox="0 0 16 11" aria-hidden="true"><path d="M8 9.5 L10 7.5 A3 3 0 0 0 6 7.5 Z" fill="#211D1D"/><path d="M3.5 5 A6.5 6.5 0 0 1 12.5 5 L11 6.5 A4.5 4.5 0 0 0 5 6.5 Z" fill="#211D1D"/><path d="M1 2.5 A9.5 9.5 0 0 1 15 2.5 L13.5 4 A7.5 7.5 0 0 0 2.5 4 Z" fill="#211D1D"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12" aria-hidden="true"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" fill="none" stroke="#211D1D" stroke-opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="#211D1D"/><path d="M23 4 v4 a2 2 0 0 0 0 -4" fill="#211D1D" fill-opacity=".4"/></svg>
+      </span>
+    </div>
+    <div class="tg-header">
+      <span class="tg-avatar">L</span>
+      <span class="tg-title">LifeAgents<small>Bot · online</small></span>
+    </div>
+    <div class="tg-chat">

@@ -1,0 +1,994 @@
+{
+    "id":  "Vb7CE8FNjvmTbepb",
+    "name":  "agent.finance.tool_book_stock_buy",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "isin"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "symbol"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "shares"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "price_per_share"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "order_fee"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "depot_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "transaction_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "asset_class"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "provider_symbol"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "quote_currency"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "existing_position"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "c5f9e175-b9b7-51c4-86b8-8dd08c0e5648",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027depot_name\u0027, ARRAY[\u0027stocks_depot\u0027,\u0027crypto_depot\u0027]);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_name: $(\u0027Start\u0027).item.json.depot_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "fa242f08-1258-5b6a-80c3-99947eb240a2",
+                      "name":  "Resolve Depot",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b07d2527-ba33-507a-a316-71468e679d72",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "d263f199-7c3e-5a64-b4e6-864cf106aeac",
+                      "name":  "Depot unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c1976d42-c5f8-5e21-84f1-9efd946d489e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fd28b618-d82d-515b-b49c-1c69150bd31b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Depot \u0027{{ $(\u0027Start\u0027).item.json.depot_name }}\u0027 resolves to {{ $(\u0027Resolve Depot\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Depot\u0027).item.json.candidates) }}. Ask the user which exact depot.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       400
+                                   ],
+                      "id":  "a869ac03-5626-5e41-b31c-a804656dd21c",
+                      "name":  "Depot ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = (($1::jsonb)-\u003e\u003e\u0027depot_id\u0027)::int;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "0994482b-193a-51e9-8f42-7d44ecc6ebe7",
+                      "name":  "Get Settlement Account",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "SfcrWDA4cwgCsa8T",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/SfcrWDA4cwgCsa8T",
+                                                            "cachedResultName":  "agent.finance.sub_resolve_yahoo_symbol"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "isin":  "={{ $(\u0027Start\u0027).item.json.isin }}",
+                                                                              "raw_symbol":  "={{ $(\u0027Start\u0027).item.json.symbol }}",
+                                                                              "price_currency":  "={{ $(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency }}",
+                                                                              "price_per_share":  "={{ $(\u0027Start\u0027).item.json.price_per_share }}",
+                                                                              "provider_symbol":  "={{ $(\u0027Start\u0027).item.json.provider_symbol }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       -200
+                                   ],
+                      "id":  "1476987d-4c05-5014-9e4f-d46026cd529c",
+                      "name":  "Resolve Yahoo symbol"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_stock_buy(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol || $(\u0027Start\u0027).item.json.provider_symbol, quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "c3f72f54-f32d-5b65-8b8e-a2f808a3426f",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "450ddc58-b3b8-54be-8ef3-9fd2f79e8186",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "75cc534a-c160-560d-ba34-3d0ff201cb76",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "4fe8960b-f293-5153-a7db-6c1e3d4ac5fd",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fada2fff-65a1-5a2b-8ca7-811847292e22",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1b5c6b4b-54f7-5280-a41f-011a0b410193",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f08f106d-e081-58f9-894c-180f6ca2f4df",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d50be553-3c60-55b2-9c38-d3b7f5b97151",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "81e61854-e50d-5f80-ac4a-fc00334bfbf0",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027holding_id\u0027)::int AS holding_id, (r-\u003e\u003e\u0027buy_tx_id\u0027)::int AS buy_tx_id, (r-\u003e\u003e\u0027settlement_balance\u0027)::numeric AS settlement_balance, (r-\u003e\u003e\u0027total_shares\u0027)::numeric AS total_shares, (r-\u003e\u003e\u0027avg_purchase_price\u0027)::numeric AS avg_purchase_price, COALESCE(r-\u003e\u0027null_tag\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS null_tag FROM finance.fn_book_stock_buy(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol || $(\u0027Start\u0027).item.json.provider_symbol, quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "f4d7bb7b-46a7-5971-a461-34f5f2611115",
+                      "name":  "Create buy (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a41a2ed1-bcaa-5e9d-ae3e-1e31282f9346",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_stock_buy\u0027, lines: [ { label: \u0027finance.label.security\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Start\u0027).item.json.isin \u0026\u0026 ($(\u0027Start\u0027).item.json.symbol || $(\u0027Start\u0027).item.json.isin) !== $(\u0027Start\u0027).item.json.isin ? \u0027finance.tpl.symbol_isin\u0027 : \u0027finance.tpl.plain\u0027)), params: { isin: ($(\u0027Start\u0027).item.json.isin), symbol: (($(\u0027Start\u0027).item.json.symbol || $(\u0027Start\u0027).item.json.isin)), value: (($(\u0027Start\u0027).item.json.symbol || $(\u0027Start\u0027).item.json.isin)) } }, { label: \u0027finance.label.designation\u0027, kind: \u0027text\u0027, value: (($(\u0027Start\u0027).item.json.name || ($(\u0027Start\u0027).item.json.symbol || $(\u0027Start\u0027).item.json.isin))) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.depot_name) }, { label: \u0027finance.label.settlement_account\u0027, kind: \u0027text\u0027, value: ($(\u0027Get Settlement Account\u0027).item.json.settlement_name) }, { label: \u0027finance.label.pieces\u0027, kind: \u0027number\u0027, value: ($(\u0027Start\u0027).item.json.shares), digits: -1 }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.price_per_share), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: (($(\u0027Start\u0027).item.json.order_fee || 0)), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.total_cost\u0027, kind: \u0027money\u0027, value: ((Number($(\u0027Start\u0027).item.json.shares) * Number($(\u0027Start\u0027).item.json.price_per_share) + Number($(\u0027Start\u0027).item.json.order_fee || 0))), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.asset_class\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.asset_class) }, { label: \u0027finance.label.quote_symbol\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Resolve Yahoo symbol\u0027).item.json.market_price ? ($(\u0027Resolve Yahoo symbol\u0027).item.json.exchange ? \u0027finance.tpl.quote_symbol_price_exchange\u0027 : \u0027finance.tpl.quote_symbol_price\u0027) : \u0027finance.tpl.quote_symbol_plain\u0027)), params: { exchange: ($(\u0027Resolve Yahoo symbol\u0027).item.json.exchange), price: ({ kind: \u0027money\u0027, value: ($(\u0027Resolve Yahoo symbol\u0027).item.json.market_price), currency: (($(\u0027Resolve Yahoo symbol\u0027).item.json.currency || ($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency))) }), symbol: (($(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol || ($(\u0027Start\u0027).item.json.symbol || $(\u0027Start\u0027).item.json.isin))) } }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) }, ((!$(\u0027Resolve Yahoo symbol\u0027).item.json.verified \u0026\u0026 !($(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing \u0026\u0026 $(\u0027Resolve Yahoo symbol\u0027).item.json.plausible)) ? { kind: \u0027note\u0027, value: \u0027finance.note.quote_symbol_unverified\u0027 } : null), (($(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing \u0026\u0026 $(\u0027Resolve Yahoo symbol\u0027).item.json.plausible) ? { kind: \u0027note\u0027, value: \u0027finance.note.quote_symbol_foreign\u0027, params: { currency: ($(\u0027Resolve Yahoo symbol\u0027).item.json.currency) } } : null), ((($(\u0027Start\u0027).item.json.existing_position === true || $(\u0027Start\u0027).item.json.existing_position === \u0027true\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.existing_position\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "c8784ff2-a3c3-52fe-8428-de4a5bfa3a34",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "311e3067-5894-51f7-b595-20dab41c811a",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "11013d60-f95f-5855-881f-578314b1931e",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "7b7120d2-d405-5f03-ae24-a7040f6c1fbb",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "363f4807-c243-5219-808c-4cf3d35ef488",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7e95fc06-7484-5d80-a966-29de3e326f50",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "110e54ca-12f9-532c-8278-e8fbdf7323e1",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the book_stock_buy action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       200
+                                   ],
+                      "id":  "35a63783-5e2c-5bb6-ac7e-3c4c9be29af9",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b2ae5052-653b-5186-8c08-dff834d8de82",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "63206ae5-b02b-5dd3-94e9-027e0150e4ad",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "10158718-b9e7-555c-862c-71b6c8a199e0",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "128a429e-e0b9-5732-81d4-8c871c9f24ce",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       240
+                                   ],
+                      "id":  "34cd9caa-a1ef-55b2-8826-bde580a817c2",
+                      "name":  "Buy rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "V8FSoH9jFdqjAx2g",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/V8FSoH9jFdqjAx2g",
+                                                            "cachedResultName":  "agent.finance.cron_refresh_market_prices"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2860,
+                                       -160
+                                   ],
+                      "id":  "ac92388e-6a16-5898-980d-7be82636b103",
+                      "name":  "Refresh market prices"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "53729e70-6cbd-5105-b486-488892fbf6b4",
+                                                                                   "leftValue":  "={{ (!!($(\u0027Start\u0027).item.json.quote_currency) \u0026\u0026 $(\u0027Start\u0027).item.json.quote_currency !== \u0027EUR\u0027) || $(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       3080,
+                                       -160
+                                   ],
+                      "id":  "5189e433-b8b8-5214-b347-54d5b0ab4fd0",
+                      "name":  "Non-EUR quote?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "OhOudXoO9SuOxnIP",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/OhOudXoO9SuOxnIP",
+                                                            "cachedResultName":  "agent.finance.cron_refresh_fx_rates"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       3300,
+                                       -280
+                                   ],
+                      "id":  "42016a9a-b7e2-5935-a5d8-b9850be0481d",
+                      "name":  "Refresh FX rates"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8038ee01-1504-5b79-9b1a-5388499d064e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "05fa7cf3-672f-5828-aded-4607f69b575f",
+                                                                                     "name":  "holding_id",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.holding_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3cec3e02-11a8-55f5-b7bd-7f71f4701184",
+                                                                                     "name":  "buy_tx_id",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.buy_tx_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a3ac06ed-7252-501c-9d5d-637ee3f7a86d",
+                                                                                     "name":  "settlement_balance",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.settlement_balance }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1c6eb707-0f1f-57c1-b464-610861e8171a",
+                                                                                     "name":  "total_shares",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.total_shares }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8dbffd8b-cd2c-5183-a33e-7238ea048326",
+                                                                                     "name":  "avg_purchase_price",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.avg_purchase_price }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "72d4ea74-9cda-5f58-bde9-dbe455618653",
+                                                                                     "name":  "null_tag",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.null_tag }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       3520,
+                                       0
+                                   ],
+                      "id":  "03a97fbe-d4d7-51c8-ae7a-6d9df4b62c0b",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_stock_buy mit denselben Werten (inkl. aufgelöstem provider_symbol), immer zurückgerollt. ok:false (Depot-Typ-Mismatch, Stückzahl/Kurs nicht positiv) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?); die Kurs-Sub-Aufrufe danach laufen nur nach echter Buchung.",
+                                         "height":  240,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1440,
+                                       -340
+                                   ],
+                      "id":  "63f0fb37-510e-5c29-b118-38c8566d13b5",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**trg_finance_update_holding_shares + trg_finance_update_holding_avg_price + trg_finance_balance_update**\n\nfn_book_stock_buy legt die Holding bei Bedarf an + bucht den Kauf atomar. Danach pflegt die DB automatisch: shares (= SUM der Anteile), average_purchase_price (nur aus buy-Zeilen; Order-Gebühr steckt in amount) und den Saldo des Verrechnungskontos. Die fn liest diesen Post-State (settlement_balance/total_shares/avg_purchase_price) am Ende in derselben Transaktion und gibt ihn zurück -\u003e kein separater Read-back-Node. Phase L WS-6: asset_class wird NUR beim Anlegen der Holding getaggt (Re-Buy überschreibt nie); ist die RESULTIERENDE Holding ungetaggt -\u003e Note in null_tag (sonst leer). Der Agent schlägt die Anlageklasse aus dem Plan vor; Bookkeeper relayed die null_tag-Note.",
+                                         "height":  230,
+                                         "width":  500,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2200,
+                                       -260
+                                   ],
+                      "id":  "171dccb0-e3d2-59a7-91c7-6679c2da7e0c",
+                      "name":  "DB-Automatik holding+balance + Anlageklasse-Fold"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nDepot-Typ-Mismatch (ISIN-Aktie auf crypto_depot oder Crypto ohne ISIN auf stocks_depot) liefert die fn als {ok:false, reason} -\u003e Buy rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true bucht wirklich. Normalerweise fängt schon der Probelauf das vor der Karte ab.",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2640,
+                                       -260
+                                   ],
+                      "id":  "0b88a504-3449-5554-a054-65c1363ef1a2",
+                      "name":  "Write ok? (korrigierbare Ablehnung)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**sub_resolve_yahoo_symbol (vor dem Gate, non-blocking)**\n\nErmittelt für die ISIN das richtige Yahoo-Kurs-Symbol (Disambiguierung per genannter Preis-Währung quote_currency, Default Depot-Währung) + checkt Live-Kurs gegen den Kaufkurs. LIEGT VOR dem HITL-Gate, AUSSERHALB der atomaren fn -\u003e Yahoo-Ausfall/Timeout (3s) blockiert die Buchung NICHT (Sub liefert {verified:false, provider_symbol:roh}). Das aufgelöste provider_symbol fliesst (COALESCE mit dem ggf. genannten) in fn_book_stock_buy + wird im HITL angezeigt (Owner bestätigt). Krypto (ISIN leer) -\u003e Sub gibt roh zurück.",
+                                         "height":  300,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -360
+                                   ],
+                      "id":  "f4c63472-9ab8-5c73-8e50-6170c39c984c",
+                      "name":  "Kauf-Zeit-Symbol-Validierung"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**quote_currency != EUR -\u003e cron_refresh_fx_rates**\n\nZwei UNABHÄNGIGE Post-Write-Fetches: (1) Refresh market prices = der Wertpapier-KURS; (2) NUR wenn die Position eine fremde Markt-Quote-Währung trägt (quote_currency != EUR) -\u003e Refresh FX rates = der Währungs-Umrechnungssatz. Ohne (2) hätte eine EUR-geführte US-Position (quote USD) bis zum nächsten FX-Schedule keinen USD-Kurs -\u003e market_value_eur NULL -\u003e still 0 im Net-Worth. Der FX-Cron liest fn_active_currencies (jetzt inkl. quote_currency).",
+                                         "height":  240,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       3080,
+                                       -480
+                                   ],
+                      "id":  "e930e930-0417-5fdf-8a77-a00c805cf667",
+                      "name":  "FX-Sofort-Fetch (WP-3a)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Depot",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Depot":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Depot unique?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Depot unique?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Get Settlement Account",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Depot ambiguous",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Get Settlement Account":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Resolve Yahoo symbol",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Resolve Yahoo symbol":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Dry run",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create buy (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Create buy (atomic)":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Write ok?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Refresh market prices",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Buy rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Refresh market prices":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Non-EUR quote?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Non-EUR quote?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Refresh FX rates",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Return",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Refresh FX rates":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Return",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

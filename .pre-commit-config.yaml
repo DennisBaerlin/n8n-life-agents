@@ -1,0 +1,379 @@
+# Single source of enforcement — run by `prek` (Rust binary, no Python needed).
+#   Install runner:  winget install --id j178.Prek
+#   Install hooks:   prek install --hook-type pre-commit --hook-type pre-push --hook-type commit-msg
+#   Run manually:    prek run --all-files
+# Our domain linters live as `local` system hooks below (same commands as CI). The remote
+# hooks are the recognizable OSS-standard layer. EOL is governed by .gitattributes, so no
+# mixed-line-ending hook here. Mutating hygiene hooks deliberately skip *.ps1 (UTF-8-BOM/LF,
+# owned by PSScriptAnalyzer in a later phase) and packages/*/workflows/ (generated — only via build.ps1).
+
+minimum_pre_commit_version: "3.0.0"
+
+# Hooks without an explicit `stages:` run at pre-commit ONLY (so the file-only linters do not also
+# fire at commit-msg/pre-push). The live/LAN hooks below opt into pre-push / commit-msg explicitly.
+default_stages: [pre-commit]
+
+repos:
+  # --- prek/pre-commit meta hooks: config self-consistency (arch-ADOPT, S5b WP-10) ---
+  # check-hooks-apply: every configured hook matches >=1 file (would have caught the DEAD
+  #   squawk migration-glob rooted at the retired top-level dir on the move day). check-useless-excludes:
+  #   every `exclude:` pattern matches >=1 file. Together these cover L6-half-1 (the dead-gate
+  #   guard for the files:/exclude: filters IN THIS CONFIG). layout_lint's L6 only adds the
+  #   slashless pathspec-LIST check the meta hooks cannot see (release.yml/provision.sh/bootstrap).
+  - repo: meta
+    hooks:
+      - id: check-hooks-apply
+      - id: check-useless-excludes
+
+  # --- Recognizable hygiene layer ------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # A few of these ship upstream `stages` that include pre-push; pin them to pre-commit so the
+      # MUTATING hooks (eof/trailing-ws) never rewrite files mid-push. default_stages covers the rest.
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+        stages: [pre-commit]
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: detect-private-key
+      # docs/site/public/ ist build_site.ps1-generierter Hugo-Output (wie workflows/*.json): eine
+      # Hook-Mutation braeche das -Verify-Regenerat-Diff (Output != frischer Build).
+      - id: end-of-file-fixer
+        stages: [pre-commit]
+        exclude: '(?i)(\.ps1$|(^|[/\\])workflows[/\\].*\.json$|^docs/site/public/)'
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+        stages: [pre-commit]
+        exclude: '(?i)(\.ps1$|(^|[/\\])workflows[/\\].*\.json$|^docs/site/public/)'
+
+  # --- GitHub Actions lint + supply-chain audit (our own CI) ----------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.31.1
+    hooks:
+      - id: zizmor
+
+  # --- Per-language linters (Phase 3, baseline-first) -----------------------------
+  # NOTE on hook sourcing: the canonical shellcheck hook (koalaman/shellcheck-precommit) is
+  # `language: docker_image` — it needs a Linux Docker daemon, which the windows-latest CI runner
+  # does NOT have. We therefore use the PYTHON-WHEEL variant below: prek bootstraps an isolated
+  # Python and pulls the prebuilt shellcheck binary (no Docker, no global toolchain).
+  # markdownlint-cli2 is `language: node` (prek bootstraps Node the same way).
+  #
+  # No shfmt: shellcheck (the substantive bug-catcher) is the shell linter; shfmt is a pure
+  # reformatter whose case-expansion / statement-splitting / comment-alignment normalization would
+  # rewrite the provisioning scripts' deliberate compact style (and keep_padding, which would
+  # preserve column-aligned comments, is deprecated → removed in shfmt v4). The reference repo
+  # (OpenClaw) likewise runs shellcheck only, no shfmt. Owner decision 2026-06-14.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      # Static analysis of all shell scripts. Config (dialect + source-path + suppressions w/ reasons)
+      # lives in config/shellcheckrc. types:[shell] limits it to *.sh (the provisioning/templates/*.tpl
+      # are Caddyfile/systemd/env config files, NOT shell — correctly skipped).
+      - id: shellcheck
+        args: ['--rcfile=config/shellcheckrc']
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.3
+    hooks:
+      # Markdown style on hand-authored *.md. Rules curated in config/.markdownlint.jsonc (cosmetic
+      # whitespace rules off; substantive rules kept). docs/fn_catalog.md is excluded: it is
+      # GENERATED (gen_fn_catalog.ps1, never hand-edited), like capabilities_catalog.md; and
+      # contexts/*.md are seeded model-instruction prose whose literal list-markers / SQL signatures
+      # trip false positives — none are conventional docs to style-lint. prek loads the Node toolchain
+      # isolated — no global Node needed.
+      - id: markdownlint-cli2
+        args: ['--config', 'config/.markdownlint.jsonc']
+        # Corpus (geseedete Modell-Instruktionen / generierte Kataloge), NICHT hand-authored *.md:
+        # docs/fn_catalog.md (generiert) + packages/<pkg>/{contexts,seed}/.
+        exclude: '(^docs/fn_catalog\.md$|^packages/[^/]+/(contexts|seed)/)'
+
+  # SQL lint (lint-ONLY, no `fix`) over ALL tracked SQL: packages/*/db/** (baseline inits + V__/R__
+  # migrations) + tests/** (WP-8 gate widening 2026-07-02; before that only the 12 ops-/test-utils
+  # were in scope — 241 package + 194 test SQL files were unlinted). `language: python` → prek bootstraps an
+  # isolated interpreter + sqlfluff (same mechanism as the shellcheck python wheel in Phase 3, so
+  # it runs in CI too — no SKIP). Config in config/.sqlfluff disables the whole layout group so the
+  # deliberate hand-alignment is never reflowed; only substantive rules (capitalisation/references/
+  # structure/conventions) gate. We use sqlfluff-LINT, never sqlfluff-fix.
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 4.4.0
+    hooks:
+      - id: sqlfluff-lint
+        files: '^(packages/[^/]+/db|tests)/.*\.sql$'
+        # Per-FILE excludes, each with a reason (rules stay live everywhere else — no rule exclude):
+        #   - V001 (core) + V011 (finance): applied Flyway migrations are FROZEN (checksum drift
+        #     guard) → their 6 casing findings are permanently unfixable.
+        #   - R__finance_views.sql: exceeds sqlfluff's parse depth (limit 255) → PRS error, 0% rule
+        #     coverage possible.
+        #   - 4 finance test files: SAVEPOINT sections the sqlfluff 4.2.2 postgres dialect cannot
+        #     parse (PRS error). NOTE: SQL inside DO $$/function bodies is a dollar-quoted string to
+        #     the raw templater and is never linted anywhere — a pre-existing, accepted blind spot.
+        exclude: |
+          (?x)^(
+            packages/core/db/migrations/V001__promote_context_provenance_columns\.sql|
+            packages/finance/db/migrations/V011__reserve_entries_native_currency\.sql|
+            packages/finance/db/migrations/R__finance_views\.sql|
+            tests/db/finance/test_fn_create_recurring_payment\.sql|
+            tests/db/finance/test_fn_set_recurring_payment\.sql|
+            tests/db/finance/test_fn_create_savings_goal\.sql|
+            tests/db/finance/test_fn_advisor_review\.sql
+          )$
+        args: ['--config', 'config/.sqlfluff']
+
+  # --- Project domain gates (no standard equivalent) — same commands as CI --------
+  # commit-stage: deterministic, no LAN/live dependency. Exit code = fail count.
+  - repo: local
+    hooks:
+      - id: doc-lint
+        name: doc_lint (doc drift)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doc_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: layout-lint
+        name: layout_lint (repo layout/structure invariants L1-L7 + retired-roots ratchet)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/layout_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: config-test
+        name: config_test (manifest .config types/defaults + cron cases + schedule placeholders + baking ratchet)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/config_test.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: mock-lint
+        name: mock_lint (mock scenarios <-> *_cases.json drift)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/mock_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: workflow-lint
+        name: workflow_lint (error-notify + cross-cutting workflow laws + expression syntax)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: locale-lint
+        name: locale_lint (text catalog per language - completeness, placeholders, real umlauts)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/locale_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: contract-lint
+        name: contract_lint (cross-layer fn/tool/agent contract drift)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/contract_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: approval-lint
+        name: approval_lint (WS-5b HITL approval_tier matrix vs built workflows, fail-closed)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/approval_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: command-lint
+        name: command_lint (WS-5 manifest commands registry vs Command router + /help catalog, fail-closed)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/command_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: cron-toggle-lint
+        name: cron_toggle_lint (Phase 0 cron-toggle UX parity; opt-in chat buttons / always-on console)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cron_toggle_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: core-literal-lint
+        name: core_literal_lint (Phase 0 no new core package-literal; ratchet allowlist)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/core_literal_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: ui-literal-lint
+        name: ui_literal_lint (Textkatalog Phase B no new fixed German user text; ratchet allowlist)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_literal_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: role-test-lint
+        name: role_test_lint (published DEFINER read-bridge fn with a _ro EXECUTE grant needs a SET-LOCAL-ROLE perspective test, fail-closed)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/role_test_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: privacy-lint
+        name: privacy_lint (no real owner data - private IPs/home hostnames/user paths everywhere, local denylist .local/privacy_denylist.txt)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/privacy_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: capabilities-catalog
+        name: build.ps1 -VerifyCatalog (capabilities catalog drift)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build.ps1 -VerifyCatalog
+        pass_filenames: false
+        always_run: true
+
+      - id: fn-catalog
+        name: gen_fn_catalog -Verify (fn catalog drift)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen_fn_catalog.ps1 -Verify
+        pass_filenames: false
+        always_run: true
+
+      # PowerShell static analysis (PSScriptAnalyzer) over scripts/**/*.ps1. language:system because
+      # PSScriptAnalyzer is a MODULE, not a binary: preinstalled on windows-latest CI, locally in
+      # $HOME/.local/psmodules (see CONTRIBUTING.md / ps_lint.ps1) — so it runs in BOTH points (no CI
+      # SKIP, unlike dotenv-linter). Curated rules in config/PSScriptAnalyzerSettings.psd1. Fires when
+      # any *.ps1 is staged and then scans the whole tree (cross-file dot-source awareness).
+      - id: ps-lint
+        name: ps_lint (PSScriptAnalyzer on scripts/**/*.ps1)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_lint.ps1
+        files: '(?i)\.ps1$'
+        pass_filenames: false
+
+      # Postgres-migration safety lint over packages/*/db/migrations/V*.sql (Flyway versioned).
+      # Catches unsafe ALTER/lock patterns that APPLY cleanly yet would block or fail at runtime on a
+      # real DB (e.g. CREATE INDEX CONCURRENTLY inside our transaction-wrapped migrations, a stray
+      # BEGIN/COMMIT, an unsafe NOT NULL add). language: system on a prebuilt `squawk` binary on PATH
+      # — NOT the upstream squawk-action / `language: rust`: prek would build the Rust binary from
+      # source (j178/prek#681), same gap as gitleaks/dotenv-linter. Install once (see CONTRIBUTING.md
+      # "squawk"). pass_filenames default true + the files: filter → lints exactly the touched
+      # V-migration(s); `prek run --all-files` lints all of them (green on all applied V-migrations —
+      # every firing rule is excluded with a reason, applied migrations are frozen/unfixable).
+      # Config (assume_in_transaction + the excluded rules, each with a reason) in config/.squawk.toml.
+      # UNLIKE dotenv-linter this DOES run in CI (ci.yml installs the pinned binary) — substantive
+      # safety net, no other gate covers it; not skipped.
+      - id: squawk
+        name: squawk (Postgres migration safety; packages/*/db/migrations/V*.sql)
+        language: system
+        entry: squawk
+        args: ['--config', 'config/.squawk.toml']
+        files: '^packages/[^/]+/db/migrations/V\d+__.*\.sql$'
+        pass_filenames: true   # explicit: squawk needs the staged V-file(s) as positional args (siblings set false — do NOT copy that here)
+
+      # .env.example style lint via the prebuilt dotenv-linter binary (language: system, on PATH).
+      # NOT language:rust: prek's cli: deps compile from source (cargo install), which needs the
+      # MSVC linker on Windows — and prek has no prebuilt/binstall option (issue j178/prek#681).
+      # The release binary is tiny + instant; install it once (see CONTRIBUTING.md "dotenv-linter").
+      # LOCAL-ONLY: CI skips this hook (SKIP=dotenv-linter in ci.yml) — the substantive env
+      # invariants live in doc_lint (which DOES run in CI); this only adds generic .env style polish
+      # on one rarely-touched file. v4 CLI: `check <FILE> --ignore-checks <NAMES>`; ignore
+      # UnorderedKey (grouped by concern, not alphabetical) + KeyWithoutValue (empty values are
+      # valid in v4, so this is a no-op safety net for a truly malformed `KEY` line); --skip-updates:
+      # no update-check network call. Comma-joined names so a single token is parsed regardless of
+      # clap num_args. Fires only when .env.example is staged.
+      - id: dotenv-linter
+        name: dotenv-linter (.env.example style; local-only)
+        language: system
+        entry: dotenv-linter
+        args: ['check', '.env.example', '--ignore-checks', 'UnorderedKey,KeyWithoutValue', '--skip-updates']
+        files: '^\.env\.example$'
+        pass_filenames: false
+
+      # Secret scan over staged changes — a SECOND net beside the hygiene-layer detect-private-key
+      # (that one only catches PEM key blocks; gitleaks matches ~hundreds of token/credential
+      # patterns). language: system on a prebuilt gitleaks binary on PATH (NOT the upstream
+      # `language: golang` hook — prek would build it from source, needing a Go toolchain; same class
+      # of problem as the Rust binstall gap, issue j178/prek#681). Install once (see CONTRIBUTING.md
+      # "gitleaks"). LOCAL here scans the STAGED diff (fast); CI runs a dedicated full-tree + history
+      # scan step instead (SKIP=gitleaks in the prek CI run — `--staged` is meaningless on a fresh
+      # checkout). config/.gitleaks.toml carries the allowlist (redaction placeholder + synthetic
+      # test fixtures) with per-entry reasons. Fires on every commit regardless of files staged.
+      - id: gitleaks
+        name: gitleaks (secret scan; staged diff)
+        language: system
+        entry: gitleaks
+        args: ['git', '--pre-commit', '--redact', '--staged', '--no-banner', '--config', 'config/.gitleaks.toml']
+        pass_filenames: false
+        always_run: true
+
+      # Oeffentliches Repo: ausgehende Commit-Messages/-Identitaeten + neue annotierte Tags (= Release-Notes) gegen
+      # die privacy_lint-Regeln inkl. lokaler Denylist. pre-push only: CI hat keine Denylist und keinen Push-Bereich.
+      - id: privacy-outgoing
+        name: privacy_lint -Outgoing (commit messages, identities, new tags)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/privacy_lint.ps1 -Outgoing
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # pre-push stage: Docker test DB/substrate + slow (excluded from CI — no test substrate there).
+      - id: db-test
+        name: db_test (Tier 1 — deterministic DB/fn_* suite)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db_test.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # Showcase-Site: Regenerat-Diff public/ == frischer Hugo-Build (Muster gen_fn_catalog -Verify).
+      # pre-push + files-Filter statt commit-stage/always_run: das gepinnte Hugo-Binary ist nur auf
+      # Content-Maschinen installiert (CONTRIBUTING), nicht in CI (ci.yml faehrt nur pre-commit) —
+      # unbeteiligte Pushes brauchen es so nie.
+      - id: site-verify
+        name: build_site.ps1 -Verify (showcase site drift)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_site.ps1 -Verify
+        pass_filenames: false
+        files: '^(docs/site/|scripts/build_site\.ps1$)'
+        stages: [pre-push]
+
+      # Soft pre-push checks (NEVER block — exit 0): reachability-gated infra_test + external
+      # contract_test as warnings. Preserves the old pre_push_check semantics (a briefly
+      # unreachable VM must not block a push).
+      - id: infra-softcheck
+        name: infra_test + contract_test (soft; warning only)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/infra_softcheck.ps1
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [pre-push]
+
+      - id: llm-suite-advice
+        name: LLM-suite recommendation (dirty-surface; non-blocking)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/llm_suite_advice.ps1
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [pre-push]
+
+      # commit-msg stage: Conventional Commits (bespoke PS regex — no Node commitlint).
+      - id: conventional-commit
+        name: commit-msg (Conventional Commits)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lint_commit_msg.ps1
+        stages: [commit-msg]
+
+      # Oeffentliches Repo: Commit-Message + Autor-/Committer-Identitaet gegen privacy_lint (prek haengt die Datei an).
+      - id: privacy-msg
+        name: commit-msg (privacy_lint -MessageFile)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/privacy_lint.ps1 -MessageFile
+        stages: [commit-msg]

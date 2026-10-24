@@ -1,0 +1,799 @@
+{
+    "id":  "in7vazNrPXCg5yqF",
+    "name":  "agent.finance.tool_book_recurring_occurrence",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "recurring_payment_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "actual_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "5756c671-02bf-5c4b-91d0-021a75826685",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_recurring_payment(($1::jsonb)-\u003e\u003e\u0027recurring_payment_name\u0027, TRUE);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ recurring_payment_name: $(\u0027Start\u0027).item.json.recurring_payment_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "7600d2e3-2525-51bc-842c-0c4b7ac33b85",
+                      "name":  "Resolve Payment",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "aedd915c-2c02-5031-8a03-9be303b774ad",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "9f076704-6049-515c-a198-0715cd822300",
+                      "name":  "Payment unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "db112008-7da1-5de8-a1fd-64bbf6487a35",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c9452d47-17f7-5cd8-9e78-5de6ea2bc997",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Recurring payment \u0027{{ $(\u0027Start\u0027).item.json.recurring_payment_name }}\u0027 resolves to {{ $(\u0027Resolve Payment\u0027).item.json.hit_count }} active matches. Candidates: {{ JSON.stringify($(\u0027Resolve Payment\u0027).item.json.candidates) }}. Ask the user which exact payment.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       220
+                                   ],
+                      "id":  "3526706b-33aa-5dfe-ba78-e9e5af21b6e2",
+                      "name":  "Payment ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT o.due_date::text AS due_date, rp.amount AS plan_amount, rp.name, a.name AS account_name, a.currency AS currency FROM finance.fn_recurring_due_open(CURRENT_DATE) o JOIN finance.recurring_payments rp ON rp.id = o.recurring_payment_id JOIN finance.accounts a ON a.id = rp.account_id WHERE o.recurring_payment_id = (($1::jsonb)-\u003e\u003e\u0027id\u0027)::int ORDER BY o.due_date LIMIT 1;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ id: $(\u0027Resolve Payment\u0027).item.json.id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "50b3d56c-4ffb-5163-8378-897d9038569d",
+                      "name":  "Find occurrence",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "4161cf3a-b7d0-5e4b-b59f-967696a7d68d",
+                                                                                   "leftValue":  "={{ !!$json.due_date }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "5472fd0a-6b37-5eac-b660-d29ea74fb95d",
+                      "name":  "Occurrence open?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7d2cd408-cec2-550f-a64c-c5ff57da3b7c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "75068aaf-b0de-53c2-b5fa-51955f0314bb",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=No open due occurrence for \u0027{{ $(\u0027Start\u0027).item.json.recurring_payment_name }}\u0027. Either already booked for this period or not yet due (90-day window).",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       220
+                                   ],
+                      "id":  "a2072f68-be1d-52d5-9c2b-ea5648e9b8c8",
+                      "name":  "No open occurrence"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_recurring_occurrence(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ recurring_payment_id: $(\u0027Resolve Payment\u0027).item.json.id, due_date: $(\u0027Find occurrence\u0027).item.json.due_date, amount: $(\u0027Start\u0027).item.json.actual_amount }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "ce018505-1fa6-55b1-8959-795e83668f91",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "8c9c5a0d-d14c-50e9-a426-0131646ccf39",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "b997804b-882a-5b5b-8c7f-95c92f0cf3aa",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c549d721-a3e4-5890-868e-fc32076934c8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b7ab1253-f1fd-51bc-b349-f360a066fa96",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1b41ce30-66ea-53c5-80ed-c204ea262b81",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a559182b-2fb9-5775-88cf-ee1e85afb0c5",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "236e83d5-23e2-565e-b33f-88384cf734b5",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "c42c755b-3a26-5590-a62f-c5e8ea17a3b2",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027transaction_id\u0027)::int AS transaction_id, (r-\u003e\u003e\u0027amount\u0027)::numeric AS amount, (r-\u003e\u003e\u0027plan_amount\u0027)::numeric AS plan_amount FROM finance.fn_book_recurring_occurrence(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ recurring_payment_id: $(\u0027Resolve Payment\u0027).item.json.id, due_date: $(\u0027Find occurrence\u0027).item.json.due_date, amount: $(\u0027Start\u0027).item.json.actual_amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "c9de0ae3-ead1-59a5-9f82-f5189da2e810",
+                      "name":  "Book occurrence (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "bb8c1df3-9b95-5a52-9278-037031789fef",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_recurring_occurrence\u0027, lines: [ { label: \u0027finance.label.item\u0027, kind: \u0027text\u0027, value: ($(\u0027Find occurrence\u0027).item.json.name) }, { label: \u0027finance.label.account\u0027, kind: \u0027text\u0027, value: ($(\u0027Find occurrence\u0027).item.json.account_name) }, { label: \u0027finance.label.due_on\u0027, kind: \u0027date\u0027, value: ($(\u0027Find occurrence\u0027).item.json.due_date) }, { label: \u0027finance.label.planned\u0027, kind: \u0027money\u0027, value: (Math.abs($(\u0027Find occurrence\u0027).item.json.plan_amount)), currency: ($(\u0027Find occurrence\u0027).item.json.currency) }, { label: \u0027finance.label.actual_book\u0027, kind: \u0027money\u0027, value: (Math.abs($(\u0027Start\u0027).item.json.actual_amount)), currency: ($(\u0027Find occurrence\u0027).item.json.currency) }, (((Math.abs(Math.abs($(\u0027Start\u0027).item.json.actual_amount) - Math.abs($(\u0027Find occurrence\u0027).item.json.plan_amount)) / Math.abs($(\u0027Find occurrence\u0027).item.json.plan_amount)) \u003e 0.05) ? { kind: \u0027note\u0027, value: \u0027finance.note.deviation_planned\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "a1f410f8-1b8e-519d-ad1c-b457f4e308b4",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "01a77618-5c7f-5783-8934-e1626feef813",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5caf0cb7-177c-511e-8dd6-5c9879c037ff",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "b422225e-1092-54f0-b181-86359357bf61",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "105a8710-4972-5d80-a97a-b570202f43ea",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1923a3c8-62a0-510e-a19b-7d062d1e8543",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ed1ae17d-5341-59d2-829d-cbc1b6390930",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the book_recurring_occurrence action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       240
+                                   ],
+                      "id":  "8a4b08c9-c60e-506f-8075-d59fb5280cd0",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "82ea2c87-de62-5370-8c12-f10fc0cfbfb1",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "f8e097e9-a63b-511b-8901-2a1a4bbd710c",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "36001ade-963a-56d2-8681-0ea29a0190e9",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "04202432-c92b-5360-b206-bffc57aec3bc",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Book occurrence (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       240
+                                   ],
+                      "id":  "810a2791-6159-5c45-8751-a5fc9417e561",
+                      "name":  "Booking rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "f171be0f-9d6d-5f1f-bc58-cd23c4709c4e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "184df4be-76ac-5214-9492-e751dc7de49e",
+                                                                                     "name":  "transaction_id",
+                                                                                     "value":  "={{ $(\u0027Book occurrence (atomic)\u0027).item.json.transaction_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4c775942-8900-5eb1-b7c3-40967c24321c",
+                                                                                     "name":  "amount",
+                                                                                     "value":  "={{ $(\u0027Book occurrence (atomic)\u0027).item.json.amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a16b9909-0a9a-5592-905e-2378cefefcff",
+                                                                                     "name":  "plan_amount",
+                                                                                     "value":  "={{ $(\u0027Book occurrence (atomic)\u0027).item.json.plan_amount }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       0
+                                   ],
+                      "id":  "1f234592-ca94-5a2a-98e2-6cc94eb86e6f",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_recurring_occurrence mit denselben Werten, immer zurückgerollt. ok:false (amount\u003c=0, Transfer-Anpassung, Vorkommen bereits gebucht) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  260,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1100,
+                                       -260
+                                   ],
+                      "id":  "9e326826-e8c3-5d4a-b8ba-d4eabb4bd3c2",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_book_recurring_occurrence: amount-Override + Auto-Verschwinden**\n\nBucht das offene Vorkommen mit dem ANGEPASSTEN Ist-Betrag (sign(rp.amount)*abs(amount) -\u003e Richtung Einnahme/Ausgabe bleibt, Abweichung in der description). Saldo via Trigger. Die Tx trägt recurring_payment_id+due_date -\u003e das Vorkommen verschwindet beim nächsten Cron-Lauf automatisch aus fn_recurring_due_open. Transfers (target_account_id) lehnt die fn beim Override ab ({ok:false}); amount\u003c=0 -\u003e {ok:false}.",
+                                         "height":  260,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2420,
+                                       -260
+                                   ],
+                      "id":  "60dcb0e4-2d6e-5043-b319-2c07d66bd3a5",
+                      "name":  "Doc book_recurring_occurrence"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\namount\u003c=0, Transfer-Anpassung oder bereits gebucht -\u003e {ok:false, reason} (kein RAISE, kein Owner-Alert) -\u003e Build-ToolError -\u003e freundliche Rückfrage. Normalerweise fängt schon der Probelauf das vor der Karte ab.",
+                                         "height":  220,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2860,
+                                       -260
+                                   ],
+                      "id":  "b2faab29-b572-562b-b31a-27620f4bfc5e",
+                      "name":  "Doc Write ok? (korrigierbare Ablehnung)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Payment",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Payment":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Payment unique?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Payment unique?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Find occurrence",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Payment ambiguous",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Find occurrence":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Occurrence open?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Occurrence open?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Dry run",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "No open occurrence",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Book occurrence (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Book occurrence (atomic)":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Write ok?",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Booking rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

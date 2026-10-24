@@ -1,0 +1,814 @@
+{
+    "id":  "cqMIkC8fJmZJx3xx",
+    "name":  "agent.finance.tool_set_account_interest",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "annual_rate"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_interval"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_unit"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_day_of_month"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "day_count_convention"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "posting_day_of_month"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "auto_post"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "valid_from"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7fcd8683-b7b0-5900-9edf-6812b5370e6a",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027account_name\u0027, NULL, TRUE);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).item.json.account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "a9429d08-f50e-53dc-a540-c0cacf871eb8",
+                      "name":  "Resolve Account",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ed84ce96-0b21-5337-8ffe-b7e9b52c6872",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "5ef57540-6ec9-5d58-8da7-981d1e42516d",
+                      "name":  "Account unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "85abfa12-b92d-5f19-8bb3-83ef3fea6ffb",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "098cf01c-8f0b-5424-ae66-76f9c0a3acdf",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Account \u0027{{ $(\u0027Start\u0027).item.json.account_name }}\u0027 resolves to {{ $(\u0027Resolve Account\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Account\u0027).item.json.candidates) }}. Ask the user which exact account.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "8cc8fa9f-3162-5e73-8bd6-ac8d892028cf",
+                      "name":  "Account ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027day_count_convention\u0027 AS conv, (r-\u003e\u003e\u0027auto_post\u0027)::boolean AS auto_post, r-\u003e\u003e\u0027conv_reason\u0027 AS conv_reason, r-\u003e\u003e\u0027schedule_unit\u0027 AS schedule_unit, (r-\u003e\u003e\u0027schedule_interval\u0027)::int AS schedule_interval, (r-\u003e\u003e\u0027schedule_day_of_month\u0027)::int AS schedule_day_of_month, (r-\u003e\u003e\u0027posting_day_of_month\u0027)::int AS posting_day_of_month, r-\u003e\u003e\u0027first_credit_date\u0027 AS first_credit_date FROM finance.fn_interest_rate_preview($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Resolve Account\u0027).item.json.id, annual_rate: $(\u0027Start\u0027).item.json.annual_rate, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, day_count_convention: $(\u0027Start\u0027).item.json.day_count_convention, posting_day_of_month: $(\u0027Start\u0027).item.json.posting_day_of_month, auto_post: $(\u0027Start\u0027).item.json.auto_post, valid_from: $(\u0027Start\u0027).item.json.valid_from }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "588613b5-6c91-52d0-bbb2-25211c98d5eb",
+                      "name":  "Resolve interest defaults",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "a3ac0f8a-365a-5bb7-9698-62a552e807af",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       770,
+                                       -160
+                                   ],
+                      "id":  "d8275e13-3740-5e25-b974-852584da3218",
+                      "name":  "Preview ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "11d17018-85d5-5264-a160-27645034092d",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "09a82708-d6b5-5320-8246-6b748c1bfd33",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Resolve interest defaults\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       240
+                                   ],
+                      "id":  "cae65c7f-999b-52b0-85e3-5a00aa0d5407",
+                      "name":  "Interest rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_set_account_interest(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Resolve Account\u0027).item.json.id, annual_rate: $(\u0027Start\u0027).item.json.annual_rate, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, day_count_convention: $(\u0027Start\u0027).item.json.day_count_convention, posting_day_of_month: $(\u0027Start\u0027).item.json.posting_day_of_month, auto_post: $(\u0027Start\u0027).item.json.auto_post, valid_from: $(\u0027Start\u0027).item.json.valid_from }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "d55c6683-8ee4-566b-99d1-ae797ba6662f",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b9cc591d-0f9c-51ad-b0b4-1cd0f6d5e177",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "4c8f660e-c3d2-5889-bcf1-f32873892ebc",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3f0b00fc-7cf6-5639-aca1-4272c304b2c7",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f60313e9-6744-530b-89c4-deae292b6378",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "14c4eea4-f5c2-5a38-b1d0-25bc9eed63cb",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4fb7cd6e-0ec3-5036-9c80-60d40225fbd0",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "269b94fb-0921-57bc-8bff-6ffdbb9f7109",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "24cb7cf2-d3d5-5319-a65e-54641b74d9fe",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027interest_rate_id\u0027)::int AS interest_rate_id, (r-\u003e\u003e\u0027closed_previous\u0027)::boolean AS closed_previous FROM finance.fn_set_account_interest(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Resolve Account\u0027).item.json.id, annual_rate: $(\u0027Start\u0027).item.json.annual_rate, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, day_count_convention: $(\u0027Start\u0027).item.json.day_count_convention, posting_day_of_month: $(\u0027Start\u0027).item.json.posting_day_of_month, auto_post: $(\u0027Start\u0027).item.json.auto_post, valid_from: $(\u0027Start\u0027).item.json.valid_from, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "211f8b8a-0c2e-538c-925d-b6e75d69bd97",
+                      "name":  "Set interest (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3a940c6e-d06f-5522-9529-ee138c6bdd60",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_account_interest\u0027, lines: [ { label: \u0027finance.label.account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.account_name) }, { label: \u0027finance.label.interest_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.percent_pa\u0027), params: { value: ($(\u0027Start\u0027).item.json.annual_rate) } }, { label: \u0027finance.label.valid_from\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Start\u0027).item.json.valid_from ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.today\u0027)), params: { value: ({ kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.valid_from) }) } }, { label: \u0027finance.label.credit_rhythm\u0027, kind: \u0027tpl\u0027, value: (((Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1) === 1 || (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 [3, 6, 12].includes(Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1)))) ? \u0027finance.tpl.plain\u0027 : \u0027finance.tpl.every_unit\u0027)), params: { interval: (Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1)), unit: ({ kind: \u0027enum\u0027, value: (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027)), enum: \u0027finance.enum.schedule_unit\u0027 }), value: ({ kind: \u0027enum\u0027, value: ((Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1) === 1 ? String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) : (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1) === 3 ? \u0027quarter\u0027 : (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1) === 6 ? \u0027half_year\u0027 : (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1) === 12 ? \u0027year\u0027 : String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027)))))), enum: \u0027finance.enum.credit_rhythm\u0027 }) } }, { label: \u0027finance.label.credit_day\u0027, kind: \u0027tpl\u0027, value: ((String($(\u0027Resolve interest defaults\u0027).item.json.schedule_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.tpl.credit_end\u0027 : (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_day_of_month ?? \u0027\u0027) !== \u0027\u0027 ? \u0027finance.tpl.credit_on_day\u0027 : (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027year\u0027 ? \u0027finance.tpl.credit_anniversary\u0027 : (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 ? \u0027finance.tpl.credit_start_day\u0027 : \u0027finance.tpl.credit_continuous\u0027))))), params: { day: (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_day_of_month ?? \u0027\u0027)), value: ({ kind: \u0027enum\u0027, value: ((String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027year\u0027 ? \u0027year\u0027 : (String($(\u0027Resolve interest defaults\u0027).item.json.schedule_unit || \u0027\u0027) !== \u0027month\u0027 ? \u0027period\u0027 : ({ 1: \u0027month\u0027, 3: \u0027quarter\u0027, 6: \u0027half_year\u0027, 12: \u0027year\u0027 })[Number($(\u0027Resolve interest defaults\u0027).item.json.schedule_interval || 1)] || \u0027period\u0027))), enum: \u0027finance.enum.credit_end\u0027 }) } }, { label: \u0027finance.label.credit_day_next_month\u0027, kind: \u0027tpl\u0027, value: ((String($(\u0027Resolve interest defaults\u0027).item.json.posting_day_of_month ?? \u0027\u0027) !== \u0027\u0027 ? \u0027finance.tpl.credit_on_day\u0027 : null)), params: { day: (String($(\u0027Resolve interest defaults\u0027).item.json.posting_day_of_month ?? \u0027\u0027)), value: ({ kind: \u0027enum\u0027, value: (\u0027period\u0027), enum: \u0027finance.enum.credit_end\u0027 }) } }, { label: \u0027finance.label.first_credit\u0027, kind: \u0027date\u0027, value: ($(\u0027Resolve interest defaults\u0027).item.json.first_credit_date) }, { label: \u0027finance.label.interest_method\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.interest_method\u0027), params: { method: ({ kind: \u0027enum\u0027, value: ($(\u0027Resolve interest defaults\u0027).item.json.conv), enum: \u0027finance.enum.day_count\u0027 }), reason: ({ kind: \u0027enum\u0027, value: ($(\u0027Resolve interest defaults\u0027).item.json.conv_reason), enum: \u0027finance.enum.interest_reason\u0027 }) } }, { label: \u0027finance.label.auto_post\u0027, kind: \u0027key\u0027, value: (($(\u0027Resolve interest defaults\u0027).item.json.auto_post ? \u0027finance.value.auto_post_yes\u0027 : \u0027finance.value.auto_post_no\u0027)) }, { kind: \u0027note\u0027, value: \u0027finance.note.set_interest_closes_open\u0027 } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "1200a846-6814-57e6-aa7d-a1199df6d32e",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "840ecb05-4ed5-5c6c-9f24-937256378bf1",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "55770e29-5c44-5803-a3ab-e2a5d321e835",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "d3666dd1-da02-5a00-ac2b-db0ebd2e4361",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "39ffdd16-5ac7-5f4d-999c-dd03dfcec994",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "22a8d0b4-1a7a-5f9f-8dff-2cb80e3a512b",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8c5366df-5968-5c90-9567-81f26cec2330",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_account_interest action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       240
+                                   ],
+                      "id":  "cd9b719f-3771-5e99-bd54-11dda9fd7f44",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3e904ac7-e22e-5dd6-bd42-12ea7353cbe0",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "89bdb7f7-9aa1-53f1-9c3e-1bb3bf207077",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "09c90253-3f8b-561b-a10b-95a7ebdaefee",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ca583ac5-62b8-5931-bdfc-f6d384cea2bd",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set interest (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       240
+                                   ],
+                      "id":  "96fe4c11-331e-5954-8f92-d2e9a2025ebb",
+                      "name":  "Update rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3fd544be-431e-5ddf-9453-cd66068a6bbb",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c22f507b-c0bf-5656-b428-d6486359abce",
+                                                                                     "name":  "interest_rate_id",
+                                                                                     "value":  "={{ $(\u0027Set interest (atomic)\u0027).item.json.interest_rate_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6f5c972b-7a70-5e77-8f0c-e012046976fc",
+                                                                                     "name":  "closed_previous",
+                                                                                     "value":  "={{ $(\u0027Set interest (atomic)\u0027).item.json.closed_previous }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "b4be703c-881b-54ba-84f6-04d14933a9a0",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_account_interest mit denselben Werten, immer zurückgerollt (nach der Vorschau Preview ok?). ok:false (Satz negativ, Datum vor der offenen Zeile oder vor der jüngsten verzinsten Periode, Rhythmus/Tag fehlt oder passt nicht bei neuem Raster) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception (z. B. EXCLUDE-Verletzung) -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -220
+                                   ],
+                      "id":  "371b929d-9cbc-5199-affe-92b00bbcd9ea",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_set_account_interest: Validity-Row + EXCLUDE-Constraint**\n\nfn_create_account legt nur die ERSTE Zinszeile an; dies ist der Nachtrag/Änderungs-Pfad. ZWINGEND: offene Zeile (valid_to IS NULL) zuerst per valid_to=neues valid_from schliessen, dann INSERT (sonst finance_account_interest_rates_no_overlap EXCLUDE-Verletzung). Ein reiner Satzwechsel erbt Rhythmus/Tage/auto_post der offenen Zeile; ein Rhythmuswechsel verankert das Zins-Raster neu (keine Gutschrift am Wechseltag, der Rest laeuft in die erste neue Periode). {ok:false} bei rate\u003c0, valid_from \u003c= offener Zeile oder vor der jüngsten verzinsten Periode sowie ohne Rhythmus/Tag bei einem neuen Raster (fn_interest_schedule_reason; Tag und Arrears werden nur bei gleicher Einheit geerbt).",
+                                         "height":  230,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2200,
+                                       -240
+                                   ],
+                      "id":  "c780be3f-7ec5-57e6-b1f3-8cbf783bcb12",
+                      "name":  "Doc set_account_interest"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Vorschau = Buchung (fn_interest_rate_preview)**\n\nResolve interest defaults ruft dieselbe fn, die fn_set_account_interest für die wirksamen Werte nutzt: Rhythmus/Tage/auto_post geerbt oder neu, day_count_convention = Override \u003e Vorgängerzeile \u003e Kontotyp (mit Grund). Preview ok? false -\u003e ToolError VOR der Karte (der Owner bestätigt nie, was danach abgelehnt würde). KEIN dupliziertes Mapping im Workflow.",
+                                         "height":  260,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       560,
+                                       -260
+                                   ],
+                      "id":  "92326bd8-89b8-53df-a715-2c32738f7826",
+                      "name":  "Doc Resolve interest defaults"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Account",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Account":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account unique?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Account unique?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Resolve interest defaults",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account ambiguous",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Resolve interest defaults":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Preview ok?",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Preview ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Interest rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set interest (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Set interest (atomic)":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Write ok?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Update rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

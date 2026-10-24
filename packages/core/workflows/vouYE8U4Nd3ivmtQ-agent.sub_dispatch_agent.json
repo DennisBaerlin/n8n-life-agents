@@ -1,0 +1,417 @@
+{
+    "id":  "vouYE8U4Nd3ivmtQ",
+    "name":  "agent.sub_dispatch_agent",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "workflow_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "package"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "task"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "call_depth"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "thinking"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -900,
+                                       300
+                                   ],
+                      "id":  "f4d78bd3-7cf9-5aad-9c5f-f48a3859d839",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_status($1::jsonb) AS r, core.fn_ui_texts(y.lang, ARRAY[\u0027core.dispatch.no_answer\u0027,\u0027core.dispatch.unavailable\u0027,\u0027core.dispatch.inactive\u0027,\u0027core.dispatch.incomplete\u0027,\u0027core.dispatch.not_installed\u0027]::text[]) AS t, COALESCE(NULLIF(core.fn_ui_text(($1::jsonb)-\u003e\u003e\u0027package\u0027 || \u0027.package.name\u0027, y.lang), ($1::jsonb)-\u003e\u003e\u0027package\u0027 || \u0027.package.name\u0027), ($1::jsonb)-\u003e\u003e\u0027package\u0027) AS pkg_name FROM (SELECT agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027 AS lang) y;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ package: $(\u0027Start\u0027).item.json.package, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -680,
+                                       300
+                                   ],
+                      "id":  "dfc823e4-7a0d-5310-98d7-d87f82c9434a",
+                      "name":  "Package status",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ba0587e9-d41e-5640-aa84-336af0533847",
+                                                                                   "leftValue":  "={{ !$json.r || $json.r.ok === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -460,
+                                       300
+                                   ],
+                      "id":  "f92e6d3d-f9bc-5eb6-9a5c-febee309626b",
+                      "name":  "Package usable?"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d0171714-08dc-5b1f-8b46-6956b5f7ac62",
+                                                                                   "leftValue":  "={{ (Number($(\u0027Start\u0027).item.json.chat_id) || 0) \u003e 0 \u0026\u0026 $(\u0027Start\u0027).item.json.thinking === \u0027loop\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -300,
+                                       20
+                                   ],
+                      "id":  "0b46897e-96ea-5310-8c40-c295b28c53d6",
+                      "name":  "Thinking private?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT agent.fn_create_thinking_lease($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), execution_id: $execution.id, ttl_minutes: 15 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -100,
+                                       20
+                                   ],
+                      "id":  "39354727-a68a-5e63-8d30-f0b354e2ccb7",
+                      "name":  "Open thinking lease",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "y2XrhJmzfuEr8Ler",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/y2XrhJmzfuEr8Ler",
+                                                            "cachedResultName":  "core.sub_show_thinking"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027) }}",
+                                                                              "execution_id":  "={{ $execution.id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+                                                         "waitForSubWorkflow":  false
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       120,
+                                       20
+                                   ],
+                      "id":  "a564b2b9-7e49-5c92-9666-d642dce21192",
+                      "name":  "Show thinking",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "={{ $(\u0027Start\u0027).item.json.workflow_id }}",
+                                                            "mode":  "id"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "task":  "={{ $(\u0027Start\u0027).item.json.task }}",
+                                                                              "chat_id":  "={{ String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }}",
+                                                                              "call_depth":  "={{ String($(\u0027Start\u0027).item.json.call_depth || \u00271\u0027) }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+                                                         "waitForSubWorkflow":  true
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       200
+                                   ],
+                      "id":  "d21544c5-e86a-55a3-8b7c-51749705781e",
+                      "name":  "Run agent",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT agent.fn_delete_thinking_lease($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, wait_for_draft: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -20,
+                                       200
+                                   ],
+                      "id":  "ddee8235-9276-5aa3-9cfb-c93f46af4d8b",
+                      "name":  "Close thinking lease",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Agent-Ergebnis unveraendert durchreichen. Nur wenn KEIN Text (output) kam — Eingangs-Gate des Agenten\n// ({ok:false,error}), Laufzeitfehler (onError -\u003e {error}) — einen freundlichen Text ergaenzen, damit der\n// Telegram-Relay (liest .output) und das Router-Modell nie leer ausgehen.\n// Der Text kommt aus dem Textkatalog (core.dispatch.no_answer, Sprache des Absenders, geladen in \u0027Package status\u0027).\n// Ergebnis aus \u0027Run agent\u0027 selbst (davor liegt \u0027Close thinking lease\u0027, dessen Ausgabe die DB-Antwort ist).\nconst T = ($(\u0027Package status\u0027).first().json || {}).t || {};\nconst NO_ANSWER = T[\u0027core.dispatch.no_answer\u0027] || \u0027core.dispatch.no_answer\u0027;\nconst out = [];\nfor (const item of $(\u0027Run agent\u0027).all()) {\n  const j = item.json || {};\n  if (typeof j.output === \u0027string\u0027 \u0026\u0026 j.output.trim() !== \u0027\u0027) { out.push({ json: j }); continue; }\n  out.push({ json: Object.assign({}, j, { output: NO_ANSWER }) });\n}\nreturn out.length ? out : [{ json: { output: NO_ANSWER } }];",
+                                         "mode":  "runOnceForAllItems"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       180,
+                                       200
+                                   ],
+                      "id":  "de62ee06-1976-56c4-b8cc-1309074c27ca",
+                      "name":  "Ensure output"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b6875a88-8a2d-5cb1-b2db-afa3d28bdffb",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5892a4d7-6e55-5aa4-a05b-7a89d2c9d195",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ ($(\u0027Package status\u0027).item.json.r || {}).reason || \u0027unavailable\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6bc40090-9f00-5b41-8b4e-492274ca6486",
+                                                                                     "name":  "output",
+                                                                                     "value":  "={{ (() =\u003e {\n  const s = $(\u0027Package status\u0027).item.json || {};\n  const r = s.r || {};\n  const T = s.t || {};\n  const pkg = $(\u0027Start\u0027).item.json.package;\n  const name = s.pkg_name || pkg;\n  const k = !r.is_owner ? \u0027core.dispatch.unavailable\u0027 : (r.reason === \u0027inactive\u0027 ? \u0027core.dispatch.inactive\u0027 : (r.reason === \u0027incomplete\u0027 ? \u0027core.dispatch.incomplete\u0027 : \u0027core.dispatch.not_installed\u0027));\n  return String(T[k] || k).split(\u0027{name}\u0027).join(name).split(\u0027{package}\u0027).join(pkg);\n})() }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -220,
+                                       420
+                                   ],
+                      "id":  "7c4f0a34-ce1d-5e6d-b320-2d8fc89b5c4a",
+                      "name":  "Not available"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**agent.sub_dispatch_agent — Core-Vermittler zu Paket-Agenten**\n\nDer Verteiler (agent.orchestrator.main_route) ruft Paket-Agenten NUR hierueber. Grund: n8n aktiviert einen Workflow nur, wenn alle FEST eingetragenen Execute-Workflow-Ziele existieren -\u003e ohne installiertes Paket war der Bot taub.\n\n**Eingaben (fest vom Aufrufer, Build-Zeit):** workflow_id, package + task, chat_id, call_depth, thinking (\u0027loop\u0027 = Paket-Befehle/-Onboarding-Tipps ohne eigene Anzeige; leer = KI-Weg, dort zeigt der Orchestrator die Anzeige). Anzeigename + Hinweise aus dem Textkatalog in der Sprache des Absenders (Package status).\n**Ablauf:** core.fn_package_status -\u003e aktiv? [thinking=\u0027loop\u0027 + privater Chat: Open thinking lease (agent.thinking_lease) -\u003e Show thinking (core.sub_show_thinking, fire-and-forget, Erneuerung alle 5 s)] + Run agent (AUSDRUCKS-ID = keine Aktivierungspruefung) -\u003e Close thinking lease (Schalter weg + Draft-Fenster abwarten, VOR der Rückgabe = vor der Antwort; ohne Schalter No-op) -\u003e Ensure output. Sonst Not available: Owner sieht `lifeagents package install|activate \u003cpkg\u003e`, Mitglieder \"nicht verfügbar\".\n**Rueckgabe:** immer ein Item mit .output (Relays + Router-Modell lesen es).\n**Anti-Loop:** Sub, kein Agent; call_depth nur durchgereicht. Naht-Lint: kein Core-Workflow traegt eine literale Paket-Workflow-ID.",
+                                         "height":  300,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -900,
+                                       -60
+                                   ],
+                      "id":  "243b54d3-d413-53b4-9fa9-53ad7f1aa0ce",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Package status",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Package status":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Package usable?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Package usable?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Thinking private?",
+                                                                     "type":  "main"
+                                                                 },
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Run agent",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Not available",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Thinking private?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Open thinking lease",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Open thinking lease":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Show thinking",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Run agent":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Close thinking lease",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Close thinking lease":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Ensure output",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

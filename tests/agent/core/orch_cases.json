@@ -1,0 +1,227 @@
+[
+  {
+    "id": "oc01",
+    "name": "Finance-Lese -> Routing zu agent.finance",
+    "task": "Wie hoch ist mein aktueller Kontostand beim DKB Giro?",
+    "chat_id": "test_orc01",
+    "expected_route": "finance",
+    "notes": "Finanzfrage -> Orchestrator soll das Tool 'Call agent.finance' aufrufen."
+  },
+  {
+    "id": "oc02",
+    "name": "Finance-Schreib -> Routing zu agent.finance",
+    "task": "Ich habe heute 20 Euro fuer Kaffee mit dem DKB Giro bezahlt, bitte als Ausgabe buchen.",
+    "chat_id": "test_orc02",
+    "expected_route": "finance",
+    "notes": "Buchungsauftrag -> Orchestrator routet zu agent.finance (Gate bypassed via test_-chat_id, kein echter Write)."
+  },
+  {
+    "id": "oc03",
+    "name": "Non-Finance -> kein Routing zu Finance",
+    "task": "Wie ist das Wetter heute in Berlin?",
+    "chat_id": "test_orc03",
+    "expected_route": null,
+    "notes": "Nicht-Finanz -> Orchestrator beantwortet selbst, ruft 'Call agent.finance' NICHT auf."
+  },
+  {
+    "id": "oc04",
+    "name": "Meinungs-/Empfehlungsfrage -> Routing zu agent.finance_advisor",
+    "task": "Lohnt es sich aktuell, in einen S&P 500 ETF zu investieren? Was meinst du?",
+    "chat_id": "test_orc04",
+    "expected_route": "finance_advisor",
+    "notes": "Meinung/Empfehlung -> Berater, NICHT der Buchhalter (Disambiguierung Buchhalter vs. Berater)."
+  },
+  {
+    "id": "oc05",
+    "name": "Finanzplanung erstellen -> Routing zu agent.finance_advisor",
+    "task": "Erstelle mir bitte eine vollstaendige Finanzplanung.",
+    "chat_id": "test_orc05",
+    "expected_route": "finance_advisor",
+    "timeout_s": 240,
+    "notes": "Plan-/Interview-Anfrage -> Advisor (Kernfeature des Beraters). timeout_s: Opus-Advisor-Antwort riss real den Default-Timeout (cancel+Doppellauf)."
+  },
+  {
+    "id": "oc06",
+    "name": "Konkrete Buchung trotz Beratungs-Vokabular -> agent.finance",
+    "task": "Buche bitte 25 Euro Ausgabe vom DKB Giro fuer mein Fachbuch ueber Investieren.",
+    "chat_id": "test_orc06",
+    "expected_route": "finance",
+    "notes": "Buchungsauftrag (Verb buchen + konkretes Konto/Betrag) -> Buchhalter, auch wenn das Thema nach Beratung klingt."
+  },
+  {
+    "id": "oc07",
+    "name": "Ad-hoc-Reminder (Nicht-Finanz) -> agent.monitor",
+    "task": "Erinnere mich bitte alle 6 Monate daran, den Reifendruck am Auto zu pruefen.",
+    "chat_id": "test_orc07",
+    "expected_route": "monitor",
+    "notes": "Trigger-/Reminder-Mechanik zu beliebigem Thema -> Watchdog agent.monitor (nicht 'kein Spezialist', nicht Advisor)."
+  },
+  {
+    "id": "oc08",
+    "name": "Beratung INFOLGE eines Alerts -> agent.finance_advisor (Naht-Disambiguierung)",
+    "task": "Mein Gold-Trigger hat gerade ausgeloest - was soll ich jetzt mit meinem Depot machen?",
+    "chat_id": "test_orc08",
+    "expected_route": "finance_advisor",
+    "timeout_s": 240,
+    "notes": "Andere Seite der Naht: WAS-TUN nach einem Alert ist Decision Support (Advisor), NICHT Trigger-Mechanik (Monitor). timeout_s: Opus-Advisor-Antwort riss real den Default-Timeout (cancel+Doppellauf)."
+  },
+  {
+    "id": "oc09",
+    "name": "Imperativ mit 'export' faengt NICHT im /export-Pre-Router",
+    "task": "Exportiere mir bitte alle meine Konten als Liste.",
+    "chat_id": "test_orc09",
+    "expected_route": "finance",
+    "notes": "Pre-Router (Phase 3) matcht NUR das exakte erste Token '/export' (Slash!), nicht den deutschen Imperativ 'Exportiere ...'. Diese Nachricht muss den Fallback nehmen und beim LLM landen -> Routing zu agent.finance (Listen-/Datenabfrage). Faengt einen False-Positive der /export-Regel (Review L6/A7) deterministisch ab."
+  },
+  {
+    "id": "oc10",
+    "name": "Onboarding-Start -> agent.guide",
+    "task": "Ich bin neu hier, richte mich bitte ein - wo fange ich an?",
+    "chat_id": "test_orc10",
+    "expected_route": "guide",
+    "notes": "Phase 5a: Setup/Onboarding-Intent -> agent.guide (nicht finance/advisor). Guide fuehrt durch die Sektionen."
+  },
+  {
+    "id": "oc11",
+    "name": "Meta/How-do-I -> agent.guide",
+    "task": "Was kannst du eigentlich alles fuer mich tun und wie bediene ich das?",
+    "chat_id": "test_orc11",
+    "expected_route": "guide",
+    "notes": "Phase 5a: Meta-/Hilfe-Frage ueber das System -> agent.guide (Help-Modus). Konkrete Buchung waere finance, Empfehlung waere advisor."
+  },
+  {
+    "id": "oc12",
+    "name": "Karriere-/Jobwechsel-Frage -> Routing zu agent.career_advisor",
+    "task": "Ich ueberlege, vom IT-Projektmanagement in Richtung Scrum Master zu wechseln. Wie gehe ich das an?",
+    "chat_id": "test_orc12",
+    "expected_route": "career_advisor",
+    "timeout_s": 240,
+    "notes": "WS-1 career: Karriere-Strategie/Jobwechsel -> Career-Coach (nicht finance/advisor/guide/monitor). timeout_s: der career_advisor-Sub-Call laeuft auf Opus -> die Orchestrator-Execution wartet auf ihn (wie die finance_advisor-Routen oc05/oc08/oc13)."
+  },
+  {
+    "id": "oc13",
+    "name": "Jobwechsel-Leistbarkeit/Runway -> agent.career_advisor (WS-5 Flip)",
+    "task": "Kann ich mir einen Jobwechsel mit deutlich weniger Gehalt ueberhaupt leisten?",
+    "chat_id": "test_orc13",
+    "expected_route": "career_advisor",
+    "timeout_s": 240,
+    "notes": "WS-5 Routing-Flip: die Leistbarkeit/Runway EINES JOBWECHSELS gehoert jetzt zum career_advisor (er liest die Runway aus dem Karriere-Plan) — vorher finance_advisor. Allgemeine Geld-Leistbarkeit (Anschaffung) bleibt finance_advisor -> Gegenprobe oc16. timeout_s: Opus-Advisor-Antwort kann den Default-Timeout reissen."
+  },
+  {
+    "id": "oc16",
+    "name": "Allgemeine Geld-Leistbarkeit (Anschaffung) -> agent.finance_advisor (kein career-Overreach)",
+    "task": "Kann ich mir gerade ein neues Auto fuer 30000 Euro leisten?",
+    "chat_id": "test_orc16",
+    "expected_route": "finance_advisor",
+    "timeout_s": 240,
+    "notes": "WS-5 Gegenprobe zum Routing-Flip (Opus m5): eine Geld-Leistbarkeitsfrage OHNE Jobwechsel-Bezug bleibt finance_advisor -> beweist, dass der Flip (oc13) NICHT jede 'leisten?'-Frage an career zieht. timeout_s: Opus-Advisor."
+  },
+  {
+    "id": "oc14",
+    "name": "CV-Anhang -> Routing zu agent.career_advisor (intent-basiert, WS-1b)",
+    "task": "Hier ist mein Lebenslauf als Foto. [attachment file_id=cv_oc14_001 type=photo]",
+    "chat_id": "test_orc14",
+    "expected_route": "career_advisor",
+    "timeout_s": 240,
+    "notes": "WS-1b: der [attachment ...]-Marker wird NICHT mehr hart an finance geroutet, sondern intent-basiert — ein CV/Lebenslauf -> career_advisor (extrahiert via tool_extract_cv). Marker verbatim weitergereicht. Guard der Attachment-Regel (seit Phase C: angenommene Dokumentart in der career-router_description, Reihenfolge im paket-neutralen Core-Prompt). timeout_s wie oc12 (career_advisor-Sub-Call laeuft auf Opus)."
+  },
+  {
+    "id": "oc15",
+    "name": "Finanzdokument-Anhang -> weiter agent.finance (Regression, WS-1b)",
+    "task": "Mein aktueller Kontoauszug. [attachment file_id=fin_oc15_001 type=photo]",
+    "chat_id": "test_orc15",
+    "expected_route": "finance",
+    "notes": "WS-1b Regression: ein Finanzdokument-Anhang (Kontoauszug) bleibt nach der Intent-Relaxierung bei agent.finance (haeufiger Fall + expliziter Default bei Unklarheit). Mit oc14 sichert es, dass die Attachment-Regel die zwei Vision-Konsumenten (finance/career) korrekt trennt."
+  },
+  {
+    "id": "oc17",
+    "name": "Todesfall-Nachricht (emotional) -> Routing zu agent.estate_advisor",
+    "task": "Mein Mann ist gestorben. Was muss ich jetzt alles erledigen?",
+    "chat_id": "test_orc17",
+    "expected_route": "estate_advisor",
+    "timeout_s": 240,
+    "notes": "WS-1 estate: Ereignisfall-Nachricht (Todesfall, emotionale Formulierung — verbatim Golden aus der router_description) -> Nachlass-Berater, NICHT finance/guide. timeout_s: estate_advisor laeuft auf Opus (wie die Advisor-Routen oc12/oc13)."
+  },
+  {
+    "id": "oc18",
+    "name": "Vorsorgefall-/Koma-Nachricht -> Routing zu agent.estate_advisor",
+    "task": "Meine Frau liegt nach einem Unfall im Koma. Ich weiss nicht, an welche Unterlagen ich muss.",
+    "chat_id": "test_orc18",
+    "expected_route": "estate_advisor",
+    "timeout_s": 240,
+    "notes": "WS-1 estate: Ereignisfall Nr. 2 (Vorsorgefall/Handlungsunfaehigkeit, verbatim Golden aus der router_description) -> estate_advisor deckt BEIDE Fall-Typen (death UND incapacity, Owner-Entscheid 6). timeout_s: Opus-Advisor."
+  },
+  {
+    "id": "oc19",
+    "name": "Immobilien-Wert-Erfassung -> agent.finance (kein estate-Overreach)",
+    "task": "Trag bitte den aktuellen Wert unserer Wohnung mit 450000 Euro ein.",
+    "chat_id": "test_orc19",
+    "expected_route": "finance",
+    "notes": "WS-1 estate Abgrenzung (arch-challenge P1-Mitigation): Immobilien-Bewertung/-Verkauf ('estate agent'/Makler-Falle des englischen Worts estate) bleibt agent.finance (set_real_estate) — beweist, dass der neue Router-Arm 'Wohnung/Immobilie' NICHT an den Nachlass-Berater zieht (NOT-Klausel in der router_description)."
+  },
+  {
+    "id": "oc20",
+    "name": "Foto OHNE Bildunterschrift -> Anhang-Fallback agent.finance (Phase C)",
+    "task": "Der Nutzer hat ein Foto ohne Bildunterschrift gesendet. [attachment file_id=fin_oc20_001 type=photo]",
+    "chat_id": "test_orc20",
+    "expected_route": "finance",
+    "notes": "Phase C: der Core-Prompt kennt kein Paket mehr; den Fallback fuer eine unklare Dokumentart beansprucht finance per provides.agents[].fallback_for=[attachment] (Satz in der Tool-Beschreibung). Task = der NEUE neutrale Normalisierungstext des Orchestrators (von Hand uebernommen: orch_test schickt Text, der Set-Knoten selbst laeuft hier nicht). Vorher trug der Text 'vermutlich ein Finanzdokument' — dieser Fall sichert, dass das Verhalten ohne den Hinweis gleich bleibt."
+  },
+  {
+    "id": "oc21",
+    "name": "Dokument OHNE Bildunterschrift -> Anhang-Fallback agent.finance (Phase C)",
+    "task": "Der Nutzer hat ein Dokument ohne Bildunterschrift gesendet. [attachment file_id=fin_oc21_001 type=document]",
+    "chat_id": "test_orc21",
+    "expected_route": "finance",
+    "notes": "Phase C: wie oc20, Marker type=document (der zweite Normalisierungs-Zweig)."
+  },
+  {
+    "id": "oc22",
+    "name": "Trigger-Schwelle aendern (Mechanik) -> agent.monitor (Phase C)",
+    "task": "Setz die Schwelle meines Bitcoin-Alarms auf 60000 Euro hoch.",
+    "chat_id": "test_orc22",
+    "expected_route": "monitor",
+    "notes": "Phase C: die Grenze 'Rat nach Alarm -> Berater / Mechanik des Triggers -> monitor' stand frueher im Core-Prompt und war nur von der Rat-Seite (oc08) getestet. Jetzt lebt sie in den router_descriptions (monitor: change/re-arm/repair; finance_advisor: ADVICE arising from a fired alert)."
+  },
+  {
+    "id": "oc23",
+    "name": "Mehrdeutige Geld-Nachricht -> agent.finance_advisor (Default, Phase C)",
+    "task": "Ich habe 5000 Euro Bonus bekommen.",
+    "chat_id": "test_orc23",
+    "expected_route": "finance_advisor",
+    "timeout_s": 240,
+    "notes": "Phase C: Regel 'mehrdeutig Buchen-oder-Rat -> Berater (sicherer Default, er reicht Buchungen zurueck)' zog aus dem Core-Prompt in die finance_advisor-router_description; vorher ungetestet. Bewusst mehrdeutig (Einnahme verbuchen ODER anlegen?) -> darf als flaky einmal nachgefeuert werden. timeout_s: Advisor laeuft auf Opus."
+  },
+  {
+    "id": "oc24",
+    "name": "Reine Dokumenten-Frage -> agent.paperless_assistant (paperless Phase 2)",
+    "task": "Wann läuft mein Personalausweis ab? Schau bitte in meinen Dokumenten nach.",
+    "chat_id": "test_orc24",
+    "expected_route": "paperless_assistant",
+    "notes": "paperless Phase 2: router_description des Dokumenten-Assistenten (Fragen, die durch Nachschlagen in gespeicherten Dokumenten beantwortet werden). Gegenprobe: Buchungen bleiben bei finance (oc01ff)."
+  },
+  {
+    "id": "oc25",
+    "name": "Kontozins im Web nachschlagen -> agent.finance (nicht der Berater)",
+    "task": "Die Trade Republic Cash Konten sind verzinst. Suche die aktuellen Konditionen bitte im Web.",
+    "chat_id": "test_orc25",
+    "expected_route": "finance",
+    "notes": "Owner-Befund 2026-10-23: 'im Web suchen' zog die Nachricht zum Berater (router_description 'web research'), der bis zum Onboarding gesperrt ist. Konditionen eines EIGENEN Kontos nachschlagen, um sie einzutragen = Buchhalter (router_description finance + Ausnahme beim Berater). Gegenprobe Meinung/Vergleich -> Berater: oc04."
+  },
+  {
+    "id": "oc26",
+    "name": "Onboarding-Bereich einer Domaene fertig -> agent.finance (nicht selbst beantworten, nicht Guide)",
+    "task": "Okay, das waren erstmal alle Konten. Der Bereich Konten ist damit fertig.",
+    "chat_id": "test_orc26",
+    "expected_route": "finance",
+    "notes": "Live-Befund 2026-10-24: der Orchestrator antwortete selbst ('Gut, der Bereich Konten ist damit erledigt'), nichts wurde markiert. Hard rule 2b + router_description finance (Onboarding-Fortschritt seiner Bereiche) + guide 'NOT for finishing a domain area'. Gegenstueck Buchhalter: tc65."
+  },
+  {
+    "id": "oc27",
+    "name": "Frage nach gespeicherten Namen -> Spezialist (Orchestrator prueft und bezweifelt keine Daten)",
+    "task": "Stimmen die Namen bei den Konten meiner Familie so, wie sie gespeichert sind?",
+    "chat_id": "test_orc27",
+    "expected_route": "finance",
+    "notes": "Live-Befund 2026-10-24: der Orchestrator meldete aehnliche Vornamen im Haushalt als moegliche Tippfehler und widerrief einen echten Write, den er nicht mehr im Verlauf hatte. Hard rule 5: Aussagen ueber gespeicherte Daten nur vom Spezialisten (Konten -> Buchhalter)."
+  }
+]

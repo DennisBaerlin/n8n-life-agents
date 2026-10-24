@@ -1,0 +1,424 @@
+{
+    "id":  "0HEP232cM9F7KELD",
+    "name":  "agent.tool_set_own_context_facts",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "context_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "facts"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "content"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "1b8a4870-6532-5758-adaa-892e8c07cd5b",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5aeb9339-3c94-5a59-97b8-d38fecf63a30",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027core.hitl.set_context_facts\u0027, title_params: { context: ({ kind: \u0027key\u0027, value: (((c) =\u003e (c === \u0027family\u0027 ? \u0027core\u0027 : ({\"career_profile\":\"career\",\"career_planning\":\"career\",\"career_preferences\":\"career\",\"finance_profile\":\"finance\"}[c] || \u0027core\u0027)) + \u0027.facts.\u0027 + c + \u0027.\u0027)($(\u0027Start\u0027).item.json.context_name || \u0027?\u0027)) + \u0027title\u0027, fallback: String($(\u0027Start\u0027).item.json.context_name || \u0027?\u0027) }) }, lines: [  ].concat((() =\u003e {\n  const S = $(\u0027Start\u0027).item.json;\n  const pre = (((c) =\u003e (c === \u0027family\u0027 ? \u0027core\u0027 : ({\"career_profile\":\"career\",\"career_planning\":\"career\",\"career_preferences\":\"career\",\"finance_profile\":\"finance\"}[c] || \u0027core\u0027)) + \u0027.facts.\u0027 + c + \u0027.\u0027)($(\u0027Start\u0027).item.json.context_name || \u0027?\u0027));\n  const parse = (s, d) =\u003e { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };\n  const facts = parse(S.facts, {});\n  const persons = parse(S.persons, Array.isArray(facts.persons) ? facts.persons : []);\n  const hh = parse(S.household, (facts.household \u0026\u0026 typeof facts.household === \u0027object\u0027) ? facts.household : {});\n  const ORDER = [\u0027role\u0027, \u0027birth_date\u0027, \u0027employment_status\u0027, \u0027citizenships\u0027, \u0027language\u0027];\n  const SKIP = [\u0027person_id\u0027, \u0027first_name\u0027, \u0027last_name\u0027, \u0027as_of\u0027, \u0027_meta\u0027];\n  const human = k =\u003e (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, \u0027 \u0027);\n  const one = it =\u003e {\n    if (it === null || it === undefined) return \u0027?\u0027;\n    if (typeof it === \u0027object\u0027) {\n      const nm = it.name || it.title || JSON.stringify(it);\n      const sub = it.level || (it.salary_expectation_eur != null ? (\u0027~\u0027 + it.salary_expectation_eur + \u0027 €\u0027) : \u0027\u0027);\n      return sub ? (nm + \u0027 (\u0027 + sub + \u0027)\u0027) : nm;\n    }\n    return String(it);\n  };\n  const line = (k, v) =\u003e {\n    const b = { label: pre + k, label_fallback: human(k) };\n    if (v === null) return Object.assign(b, { kind: \u0027removed\u0027, value: null });\n    if (k === \u0027role\u0027) return Object.assign(b, { kind: \u0027enum\u0027, enum: \u0027core.enum.role\u0027, value: v });\n    if (k === \u0027language\u0027) return Object.assign(b, { kind: \u0027language\u0027, value: v });\n    if (typeof v === \u0027boolean\u0027) return Object.assign(b, { kind: \u0027bool\u0027, value: v });\n    if (typeof v === \u0027string\u0027 \u0026\u0026 /^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return Object.assign(b, { kind: \u0027date\u0027, value: v });\n    if (Array.isArray(v)) return Object.assign(b, { kind: \u0027text\u0027, value: v.map(one).join(\u0027, \u0027) });\n    if (v !== undefined \u0026\u0026 typeof v === \u0027object\u0027) return Object.assign(b, { kind: \u0027text\u0027, value: JSON.stringify(v) });\n    return Object.assign(b, { kind: \u0027text\u0027, value: v });\n  };\n  const sorted = o =\u003e Object.keys(o).filter(k =\u003e !SKIP.includes(k)).sort((a, b) =\u003e {\n    const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b); return (ia \u003c 0 ? 99 : ia) - (ib \u003c 0 ? 99 : ib); });\n  const L = [];\n  for (const p of persons) {\n    const nm = [p.first_name, p.last_name].filter(Boolean).join(\u0027 \u0027) || p.person_id || \u0027?\u0027;\n    L.push({ kind: \u0027heading\u0027, label: \u0027core.label.person\u0027, value: nm });\n    for (const k of sorted(p)) L.push(line(k, p[k]));\n  }\n  const hk = sorted(hh);\n  if (hk.length) { L.push({ kind: \u0027heading\u0027, label: \u0027core.facts.family.household\u0027, value: \u0027\u0027 });\n    for (const k of hk) L.push(line(k, hh[k])); }\n  for (const k of sorted(facts).filter(k =\u003e k !== \u0027persons\u0027 \u0026\u0026 k !== \u0027household\u0027)) L.push(line(k, facts[k]));\n  if ((S.content || \u0027\u0027).trim()) L.push({ kind: \u0027note\u0027, value: \u0027core.hitl.note.prose_replaced\u0027 });\n  if (!L.length) L.push({ kind: \u0027note\u0027, value: \u0027core.hitl.note.no_facts\u0027 });\n  return L;\n})()).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "43b8a402-ee37-5807-9341-0b6a5f3f3b7f",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "self"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "1de74e90-b32c-564d-a11f-5b52aef1e0a8",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ede01e82-0c25-557e-a1a9-81521af383d4",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "d13e9707-4693-5ff0-955f-7aff9a067d53",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "acd61979-4cd3-57ba-868f-39cfc55b1f18",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f58362a5-d396-54cb-ba75-7e90528634cc",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "627c2e50-f7c9-5c95-bbad-16c5e8ea9f49",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_context_facts action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       200
+                                   ],
+                      "id":  "dd221ddb-6c79-56ca-8128-7ba7ce0c20d4",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027context_name\u0027 AS context_name, (r-\u003e\u003e\u0027created\u0027)::boolean AS created, (r-\u003e\u003e\u0027persons_count\u0027)::int AS persons_count, r-\u003e\u003e\u0027last_confirmed_at\u0027 AS last_confirmed_at, COALESCE(r-\u003e\u0027language_missing\u0027, \u0027[]\u0027::jsonb) AS language_missing FROM agent.fn_set_own_context_facts($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ context_name: $(\u0027Start\u0027).item.json.context_name, facts: (() =\u003e { try { return (o =\u003e Object.keys(o).length ? o : undefined)($(\u0027Start\u0027).item.json.facts ? JSON.parse($(\u0027Start\u0027).item.json.facts) : {}); } catch (e) { return \u0027__invalid_json__\u0027; } })(), content: $(\u0027Start\u0027).item.json.content || \u0027\u0027, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "7d2064e0-a48e-56ca-aaf0-a3b4ab9f75ed",
+                      "name":  "Set context facts (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "95df181f-72f2-55b6-94b0-334fdc045ee6",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "b0864318-32f6-5261-adab-59662e3fa222",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "06d6f908-5ee5-5a79-b1da-00c4758aa4f8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3afb13d4-f655-5f68-b121-be21798ed87c",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "f0e8bb48-8b64-533b-8971-f594631743f6",
+                      "name":  "Write failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "6c701200-8647-50d0-b1ce-35f13506f7a2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d3d98dc4-d527-56fb-974f-57be24f50296",
+                                                                                     "name":  "context_name",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.context_name }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "febace83-2623-53ae-bef3-dff4f3cfe4c8",
+                                                                                     "name":  "created",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.created }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bdde219a-8cba-592f-bbf5-59cb2d3d029f",
+                                                                                     "name":  "persons_count",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.persons_count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "41717774-9e5f-522c-8cc3-fc34f98b5678",
+                                                                                     "name":  "last_confirmed_at",
+                                                                                     "value":  "={{ $(\u0027Set context facts (atomic)\u0027).first().json.last_confirmed_at }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "ee539c98-695d-5f51-b00f-5959a5ee30f8",
+                      "name":  "Return",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**agent.tool_set_own_context_facts — eigene persönliche Fakten (HITL-Stufe self)**\n\nSchreibweg für die EIGENEN per_user-Kontexte der fragenden Person (heute Career-Coach: tool_set_profile_facts / tool_set_career_preferences, context_name fest je Bindung). Gate-Stufe self: die Person bestätigt selbst, KEIN Owner-Send (eine Info trüge private Profildaten zum Owner). Die Strenge kommt aus der DB: agent.fn_set_own_context_facts setzt scope=per_user fest -\u003e nur \u003cbase\u003e__\u003ceigene person_id\u003e; household/family/Plan-Kontexte sind gesperrt. Eingang: context_name, facts (JSON-String), content, chat_id — bewusst KEIN scope/persons/household (approval_lint (e)). Ausgang wie agent.tool_set_context_facts. Graph geteilt über New-ContextFactsToolGraph (tools/set_context_facts.ps1); die Bestätigungs-Labels kommen aus dem Textkatalog des besitzenden Pakets (\u003cpkg\u003e.facts.\u003cctx\u003e.*).",
+                                         "height":  240,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -260,
+                                       -300
+                                   ],
+                      "id":  "5ead4950-279d-5080-ab9a-833a22dc8cf6",
+                      "name":  "Doc Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**HITL-Gate (Stufe self) + fn_set_own_context_facts**\n\nVor dem Write: Playback-Summary -\u003e agent.tool_human_approval mit Stufe self: Owner -\u003e normaler Owner-Tap; Mitglied -\u003e nur das Mitglied bestätigt, KEIN Owner-Send (auch keine Info). Approve -\u003e agent.fn_set_own_context_facts (setzt scope=per_user fest) -\u003e agent.fn_set_context_facts schreibt NUR \u003cbase\u003e__\u003cperson_id\u003e der aus chat_id aufgelösten Person (INSERT-on-first-write); household-/family-/Plan-Kontexte (core.advisors.plan_context) und fremde Suffix-Namen -\u003e ok:false ohne Write. Validierung Core-Validator + Paket-Validator -\u003e ok:false ohne Write. Decline -\u003e cancelled, nichts geschrieben.",
+                                         "height":  280,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       440,
+                                       -300
+                                   ],
+                      "id":  "7f67b946-589b-54ff-940a-b9380f66b30b",
+                      "name":  "Doc HITL + DB-Validierung"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Build Approval Summary",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set context facts (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Set context facts (atomic)":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Write ok?",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Write failed",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -1,0 +1,226 @@
+{
+    "id":  "npNHyR8HMRX8f8hD",
+    "name":  "agent.sub_dispatch_tool",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "service"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "args"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -900,
+                                       300
+                                   ],
+                      "id":  "8e9bfaaf-d355-57cd-86c5-f32d085a6ee6",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_resolve_service($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ service: String($(\u0027Start\u0027).item.json.service || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -680,
+                                       300
+                                   ],
+                      "id":  "d04c4716-23e8-58f6-9ee1-78539b002c4a",
+                      "name":  "Resolve service",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c59bd1a8-8c51-50b1-8bd3-a0e150fc480e",
+                                                                                   "leftValue":  "={{ !!($json.r \u0026\u0026 $json.r.ok === true) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -460,
+                                       300
+                                   ],
+                      "id":  "537e7102-9cf8-5687-830c-d2712433a44b",
+                      "name":  "Allowed?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "={{ $(\u0027Resolve service\u0027).item.json.r.workflow_id }}",
+                                                            "mode":  "id"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "args":  "={{ String($(\u0027Start\u0027).item.json.args || \u0027\u0027) }}",
+                                                                              "chat_id":  "={{ String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+                                                         "waitForSubWorkflow":  true
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       200
+                                   ],
+                      "id":  "70a9edf4-1cf6-53f5-9b5e-94ab913f915e",
+                      "name":  "Run tool",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Werkzeug-Ergebnis unveraendert durchreichen ({ok:true|false, ...}). Kam KEIN ok-Feld (Laufzeitfehler im\n// Paket-Werkzeug -\u003e onError liefert {error}), einen strukturierten Fehler als DATEN liefern (kein Retry-Sturm).\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  if (typeof j.ok === \u0027boolean\u0027) { out.push({ json: j }); continue; }\n  out.push({ json: { ok: false, error: \u0027tool_failed\u0027,\n    hint: \u0027The tool failed without a result. Retry at most once; if it fails again, tell the user it is currently not working.\u0027 } });\n}\nreturn out.length ? out : [{ json: { ok: false, error: \u0027tool_failed\u0027, hint: \u0027The tool returned nothing. Do not retry; tell the user it is currently not working.\u0027 } }];",
+                                         "mode":  "runOnceForAllItems"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       200
+                                   ],
+                      "id":  "25988738-8308-566b-9267-409580ef797d",
+                      "name":  "Ensure result"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const r = ($(\u0027Resolve service\u0027).first().json || {}).r || null;\nconst svc = String($(\u0027Start\u0027).first().json.service || \u0027\u0027);\nif (!r) {\n  return [{ json: { ok: false, error: \u0027dispatch_unavailable\u0027,\n    hint: \u0027The tool could not be checked right now. Do not retry; tell the user the feature is temporarily unavailable.\u0027 } }];\n}\nconst label = r.package_label || r.package || svc.split(\u0027:\u0027)[0];\nlet hint;\nif (r.error === \u0027package_unavailable\u0027) {\n  const what = r.reason === \u0027inactive\u0027 ? \u0027is switched off\u0027\n             : r.reason === \u0027incomplete\u0027 ? \u0027is not completely installed\u0027\n             : \u0027is not installed\u0027;\n  hint = \u0027The \"\u0027 + label + \u0027\" feature \u0027 + what + \u0027. Do not retry. Tell the user it is currently not available.\u0027;\n  if (r.is_owner) {\n    const cmd = r.reason === \u0027inactive\u0027 ? \u0027lifeagents package activate \u0027 : \u0027lifeagents package install \u0027;\n    hint += \u0027 The owner can fix it on the server with: \u0027 + cmd + r.package;\n  }\n} else if (r.error === \u0027not_permitted\u0027) {\n  const who = r.reason === \u0027adults_only\u0027 ? \u0027only adult household members\u0027\n            : r.reason === \u0027owner_only\u0027 ? \u0027only the household owner\u0027\n            : \u0027only recognised household members\u0027;\n  hint = \u0027This tool is not available to this person (\u0027 + who + \u0027 may use it). Do not retry and do not try to get the information another way; tell the user politely.\u0027;\n} else {\n  hint = \u0027The tool \"\u0027 + svc + \u0027\" is not registered on this installation. Do not retry; tell the user the feature is currently not available.\u0027;\n}\nreturn [{ json: { ok: false, error: r.error || \u0027unknown_service\u0027, reason: r.reason || null, hint } }];",
+                                         "mode":  "runOnceForAllItems"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -220,
+                                       420
+                                   ],
+                      "id":  "6dac6148-f9c4-56f4-8fcb-4798dc8dceb7",
+                      "name":  "Not available"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**agent.sub_dispatch_tool — Core-Vermittler zu Paket-Werkzeugen**\n\nFremde Agenten (finance, Advisor …) rufen Werkzeuge eines Nicht-Core-Pakets (z. B. paperless:search_documents) NUR hierueber — gebunden vom Build-Helper Add-ServiceTools. Grund: keine fremde Paket-Workflow-ID im Konsumenten (sonst aktiviert n8n ihn ohne das Paket nicht).\n\n**Eingaben:** service (\u0027\u003cpkg\u003e:\u003calias\u003e\u0027, fest), args (JSON-String der Modell-Felder), chat_id.\n**Pruefstelle (DB ist Gesetz):** core.fn_resolve_service — Service in core.services? Paket aktiv? Absender darf (permission je Service, z. B. adults_only; Identitaet aus chat_id, nie vom Modell)? -\u003e workflow_id.\n**Ja:** Run tool per AUSDRUCKS-ID (Laufzeit-Lookup) -\u003e Ensure result (fehlt ok -\u003e tool_failed).\n**Nein:** Not available -\u003e {ok:false, error, hint} mit generischem Hinweis (DB-Fehler = fail-closed).\n**Anti-Loop:** Werkzeug-Pfad, kein call_depth; Geschwister von agent.sub_dispatch_agent.",
+                                         "height":  300,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -900,
+                                       -80
+                                   ],
+                      "id":  "9d88e474-52c6-5174-a472-73b3459cb223",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve service",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve service":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Allowed?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Allowed?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Run tool",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Not available",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Run tool":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Ensure result",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

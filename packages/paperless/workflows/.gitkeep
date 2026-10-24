@@ -1,0 +1,3 @@
+# Platzhalter: packages/paperless/workflows/ ist layout_lint-L2-Pflicht-Verzeichnis je Paket.
+# Die build-generierten Workflow-JSONs (agent.paperless.* / agent.paperless_advisor) kommen ab WS-1
+# via build.ps1 — nie hand-editieren. Diese Datei entfaellt mit dem ersten echten Workflow.

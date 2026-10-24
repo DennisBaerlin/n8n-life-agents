@@ -1,0 +1,755 @@
+{
+    "id":  "WSEFOFZaghO7yVE8",
+    "name":  "agent.tool_expert_panel",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "question"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "dossier"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "personas"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "5c60a7f2-1dc4-5896-9abe-aee22e1c175a",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const inp = $input.first().json;\nlet personas = inp.personas;\nif (typeof personas === \u0027string\u0027) {\n  try { personas = JSON.parse(personas); } catch (e) {\n    return [{ json: { ok: false, error: \u0027personas is not valid JSON: \u0027 + String(personas).slice(0, 120) } }];\n  }\n}\nif (!Array.isArray(personas)) personas = personas ? [personas] : [];\npersonas = personas\n  .map(p =\u003e (typeof p === \u0027string\u0027) ? { role: p, focus: \u0027\u0027 } : { role: String(p.role || \u0027\u0027).trim(), focus: String(p.focus || \u0027\u0027).trim() })\n  .filter(p =\u003e p.role);\nif (!personas.length) {\n  return [{ json: { ok: false, error: \u0027No personas given. Pass personas as a JSON array like [{\"role\":\"tax advisor\",\"focus\":\"German capital gains tax\"}].\u0027 } }];\n}\nif (personas.length \u003e 6) personas = personas.slice(0, 6);\nconst question = String(inp.question || \u0027\u0027).trim();\nconst dossier  = String(inp.dossier  || \u0027\u0027).trim();\nif (!question) return [{ json: { ok: false, error: \u0027question must be non-empty.\u0027 } }];\nconst laneA = personas.filter((p, i) =\u003e i % 2 === 0);\nconst laneB = personas.filter((p, i) =\u003e i % 2 === 1);\nconst mkPrompt = (lane) =\u003e {\n  if (!lane.length) return \u0027\u0027;\n  const plist = lane.map((p, i) =\u003e (i + 1) + \u0027. \u0027 + p.role + (p.focus ? \u0027 (focus: \u0027 + p.focus + \u0027)\u0027 : \u0027\u0027)).join(\u0027\\n\u0027);\n  return \u0027You simulate an INDEPENDENT expert panel. For EACH persona below, write one focused opinion (max 200 words) strictly from that persona\\\u0027s professional perspective. Disagree where the perspective warrants it; do not converge to consensus. Base yourself ONLY on the dossier facts and general professional knowledge.\\n\\nPERSONAS:\\n\u0027 + plist + \u0027\\n\\nDOSSIER (identical facts for all personas):\\n\u0027 + (dossier || \u0027(none provided)\u0027) + \u0027\\n\\nQUESTION:\\n\u0027 + question + \u0027\\n\\nReturn ONLY a JSON array, no prose: [{\"role\":\"\u003cpersona role\u003e\",\"opinion\":\"\u003ctheir opinion\u003e\"}]\u0027;\n};\nreturn [{ json: { ok: true, prompt_a: mkPrompt(laneA), prompt_b: mkPrompt(laneB), personas_a: laneA, personas_b: laneB } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "552b3ea5-8b17-58ee-baa3-d27d5f32a5e8",
+                      "name":  "Prepare lanes"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0a7262a2-3af4-57de-b4df-bf2768342512",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "a587c7e8-092e-5178-88b1-f247ae4ac460",
+                      "name":  "Input ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d91529d4-cfb3-58d8-a01c-275a0bb87c42",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bd7d4e95-3cb1-58fa-9e74-998e016f22d0",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Prepare lanes\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -200
+                                   ],
+                      "id":  "7998b6f5-38ac-5a77-a4c3-0a534ebeebdf",
+                      "name":  "Invalid input"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"core\",\"key\":\"panel_a\"},{\"pkg\":\"core\",\"key\":\"panel_b\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       550,
+                                       160
+                                   ],
+                      "id":  "cf7d87ee-b847-5768-ba5d-f56b81c5da4c",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ $(\u0027Prepare lanes\u0027).item.json.prompt_a || \u0027Reply with exactly: []\u0027 }}"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.chainLlm",
+                      "typeVersion":  1.7,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "17296a94-e998-591f-a5be-c1e3938c0489",
+                      "name":  "Panel lane A",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ad42f316-beec-59a2-a964-153a9b6da70d",
+                                                                                     "name":  "opinions_a",
+                                                                                     "value":  "={{ $json.text || \"\" }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "e65a4cbc-dde5-5496-aa0a-bf6cb7b83358",
+                      "name":  "Lane A out"
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ $(\u0027Prepare lanes\u0027).item.json.prompt_b || \u0027Reply with exactly: []\u0027 }}"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.chainLlm",
+                      "typeVersion":  1.7,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "0a7b8cbc-a03c-5201-9432-a314d59061e6",
+                      "name":  "Panel lane B",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const MODEL_IDS = {\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"};\nconst cfg = ($(\u0027Load model config\u0027).first().json.model) || {};\nconst MODEL_A = MODEL_IDS[cfg.panel_a] || String(cfg.panel_a || \u0027unknown\u0027);\nconst MODEL_B = MODEL_IDS[cfg.panel_b] || String(cfg.panel_b || \u0027unknown\u0027);\nconst prep = $(\u0027Prepare lanes\u0027).first().json;\nconst aRaw = $(\u0027Lane A out\u0027).first().json.opinions_a || \u0027\u0027;\nconst bRaw = ($input.first().json \u0026\u0026 $input.first().json.text) || \u0027\u0027;\nfunction parse(raw, personas, model) {\n  if (!personas || !personas.length) return [];\n  try {\n    const m = String(raw).match(/\\[[\\s\\S]*\\]/);\n    const arr = JSON.parse(m ? m[0] : raw);\n    return arr.filter(o =\u003e o \u0026\u0026 o.opinion).map((o, i) =\u003e ({\n      role: String(o.role || (personas[i] \u0026\u0026 personas[i].role) || \u0027expert\u0027),\n      model,\n      opinion: String(o.opinion).slice(0, 2500)\n    }));\n  } catch (e) {\n    const t = String(raw).trim();\n    return t ? [{ role: personas[0].role, model, opinion: t.slice(0, 2500) }] : [];\n  }\n}\nconst out = [...parse(aRaw, prep.personas_a, MODEL_A), ...parse(bRaw, prep.personas_b, MODEL_B)];\nif (!out.length) {\n  return [{ json: { ok: false, error: \u0027Both panel lanes failed - no expert opinions available. Proceed with your own analysis and tell the user the panel was unavailable.\u0027 } }];\n}\nconst source = MODEL_A !== MODEL_B ? \u0027two different models\u0027 : \u0027the same model in two independent runs\u0027;\nreturn [{ json: { ok: true, opinions: out, note: \u0027Independent opinions from \u0027 + source + \u0027. Synthesize yourself and surface disagreements explicitly - do not average them away.\u0027 } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "241396bb-c767-5a2b-905b-c9ad0644325a",
+                      "name":  "Assemble panel"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Cross-Agent Experten-Panel (2 Modell-Stufen)**\n\nRead-only, kein HITL. Der Advisor liefert question + dossier (EINMAL zusammengestellt, alle Personas sehen dieselben Fakten) + personas (JSON-Array, er wählt selbst). Prepare lanes verteilt Personas per Index auf 2 Lanes (Default Claude Sonnet / Claude Opus = zwei Modell-Stufen; Owner-Entscheid ohne Google) -\u003e zwei unabhängige Meinungen. Load model config liest model.panel_a/panel_b bei JEDEM Lauf aus core.config (Wechsel: lifeagents config set model panel_a \u003ckey\u003e); je Lane ein Umschalter mit einem Knoten je Claude-Modell — Präfix Lane A/Lane B, weil n8n eindeutige Knoten-Namen verlangt. Lanes laufen sequentiell, je onError continue (eine darf ausfallen). Assemble panel parst deterministisch zu {role, model, opinion}[] (model = zur Laufzeit gewählte Modell-Id; Hinweis nennt zwei verschiedene Modelle nur, wenn sie verschieden sind) - KEIN Synthesizer hier, der Advisor synthetisiert selbst mit explizitem Dissens.",
+                                         "height":  300,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -420
+                                   ],
+                      "id":  "2b19d4ca-ee38-5532-bae9-62983b406f52",
+                      "name":  "Doc Expert Panel"
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-haiku-5-5",
+                                                       "cachedResultName":  "Claude Haiku 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "high"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       500,
+                                       400
+                                   ],
+                      "id":  "7a44f4cd-bb1f-501c-9381-8180d97b4bee",
+                      "name":  "Lane A claude-haiku-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-sonnet-5-5",
+                                                       "cachedResultName":  "Claude Sonnet 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "high"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       676,
+                                       400
+                                   ],
+                      "id":  "24c2722f-02e1-5ae5-b8d5-2600b812fc74",
+                      "name":  "Lane A claude-sonnet-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-opus-5-5",
+                                                       "cachedResultName":  "Claude Opus 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "high"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       852,
+                                       400
+                                   ],
+                      "id":  "3fe88e6c-9d15-5172-860e-54e66857ca57",
+                      "name":  "Lane A claude-opus-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "numberInputs":  3,
+                                         "rules":  {
+                                                       "rule":  [
+                                                                    {
+                                                                        "modelIndex":  1,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "d6b02219-3e06-55bf-be40-f2a1560fd083",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.panel_a }}",
+                                                                                                                  "rightValue":  "claude-haiku-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  2,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "0cbb9c73-62f3-541b-8bc5-b3f3af9aa928",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.panel_a }}",
+                                                                                                                  "rightValue":  "claude-sonnet-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  3,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "1a91f696-b7e9-5c40-9cec-eeff224baba4",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.panel_a }}",
+                                                                                                                  "rightValue":  "claude-opus-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    }
+                                                                ]
+                                                   }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.modelSelector",
+                      "typeVersion":  1,
+                      "position":  [
+                                       660,
+                                       220
+                                   ],
+                      "id":  "ec946cdf-6bb5-5fc8-b093-b3788404721b",
+                      "name":  "Lane A Model Selector"
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-haiku-5-5",
+                                                       "cachedResultName":  "Claude Haiku 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "high"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       940,
+                                       400
+                                   ],
+                      "id":  "7e08d5c6-b5cd-5a36-801e-6c91cb8456f8",
+                      "name":  "Lane B claude-haiku-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-sonnet-5-5",
+                                                       "cachedResultName":  "Claude Sonnet 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "high"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       1116,
+                                       400
+                                   ],
+                      "id":  "a7556895-b6f6-51b3-b2ae-69ffff02a2ef",
+                      "name":  "Lane B claude-sonnet-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-opus-5-5",
+                                                       "cachedResultName":  "Claude Opus 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "high"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       1292,
+                                       400
+                                   ],
+                      "id":  "5af6ef84-1e83-5b1c-815a-68fad339a740",
+                      "name":  "Lane B claude-opus-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "numberInputs":  3,
+                                         "rules":  {
+                                                       "rule":  [
+                                                                    {
+                                                                        "modelIndex":  1,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "e8d26cba-a10b-5fb0-8cae-2d699b76944f",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.panel_b }}",
+                                                                                                                  "rightValue":  "claude-haiku-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  2,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "314b68bf-bcaa-5d8b-b27e-b5cd46dbc206",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.panel_b }}",
+                                                                                                                  "rightValue":  "claude-sonnet-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  3,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "ea7d6472-6f40-529f-bca6-c56b3d5df519",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.panel_b }}",
+                                                                                                                  "rightValue":  "claude-opus-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    }
+                                                                ]
+                                                   }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.modelSelector",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1100,
+                                       220
+                                   ],
+                      "id":  "b22484e3-a17c-5129-a317-5cbeccb24a30",
+                      "name":  "Lane B Model Selector"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Prepare lanes",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Prepare lanes":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Input ok?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Input ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Load model config",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Invalid input",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Panel lane A",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Panel lane A":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Lane A out",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Lane A out":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Panel lane B",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Panel lane B":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Assemble panel",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Lane A claude-haiku-latest":  {
+                                                           "ai_languageModel":  [
+                                                                                    [
+                                                                                        {
+                                                                                            "index":  0,
+                                                                                            "node":  "Lane A Model Selector",
+                                                                                            "type":  "ai_languageModel"
+                                                                                        }
+                                                                                    ]
+                                                                                ]
+                                                       },
+                        "Lane A claude-sonnet-latest":  {
+                                                            "ai_languageModel":  [
+                                                                                     [
+                                                                                         {
+                                                                                             "index":  1,
+                                                                                             "node":  "Lane A Model Selector",
+                                                                                             "type":  "ai_languageModel"
+                                                                                         }
+                                                                                     ]
+                                                                                 ]
+                                                        },
+                        "Lane A claude-opus-latest":  {
+                                                          "ai_languageModel":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "index":  2,
+                                                                                           "node":  "Lane A Model Selector",
+                                                                                           "type":  "ai_languageModel"
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                      },
+                        "Lane A Model Selector":  {
+                                                      "ai_languageModel":  [
+                                                                               [
+                                                                                   {
+                                                                                       "index":  0,
+                                                                                       "node":  "Panel lane A",
+                                                                                       "type":  "ai_languageModel"
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                  },
+                        "Lane B claude-haiku-latest":  {
+                                                           "ai_languageModel":  [
+                                                                                    [
+                                                                                        {
+                                                                                            "index":  0,
+                                                                                            "node":  "Lane B Model Selector",
+                                                                                            "type":  "ai_languageModel"
+                                                                                        }
+                                                                                    ]
+                                                                                ]
+                                                       },
+                        "Lane B claude-sonnet-latest":  {
+                                                            "ai_languageModel":  [
+                                                                                     [
+                                                                                         {
+                                                                                             "index":  1,
+                                                                                             "node":  "Lane B Model Selector",
+                                                                                             "type":  "ai_languageModel"
+                                                                                         }
+                                                                                     ]
+                                                                                 ]
+                                                        },
+                        "Lane B claude-opus-latest":  {
+                                                          "ai_languageModel":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "index":  2,
+                                                                                           "node":  "Lane B Model Selector",
+                                                                                           "type":  "ai_languageModel"
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                      },
+                        "Lane B Model Selector":  {
+                                                      "ai_languageModel":  [
+                                                                               [
+                                                                                   {
+                                                                                       "index":  0,
+                                                                                       "node":  "Panel lane B",
+                                                                                       "type":  "ai_languageModel"
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                  }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

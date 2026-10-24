@@ -1,0 +1,966 @@
+{
+    "id":  "7bgik0El8OzHb0Cn",
+    "name":  "agent.finance.cron_remind_interest",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REMIND_INTEREST__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -680,
+                                       0
+                                   ],
+                      "id":  "3168855c-b0f8-52a7-bbb4-64dcfd0cc76d",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_interest\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -500,
+                                       0
+                                   ],
+                      "id":  "7a49db08-953e-566b-a50f-9696893d38b2",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fae621df-828e-5acc-b31b-3504c707fc32",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -340,
+                                       -40
+                                   ],
+                      "id":  "c1d0b0c7-2548-59ee-b8c8-ecd6544b5313",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -340,
+                                       200
+                                   ],
+                      "id":  "2306016d-528c-5d54-954b-9da257a0ac9a",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.dialog.interest_ask\u0027,\u0027finance.dialog.interest_defer\u0027,\u0027finance.dialog.btn_book\u0027,\u0027finance.dialog.btn_other\u0027,\u0027finance.dialog.btn_tomorrow\u0027,\u0027finance.dialog.btn_skip\u0027,\u0027finance.dialog.interest_booked\u0027,\u0027finance.dialog.book_failed\u0027,\u0027finance.dialog.already_booked\u0027,\u0027finance.dialog.skipped\u0027,\u0027finance.dialog.remind_tomorrow\u0027,\u0027core.hitl.unauthorized\u0027,\u0027core.reminders.card_footer\u0027]::text[]))) AS r;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -240,
+                                       -200
+                                   ],
+                      "id":  "98610320-dc5f-509c-bbef-b387a471a418",
+                      "name":  "Load texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT q.account_id, q.value_date, q.period_end, q.account_name, q.amount, q.auto_post, q.currency\nFROM (\n  SELECT o.account_id, o.value_date::text AS value_date, o.period_end::text AS period_end,\n         a.name AS account_name, a.currency AS currency,   -- WP-5: Konto-Waehrung fuer die Betrag-Formatierung\n         finance.fn_interest_amount_due(o.account_id, o.period_end) AS amount,\n         o.auto_post\n  FROM finance.fn_interest_due_open(CURRENT_DATE) o\n  JOIN finance.accounts a ON a.id = o.account_id\n  WHERE o.auto_post OR NOT EXISTS (SELECT 1 FROM finance.bank_statements b WHERE b.account_id = o.account_id)\n) q\nWHERE q.amount \u003e 0\nORDER BY q.period_end, q.account_name;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -240,
+                                       0
+                                   ],
+                      "id":  "9230b355-f016-5685-b05e-658067c3cc1a",
+                      "name":  "Get open interest",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "e16572ab-cf65-5858-8c94-2ba0678c5a5d",
+                      "name":  "Loop Over Items"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -260
+                                   ],
+                      "id":  "f8fc8af7-2e96-5c1a-a9f5-9f98dbdfe3e7",
+                      "name":  "Done"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0ee35311-9660-5522-99ce-66bb6e3a93dc",
+                                                                                   "leftValue":  "={{ $json.auto_post }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "541fc0cb-cfb7-575b-b9fd-3680916ff179",
+                      "name":  "Auto-post?"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "062f1fa5-5e91-5d6b-8a86-97537140ad65",
+                                                                                   "leftValue":  "={{ $(\u0027Loop Over Items\u0027).item.json.auto_post }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       -120
+                                   ],
+                      "id":  "0a47791b-db93-54db-bfc1-2ce12425384a",
+                      "name":  "Auto-posted?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($(\u0027Book interest\u0027).item.json.ok ? String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.interest_booked\u0027] || \u0027finance.dialog.interest_booked\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027account\u0027: ($(\u0027Loop Over Items\u0027).item.json.account_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : $(\u0027Book interest\u0027).item.json.code === \u0027already_booked\u0027 ? String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.already_booked\u0027] || \u0027finance.dialog.already_booked\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027name\u0027: ($(\u0027Loop Over Items\u0027).item.json.account_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.book_failed\u0027] || \u0027finance.dialog.book_failed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027name\u0027: ($(\u0027Loop Over Items\u0027).item.json.account_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1320,
+                                       -280
+                                   ],
+                      "id":  "49b4d3fe-21df-54a8-aec7-94b220296515",
+                      "name":  "Notify booked",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ (String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.skipped\u0027] || \u0027finance.dialog.skipped\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027name\u0027: ($(\u0027Loop Over Items\u0027).item.json.account_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       260
+                                   ],
+                      "id":  "544831b7-1f08-5392-8f80-01fb5d04bb64",
+                      "name":  "Notify skipped",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ (String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.remind_tomorrow\u0027] || \u0027finance.dialog.remind_tomorrow\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027name\u0027: ($(\u0027Loop Over Items\u0027).item.json.account_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1320,
+                                       60
+                                   ],
+                      "id":  "c4cb4714-12ce-51bb-8510-8baa7df7de8f",
+                      "name":  "Notify tomorrow",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "message":  "={{ (String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.interest_ask\u0027] || \u0027finance.dialog.interest_ask\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027account\u0027: ($(\u0027Loop Over Items\u0027).item.json.account_name), \u0027amount\u0027: (Number($(\u0027Loop Over Items\u0027).item.json.amount).toLocaleString(($(\u0027Load texts\u0027).first().json.r.locale || \u0027en-GB\u0027),{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test($(\u0027Loop Over Items\u0027).item.json.currency)?$(\u0027Loop Over Items\u0027).item.json.currency:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027})), \u0027period_end\u0027: (((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(($(\u0027Load texts\u0027).first().json.r.locale || \u0027en-GB\u0027), {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String($(\u0027Loop Over Items\u0027).item.json.period_end))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String($(\u0027Loop Over Items\u0027).item.json.period_end)))), \u0027value_date\u0027: (((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(($(\u0027Load texts\u0027).first().json.r.locale || \u0027en-GB\u0027), {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String($(\u0027Loop Over Items\u0027).item.json.value_date))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String($(\u0027Loop Over Items\u0027).item.json.value_date)))) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) + \u0027\\n\\n\u0027 + String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027core.reminders.card_footer\u0027] || \u0027core.reminders.card_footer\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.btn_book\u0027] || \u0027finance.dialog.btn_book\u0027) }}",
+                                                                                "disapproveLabel":  "={{ String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.btn_other\u0027] || \u0027finance.dialog.btn_other\u0027) }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "__OWNER_CHAT_ID__",
+                                         "unauthorizedReplyText":  "={{ String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027core.hitl.unauthorized\u0027] || \u0027core.hitl.unauthorized\u0027) }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       440,
+                                       60
+                                   ],
+                      "id":  "6dee4299-5892-5547-b3b7-36b596524f11",
+                      "name":  "Ask interest booked",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "162ffd04-cb48-58fd-8bbb-0f558eaac0ff"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "65b64161-da27-5710-8cb7-57cc0eae07a5",
+                                                                                   "leftValue":  "={{ $json.data.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       60
+                                   ],
+                      "id":  "09e927d1-76c9-575c-9fb6-e4e5ba578c79",
+                      "name":  "Book interest?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027code\u0027 AS code FROM finance.fn_book_interest_occurrence($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Loop Over Items\u0027).item.json.account_id, value_date: $(\u0027Loop Over Items\u0027).item.json.value_date, period_end: $(\u0027Loop Over Items\u0027).item.json.period_end }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       -120
+                                   ],
+                      "id":  "30b0e4c2-8c07-58d6-b484-ebf70eb7b6ef",
+                      "name":  "Book interest",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "message":  "={{ (String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.interest_defer\u0027] || \u0027finance.dialog.interest_defer\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027account\u0027: ($(\u0027Loop Over Items\u0027).item.json.account_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.btn_tomorrow\u0027] || \u0027finance.dialog.btn_tomorrow\u0027) }}",
+                                                                                "disapproveLabel":  "={{ String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027finance.dialog.btn_skip\u0027] || \u0027finance.dialog.btn_skip\u0027) }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "__OWNER_CHAT_ID__",
+                                         "unauthorizedReplyText":  "={{ String((($(\u0027Load texts\u0027).first().json.r.t) || {})[\u0027core.hitl.unauthorized\u0027] || \u0027core.hitl.unauthorized\u0027) }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       120
+                                   ],
+                      "id":  "328abe10-c717-5068-9cfd-cdc06beb52a6",
+                      "name":  "Ask defer",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "abc1cc1e-2342-5313-8104-590a14a33b60"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "261f685b-5387-5d42-a129-5d20d6d317ff",
+                                                                                   "leftValue":  "={{ $json.data.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       120
+                                   ],
+                      "id":  "8bfd60b2-061b-57a9-a51c-e91a1987ce7f",
+                      "name":  "Tomorrow?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok FROM finance.fn_skip_interest_occurrence($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Loop Over Items\u0027).item.json.account_id, period_end: $(\u0027Loop Over Items\u0027).item.json.period_end }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       260
+                                   ],
+                      "id":  "956dc9ec-57a2-52e2-abba-d2e77a30d0cf",
+                      "name":  "Skip occurrence",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Zins-Fälligkeits-Scheduler (kein LLM, DB rechnet den Betrag)**\n\nSchedule (Cron aus core.config schedule.remind_interest, beim Einspielen eingesetzt) -\u003e fn_interest_due_open(CURRENT_DATE) liefert offene Zins-Vorkommen (account_id, value_date, period_end, auto_post) je zins-fähigem Einlagen-Konto (cash/fixed_deposit/p2p, fn_interest_eligible_account_type); fn_interest_amount_due rechnet je Vorkommen den Betrag (basis zum period_end x Satz JE SEGMENT (taggenaue Mischung bei unterjährigem Satzwechsel) x day-count-Anteil, EINMAL gerundet). Nur Vorschläge \u003e 0. \"gebucht\" wird aus finance.transactions (category=interest, interest_period_end=period_end) abgeleitet; nur Skips materialisiert (interest_skips.period_end). ORDER BY period_end ASC = korrekte Zinseszins-Reihenfolge.",
+                                         "height":  240,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -460,
+                                       -320
+                                   ],
+                      "id":  "f37314e2-8db6-57ab-9983-997b72cff822",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Auto-post? -\u003e auto buchen ODER HITL**\n\nAuto-post? (auto_post=true, Default täglich/wöchentlich) -\u003e direkt Book interest ohne Gate (deterministisch, cron-vs-trigger-konform; der Owner verifiziert später gegen den Auszug, Idempotenz je period_end schützt vor Doppel). Sonst (monatlich/jährlich, false) -\u003e HITL \"Ask interest booked\": Bestätigen -\u003e Book interest (berechnet, KEIN Override). Ablehnen -\u003e Ask defer (morgen erneut = kein Write, taucht morgen wieder auf / überspringen = fn_skip_interest_occurrence -\u003e interest_skips). Anderer Betrag: der Nutzer nennt dem Agenten den Ist-Betrag -\u003e tool_book_interest bucht den Override. TEXTKATALOG: Texte + Aktions-Knöpfe in Owner-Sprache aus Load texts (core.fn_ui_texts_for, read-only VOR jedem Write), Beträge/Daten per Intl. Nach jedem Tipp eine Ergebnis-Zeile (Notify booked / skipped / tomorrow, onError continue; Fehlgrund als code aus der fn, nie der englische reason). Beide Wege buchen über denselben Knoten Book interest; Auto-posted? lässt den Auto-Branch still zurück in die Schleife, nur der bestätigte Pfad bekommt Notify booked.",
+                                         "height":  340,
+                                         "width":  720,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       220
+                                   ],
+                      "id":  "0e74a514-3b57-573b-b26e-ac6b03f74956",
+                      "name":  "Auto vs HITL"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Paket aktiv UND cron_enable.remind_interest**\n\nErster Schritt: core.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_interest\u0027)=\u0027true\u0027 (DB entscheidet, fail-closed). Aus -\u003e No-op. Läuft unter finance_rw (bucht via fn_book_interest_occurrence). Toggle: lifeagents config set cron_enable remind_interest false.",
+                                         "height":  280,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -680,
+                                       -240
+                                   ],
+                      "id":  "23e17c35-c928-5075-8016-e3aae2504d66",
+                      "name":  "F9 Cron-Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Tipp auf eine schon beantwortete Frage**\n\nBestätigen im Chat: n8n bindet einen Tipp an diese Execution, nicht an die Nachricht. Ohne Schutz könnte ein Doppel-Tipp auf \"buchen?\" die danach wartende Frage \"morgen erneut?\" gleich mit beantworten. Hinter jeder Frage merkt sich \"(tap check)\" die beantworteten Nachrichten ($execution.customData); ein Tipp auf eine schon beantwortete Nachricht stellt die aktuelle Frage neu (New-StaleTapGuard).",
+                                         "height":  320,
+                                         "width":  280,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1300,
+                                       -320
+                                   ],
+                      "id":  "1fa14b3f-2e2d-5cba-a809-8a6bc294aeb9",
+                      "name":  "Doppel-Tipp-Schutz"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForEachItem",
+                                         "jsCode":  "// Stale-Tap-Schutz (New-StaleTapGuard): Tipp auf eine schon beantwortete Nachricht?\nconst d = ($input.item.json || {}).data || {};\nconst id = (d.messageId === undefined || d.messageId === null) ? \u0027\u0027 : String(d.messageId);\nconst seen = String($execution.customData.get(\u0027hitl_seen\u0027) || \u0027\u0027).split(\u0027,\u0027).filter(Boolean);\nconst stale = id !== \u0027\u0027 \u0026\u0026 seen.includes(id);\nif (!stale \u0026\u0026 id !== \u0027\u0027) $execution.customData.set(\u0027hitl_seen\u0027, seen.concat(id).slice(-20).join(\u0027,\u0027));\nreturn { json: Object.assign({}, $input.item.json, { stale_tap: stale }) };"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       500,
+                                       260
+                                   ],
+                      "id":  "4566b46f-9b18-5df0-8bc2-df828886b6ff",
+                      "name":  "Ask interest booked (tap check)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "681f6b50-5c31-525c-b37a-354c23028a0e",
+                                                                                   "leftValue":  "={{ $json.stale_tap }}",
+                                                                                   "rightValue":  false,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       680,
+                                       260
+                                   ],
+                      "id":  "dc75a2d2-9ae4-5193-9e4e-2893bbef0b17",
+                      "name":  "Ask interest booked (fresh tap?)"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForEachItem",
+                                         "jsCode":  "// Stale-Tap-Schutz (New-StaleTapGuard): Tipp auf eine schon beantwortete Nachricht?\nconst d = ($input.item.json || {}).data || {};\nconst id = (d.messageId === undefined || d.messageId === null) ? \u0027\u0027 : String(d.messageId);\nconst seen = String($execution.customData.get(\u0027hitl_seen\u0027) || \u0027\u0027).split(\u0027,\u0027).filter(Boolean);\nconst stale = id !== \u0027\u0027 \u0026\u0026 seen.includes(id);\nif (!stale \u0026\u0026 id !== \u0027\u0027) $execution.customData.set(\u0027hitl_seen\u0027, seen.concat(id).slice(-20).join(\u0027,\u0027));\nreturn { json: Object.assign({}, $input.item.json, { stale_tap: stale }) };"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       940,
+                                       300
+                                   ],
+                      "id":  "cb9a8570-6c90-5bd3-b343-13d624da0361",
+                      "name":  "Ask defer (tap check)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f85a6510-1cc7-5c32-a06d-1077b26ff5c7",
+                                                                                   "leftValue":  "={{ $json.stale_tap }}",
+                                                                                   "rightValue":  false,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1120,
+                                       300
+                                   ],
+                      "id":  "2ca77607-d822-5862-96a8-a340bd6bff2b",
+                      "name":  "Ask defer (fresh tap?)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load texts",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load texts":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Get open interest",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Get open interest":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Loop Over Items",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Loop Over Items":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Done",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Auto-post?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Auto-post?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Book interest",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Ask interest booked",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Book interest?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Book interest",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Ask defer",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Book interest":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Auto-posted?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Auto-posted?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Loop Over Items",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Notify booked",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Notify booked":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Loop Over Items",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Tomorrow?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Notify tomorrow",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Skip occurrence",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Skip occurrence":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Notify skipped",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Notify skipped":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Loop Over Items",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Notify tomorrow":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Loop Over Items",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Ask interest booked":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Ask interest booked (tap check)",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Ask interest booked (tap check)":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Ask interest booked (fresh tap?)",
+                                                                                     "type":  "main"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
+                        "Ask interest booked (fresh tap?)":  {
+                                                                 "main":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Book interest?",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ],
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Ask interest booked",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                             },
+                        "Ask defer":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Ask defer (tap check)",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Ask defer (tap check)":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Ask defer (fresh tap?)",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Ask defer (fresh tap?)":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Tomorrow?",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ],
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Ask defer",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -1,0 +1,16 @@
+{
+  "_comment": "Ausnahmen der Ersatz-Umlaut-Regel (scripts/build/lib/umlaut.ps1): Woerter mit ae/oe/ue, die KEINE Ersatzschreibweise sind. 'contains' = Regex-Teilstueck irgendwo im Wort (echte Lautfolgen), 'patterns' = ganzes Wort (Regex, case-insensitiv). Neue Ausnahme = reviewter Edit mit gutem Grund; im Zweifel den Text umformulieren.",
+  "contains": [
+    "eue", "aue", "äue", "que", "(?<!f)uell", "uenz", "uett", "uier", "ueur", "oei", "poe", "joe", "aero"
+  ],
+  "patterns": [
+    "zuerst", "soeben", "duell", "statue[n]?", "manuel", "samuel", "israel", "michael", "raphael", "goethe", "oboe", "aloe", "zoe",
+    "koexist\\w*", "poesie", "phoenix",
+    "true", "value[sd]?", "due", "queue[sd]?", "issue[sd]?", "blue", "cue", "continue[sd]?", "revenue[s]?", "venue[s]?",
+    "avenue[s]?", "tissue[s]?", "rescue[sd]?", "argue[sd]?", "pursue[sd]?", "does", "goes", "shoes", "toe[s]?", "doe[s]?",
+    "maestro", "caesar", "algae", "vitae", "aerobic\\w*", "uefa",
+    "overdue", "continue\\w*", "dialogue[s]?", "influence[sd]?", "fluent\\w*", "guess\\w*", "guest[s]?", "fuel[s]?",
+    "ruerup", "jobboerse", "revalue[sd]?", "fatigue",
+    "(?-i)thueringen", "(?-i)(patienten|betreuungs|bestattungs|sorgerechts)verfuegung"
+  ]
+}

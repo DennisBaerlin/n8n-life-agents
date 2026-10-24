@@ -1,0 +1,9 @@
+[
+  { "key": "documents",        "ord": 1 },
+  { "key": "insurance_check",  "ord": 2 },
+  { "key": "contracts",        "ord": 3 },
+  { "key": "digital_accounts", "ord": 4 },
+  { "key": "contacts",         "ord": 5 },
+  { "key": "wishes",           "ord": 6 },
+  { "key": "system_profile",   "ord": 7 }
+]

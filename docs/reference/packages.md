@@ -1,0 +1,230 @@
+# Referenz zu `packages/CLAUDE.md` — Mechanik, Fallgeschichten, Entscheidungen
+
+On-demand lesen; **keine Regeln** (die stehen in `packages/CLAUDE.md`, DB-Gesetze in `.claude/rules/sql.md`). Vertrags-SSOT bleibt `docs/package-contract.md`, fn-Verträge `docs/fn_catalog.md` (generiert).
+
+## Schema-Source-of-Truth
+
+Source of Truth sind die idempotenten SQL-Dateien unter `packages/<pkg>/db/`: `agent.core_init.sql`, `core.config_init.sql`, `core.schema_version_init.sql`, `agent.ai_models_init.sql`, `finance.tables_init.sql`, `paperless.tables_init.sql` (Schema `paperless` ist seit v0.3.0 leer — reiner Lese-Zugang auf Paperless-NGX; `paperless:V001` baut die Pipeline-Tabellen zurück), `career.tables_init.sql` (`onboarding_state` + Multi-Source `job_matches`: `person_id NOT NULL`+FK, `source bundesagentur|adzuna|jsearch|forwarded`, partial-`UNIQUE(source, external_id, person_id) WHERE external_id IS NOT NULL` = source-skopierter per-Person-UPSERT-Key, `status new|interested|dismissed`), `estate.tables_init.sql` (Vorsorge-/Nachlass-Register: `directive_types`-Seed + `directives` (UNIQUE NULLS NOT DISTINCT) + `provider_contracts`/`digital_accounts`/`contacts`/`person_records`/`funeral_preferences`/`storage_places`/`special_assets` + household-`onboarding_state`; Ereignisfall: `task_templates`-Seed + `cases` (partial UNIQUE ein offener Fall/Person) + `case_tasks` (Auto-Complete-Trigger)), `agent.advisor_init.sql`, `agent.monitor_init.sql`, `finance.import_init.sql`, `agent.pairing_init.sql`, `agent.guide_init.sql`, `agent.persons_init.sql`, `core.backup_key_init.sql`, `core.context_validators_init.sql`, `core.context_scopes_init.sql`, `core.context_renderers_init.sql`, `core.protected_contexts_init.sql`, `core.cron_labels_init.sql`, `core.callback_handlers_init.sql`, sowie `packages/<pkg>/db/migrations/R__fn_*.sql` (eine Datei pro PL/pgSQL-Tool-Function).
+
+## Migrations-Modell (Flyway: `V{NNN}__` versioned + `R__` repeatable, je Paket)
+
+Beide Werkzeugketten (`scripts/db_apply.ps1` Dev, `provisioning/lib/apply_schema.sh` Auslieferung — identischer Treiber-Vertrag) fahren dieselben getrackten Artefakte in **drei Phasen**, Core zuerst, dann jedes Nicht-Core-Paket (phasen-major; Glob-Bau-Muster: `scripts/bootstrap_test_db.ps1`):
+
+| Phase | Dateien | Wann läuft es | Gate |
+|---|---|---|---|
+| 1 — Baseline-Inits | `packages/<pkg>/db/*.sql` (Tabellen/Trigger/CHECKs + inline-Baseline-fns, Trigger-/GENERATED-gekoppelt) | bei JEDEM Apply (idempotent) | — |
+| 2 — versioned `V{NNN}__*.sql` | einmalige, nicht-idempotente Struktur-Deltas | genau **einmal** | `core.migration_should_apply` (Drift-EXCEPTION bei Edit) |
+| 3 — repeatable `R__*.sql` | **Views** + **Tool-Functions** (`R__fn_<name>.sql`) | bei jeder **Inhalts-Änderung** (Checksum) | `core.repeatable_should_apply` (mutabel, skip bei unverändert) |
+
+Danach Phase 4: `packages/core/db/util/util_*.sql` (Hardening + RO-Rollen + Laufzeit-Grants) — NACH Phase 3, damit `GRANT … ON ALL TABLES/FUNCTIONS` die R__-Views/-Functions deckt. Phase 2 vor Phase 3 ist das Kern-Prinzip: ein `V__`-Spalten-Rename liegt vor, **bevor** der `R__`-View-Recreate die Spalte selektiert. Der Ledger lebt in **`core.schema_version`** (`packages/core/db/core.schema_version_init.sql`, Flyway-Single-Table, Spalte `kind` versioned|repeatable; paket-scoped über die `package`-Spalte, vom Treiber aus dem Pfad abgeleitet).
+
+**Apply-Eigenheit der Baseline-Inits:** Apply-Reihenfolge = Dateinamen-Sortierung (`db_apply.ps1` glob-sortiert; `apply_schema.sh` pinnt zusätzlich `schema_version`→`ai_models`→`core.config` voran); die Inits sind order-tolerant (jede trägt `CREATE SCHEMA IF NOT EXISTS`, keine Cross-Init-Abhängigkeit jenseits der Schema-Existenz — die `ai_models`-vor-`core.config`-Reihenfolge bindet nur den **Daten**-Seed, nicht die leere Tabellenanlage). Test: `tests/db/core/test_schema_version.sql`.
+
+**Repeatable-Details:** Tracking-Key = relativer Pfad (z. B. `packages/finance/db/migrations/R__finance_views.sql`); md5-Checksum entscheidet über den Re-Run. Reihenfolge alphabetisch; Function-Abhängigkeiten → `.claude/rules/sql.md` *R__-Reihenfolge*; Views hängen nur an inline-Baseline-fns → sicher. Schema-Guard `CREATE SCHEMA IF NOT EXISTS agent` liegt in jedem Baseline-Init (das frühere separate Schema-Guard-File entfällt). Der checksum-gegatete Full-Apply-Pfad ist `db_apply.ps1 -Repeatable`; `-File` auf eine Einzeldatei ist ungated (Inner Loop). squawk-Konfig + begründete Regel-Excludes: `config/.squawk.toml`; R__ sind nicht gescoped (kein Lock-Risiko).
+
+## Struktur-Invariante (layout_lint)
+
+`scripts/layout_lint.ps1` (hartes Commit-Gate, git-ls-files-basiert) erzwingt L1 Top-Level-Allowlist · L2 Paket-Contract (`manifest.json`+`CLAUDE.md`+`build/`+`workflows/` Pflicht; Subdirs ⊆ ``) · L3 Tests-Buckets · L4 Retired-Roots-Ratchet (verbotene Root-Tokens `db`, `n8n`) · L5 Sub-CLAUDE.md-Titel · L6 Pathspec-Listen · L7 SQL-Header. Ein Verbots-/Allow-Set erweitern = Editieren der In-Skript-Arrays in `layout_lint.ps1` (L1 `$L1Dirs`/`$L1Files`, L2 `$L2Subdirs`; L3 = die Bucket-Zweige in `Test-L3Path`) bzw. der Ratchet-Allowlist `scripts/build/retired_paths_allowlist.json` (L4, mit Begründung je Eintrag). Onboarding-loses Core = dokumentierte Ausnahme (die L2-Whitelist erlaubt `onboarding/`, verlangt es nicht). sqlfluff prüft nur Casing (CP01: Keywords UPPER, Rest lower inkl. Datentypen), nie Suffix-Semantik.
+
+## Rollen, search_path & Cross-Schema (D10) — Mechanik
+
+- **search_path-Hardening** (`packages/core/db/util/util_harden_db_security.sql`): `REVOKE CREATE ON SCHEMA public FROM PUBLIC` + `search_path = pg_catalog, agent, core` für die applizierende Superuser-Rolle. Die host-weiten Rollen (n8n-Owner + `core_ro`) tragen ihren Paket-Tail generisch über `core.fn_sync_role_search_paths` (Desired-State-Recompute aus `core.package_registry` je Paket-Install, Prädikat `to_regnamespace`≠NULL — self-healing, kein finance-Hardcode); die engen `<pkg>_ro/_rw` setzen ihren eigenen Pfad in `fn_provision_package_roles`. per-function `SET` bleibt der Belt der DEFINER-fns (CVE-2018-1058). Test: `test_fn_sync_role_search_paths.sql`.
+- **Rollen-Kette:** Haupt-Credential (Owner/DDL, Write-Pfad der Crons/Subs + Chat-Memory) → `<pkg>_rw`/`<pkg>_ro` (eng auf das Paket-Schema, via `core.fn_provision_package_roles('<pkg>')`; `finance_ro` = freies `postgres_select` der Finance-Agenten) → `core_ro` (`packages/core/db/util/util_create_core_ro.sql`: read-only auf `agent`+`core` + paket-geöffnetes Lesefenster je installiertem Paket, für das freie `postgres_select` der Core-Agenten monitor/guide) → `context_ro` (`packages/core/db/util/util_create_context_ro.sql`: nur SELECT auf `core_contexts`, für `load_context`). `util_create_finance_ro` ist retired (die alte breite Leserolle ist jetzt `core_ro`). Vollständiger Paket-Lese-Vertrag → `docs/package-contract.md` §4.1; Test → `tests/db/finance/test_finance_isolation.sql`. Offener Rest (BACKLOG): finance-Write-Tool-fn-Nodes auf `finance_rw` umstellen (heute Owner-Cred), Advisor-Chat-Memory-Scope.
+- **Warum die Cross-Schema-Read-Regel ein Gesetz ist:** `core.fn_fetch_context` war INVOKER + las `core.context_renderers` unter `context_ro` → `load_context` war monatelang gebrochen, unsichtbar (db_test läuft als Superuser). Zwei Punkte der DEFINER-Checkliste sind lint-erzwungen (`gen_fn_catalog.ps1`): `search_path` mit `pg_temp` zuletzt (PG-Doku *Writing SECURITY DEFINER Functions Safely*) und `REVOKE … FROM PUBLIC`.
+- **Publizierte Fenster heute (alle Schema `core`):** `fn_fetch_context`, `fn_advisor_read_plan`, `fn_config_get`, `fn_package_active`, `fn_core_api_version`, `fn_monitor_trigger_summary`, `fn_onboarding_status`, `fn_onboarding_pending_packages`, `fn_onboarding_overview`, `fn_list_monitor_triggers`, `fn_household_persons`, `fn_resolve_person`, `fn_check_write_permission` (das Schreib-Permission-Fenster — die estate-Write-fns prüfen unter `estate_rw` den `adults_only`-Backstop; das agent-Primitiv `agent.fn_check_write_permission` bleibt D10-unerreichbar, das core-Fenster delegiert nur), `fn_person_chat_id` (Umkehrung von `fn_resolve_sender` — `estate.fn_create_case` prüft unter `estate_rw` den `subject_is_sender`-Guard; nur an `<pkg>_rw` gegrantet).
+- **Cross-Paket-Read (Consumer liest Provider-Paket), Oberflächen:** A (stehende Plan-Zeile): provider-fn **PLAIN STABLE, kein Grant**, gelesen vom `*_render_*` im `core.fn_fetch_context`-DEFINER (Owner=Superuser) — kein neues Fenster. C (Tool unter `<pkg>_ro`): provider-fn `SECURITY DEFINER` + Grant in `fn_provision_package_roles` des **Providers** (nie core). Beispiele: `finance.fn_liquidity_snapshot()` (A) → `career.fn_runway`; `finance.fn_insurance_register()`/`fn_account_register()`/`fn_liability_register()` (A) → estate-Nachlass-Register (Konsum in den Renderer-Call-Sites, doppel-guardet). Lint: `contract_lint` (consumes.reads↔provides.reads). Graduierung zu einer `core.cross_package_reads`-Registry erst bei 2+ Provider × 2+ Consumer.
+
+## Workflow-Lifecycle — Mechanik
+
+- **Generatoren schreiben nur Dateien** und backen die ID ein, die `Save-WorkflowFile` per Name aus dem State (die getrackten `packages/<pkg>/workflows/<id>-<name>.json` = Single-Source-of-Truth für Name→ID) auflöst. `import:workflow` (via `deploy_workflows.sh`) ist id-erhaltend → Substrat und frisches Prod nutzen dieselbe ID. „Vergessene IDs"/Duplikate sind strukturell unmöglich (ID-Auflösung zentral in `lib/workflow_lifecycle.ps1` aus dem Dateinamen). IaC-Muster: State (getrackte Dateien) ↔ generieren (`build`) ↔ anwenden (`provision.sh`, id-erhaltendes `import:workflow`).
+- **Auch die Infra-Subs sind build-generiert:** `core.sub_error_notify` (`core.sub_error_notify.ps1`), `core.sub_load_config` (`core.sub_load_config.ps1`), `agent.tool_load_context` (`agent.tool_load_context.ps1`). Cross-Referenzen: Gate, Tools, Crons und Infra-Subs (`errorWorkflow` über `$ErrorNotifyId` in `Build-Workflow`; `load_config`/`load_context` über `$LoadConfigId`/`$LoadContextId` in den Agent-/Voice-Defs) laufen über `Get-RequiredWorkflowId` (`lib/workflow_lifecycle.ps1`, über `Get-WorkflowIdByName`; paket-interne Refs im Paket-Def selbst).
+- **Credential-Platzhalter:** `__CRED_POSTGRES_WRITE__`, `__CRED_TELEGRAM__`, … `__CRED_HARNESS__` (analog `__OWNER_CHAT_ID__`): kein echter id-Wert im Repo, `inject_credentials.sh` legt die Credential beim Deploy frisch an (Secret aus `.env`/Installer) und `deploy_workflows.sh` tauscht den Platzhalter gegen die frisch geminteten id.
+- **Core-Service-Aliase (D9):** ein Paket-Build-Def nennt den logischen Alias `core:<name>` und löst ihn über `Resolve-CoreServiceAlias 'core:<name>' $CoreServiceMap` (`lib/workflow_lifecycle.ps1`) auf. `$CoreServiceMap` lädt `build.ps1` einmal aus `packages/core/manifest.json` → `provides.services` (`{alias→name}`). Der Resolver gibt den Namen zurück (der Aufrufer braucht ihn auch für `cachedResultName`); name→id bleibt `Get-WorkflowIdByName` aus dem Datei-State (build.ps1 hat keinen DB-Zugriff → `core.services` ist declared state, `seed_data` materialisiert sie — kein Build-Input). Manifest-Felder: Provider `provides.services {alias→name}`, Konsument `consumes.services ["core:<name>", …]`. Lint SC1 (`contract_lint.ps1`) blockt undeklarierte Aliase + dangling Provider-Einträge.
+- **Paket-Tool-Services** (Werkzeuge eines Pakets in Agenten anderer Pakete, Vertrag `docs/package-contract.md` §5.1): Provider `provides.services` in Objekt-Form `{workflow, description, permission, inputs}`; das Werkzeug hat genau die Trigger-Inputs `args` + `chat_id` und prüft `args` gegen die Manifest-`inputs` (Muster `packages/paperless/build/workflows/paperless_common.ps1`). Konsument: `consumes.services` `"<pkg>:<alias>"` + in jeder Agent-Def `Add-ServiceTools -Package <eigenes> -AgentNode … -StartNode … -Position … -ExistingNodes $nodes` (`lib/build_helpers.ps1`, liefert Nodes + `ai_tool`-Kanten + Doku-Sticky; `-Exclude <alias>` je Agent, `-Own` für den Provider-eigenen Agenten). Prüfstelle `core.fn_resolve_service`; `contract_lint` „Prüfstelle umgangen", `workflow_lint` Fremd-Paket-Naht.
+- **Discovery:** `build.ps1` findet die Builder per `scripts/build/lib/builder_discovery.ps1` (AST-Parse, keine Registry) und dot-sourct `packages/*/build/workflows/tools/*.ps1` dann `packages/*/build/workflows/*.ps1`. Einen Workflow ändern = nur sein `packages/<pkg>/build/workflows/…`-File (+ ggf. `lib/`) öffnen, `build.ps1 -Only '*<name>*'`, Substrat via `bootstrap_test_n8n.ps1 -Reset`.
+- **`New-AdvisorGateChain`** (`lib/build_helpers.ps1`): liefert Depth-Gate → Package-Active-Gate (`core.fn_package_active(<pkg>)` unter `<pkg>_ro`) → Core-first-Gate (`core.fn_onboarding_status('core')`) als `@{Nodes;Connections}` (Connections in Original-Reihenfolge; der Aufrufer mergt sie zuerst). Parameter `-StartNode -Package -CredPgRo -NextNode` (i. d. R. `'Load Config'`). Das Delta bleibt im Build-Def (Clone-and-Trim): Tool-Liste, `$DOMAIN_EXPR`, `$MEMORY_TABLE`, System-Prompt, `maxIterations`, `contextWindowLength`, PG-RO-Cred. Paket-lokale Onboarding-Gates: finance `feature.onboarding_gate`, career `feature.career_onboarding_gate` (person-skopiert, `core.fn_onboarding_status('career', chat_id)`; kein Redirect, sondern Prompt-Abschnitt — der career_advisor ist selbst Onboarding-Agent). `New-AdvisorToolNode` (geteilt in `lib/build_helpers.ps1`; Konsumenten finance_advisor, career_advisor, monitor, guide): `-StartNode` Pflicht, `FixedInputs` optional.
+- **`Get-WorkflowHomeDir`** (`lib/workflow_lifecycle.ps1`) routet Workflow-JSONs manifest-getrieben: `Get-WorkflowHomeMap` baut (gecacht) je Paket `<pkg> → workflows_dir` (Default `packages/<pkg>/workflows`; optionales Manifest-Feld `workflows_dir`). Ein Nicht-Core-Paket beansprucht den Scope-Prefix `agent.<pkg>` segment-genau; core ist der Host (`core.*` + bare `agent.*`-Infra). Unbekannt → `throw`.
+- **Routing-Status-Gate** (Paket-Agent, nach dem Depth-Gate, vor `Load Config`): `Build-Pg 'Package active read'` → `SELECT core.fn_package_active('<pkg>') AS active;` mit post-construction `.credentials = <pkg>_ro` + `.onError='continueRegularOutput'`; `Build-If 'Package active gate'` Left `={{ …active === false }}` Op `equals` Right `true` Typ `boolean` → `true` zu `Build-ToolError … 'package_inactive'`, `false` (active oder Lesefehler = fail-open) in die Pipeline. Muster 1:1 in `agent.finance.ps1` + `agent.finance_advisor.ps1`. Paket-Crons: Eingangs-Trio `SELECT core.fn_package_active('<pkg>') AND COALESCE(core.fn_config_get('<pkg>','cron_enable','<cron>')='true', false)` (fail-closed; Toggle via `lifeagents config set`).
+- **Core-first-Gate** (nach dem Package-active-Gate, vor `Load Config`): `Build-Pg 'Core onboarding read'` → `SELECT (core.fn_onboarding_status('core')->>'complete')::boolean AS core_complete;` (`<pkg>_ro`, `continueRegularOutput`); `Build-If 'Core onboarding gate'` Left `={{ …core_complete === false }}` → `true` zu `Build-Set 'Core onboarding required'` (`{ok:false, output:'<DE> … /onboarding …'}`), `false` in die Pipeline. Beim Advisor sitzt das flag-gegatete `Onboarding gate` (`core AND finance`) NACH `Load Config` → Core-first = Boden, Flag-Gate = strengere Opt-in-Stufe.
+- **Depth-Gate-Muster:** `Build-If 'Depth gate' … 'call_depth' '2' 'largerEqual' 'number'` → `true` zu `Build-ToolError … 'max_call_depth'`; 1:1 aus `packages/finance/build/workflows/agent.finance.ps1` (`$nDepthGate`/`$nDepthDeny`).
+- **Verifikation ohne Prod:** Substrat-Tiers `real_ingress_test`/`mock_route_test`/`infra_test` + alle Lints sind die Gates; selbst vergebene IDs überleben `import:workflow`.
+
+## Capabilities-Manifest (Discoverability)
+
+Jedes nutzer-facing Capability-Tool gibt an `Build-Workflow` einen vierten Parameter mit: `@{ Category='<id>' }` (die `id` einer Kategorie im `catalog`-Block des eigenen Pakets) — co-located in der `Build-*`-Funktion. `Save-WorkflowFile` strippt alle `_*`-Keys (inkl. `_manifest`) → die Workflow-JSONs bleiben unberührt.
+
+**Per-Fragment-Modell je Sprache (Textkatalog Phase B):** Jedes Paket besitzt die STRUKTUR seiner Katalog-Sektionen im `manifest.json`-`catalog`-Block (`{ ord, categories[{id,ord}], tail[{id,ord}] }`) und die TEXTE im Textkatalog (`<pkg>.help.<id>.title|description|ex1..3`, Tail `…title|body`; Schema → `docs/package-contract.md` §3.5/§3.11). `build.ps1` (`-CatalogOnly`/voll) rendert je Paket und Katalogsprache ein Fragment `packages/<pkg>/seed/capabilities_catalog/<lang>.fragment.md` (GENERATED) und composet je Sprache nach Paket-`ord` (core = hoch → Host-Chrome zuletzt) + Kopf (`core.help.*`) in `packages/core/seed/capabilities_catalog/<lang>.md`. Der Installer (`seed_data.sh`) komponiert daraus je Sprache die Zeile in `core.help_catalog` (nur aktive Pakete) und den deutschen Kontext `capabilities_catalog` für den Guide. Die Engine (`lib/catalog.ps1` = `Build-CatalogFragment` + `Build-ComposedCatalog`) kennt keine Paket-Kategorien. Konsum: `/help` (Orchestrator liest `core.help_catalog` in der Sprache des Absenders).
+
+- **Deutsche Beispiele müssen reale Routing-Cases sein:** jeder Wert `<pkg>.help.<id>.exN` in `locales/de.json` ist verbatim ein `task` eines Routing-Cases (`expected_tool`/`expected_route` vorhanden) aus `tests/agent/*/*_cases.json`; `build.ps1 -VerifyCatalog` blockt sonst. Die en/ko-Beispiele sind Übersetzungen derselben Aussage (das Routing in anderen Sprachen sichern keine eigenen Golden-Cases).
+- **Drift-Garantie:** `-VerifyCatalog` prüft (a) jedes Fragment == frisch gerendert (nennt das Paket bei Drift), (b) komponierte `.md` == `compose(Fragmente)`, (c) jede Example hat einen Case, (d) jedes `tools/`-Def trägt genau eins von `Category` oder `Internal`, (e) jede Tool-`Category` ist im `catalog`-Block ihres Pakets deklariert.
+- **Interne Tools** (Gate, `web_search`, `expert_panel`, Plan-/Fakten-Schreibwege, Onboarding-Marker, Telegram-Bausteine …): `Build-Workflow … @{ Internal = $true }` (Muster OpenAPI `x-internal`) → kein Katalog-Eintrag, nicht in der Write-Tools-Tabelle (`doc_lint` Check 4 liest denselben Marker). Agent-/Kommando-Capabilities ohne Tool leben als `tail`-Sektionen im `catalog`-Block des besitzenden Pakets.
+- **Neue Kategorie** → `catalog.categories` des besitzenden Pakets (`key` = `Category`-String, `ord`, `description`), nicht in die Engine.
+
+## Command-Registry
+
+Slash-Befehle (`/help`, `/onboarding`, …) leben als `commands`-Block (`{_comment, list:[{cmd, visibility:owner|member|all, description, dispatch?:{agent,task}}]}`) im `packages/<pkg>/manifest.json` — die eine Quelle für `scripts/command_lint.ps1` (Coverage gegen den Orchestrator-Switch `Command router` + die `/help`-Katalog-Tail) und `setMyCommands`. Ein Eintrag mit `dispatch:{agent,task}` ist ein Code-Pfad-Command: `build.ps1 $CommandDispatchList` sammelt sie aller Pakete und der Orchestrator-Build-Def generiert je Command einen `/xxx`-Switch-Case im `Command router` + einen Run/Relay-Dispatch-Arm → `agent.sub_dispatch_agent` → `agent.<agent>` (message.text-Pfad, synthetischer Task, `call_depth=1`; `docs/package-contract.md` §6). Core-Commands (`/help`/`/onboarding`/`/start`) haben kein `dispatch` = Host-bespoke Handler. Discriminant (§8): Code-Pfad-Command → Build-Zeit-Switch; reiner Text-/Callback-Prefix → Laufzeit-`core.callback_handlers`. `/help`-Chunking: der Katalog wird zur Laufzeit an `##`-Grenzen gesplittet (`Split help`-Code-Node); der Build sichert je Kategorie-Block + Index-Karte `≤ PACK_BUDGET` (`Build-ComposedCatalog`).
+
+`PACK_BUDGET` im Orchestrator-Code-Node ist Follower von `catalog.ps1` `$PackBudget` — kein Lint fängt die Drift, beide mitführen.
+
+## n8n-Versionshinweise — Beispiel Typed Sub-Workflow Inputs
+
+Format im Start-Node (`executeWorkflowTrigger`):
+
+```json
+"parameters": {
+  "workflowInputs": {
+    "values": [
+      { "name": "task" },
+      { "name": "chat_id" },
+      { "name": "call_depth" }
+    ]
+  }
+}
+```
+
+## Build-Gotchas — Fallgeschichten und Mechanik (Kurzform = Checkliste in `packages/CLAUDE.md` *Build-Gotchas*)
+
+**Triage-Klassen:** **BUILDER** (Helper macht den Fehler strukturell unmöglich: `Build-If`-Whitelist/Aliase/String-Wrap, `Build-Pg`-jsonb, `New-TelegramSendNode`/`New-TelegramSendAndWaitNode`-Escape+Attribution+Retry, `New-LmChatNode`, `New-ModelSelectorBundle`, `deploy_workflows.sh`-Automatiken) · **LINT** (`contract_lint.ps1` = tote fn-Refs, ungelesene Payload-Keys, Agent↔Tool-Input-Drift, `$fromAI`-Hygiene, IDs-als-number, jsonb-Standard; `workflow_lint.ps1` = chat_id-Typsicherheit, Code-Node-Shape, Telegram-Attribution/Retry/Escape aller Sends, Ausdrucks-Syntax, Connections-Konsistenz) · **PROSA** (nicht mechanisierbar).
+
+- **IF-Operator-Aliase:** n8n IF v2.2 akzeptiert beim Publish unbekannte Operation-Strings (`largerEqual`), wertet sie zur Laufzeit als no-op→false. War real: alle `create_*`-Dubletten-Backstops (`hit_count >= 1`) feuerten nie — unentdeckt, weil der True-Zweig nur bei echter Dublette läuft. `Build-If` mappt `largerEqual`→`gte`, `smallerEqual`→`lte`, `larger`→`gt`, `smaller`→`lt`. Abgesichert: `infra_cases.json` ic08.
+- **`queryReplacement` droppt leere Werte:** (a) einziger leerer Wert → `there is no parameter $1`; (b) leerer Wert mitten in mehreren Parametern → Parameter-Shift (`invalid input syntax for type integer: "<Folgewert>"`). Ein JSON-Objekt ist nie leer und splittet nicht → `Build-Pg` baut einen `queryReplacement = ={{ JSON.stringify({ feld: <expr>, … }) }}`, die Query liest `($1::jsonb)->>'feld'` (mit Cast `::numeric|::int|::date`) bzw. `fn(... $1::jsonb)`; fehlt/leer → NULL, `NULLIF(…,'')` fängt's. Positionale `$1,$2,…` und der `'__none__'`-Sentinel sind Altlast.
+- **`$fromAI`:** Single-Quotes sind die String-Begrenzer (`$fromAI('key','desc','type')`) → ein Apostroph in `desc` bricht den Parser (`Unbalanced parentheses while parsing $fromAI call`); betrifft nur InputSpec-Descriptions in `New-ToolWorkflowNode`. 3-arg macht das Feld Pflicht (`Required → at <feld>`), das 4. Argument (Default) macht es optional; resourceMapper-`schema.required:false` steuert das nicht. Vom LLM aufgelöste IDs werden gelegentlich gequotet (`"42"`) → `'string'` deklarieren, das fn-SQL castet (war die zweite tc16-Flakiness-Ursache).
+- **Tool-Input an zwei Stellen:** `executeWorkflowTrigger` gibt nur deklarierte `workflowInputs` weiter — ein nur am Agent-Node gemappter Input kommt als `undefined` an (real: `first_payment_date` beim Loan-Tool).
+- **Deploy-Reihenfolge:** `Cannot publish workflow … references workflow … which is not published` — `deploy_workflows.sh` aktiviert per Fixpunkt in Dependency-Order und published automatisch (`POST /publish`, `n8n_set_published`; `import:workflow` setzt `active` nicht; der Telegram-Webhook läuft nur bei `active=True`). Detail → `provisioning/CLAUDE.md` *Schema + Workflows + Credentials*.
+- **Ausdrucks-Syntax:** `Text + Bedingung ? a : b` wird als `(Text + Bedingung) ? a : b` gelesen (Summary bestand nur aus dem Warn-Satz; real `tool_book_savings_plan_execution`, erst im E2E aufgefallen). `}}` beendet einen Ausdruck auch innerhalb eines String-Literals (real `tool_save_plan_section`, `section_data`-Beschreibung — seit 2026-06 kaputt, erst im Advisor-E2E aufgefallen). `workflow_lint` prüft jeden `{{ … }}`-Ausdruck auf gültiges JavaScript und zerlegt wie n8n am ersten `}}`.
+- **Export-JSON `'`:** Single-Quotes stehen als 6-Zeichen-Sequenz; das Edit-Tool dekodiert vorher und matcht nicht → PowerShell-Literal-Replace (`[char]92 + 'u0027'`) oder beim Neuschreiben echte `'`.
+- **Telegram-Entities:** die n8n-Signatur wird als Link-Entity angehängt; bei Mehrbyte-Zeichen stimmt der Byte-Offset nicht (`can't parse entities … at byte offset N`) → `appendAttribution:false`. Telegram parst legacy Markdown: ein ungepaartes `_`/`*`/`[` im Text (DB-Werte wie `birth_date=…`, Workflow-Namen wie `agent.tool_human_approval`) bricht den Send, gepaarte Underscores werden still kursiv (Alert zeigte `agent.toolhumanapproval`). `parse_mode` ist im `sendAndWait` hartkodiert `'Markdown'` (n8n `GenericFunctions.createSendAndWaitMessageBody`). Die Helper escapen jeden dynamischen Text (Bot-API-Backslash-Escape der 4 Legacy-Entities) und brechen den Build bei statischem Text mit Entities; der Alert-Formatter escapt im Format-Message-Code-Node (`core.sub_error_notify.ps1`). Real 2026-06-12 (Exec 3086–3088): Onboarding-Summary crashte das Gate und der Fehler-Alert crashte am eigenen Workflow-Namen. <!-- markdownlint-disable-line MD038 -->
+- **Markdown→Plain-Fallback (`New-TelegramSendWithPlainFallback`):** der LLM-Relay ist `-NoEscape` (Formaterhalt). Der Helper emittiert zwei Nodes — Primary (`parse_mode='Markdown'`, `onError='continueErrorOutput'`, `maxTries=1`) + PlainFallback (`parse_mode='HTML'`, Text mit `&`/`<`/`>` als Entities = echtes Plain, voller `retryOnFail`, `maxTries=3`); `Primary main[1]` (Fehler-Ausgang) → `PlainFallback`. `retryOnFail`×`onError=Continue` ist in n8n defekt (GH #10763); ein Parse-Fehler wiederholt sich identisch. Der ungefangene Fehler des Fallbacks geht zum `errorWorkflow` → kein echter Zustellausfall wird maskiert. Ein leeres `parse_mode` setzt n8n still auf `'Markdown'` (der Fallback crashte live an derselben Entity, Exec 297, 2026-10-22) → `workflow_lint` verbietet es und nimmt nur HTML-escapte `parse_mode='HTML'`-Sends von der Escape-Pflicht aus. Entscheidung: der Fehler-Ausgang gatet **nicht** auf HTTP 400 — 400-Parse vs. transient ist in n8ns Fehler-Ausgang versions-fragil; Preis: ein transienter Primary-Blip liefert plain statt formatiert.
+- **Telegram-Send hängt 3–5 Min (KNOWN ISSUE):** Modell/Tool ist schnell fertig, die Nachricht kommt erst nach Minuten; nur am Telegram-Node, nach n8n-Reboot weg, `curl` zur Telegram-API ist schnell. Ursache: Node.js-19+-`keepAlive:true` → ein idle Keep-Alive-Socket, den Telegram serverseitig schließt, bleibt im Pool → `ECONNRESET`/Hänger bis Timeout (≈5 Min). Kein IPv6/DNS-, kein Ressourcen-Problem. Wir warten auf einen Upstream-Fix (n8n bietet keinen keepAlive/Timeout-Schalter am Telegram-Node; Gate-`sendAndWait` nicht durch HTTP-Node ersetzbar). Fallback falls dringend: Orchestrator-Relay-Send auf HTTP-Request-Node mit ~20 s Timeout + Retry. Verfolgt im Memory `telegram-socket-fix-watch` (n8n-Changelog + GH-Issues #24007/#18762/#14310).
+- **Free-SQL-`postgres_select`:** das Modell schreibt die Query selbst und kennt die Spalten nicht (`column "…" does not exist` killt die Execution; Flash riet zufällig richtig, Pro nicht). `onError='continueRegularOutput'` gibt den DB-Fehler als Tool-Ergebnis zurück, der Agent korrigiert in einer Iteration; Tool-Description: „Views sind schmal/kuratiert → `SELECT *`; `information_schema` für Introspektion" — keine Spaltenliste im Prompt.
+- **`POST /publish` (früher `/activate`) 415:** ein POST ohne Body sendet keinen `Content-Type` → `415 Unsupported Media Type` nach ~1 s (kein Socket-Hang) → `Content-Type: application/json` + Body `{}` (in `deploy_workflows.sh` gesetzt).
+- **HITL-Gate Dual-Control (Maker-Checker):** `Build-HumanApproval` = drei Zweige (Sticky `Doc HITL Dual-Control`): Inputs `summary`+`chat_id`+`approval_tier`; nicht-numerisches/owner/found:false-`chat_id` → Owner-Pfad (ein Tap); positiv aufgelöster Nicht-Owner → Member-Pfad nach `approval_tier` (`owner_only`=harter Block; `owner_approval`=Member-HITL→Owner-Vier-Augen; `owner_info`=Member-HITL+Owner-Info). Resolve unter `core_ro` (`__CRED_POSTGRES_CORE_RO__`), kein onError → DB-Fehler stoppt hart (fail-closed + Alert). Jeder sendAndWait trägt `-LimitWaitMinutes 10`. Der `approval_matrix`-Block im Manifest des besitzenden Pakets (Vertrag §3.10; `scripts/build/lib/approval_matrix.ps1`) wird vom build.ps1-Post-Pass `Set-ApprovalTier` in jeden Gate-Aufruf-Node injiziert (Aufrufer ohne Eintrag = Build-Fehler; Verb-Präfix-Strictness), `scripts/approval_lint.ps1` prüft die gebauten JSONs. Kein Test-Bypass: alle Tiers lösen das echte Send-and-Wait über das abgefangene Mock-Telegram + die signierte Resume-URL auf (`Wait-ExecResolvingGates`; `hitl_gate_test.ps1` beweist Approve+Decline). `owner_only` doppelt gesichert: Gate-Vorfilter + DB-Backstop in `fn_advisor_save_section`/`_publish_plan`/`fn_set_context_facts` (`agent.fn_sender_is_member(chat_id)` bzw. `fn_check_write_permission`). Bewusst behalten (E2E-Sentinel-Familie): der Advisor/Monitor-`chat_id.startsWith('test_e2e')` → Sentinel-Domain-Switch (`__e2e_finance__`/`__e2e_monitor__`) — Per-Case-Isolation der E2E-Schreibtests.
+- **Array-Form:** n8n erwartet `rules.rule[].conditions.conditions` als Array `[{…}]` und `connections[node][type]` als `[[{…}]]`; PS-`ConvertTo-Json` kollabiert einzelne Array-Elemente zu Objekten (`POST /activate` → `Model Selector: Error validating node parameters`; PUT → `connections.X.main (invalid_type): Expected array, received object`). `conditions = @( … )`, `connections` mit `@(,@( E … ))`; `Save-WorkflowFile` erhält die Form beim Serialisieren (Unary-Komma).
+- **Vergessener `$nodes`-Akkumulator:** `build.ps1` validiert Node↔Connection-Konsistenz nicht; `import:workflow` meldet `unknown_connection_target` (real: die per-Paket-Onboarding-Dispatch-Arme `$onbPkgNodes`). `workflow_lint` fängt die Klasse pre-push.
+- **Prompt-Caching:** der Anthropic-Chat-Node v1.5 hat keine Caching-Option (erst v1.6, n8n 2.37+, Standard aus; geprüft 2.44.4) (Node-Schema: nur model/maxTokensToSample/temperature/topK/topP/thinkingMode/effort); die Anthropic-Credential (`url`) zeigt auf den lokalen Gateway (`provisioning/llm_gateway`, Mechanik → `provisioning/CLAUDE.md` *LLM-Gateway*), der Haltepunkte am letzten Werkzeug + System-Ende (1h) + oben (5 Min) setzt — nur bei Agenten-Anfragen. Die eingebaute Option ab n8n 2.37 (Node v1.6) setzt nur den oberen Haltepunkt (kein Treffer über Gespräche). `New-AnthropicMessagesNode` (Einmal-Aufrufe) zielt auf den Gateway (Messung), wird nicht gecacht.
+- **`chat_id` ist produktiv eine Zahl:** Telegram liefert `message.chat.id` numerisch, die Harnesses sandten früher String-chat_ids (`test_…`) → Crash nur produktiv (`Wrong type: '…' is a number but was expecting a string` am strict-IF, TypeError `.startsWith`; real Onboarding-HITL 2026-06-12). Dreifach verankert: der Orchestrator stringifiziert `chat_id` in jedem `workflowInputs`-Binding (`agent.orchestrator.ps1`), `Build-If` wrappt string-typisierte leftValues in `String(<expr> || '')`, `workflow_lint` prüft Querschnitt. Seit Weg C feuern die Tiers mit numerischen chat_ids.
+- **Code-Node-Shape:** `runOnceForEachItem` returnt ein Item-Objekt `{ json: {…} }`; Array-Return gehört zu `runOnceForAllItems` (`A 'json' property isn't an object [item 0]`). Traf `core.sub_error_notify` selbst — die Fehler-Sicherheitsleine stellte nie einen Alert zu.
+
+## Scheduled Workflows — Beispiel `cron_reconcile_accounts`
+
+Monats-Check-Erinnerung (3. und 17., `schedule.reconcile_accounts`): fällig ist ein aktives `cash`-Konto mit Kontoauszug (Kontonummer, Bank oder schon ein Auszug), dessen bestätigter Stand den Stichtag (letzter Tag des Vormonats) nicht erreicht; mit Auszug-Historie gilt der Takt des letzten Auszugs (Quartalsauszug fragt nur jedes Quartal). Alles in EINER Query gegen die Basistabellen (`finance.accounts` + `finance.bank_statements`), kein `fn_*`, keine Schwelle in der Config (ein Fakt: der Takt steckt im Auszug). Der Text (Konten, Stichtag, Schritt-für-Schritt-Anleitung) kommt aus dem Katalog in Owner-Sprache; die Antwort ist ein PDF an den Bot → `tool_reconcile_bank_statement`.
+
+## Tool-Bau — Mechanik
+
+- **Post-State im Tool-Graph:** der fn-Call-`Build-Pg`-Knoten selektiert die Post-State-Felder mit aus (`(r->>'settlement_balance')::numeric AS settlement_balance, …`); `Build-Return` reicht sie durch. Beispiele für DB-berechnete Größen: Zins/Tilgung-Split, Erlös (shares×price−fee), realisierter `fx_rate`, `monthly_equivalent`, berechnete Sparrate, vorzeichenbehafteter Betrag aus `direction`, Smart-Close-`action`-Verzweigung. Count als Information: Batch-Upsert `upserted`, Smart-Close `tx_count`, `deleted_count` eines Multi-Leg-Void. Beleg: REST-POST-Repräsentation inkl. berechneter Felder + „chatty API"-Vermeidung (Azure), CQRS-Result-Pattern, LLM-Tool-Leanness (Fowler/OpenAI).
+- **Korrigierbare Ablehnung im Tool-Graph:** der fn-Call-Knoten selektiert `(r->>'ok')::boolean AS ok, r->>'reason' AS reason`; `Build-If 'Write ok?'` (`={{ $json.ok }}` == `true`) → true: Read/Return-Pfad; false: `Build-ToolError` mit `={{ $('<write-node>').item.json.reason }}` + Sticky am Zweig. Zusätzliche Zahlfelder (`available`/`requested`, `payoff_amount`, `depot_count`) machen DB-Tests stabil. Korrigierbar: Oversell, Kredit-Über-/Unterzahlung, nicht-positive Beträge, Depot-Typ-Mismatch, gleiches Quell-/Zielkonto, fee-auf-inflow, Verrechnungskonto eines aktiven Depots beim Schließen, ein in der fn aufgelöster Name nicht gefunden/mehrdeutig (`code`, `candidates`). Echte Ausnahme (RAISE): eine vom Tool schon aufgelöste id fehlt, already-closed, no-balance-row, DB-CHECKs/Trigger. `Build-Err` (Stop and Error) nur für DB-Schreibfehler nach Approval.
+- **Probelauf vor der Karte (`New-FnWriteGate`, Paket „DB ist das Gesetz" 2026-10-23):** aus EINER Param-Map entstehen `Dry run` (`SELECT core.fn_dry_run('<fn>(jsonb)'::regprocedure, $1) AS r` — die fn läuft echt in einem Savepoint, der Sentinel `LA001` rollt IMMER zurück, die Ergebnis-Variable überlebt), `Dry run ok?`, `Dry run rejected` (`{ok:false, card_sent:false, error, code, candidates}`, keine Karte) und der echte Write (`params || r.effective`). `r.card_lines` → `New-HitlSummary -LinesExpr`; Kartenwerte, die die fn setzt (Datum, Gebühr, Erlös), liest die Karte aus `$('Dry run').item.json.r`. Echte Exceptions reicht `fn_dry_run` durch (errorWorkflow-Alarm). Grenze: deferrable Constraints/Constraint-Trigger feuern erst beim COMMIT — `tests/db/finance/test_dry_run_finance.sql` hält fest, dass finance keine hat. Der echte Write prüft nach dem Tipp erneut (`Write ok?` bleibt). Ausgenommen: Tools mit eigenem Probelauf (`commit_import`, `reconcile_bank_statement`) und ohne Karte.
+- **Sticky bei `agent.fn_*`-Tools:** die Sticky zählt die Function-Schritte auf (z. B. „fn_create_loan: Loan-Konto + Loan-Stammdaten + optional Rate-recurring_payment + Restschuld-Eröffnung + optionale Auszahlung"); bei reinen 1-INSERT-fns genügt „atomar via `agent.fn_<tool>`" plus die DB-Automatik.
+- **HITL-Format-Formatter:** `Fmt-MoneyJs(betrag, ccy, locale)` rendert via `Intl` im Locale des Empfängers (`currencyDisplay:'narrowSymbol'`); die Währung kommt aus der Zeile (`accounts.currency`), sonst `'EUR'`. `Fmt-DateJs(iso, locale)` via `toLocaleDateString`. Das Locale ist Pflicht (fehlt es, bricht der Build ab; Quelle: `locale` aus `core.fn_ui_texts_for`/t-Map). `workflow_lint` `Test-RawMoneyDate`: Geld-Feld ohne `toLocaleString(` bzw. Datums-Feld ohne `toLocaleDateString(` = Fail; bewusste Ausnahme → `$tgFmtAllow`.
+
+## Entscheidungen (bei uns anders — belegt, nicht ohne neuen Beleg neu öffnen)
+
+- **`tool_`-Präfix für KI-Namen gebundener Write-Tools** (Ökosystem-Default wäre bare `verb_noun`): spiegelt 1:1 den n8n-Workflow-Namen minus Scope, greppbar/konsistent; Stripping der 46 Finance-Namen verworfen (teuer + riskant). Bare bleiben `web_search`/`postgres_select`/`load_context`/`expert_panel` (antrainierte Namen). Geteilte Tools unter fachlichem KI-Namen: `tool_set_household_facts` (Guide), `tool_set_profile_facts`/`tool_set_career_preferences` (career) → alle `agent.tool_set_context_facts`.
+- **View-Familie = eine Sammeldatei** (`R__<pkg>_views.sql`): `DROP … CASCADE` × per-Datei-Checksum-Gating würde bei einem Split abhängige Views auf Bestands-Substraten still verlieren.
+- **`core_ro`-Paket-Tail bleibt** (arch-challenge B2): `agent.monitor`/`agent.guide` fahren unqualifiziertes Frei-SQL.
+- **Kein generischer Core-Dispatcher für Cross-Paket-Reads** und keine `core.fn_*`, die `finance.*` hartkodiert (core kennt kein Paket; kein OSS-Präzedenz; größere Angriffsfläche) — arch-challenge ×2 + Opus-Arbiter.
+- **Command-Coverage als eigenes `command_lint.ps1`** (nicht in `-VerifyCatalog`): wir linten die getrackten gebauten JSONs direkt; `-VerifyCatalog` ist in-memory, Router-OutputKeys tragen weder Tokens noch den `/hilfe`-Alias.
+- **Verben `record_*`, `cancel_*`, `export_*`:** `record_` = idempotenter UPSERT auf externen Schlüssel (nicht `create_` — dessen „nur NEUES + Dubletten-Node" widerspricht UPSERT; nicht `book_`). `cancel_` = Abbruch auf terminalen Nicht-Erfolgs-Status mit Historie (nicht `delete_`, nicht `close_` = erfolgreicher Lifecycle-Abschluss; `close_case@owner_info` hätte den `approval_lint`-Verb-Floor gebrochen). `export_` = Datei-Egress (Google AIP-136 / AWS `export`), erster gegateter READ-Egress; Break-Glass `owner_info`, weil der überlebende Partner die Mappe auch bei abwesendem Owner ziehen muss (NIST/HIPAA Break-the-Glass). `create_case_task` legt eine disposable Child-Zeile ohne Dubletten-Node und ohne HITL an (Fortschritts-Flag-Klasse).
+- **Hard-DELETE statt Storno-Ledger, kein globales Double-Entry:** bewusst für den privaten Tracker; Trigger heilen abgeleiteten Zustand, HITL + Chat-History sind die Spur.
+- **Prompt-Caching im Gateway statt im Node; n8n-2.37-Option auch nach Update aus** (setzt nur den oberen Haltepunkt).
+- **Telegram-Fallback ohne 400-Gate** (s. Build-Gotchas oben).
+
+## Write-Tools-Katalog (`doc_lint` Check 4 ↔ `packages/*/build/workflows/tools/*.ps1`, alle Pakete)
+
+Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag (`docs/fn_catalog.md`). Core-Host-Tools und als `Internal` markierte Tools stehen bewusst nicht hier.
+
+**finance (+ career):**
+
+| Tool | Zweck |
+|---|---|
+| `tool_create_account` | Konto anlegen (cash/p2p/depot/festgeld) samt Eröffnungssaldo + Inhaber in einem Schritt; Kredite nur über `tool_create_loan` |
+| `tool_create_insurance` | Versicherung + Prämien-Dauerauftrag anlegen |
+| `tool_create_loan` | Kredit inkl. Loan-Konto, Auszahlung, Rate anlegen |
+| `tool_create_real_estate` | Immobilie als Asset anlegen |
+| `tool_book_stock_buy` | Aktien-/ETF-Kauf buchen; `existing_position` = Bestandsübernahme ohne Belastung des Verrechnungskontos |
+| `tool_book_stock_sell` | Aktien-/ETF-Verkauf buchen |
+| `tool_book_dividend` | Dividende buchen |
+| `tool_book_transfer` | Transfer zwischen zwei eigenen Konten buchen |
+| `tool_book_transaction` | Externe Einnahme/Ausgabe (Dritte) buchen |
+| `tool_book_loan_payment` | Kreditrate buchen (Zins/Tilgungs-Split automatisch) |
+| `tool_create_savings_goal` | Sparziel + monatliche Sparrate anlegen |
+| `tool_book_savings_goal_transfer` | Sparziel-Reserve bewegen: einzahlen/entnehmen/umschichten (getaggter Transfer) |
+| `tool_book_savings_reservation` | Depot-Anteil einer Sparziel-Reserve setzen (absoluter €-Betrag → append-only Journal) |
+| `tool_reconcile_account` | Ein Konto-Saldo abgleichen (Korrekturbuchung) |
+| `tool_reconcile_accounts_batch` | Mehrere Konten mit einem Sammel-Approval abgleichen |
+| `tool_close_account` | Konto schliessen |
+| `tool_create_recurring_payment` | Standalone Dauerauftrag (Gehalt/Miete/Abo/Rente) anlegen |
+| `tool_create_recurring_transfer` | Wiederkehrender interner Transfer zwischen zwei eigenen Konten (cashflow-neutral) |
+| `tool_create_pension` | Altersvorsorge (+ optional Beitrag) anlegen |
+| `tool_set_account` | Konto-Stammdaten ändern |
+| `tool_set_account_interest` | Kontozins setzen/ändern |
+| `tool_set_real_estate` | Immobilie neubewerten/ändern |
+| `tool_set_pension` | Altersvorsorge ändern |
+| `tool_set_insurance` | Versicherung ändern |
+| `tool_set_loan` | Kredit-Konditionen/Status ändern |
+| `tool_set_recurring_payment` | Standalone Dauerauftrag ändern (Betrag/Pause/Resume/Ende) |
+| `tool_set_savings_goal` | Sparziel ändern (Sparrate wird neu berechnet) |
+| `tool_set_holding` | Depot-Position-Metadaten ändern |
+| `tool_set_asset_classes` | Anlageklassen mehrerer Depot-Positionen mit EINER Karte zuordnen (Plan-Block-Key oder `outside_plan`); auch beim Finanzberater gebunden |
+| `tool_verify_price_symbol` | Lese-Tool ohne Karte: Börsen-Notierungen einer ISIN nachschlagen, damit der Nutzer die Kursquelle wählt (Wahl dann per `tool_set_holding`) |
+| `tool_void_transaction` | Fehlbuchung rückgängig machen (Hard-DELETE) |
+| `tool_create_savings_plan` | Sparplan anlegen |
+| `tool_book_savings_plan_execution` | Broker-Ausführung eines Sparplans eintragen |
+| `tool_book_recurring_occurrence` | Fälliges Dauerauftrag-Vorkommen mit angepasstem Ist-Betrag buchen |
+| `tool_book_interest` | Fällige Zinsgutschrift buchen (DB-berechnet oder Override) |
+| `tool_set_savings_plan` | Sparplan ändern (Betrag/Pause/Resume/Notes) |
+| `tool_close_savings_plan` | Sparplan beenden (Smart-Close) |
+| `tool_close_insurance` | Versicherung beenden (Smart-Close) |
+| `tool_close_pension` | Altersvorsorge beenden (Smart-Close) |
+| `tool_close_savings_goal` | Sparziel beenden (Smart-Close) |
+| `tool_delete_real_estate` | Immobilie löschen (nur Fehlanlage; „verkauft" → `tool_sell_real_estate`) |
+| `tool_delete_holding` | Depot-Position löschen (nur ohne Trades) |
+| `tool_delete_account` | Konto löschen (nur ohne jede Referenz) |
+| `tool_delete_recurring_payment` | Standalone Dauerauftrag löschen |
+| `tool_delete_loan` | Kredit löschen (nur ohne gebuchte Raten) |
+| `tool_settle_loan` | Kredit vorzeitig ablösen |
+| `tool_sell_real_estate` | Immobilien-Verkauf buchen |
+| `tool_import_stage_rows` | Bulk-Import 1/3: Rows stagen + validieren (kein HITL) |
+| `tool_update_staging_row` | Bulk-Import 2/3: Staging-Row korrigieren vor dem Gate (kein HITL) |
+| `tool_commit_import` | Bulk-Import 3/3: ganzen Batch atomar committen (EIN Gate) |
+| `tool_reconcile_bank_statement` | Monats-Check: Kontoauszug lesen, Konto per IBAN, Saldo-Probe, erwartete Zahlungen abhaken, Rest als eine Abgleichsbuchung (eine Karte) |
+| `tool_void_bank_statement` | Letzten Kontoauszug eines Kontos samt Buchungen, Skips und Abgleichsstand zurücknehmen |
+| `tool_extract_finance_document` | Vision: Telegram-Foto/PDF → Rohwerte ins Staging (Download via Core-Baustein `agent.tool_fetch_telegram_file`) |
+| `tool_record_job_match` | (career) Weitergeleitete Stelle vormerken (UPSERT auf `(source, external_id)`, `source=forwarded`; `record_`-Verb, HITL owner_info) |
+
+**estate:**
+
+| Tool | Zweck |
+|---|---|
+| `tool_record_directive` | Vorsorge-Dokument ins Register (UPSERT auf owner_person_id+doc_type; „entfernen" = doc_status does_not_exist, kein delete) |
+| `tool_create_provider_contract` | Nicht-finance-Vertrag anlegen (Kundennummer, Todesfall-Aktion) |
+| `tool_set_provider_contract` | Nicht-finance-Vertrag ändern |
+| `tool_delete_provider_contract` | Nicht-finance-Vertrag löschen |
+| `tool_create_digital_account` | Digitalen Nachlass anlegen (ohne Passwörter, nur Fundort-Verweise; seed_backup_location crypto-gekoppelt) |
+| `tool_set_digital_account` | Digitalen Nachlass ändern |
+| `tool_delete_digital_account` | Digitalen Nachlass löschen |
+| `tool_create_contact` | Schlüssel-Kontakt anlegen (mehrere je Rolle legitim) |
+| `tool_set_contact` | Schlüssel-Kontakt ändern |
+| `tool_delete_contact` | Schlüssel-Kontakt löschen |
+| `tool_create_storage_place` | Fundstelle anlegen |
+| `tool_set_storage_place` | Fundstelle ändern/umwidmen (kein delete: FK-Ziel der directives) |
+| `tool_create_special_asset` | Sonderfall-Stub anlegen (vehicle/business/firearm/pet) |
+| `tool_delete_special_asset` | Sonderfall-Stub löschen (wenn der Fall entfällt) |
+| `tool_set_person_record` | Amtliche Stammdaten je Person (Steuer-ID/RV-Nr. — die DB normalisiert + validiert) |
+| `tool_set_funeral_preferences` | Bestattungswünsche je Person (has_prepaid_contract Tri-State) |
+| `tool_confirm_review` | Stempel `person_records.last_reviewed_at` (re-armt Jahres-Review; kein HITL) |
+| `tool_create_case` | Ereignisfall (Todesfall/Vorsorgefall) anlegen + Checkliste instanziieren (owner_info Break-Glass; HITL-Preview = Zusammenfassung) |
+| `tool_set_case` | Offenen Fall ändern (knowledge/bundesland/flags → Fristen-Recompute + Reconcile; owner_approval) |
+| `tool_cancel_case` | Offenen Fall abbrechen (Verb `cancel`; owner_info Break-Glass) |
+| `tool_set_case_task` | Checklisten-Task-Status setzen (done/open/not_applicable; Fortschritts-Flag, kein HITL) |
+| `tool_create_case_task` | Manuelle Task zu offenem Fall hinzufügen (Fortschritts-Flag, kein HITL) |
+| `tool_set_system_profile` | System-Steckbrief + backup_key-Offline-Fundort (Haushalts-Singleton; owner_approval) |
+| `tool_export_emergency_binder` | Notfallmappe als weiterleitbares Telegram-Dokument (erster gegateter READ-Egress; owner_info Break-Glass + adults_only) |
+
+**paperless (read-only Paket-Tool-Services, Alias `paperless:<name>`):**
+
+| Tool | Paperless-Call → Ergebnis |
+|---|---|
+| `tool_search_documents` | `GET /api/documents/?query=…` + Namen → Treffer mit Titel, Datum, Namen, Ausschnitt, Link |
+| `tool_get_document` | `GET /api/documents/<id>/` (+ Namen) → Metadaten + Volltext (Cap 15 000, `truncated`) |
+| `tool_ask_documents` | `POST /api/documents/chat/ {q, document_id?}` → Antwort der Paperless-KI + `references` |

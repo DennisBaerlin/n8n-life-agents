@@ -1,0 +1,75 @@
+---
+title: "Buchhalter (Finanzen)"
+---
+
+Der Buchhalter ist der Agent, mit dem du ganz normal per Chat deine Finanzen führst — Konten, Ausgaben, Wertpapiere, Kredite und mehr. Er trägt technisch den Namen `agent.finance` und arbeitet nach dem Prinzip „lesen frei, schreiben nur über geprüfte Werkzeuge" (Fachbegriff: CQRS) — er erfindet also nie einfach eine Buchung, sondern nutzt für jede Änderung ein festes, geprüftes Werkzeug (technisch: Tool) mit klaren Regeln.
+
+## Was er verwaltet
+
+**Konten aller Art.** Girokonto, Tagesgeld, Festgeld, P2P-Anlagen (Kredite an Privatpersonen über eine Plattform), Aktien-/ETF-Depots und Krypto-Depots. Du kannst Konten anlegen, Zinssätze setzen (nennst du bei einem verzinsten Konto nicht selbst Zinssatz und Gutschrift-Rhythmus, schlägt der Buchhalter die Konditionen deiner Bank zuerst im Web nach, beschreibt sie in Alltagssprache mit Quelle und Datum, fragt nur nach, was er nicht findet, und fragt, ob er sie eintragen soll; einen Rhythmus nimmt er nie einfach an. Die Bestätigungskarte zeigt Rhythmus, Gutschrift und den Tag der ersten Gutschrift im Klartext; „zum Quartals-“ bzw. „Jahresende“ heißt das echte Kalender-Ende, zum Beispiel 31.12.; gespeichert wird wie immer erst mit deinem Tipp auf der Karte), den Saldo mit deinem echten Kontoauszug abgleichen (Fachbegriff: reconcile) und Konten schließen. Schließen geht erst, wenn das Konto leer ist und nichts mehr darüber läuft (kein Guthaben, keine Wertpapiere, kein Sparplan, kein Kredit, kein Dauerauftrag) — sonst sagt dir der Buchhalter vorher, was noch zu tun ist, damit kein Geld aus deiner Vermögensübersicht verschwindet.
+
+**Ausgaben, Einnahmen und Überweisungen.** Jede normale Buchung (Einkauf, Gehalt, Miete) landet als Transaktion auf einem Konto; Überweisungen zwischen deinen eigenen Konten bucht er als zusammengehöriges Buchungspaar. Eine Fehlbuchung lässt sich stornieren.
+
+**Wertpapiere und Krypto mit Kursen.** Käufe und Verkäufe von Aktien, ETFs und Kryptowährungen, Dividenden sowie das nachträgliche Ändern eines Bestands. Aktuelle Kurse holt ein täglicher automatischer Lauf (Fachbegriff: Cron) sich selbst — du musst sie nicht melden.
+
+**Kredite mit Zins und Tilgung.** Kredite anlegen, Raten buchen, Konditionen ändern oder vorzeitig ablösen. Wie sich eine Rate in Zins- und Tilgungsanteil aufteilt, rechnet die Datenbank selbst aus — nie der Chat-Assistent, damit es immer exakt stimmt.
+
+**Versicherungen, Altersvorsorge und Immobilien.** Policen mit Jahresprämie, gesetzliche/betriebliche/private Vorsorge sowie Immobilien lassen sich als Vermögenswerte erfassen, anpassen und neu bewerten oder beenden (Police kündigen, Immobilie verkaufen).
+
+**Daueraufträge.** Wiederkehrende Zahlungen wie Gehalt, Miete, Abos oder Rente werden einmal angelegt und dann mit dem [Monats-Check](monats-check.html) abgehakt: Du schickst einmal im Monat den Kontoauszug, der Buchhalter erkennt die Zahlungen darin und bucht sie mit dem echten Betrag. Tägliche „Wurde das so abgebucht?"-Fragen gibt es nicht. Zinsgutschriften bucht er bei taggenauen Konten ganz ohne Rückfrage. Eine Kreditrate wird in Zins und Tilgung aufgeteilt, und die Restschuld sinkt; ist die letzte Rate kleiner als sonst, steht der Kredit danach auf „abbezahlt". Einzelne Zahlungen kannst du jederzeit auch per Chat buchen („Die Miete für Oktober ist raus"). Änderst du einen Dauerauftrag oder Sparplan (z. B. Mieterhöhung ab einem Stichtag), gilt am Stichtag nur noch der neue Betrag, eine vorher noch anstehende Zahlung läuft zum alten Betrag; ein Enddatum wie „bis 31.12." schließt den 31.12. mit ein. Einen beendeten Sparplan kannst du wieder aktivieren — er läuft dann ab diesem Tag im alten Rhythmus weiter.
+
+**Sparpläne.** Sag den Rhythmus so, wie ihn deine Bank-App nennt („wöchentlich 100 €, nächste Ausführung am 2."). Viele Banken führen Sparpläne nicht wirklich alle 7 Tage aus, sondern an festen Tagen im Monat. Trade Republic zum Beispiel kauft am 2., 9., 16. und 23.; „wöchentlich“ heißt dort genau 4 Käufe im Monat. Das System merkt sich je Depot, wie dessen Bank es macht: Bekannte Banken erkennt es selbst, bei einer unbekannten fragt der Buchhalter beim ersten wöchentlichen Sparplan einmal nach den nächsten Terminen aus deiner App. So stimmen Monatsbetrag und Termine mit den echten Käufen überein, und die Bestätigungskarte zeigt die Tage und den Betrag pro Monat. Nennst du keine begünstigte Person, gehört der Plan dem Inhaber des Depots (bei einem Sparziel dem Inhaber des Sparkontos); für ein Kind auf deinem Depot nennst du einfach den Namen.
+
+**Saldo-Abgleich mit Datum.** „Am 15. waren es 1.000 €" vergleicht mit dem Kontostand an genau diesem Tag; spätere Buchungen zählen nicht als Differenz.
+
+**Sparziele.** Zielbetrag und Wunschdatum angeben, den Rest rechnet die Datenbank: Sie ermittelt die nötige monatliche Sparrate automatisch und rundet sie auf den Cent auf, damit die Raten das Ziel sicher erreichen. Jedes Sparziel braucht ein Sparkonto (z. B. ein Tagesgeldkonto), auf das die Rate fließt. Nur so kann das System den Fortschritt messen. Hast du noch keins erfasst, fragt der Buchhalter danach oder bietet an, es anzulegen, bevor du etwas bestätigst. Ältere Sparziele ohne Sparkonto zeigen „Fortschritt nicht messbar“ statt einer falschen Warnung. Für eine Extra-Einzahlung oder eine Entnahme reicht „zahl 500 € ins Urlaubsziel ein“: Das Sparkonto und das Konto, von dem die Rate kommt, setzt die Datenbank selbst ein, und die Bestätigungskarte zeigt beide. Ein falsches Konto oder mehr als im Ziel liegt lehnt sie ab, bevor die Karte kommt. Schichtest du das ganze Geld eines Ziels auf ein anderes Konto um, wird dieses zum neuen Sparkonto des Ziels. Legst du ein Sparziel oder einen Sparplan an oder erhöhst eine Sparrate, und die Sparraten sind danach höher als das, was nach Ausgaben und Kreditraten frei bleibt, sagt dir der Buchhalter das sofort (höchstens einmal am Tag): Dein Girokonto würde dann jeden Monat schrumpfen.
+
+**Mehrere Währungen.** Beträge werden in ihrer echten Original-Währung gespeichert (z. B. US-Dollar für eine US-Aktie), nicht künstlich in Euro umgerechnet gespeichert — für den Überblick liefert er dir aber jederzeit die Euro-Summe dazu (Fachbegriff: EUR-Reporting-Basis).
+
+**Foto-Import.** Ein Kontoauszug läuft über den [Monats-Check](monats-check.html). Für einen Depotauszug, eine Police oder eine Renteninformation genügt ein Foto oder PDF — der Buchhalter liest die Werte heraus, zeigt sie dir zur Prüfung und übernimmt nur, was du bestätigst.
+
+## Wie ein Eintrag entsteht: auflösen → bestätigen → buchen
+
+Jede Änderung läuft in drei Schritten ab, egal ob du eine 5-Euro-Ausgabe oder einen ganzen Kredit anlegst:
+
+1. **Auflösen:** Der Buchhalter ordnet deine Angaben zu (z. B. „Girokonto" → das richtige Konto in der Datenbank) und ergänzt sinnvolle Standardwerte.
+2. **Bestätigen:** Du bekommst eine übersichtliche Zusammenfassung mit zwei Tasten (Fachbegriff: Inline-Buttons) — „Bestätigen" oder „Abbrechen". Mehr dazu auf der Seite [Chatten & Bestätigen](chatten-bestaetigen.html).
+3. **Buchen:** Erst nach deinem Tap schreibt die Datenbank — und zwar alles auf einmal oder gar nicht (Fachbegriff: atomare Transaktion), sodass nie eine halbe Buchung übrig bleibt.
+
+## Erste Einrichtung: ein Eintrag, eine Bestätigung
+
+Beim Erfassen deines Ausgangsstands gilt eine feste Regel: **Was du über einen Eintrag sagst, landet in genau einer Bestätigung.**
+
+- **Konto mit Kontostand:** „Mein N26 Girokonto hat 1.142 €, Inhaber bin ich" legt das Konto samt Kontostand und Inhaber in einem Schritt an — eine Karte, nicht zwei.
+- **Mehrere Einträge auf einmal:** Nennst du mehrere Konten, Verträge oder Positionen in einer Nachricht oder schickst ein Foto/PDF, sammelt der Buchhalter alles und zeigt dir **eine** Sammel-Bestätigung (alles oder nichts). Darauf steht jeder Eintrag mit allen Feldern, genau wie beim einzelnen Anlegen; was nicht auf der Karte steht, wird auch nicht gespeichert. Vor der Karte macht der Buchhalter einen Probelauf: Würde ein Eintrag beim Speichern scheitern (z. B. ein Zinssatz auf einem Depot oder dieselbe Position doppelt), kommt keine Karte, sondern er nennt dir die Zeile und das Problem. Mehrdeutige Zahlen (z. B. „1,234" als Betrag) fragt er nach, statt zu raten; bei einer Bestandsübernahme übernimmt er deinen Einstandskurs exakt. Sehr lange Karten kommen in mehreren Nachrichten („Teil 1/3 …“), die Knöpfe hängen an der letzten.
+- **Bestehende Depot-Positionen:** Wertpapiere, die du schon besitzt, werden mit deinem Einstandskurs übernommen, **ohne** dass der Kontostand deines Verrechnungskontos sinkt — der Kontostand, den du nennst, ist ja schon der heutige.
+- **Laufende Verträge:** Versicherungen, Kredite und Daueraufträge, die schon seit Jahren laufen, zählen ab dem Tag, an dem du den Kontostand genannt hast. Ältere Abbuchungen stecken bereits darin und werden dir nicht als „fällig" angeboten.
+- **Erst prüfen, dann die Karte:** Bei jeder Buchung und jedem Anlegen prüft die Datenbank deine Angaben, bevor die Bestätigungs-Karte kommt. Ist etwas nicht möglich (mehr Anteile verkaufen, als im Depot liegen; ein Kontoname oder eine IBAN ist schon vergeben; eine IBAN mit Tippfehler), kommt keine Karte, sondern der Buchhalter sagt dir direkt, was nicht passt, und nennt bei Namen die passenden Treffer zur Auswahl.
+- **Nur Nötiges wird gefragt:** Der Buchhalter fragt nur nach Angaben, die nur du kennst und die zwingend nötig sind (z. B. Zinssatz und Fälligkeit eines Festgelds, die erste Abbuchung einer Versicherung). Nennst du kein Datum, gilt heute; nennst du keine Ordergebühr, gilt 0 €. Beides steht auf der Karte, und mit ❌ Abbrechen kannst du korrigieren. Nach der IBAN fragt er nicht: Der erste Kontoauszug lernt sie, und auf dessen Karte siehst du, welche IBAN gespeichert wird.
+- **Hinweise statt Rückfragen:** Sieht es nach einer Doppelbuchung aus (derselbe Betrag auf demselben Konto in den letzten Tagen) oder gibt es bei derselben Bank schon ein ähnliches Konto, steht ein Hinweis auf der Karte. Ist es dasselbe, tippst du ❌ Abbrechen; sonst einfach ✅.
+- **Inhaber:** „mein Konto" ordnet es dir zu, ein genannter Name der jeweiligen Person (der Vorname reicht, der Buchhalter kennt den Haushalt), sonst gilt es als gemeinsames Haushaltskonto.
+
+Versicherungsbeiträge und Kreditraten werden in Euro geführt; ein Abbuchungskonto in Fremdwährung lehnt der Buchhalter dafür mit einer klaren Meldung ab, statt falsch zu buchen.
+
+## Was er NICHT tut
+
+Der Buchhalter gibt keine Empfehlungen und beantwortet keine „soll ich?"/„lohnt sich das?"-Fragen — dafür ist der [Finanzberater](finanzberater.html) zuständig, der rein lesend arbeitet und nichts bucht. Und: ohne deine Bestätigung per Tastendruck wird nie etwas geschrieben — eine Textnachricht erreicht ein wartendes Bestätigungsfenster nicht.
+
+## Beispiel
+
+```
+Du: Habe gerade 45€ bei Rewe fürs Wochenende ausgegeben, vom Girokonto
+
+Bot: Ausgabe buchen – bitte prüfen:
+     • Konto: Girokonto (DKB)
+     • Betrag: -45,00 €
+     • Kategorie: Lebensmittel
+     • Datum: 02.07.2026 (heute)
+     • Notiz: Rewe
+
+     [Bestätigen] [Abbrechen]
+
+Du: [tippt auf Bestätigen]
+
+Bot: Gebucht. Neuer Saldo Girokonto: 1.205,30 €
+```

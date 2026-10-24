@@ -1,0 +1,873 @@
+{
+    "id":  "QKY03FO7KJQEK7tS",
+    "name":  "agent.finance.tool_book_loan_payment",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "loan_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "payment_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "payment_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "principal_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7f82b03b-9888-5320-802c-7143bdbaae7b",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT loan_id, loan_account_id, debit_account_id, hit_count, candidates FROM finance.fn_resolve_loan(($1::jsonb)-\u003e\u003e\u0027loan_name\u0027);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ loan_name: $(\u0027Start\u0027).item.json.loan_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "3ab7442e-c502-50be-86cf-1016dacfb1cb",
+                      "name":  "Resolve Loan",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e6b6dbf6-e2d0-5de3-a876-1e6fde859cb5",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "6c88accc-fcf3-54ce-8ee5-cc56bcebbf38",
+                      "name":  "Loan unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7d78ef12-3d57-564a-b43c-849a6d8e86d4",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "741f7a66-15dd-5040-adba-461300c20c69",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Loan \u0027{{ $(\u0027Start\u0027).item.json.loan_name }}\u0027 resolves to {{ $(\u0027Resolve Loan\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Loan\u0027).item.json.candidates) }}. Ask the user which exact loan.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       400
+                                   ],
+                      "id":  "de81c2ef-27b5-5c6c-bffd-7cfb18042389",
+                      "name":  "Loan ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT name, currency FROM finance.loan_overview WHERE id = (($1::jsonb)-\u003e\u003e\u0027loan_id\u0027)::int;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.loan_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "d2733860-598e-562e-a457-4b64e1b59fb3",
+                      "name":  "Read Loan Overview",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027remaining_debt\u0027)::numeric AS remaining_debt, (r-\u003e\u003e\u0027interest_portion\u0027)::numeric AS interest_portion, (r-\u003e\u003e\u0027principal_amount\u0027)::numeric AS principal_amount, r-\u003e\u003e\u0027booking_date\u0027 AS booking_date FROM finance.fn_get_loan_payment_split($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.loan_id, payment_amount: $(\u0027Start\u0027).item.json.payment_amount, payment_date: $(\u0027Start\u0027).item.json.payment_date, principal_amount: $(\u0027Start\u0027).item.json.principal_amount }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "59c8de25-ca61-5984-9537-5059a0541619",
+                      "name":  "Preview Loan Payment",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b84165a1-91c2-55c8-8ddb-17c8b8589e92",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "1c388bb5-2c17-5609-bb7a-6445aa459323",
+                      "name":  "Preview ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e033dc92-be55-51cf-ab71-687a60afe583",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "50fc4735-ecdc-5c71-8adb-438f687f9159",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Preview Loan Payment\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       240
+                                   ],
+                      "id":  "c3f6ae90-7079-5e9e-91a2-77a3ae19cff0",
+                      "name":  "Payment not possible"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_loan_payment(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.loan_id, loan_account_id: $(\u0027Resolve Loan\u0027).item.json.loan_account_id, debit_account_id: $(\u0027Resolve Loan\u0027).item.json.debit_account_id, payment_amount: $(\u0027Start\u0027).item.json.payment_amount, payment_date: $(\u0027Start\u0027).item.json.payment_date, principal_amount: $(\u0027Start\u0027).item.json.principal_amount }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "9d8fd7b9-4264-5d48-86bd-e4c5c4a1304d",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d4550a02-a292-5647-875a-0ec3053ede62",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "f335bc11-a83d-514b-987c-1a3da6e36f10",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "9c12938d-9951-5f12-a7e6-4497a6f1f8e6",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d2fc0c46-5f54-55d0-b4d5-5d31b53f3539",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "95ac0201-cfd8-5cc0-a1f1-ef59cdbfa7ad",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "757105ea-dc6d-570e-8b62-0133682a0b9e",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "18a8cdeb-18ba-5946-8643-08f33568a62e",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       200
+                                   ],
+                      "id":  "e7a67404-d8a3-57a8-89b7-ef54170b18a2",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027loan_payment_tx_id\u0027)::int AS loan_payment_tx_id, (r-\u003e\u003e\u0027principal_tx_id\u0027)::int AS principal_tx_id, (r-\u003e\u003e\u0027interest_portion\u0027)::numeric AS interest_portion, (r-\u003e\u003e\u0027principal_amount\u0027)::numeric AS principal_amount, (r-\u003e\u003e\u0027remaining_debt\u0027)::numeric AS remaining_debt, r-\u003e\u003e\u0027matched_due_date\u0027 AS matched_due_date FROM finance.fn_book_loan_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.loan_id, loan_account_id: $(\u0027Resolve Loan\u0027).item.json.loan_account_id, debit_account_id: $(\u0027Resolve Loan\u0027).item.json.debit_account_id, payment_amount: $(\u0027Start\u0027).item.json.payment_amount, payment_date: $(\u0027Start\u0027).item.json.payment_date, principal_amount: $(\u0027Start\u0027).item.json.principal_amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "59893abe-05b8-53c1-a771-8c26d05180c8",
+                      "name":  "Create loan payment (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "796806da-ffe4-526e-ba41-bb1d4bc8edb6",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_loan_payment\u0027, lines: [ { label: \u0027finance.label.loan\u0027, kind: \u0027text\u0027, value: ($(\u0027Read Loan Overview\u0027).item.json.name) }, { label: \u0027finance.label.remaining_debt_current\u0027, kind: \u0027money\u0027, value: ($(\u0027Preview Loan Payment\u0027).item.json.remaining_debt), currency: ($(\u0027Read Loan Overview\u0027).item.json.currency) }, { label: \u0027finance.label.rate_total\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.payment_amount), currency: ($(\u0027Read Loan Overview\u0027).item.json.currency) }, { label: \u0027finance.label.principal_part\u0027, kind: \u0027money\u0027, value: ($(\u0027Preview Loan Payment\u0027).item.json.principal_amount), currency: ($(\u0027Read Loan Overview\u0027).item.json.currency) }, { label: \u0027finance.label.interest_part\u0027, kind: \u0027money\u0027, value: ($(\u0027Preview Loan Payment\u0027).item.json.interest_portion), currency: ($(\u0027Read Loan Overview\u0027).item.json.currency) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Preview Loan Payment\u0027).item.json.booking_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "7eff0bcf-e2df-54ef-a829-8985f3f58a3d",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "d0301d3d-f3ff-5f79-bb8e-452122b41a83",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1e27abdb-a8ba-585b-bb80-dec60209ca10",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "4967fe91-22bd-53d8-a3a7-efa6d9b64469",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c92dc7f0-f474-5315-90f1-6da1b762f73a",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "21bf2aee-6dc1-5d7a-b317-00f7afd77dcb",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "28a3fcbf-7756-5c95-ba94-38b9b4410f0e",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the book_loan_payment action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       240
+                                   ],
+                      "id":  "81208c3f-6aa2-50cf-adac-165118396620",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b5df69dc-9c2d-506a-b440-9fb77a5f8b8c",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2860,
+                                       0
+                                   ],
+                      "id":  "2eb7eca3-76d6-5b52-b6f9-36acb26099c5",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d0a935c7-c199-5770-9d94-2468129d801b",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ef58f713-e240-511c-9d2d-5712fe99fc6f",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create loan payment (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       3080,
+                                       240
+                                   ],
+                      "id":  "40e16a07-cb1e-5a2a-949c-a7696660e875",
+                      "name":  "Payment rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3d57547b-0e69-5738-a778-df5bd8dad32e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6d678177-a10c-5143-911e-820e43022e43",
+                                                                                     "name":  "loan_payment_tx_id",
+                                                                                     "value":  "={{ $(\u0027Create loan payment (atomic)\u0027).item.json.loan_payment_tx_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f1c97b6c-118c-503e-9475-03669eaccaf5",
+                                                                                     "name":  "principal_tx_id",
+                                                                                     "value":  "={{ $(\u0027Create loan payment (atomic)\u0027).item.json.principal_tx_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6c7b2fed-8a0e-51e7-8fd5-b6766372fd55",
+                                                                                     "name":  "interest_portion",
+                                                                                     "value":  "={{ $(\u0027Create loan payment (atomic)\u0027).item.json.interest_portion }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ddb3ca7a-a4fa-5ecf-8a8d-e987da53a4d6",
+                                                                                     "name":  "principal_amount",
+                                                                                     "value":  "={{ $(\u0027Create loan payment (atomic)\u0027).item.json.principal_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5d69cea3-de63-5725-9810-062752f76023",
+                                                                                     "name":  "remaining_debt",
+                                                                                     "value":  "={{ $(\u0027Create loan payment (atomic)\u0027).item.json.remaining_debt }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a19bded1-ae57-5fc8-b989-5db5703b8d96",
+                                                                                     "name":  "matched_due_date",
+                                                                                     "value":  "={{ $(\u0027Create loan payment (atomic)\u0027).item.json.matched_due_date }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       3080,
+                                       0
+                                   ],
+                      "id":  "3976a075-f34e-5067-af12-ad6b65d21ac5",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nNach der Vorschau läuft fn_book_loan_payment mit denselben Werten als Probelauf, immer zurückgerollt. ok:false (Überzahlung, Unterzahlung, Rate\u003c=0) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  240,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1320,
+                                       -260
+                                   ],
+                      "id":  "2f779076-e51e-5083-8dfc-41008fee17c3",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**trg_finance_balance_update**\n\nfn_book_loan_payment bucht atomar 2 Transaktionen: (1) Girokonto -payment (loan_payment), (2) Kreditkonto +principal (principal). Zins/Tilgung aus fn_get_loan_payment_split (dieselbe fn wie die Vorschau). Eine reguläre Rate (Betrag = geplante Rate) schließt das nächstgelegene offene Vorkommen der Kredit-Rate (rp-Stempel, Buchung auf dessen Fälligkeitsdatum) -\u003e die Erinnerung fragt sie nicht erneut ab. DB-Trigger pflegen Salden beider Konten. Restschuld = negativer Saldo des Kreditkontos. Die fn liest die neue Restschuld nach der Tilgung (remaining_debt) und gibt sie zurück -\u003e Agent nennt sie in der Bestätigung.",
+                                         "height":  200,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2640,
+                                       -220
+                                   ],
+                      "id":  "76b0936e-a305-58b4-8866-4886b398a29d",
+                      "name":  "DB-Automatik balance (2 Konten)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nÜberzahlung (Rate \u003e Restschuld; reason nennt payoff_amount = Restschuld+Zins), Unterzahlung (Rate \u003c Zins) und payment\u003c=0 liefert die fn als {ok:false, reason} -\u003e Payment rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Normalerweise fängt schon der Probelauf das vor der Karte ab.",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       3080,
+                                       -220
+                                   ],
+                      "id":  "63e6cce9-f04c-5006-805f-dd491d977d7e",
+                      "name":  "Write ok? (korrigierbare Ablehnung)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_get_loan_payment_split (eine Formel)**\n\nDie Karte zeigt Restschuld, Tilgung, Zins und Buchungsdatum aus fn_get_loan_payment_split -- derselben fn, die fn_book_loan_payment intern ruft. Der Graph rechnet nichts selbst (früher JS mit der negativen Restschuld -\u003e Karte zeigte Zins -600 / Tilgung 1.600, gebucht wurden 600 / 400). Über-/Unterzahlung kommt schon hier als ok=false zurück -\u003e Payment not possible reicht reason an den Agenten, bevor der Owner eine Karte sieht.",
+                                         "height":  240,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -260
+                                   ],
+                      "id":  "2839ff58-b1ff-5343-a0af-240346bf38f1",
+                      "name":  "Vorschau = Buchung"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Loan",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Loan":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Loan unique?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Loan unique?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Read Loan Overview",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Loan ambiguous",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Read Loan Overview":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Preview Loan Payment",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Preview Loan Payment":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Preview ok?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Preview ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Payment not possible",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create loan payment (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Create loan payment (atomic)":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Write ok?",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Payment rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -1,0 +1,557 @@
+{
+    "id":  "Ede6T2CBV8LqAEZx",
+    "name":  "agent.career.tool_record_job_match",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "title"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "employer"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "location"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "url"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "external_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "007c0e1f-9737-565b-99dc-657076fa3d80",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "6ee3f6ac-b576-573d-830a-1ab8a0f80cc9",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027career.hitl.record_job_match\u0027, lines: [ { label: \u0027career.label.job_title\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.title) }, { label: \u0027career.label.employer\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.employer) }, { label: \u0027career.label.location\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.location) }, { label: \u0027career.label.link\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.url) } ].filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       420,
+                                       0
+                                   ],
+                      "id":  "015d3a42-30b1-5560-a1c3-9dc34bc0a48e",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       640,
+                                       0
+                                   ],
+                      "id":  "7178ad90-c7aa-5075-8653-703ec84d754b",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ea5d237f-6e9b-5055-89f8-797b2fe30545",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       860,
+                                       0
+                                   ],
+                      "id":  "2f8750a3-32de-5cbc-8231-ab9aa52168f3",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "62dddf93-84a8-54a0-b9ba-e17f1e94ae2f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4c309d22-a634-5abf-a1fd-01aeaf87c680",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "40f01bb0-eea7-5b18-8010-4740894c881c",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the record_job_match action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1080,
+                                       200
+                                   ],
+                      "id":  "a2b69d1e-d607-5ce0-b0b6-45d4090a291d",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027job_match_id\u0027)::bigint AS job_match_id, (r-\u003e\u003e\u0027created\u0027)::boolean AS created FROM career.fn_record_job_match($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027forwarded\u0027, title: $(\u0027Start\u0027).item.json.title, employer: $(\u0027Start\u0027).item.json.employer, location: $(\u0027Start\u0027).item.json.location, url: $(\u0027Start\u0027).item.json.url, external_id: $(\u0027Start\u0027).item.json.external_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1080,
+                                       0
+                                   ],
+                      "id":  "de45b7c5-a4e4-53a3-a74c-9cac2313cf96",
+                      "name":  "Record match",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "56268386-527f-561f-bfd6-a1c628be1efe",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1300,
+                                       0
+                                   ],
+                      "id":  "d7f97d70-194d-5562-b252-37a9a3a4154b",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1e03a389-0d27-5227-a772-6f7b7ee02e0b",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9251f449-afee-59ae-8ccd-e074471ae9f0",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Record match\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1520,
+                                       240
+                                   ],
+                      "id":  "30e19ede-a7a2-5e19-a8ad-a1b823bbcc91",
+                      "name":  "Record rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT CASE WHEN COALESCE(core.fn_config_get(\u0027career\u0027, \u0027cron_enable\u0027, \u0027score_jobs\u0027), \u0027false\u0027) \u003c\u003e \u0027true\u0027 OR COALESCE(core.fn_reminder_allowed(\u0027score_jobs\u0027, agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027person_id\u0027), false) THEN \u0027true\u0027 ELSE \u0027false\u0027 END AS scan_on, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027career.offer.scan\u0027,\u0027career.offer.btn_scan\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1520,
+                                       0
+                                   ],
+                      "id":  "87cdc644-a7ec-55a1-99e2-12258c741e9b",
+                      "name":  "Read scan flag",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "70e22afd-ed30-5e9b-b672-18797908e4b7",
+                                                                                   "leftValue":  "={{ $(\u0027Read scan flag\u0027).item.json.scan_on !== \u0027true\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1740,
+                                       0
+                                   ],
+                      "id":  "7be0e3fa-25c2-5a78-97c5-b10233441584",
+                      "name":  "Offer scan?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Start\u0027).item.json.chat_id) }}",
+                                         "text":  "={{ (String((($(\u0027Read scan flag\u0027).item.json.t) || {})[\u0027career.offer.scan\u0027] || \u0027career.offer.scan\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Read scan flag\u0027).item.json.t) || {})[\u0027career.offer.btn_scan\u0027] || \u0027career.offer.btn_scan\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "rem:on:score_jobs"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1960,
+                                       -160
+                                   ],
+                      "id":  "1b32a065-0997-5cd2-ac21-dca07543ddcc",
+                      "name":  "Offer scan",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "83b34f6a-da4c-5540-b611-5a5c09e8abdc",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "329dd066-ac48-5db1-ba4b-dada71244564",
+                                                                                     "name":  "job_match_id",
+                                                                                     "value":  "={{ $(\u0027Record match\u0027).item.json.job_match_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "50dc3357-368b-5c83-82d9-2083556ec06e",
+                                                                                     "name":  "created",
+                                                                                     "value":  "={{ $(\u0027Record match\u0027).item.json.created }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2180,
+                                       0
+                                   ],
+                      "id":  "78cd7b8a-6c8e-5584-822f-290b62a0c154",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**career.fn_record_job_match (atomar, source=forwarded)**\n\nSchreibt career.fn_record_job_match atomar: UPSERT auf den partial-UNIQUE-Index external_id (Re-Forward derselben external_id aktualisiert; forwarded OHNE external_id = reiner INSERT, kein Dedup). updated_at pflegt der Trigger career.touch_updated_at. Korrigierbare Ablehnung (leerer Titel) -\u003e {ok:false, reason} (kein RAISE/Owner-Alert). source ist FIX forwarded (nie $fromAI); der Cron-Pfad nutzt dieselbe fn mit source=bundesagentur + score.",
+                                         "height":  220,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1080,
+                                       -220
+                                   ],
+                      "id":  "ff96b263-3b50-5e7f-abb4-91c0317a3c08",
+                      "name":  "DB-Automatik (UPSERT)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Angebot an den Absender nach Write (Seitenkanal-Ausnahme, Muster publish_plan)**\n\nNach erfolgreichem Vormerken UND wenn der Notschalter cron_enable.score_jobs an ist UND der Scan fuer DIESE Person aus ist (Read scan flag: Notschalter + core.fn_reminder_allowed(score_jobs, Person aus chat_id) -\u003e Offer scan?; bei ausgeschaltetem Notschalter kein Angebot, ein Einschalten wirkte nicht): [Job-Suche aktivieren] (callback_data rem:on:score_jobs) -\u003e generischer Dispatch -\u003e core.fn_handle_reminder_cb -\u003e agent.reminder_prefs der TIPPENDEN Person (Roter Faden Paket B: Job-Vorschläge je Person, auch für Mitglieder). Zero-Spam: für die Person schon an -\u003e kein Angebot. Abschalten per Knopf an jeder Treffer-Karte (rem:off:score_jobs) oder in /reminders; der Notschalter für alle bleibt die Konsole (lifeagents config set cron_enable score_jobs false). Return liest die Post-State-Felder explizit aus Record match.",
+                                         "height":  320,
+                                         "width":  540,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1740,
+                                       -360
+                                   ],
+                      "id":  "f198671b-1845-5c2a-9e92-7187319b84f6",
+                      "name":  "Doc Job-Scan-Angebot (rem:on)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Build Approval Summary",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Record match",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Record match":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Write ok?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Read scan flag",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Record rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Read scan flag":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Offer scan?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Offer scan?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Offer scan",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Return",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Offer scan":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Return",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

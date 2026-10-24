@@ -1,0 +1,807 @@
+{
+    "id":  "ecck9V84lrIEbPP9",
+    "name":  "agent.finance.tool_reconcile_account",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "confirmed_balance"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "reconciliation_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "notes"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7919cdd0-6789-56f7-bdf6-ef4729aeae46",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027account_name\u0027);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).item.json.account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "114acf32-450d-54f3-88f8-fc680eddc536",
+                      "name":  "Resolve Account",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d6418060-e95d-522b-a017-d7d1a2990442",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "68e7bbeb-67fb-5db1-912b-2b01fc4971fa",
+                      "name":  "Account unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "94b67812-6810-59ad-938e-66166ff1e8a3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "588565e0-fd3a-5dc7-8996-0d614e5be5a1",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Account \u0027{{ $(\u0027Start\u0027).item.json.account_name }}\u0027 resolves to {{ $(\u0027Resolve Account\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Account\u0027).item.json.candidates) }}. Ask the user which exact account.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "a2cdb8fb-1bd5-58a2-b3e6-d54d7049dd7e",
+                      "name":  "Account ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH x AS (SELECT a.id, a.currency, c.minor_unit, COALESCE(NULLIF(($1::jsonb)-\u003e\u003e\u0027reconciliation_date\u0027, \u0027\u0027)::date, core.fn_today()) AS d FROM finance.accounts a JOIN finance.currencies c ON c.code = a.currency WHERE a.id = (($1::jsonb)-\u003e\u003e\u0027account_id\u0027)::int) SELECT finance.fn_get_balance_as_of(x.id, x.d) AS db_balance, x.currency, x.d::text AS reconciliation_date, finance.fn_reconcile_blocker(x.id, x.d) AS blocker, ROUND((($1::jsonb)-\u003e\u003e\u0027confirmed_balance\u0027)::numeric, x.minor_unit) AS confirmed, ROUND((($1::jsonb)-\u003e\u003e\u0027confirmed_balance\u0027)::numeric, x.minor_unit) - finance.fn_get_balance_as_of(x.id, x.d) AS diff, (SELECT count(*) FROM finance.fn_reconcile_open_due(x.id, x.d))::int AS skip_count FROM x;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Resolve Account\u0027).item.json.id, confirmed_balance: $(\u0027Start\u0027).item.json.confirmed_balance, reconciliation_date: $(\u0027Start\u0027).item.json.reconciliation_date }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "d032d5cd-261c-53fa-abc3-72a3fd8313a3",
+                      "name":  "Read DB Balance",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "51e5a64a-ecfe-5fcb-8dda-f517d7a06244",
+                                                                                   "leftValue":  "={{ !$json.blocker }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       770,
+                                       -160
+                                   ],
+                      "id":  "2d82520c-4f30-50bc-b690-159a46380c4d",
+                      "name":  "Reconcilable?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "bbd34d63-8f8b-5bcc-9a49-4aedc1944d17",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2de50f56-361b-5ca3-a11d-c81dd765e5c6",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Read DB Balance\u0027).item.json.blocker }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       240
+                                   ],
+                      "id":  "65453629-ab38-5066-9514-0fe8ba69d8f6",
+                      "name":  "Reconcile blocked"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_reconcile_account(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Resolve Account\u0027).item.json.id, confirmed_balance: $(\u0027Start\u0027).item.json.confirmed_balance, reconciliation_date: $(\u0027Start\u0027).item.json.reconciliation_date, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "d14fc836-9744-52aa-bdf4-ddb6f5699872",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "671e0f08-06f0-5cc8-82fd-bd775c43709d",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "221889a1-c10b-5b8c-b754-dbf06f70a9b5",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "59c0c597-97b6-5ddb-aba8-9ab3e6060fd8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8b07dd38-2422-57c4-a9fc-6453a018d1e1",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "62aeb2b0-1f56-538e-9c3b-e185362fe90a",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0e8431f3-ebff-5950-9e18-888fab605bb7",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4e7dcff3-1635-536d-9a35-a18b4a893177",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "8f6f9b38-4948-534e-95e9-fb6d65f05276",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027db_balance_before\u0027)::numeric AS db_balance_before, (r-\u003e\u003e\u0027confirmed_balance\u0027)::numeric AS confirmed_balance, (r-\u003e\u003e\u0027difference\u0027)::numeric AS difference, (r-\u003e\u003e\u0027reconciliation_tx_id\u0027) AS reconciliation_tx_id, r-\u003e\u003e\u0027currency\u0027 AS currency, (r-\u003e\u003e\u0027balance_after\u0027)::numeric AS balance_after FROM finance.fn_reconcile_account(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Resolve Account\u0027).item.json.id, confirmed_balance: $(\u0027Start\u0027).item.json.confirmed_balance, reconciliation_date: $(\u0027Start\u0027).item.json.reconciliation_date, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "5ebfafdd-fa36-5e8b-a83a-51e77f36dbb2",
+                      "name":  "Reconcile (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b5e3eae5-70df-56b1-8d38-fde1cb5acb09",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.reconcile_account\u0027, lines: [ { label: \u0027finance.label.account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.account_name) }, { label: \u0027finance.label.db_balance\u0027, kind: \u0027money\u0027, value: ($(\u0027Read DB Balance\u0027).item.json.db_balance), currency: ($(\u0027Read DB Balance\u0027).item.json.currency) }, { label: \u0027finance.label.confirmed_balance\u0027, kind: \u0027money\u0027, value: ($(\u0027Read DB Balance\u0027).item.json.confirmed), currency: ($(\u0027Read DB Balance\u0027).item.json.currency) }, { label: \u0027finance.label.difference\u0027, kind: \u0027tpl\u0027, value: ((Number($(\u0027Read DB Balance\u0027).item.json.diff) !== 0 ? \u0027finance.tpl.diff_correction\u0027 : \u0027finance.tpl.diff_none\u0027)), params: { value: ({ kind: \u0027money\u0027, value: (Number($(\u0027Read DB Balance\u0027).item.json.diff)), currency: ($(\u0027Read DB Balance\u0027).item.json.currency) }) } }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Read DB Balance\u0027).item.json.reconciliation_date) }, { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) }, ((Number($(\u0027Read DB Balance\u0027).item.json.skip_count) \u003e 0) ? { kind: \u0027note\u0027, value: \u0027finance.note.reconcile_closes_due\u0027, params: { n: ($(\u0027Read DB Balance\u0027).item.json.skip_count) } } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "8705cf89-d90c-5d02-8801-4b65c3ab57ae",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "1766eee9-9359-588e-a155-03f572c28a16",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "98b37966-86ca-5e81-84fd-a4b8e79b01d6",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "2c435d87-fe76-51e2-a602-0481fa003790",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7716892e-3f4d-5e01-bda5-0a5b35958559",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e1ffe64f-75e9-58d5-8f25-f6236edf554e",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fdcd9e08-c593-5ead-979b-cac7040e57e9",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the reconcile_account action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2200,
+                                       200
+                                   ],
+                      "id":  "a40aeae6-ecfd-50df-a99e-5e85b55fff51",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "56763868-6d88-5dde-ba71-4996c92c1994",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       -160
+                                   ],
+                      "id":  "78d81f7a-5ac8-5723-952f-8029c8da1e51",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a162346a-cf46-528f-a5a8-b2e3a789a765",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5573f28f-445b-522b-8819-a04cfcb6a9dd",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Reconcile (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       200
+                                   ],
+                      "id":  "49c90420-bd52-5d22-b794-dc6857da00c6",
+                      "name":  "Reconcile rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "337bf221-13c2-5efd-ad66-ac54bc1bd79d",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b9f1b834-a3cc-598d-a19f-f8cb3cd12fd6",
+                                                                                     "name":  "db_balance_before",
+                                                                                     "value":  "={{ $(\u0027Reconcile (atomic)\u0027).item.json.db_balance_before }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ed0615f6-9d5e-58bc-800d-d07b48b7ee81",
+                                                                                     "name":  "confirmed_balance",
+                                                                                     "value":  "={{ $(\u0027Reconcile (atomic)\u0027).item.json.confirmed_balance }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "561d82f1-8763-593c-88cf-51c2ff82516b",
+                                                                                     "name":  "difference",
+                                                                                     "value":  "={{ $(\u0027Reconcile (atomic)\u0027).item.json.difference }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d8fe1e5d-f268-5c06-aa81-f4d75752ec65",
+                                                                                     "name":  "reconciliation_tx_id",
+                                                                                     "value":  "={{ $(\u0027Reconcile (atomic)\u0027).item.json.reconciliation_tx_id }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ead96bd5-e3d1-58b7-b727-4b3e684ef8ee",
+                                                                                     "name":  "currency",
+                                                                                     "value":  "={{ $(\u0027Reconcile (atomic)\u0027).item.json.currency }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "de3bf819-686a-577f-a352-1c84fd218bdb",
+                                                                                     "name":  "balance_after",
+                                                                                     "value":  "={{ $(\u0027Reconcile (atomic)\u0027).item.json.balance_after }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "58982040-c358-5722-999d-9b65121d0dff",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_reconcile_account mit denselben Werten, immer zurückgerollt (nach dem Read-only-Check Reconcilable?). ok:false (z. B. Konto nicht abgleichbar, Stichtag in der Zukunft/vor dem letzten Abgleich) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -220
+                                   ],
+                      "id":  "8adfc000-28e2-51a3-be7c-f2a2d9d7db2d",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**trg_finance_balance_update (bei Korrekturbuchung)**\n\nKarte und Buchung lesen dieselben fns: Saldo ZUM STICHTAG (fn_get_balance_as_of; Buchungen danach zählen nicht als Differenz), Ablehnungen aus fn_reconcile_blocker (Depot-/Kreditkonto, Stichtag in der Zukunft oder vor dem letzten Abgleich) schon VOR der Karte, bestätigter Saldo auf die Währungseinheit gerundet. fn_reconcile_account atomar: (1) UPDATE finance.accounts.last_reconciled_balance/_at, (2) nur bei Differenz != 0: INSERT reconciliation-Transaktion am Stichtag (amount=Diff). DB-Trigger pflegt den Saldo; balance_after = heutiger Saldo danach.",
+                                         "height":  240,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2200,
+                                       -260
+                                   ],
+                      "id":  "1a1dbf34-0c21-5747-a41f-9919a0db28c4",
+                      "name":  "fn_reconcile_account: Abgleich zum Stichtag"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Account",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Account":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account unique?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Account unique?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Read DB Balance",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account ambiguous",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Read DB Balance":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Reconcilable?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Reconcilable?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Dry run",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Reconcile blocked",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Reconcile (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Reconcile (atomic)":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Write ok?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Reconcile rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

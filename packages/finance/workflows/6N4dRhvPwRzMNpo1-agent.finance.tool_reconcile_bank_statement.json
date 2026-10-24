@@ -1,0 +1,977 @@
+{
+    "id":  "6N4dRhvPwRzMNpo1",
+    "name":  "agent.finance.tool_reconcile_bank_statement",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "file_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "doc_hint"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "dec73cc9-7dc2-5e94-b1c0-f65df4522180",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PWPPVNrauWK7EpuB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PWPPVNrauWK7EpuB",
+                                                            "cachedResultName":  "agent.tool_fetch_telegram_file"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Start\u0027).item.json.file_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "b42a47ed-ad66-5221-bf4e-a5d1108afb6c",
+                      "name":  "Fetch telegram file"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5c870261-7163-58be-a5e6-cb0242547985",
+                                                                                   "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "9d4e7220-3fc9-5d79-8477-0f82fe2b494f",
+                      "name":  "File ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c0924947-8160-5874-8a06-f5d2d6b18c4f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5f4b493a-8f90-5a0f-afe2-afca13e0e062",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "cdac84a5-5787-5b9c-9960-558f8a415227",
+                      "name":  "File unusable"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"finance\",\"key\":\"vision_extract\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       -160
+                                   ],
+                      "id":  "715260d9-3f75-5d7c-b9d2-2ad0f95f152a",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/v1/messages",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "anthropicApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "anthropic-version",
+                                                                                         "value":  "2023-06-01"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: ({\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"}[$(\u0027Load model config\u0027).first().json.model.vision_extract] || null), max_tokens: 32000, system: \"You read a German bank account statement (Kontoauszug) of ONE account and output only its printed raw values - never compute, never guess. is_statement = true only for a real account statement with an opening and a closing balance (Kontoauszug, Rechnungsabschluss, credit card statement); false for anything else (depot statement, insurance or pension letter, a plain transaction list without balances, pending transactions / vorgemerkte Umsaetze). account_number = the IBAN of this account exactly as printed (for a credit card statement the printed card number, masked digits allowed). currency = ISO code (EUR for Euro). period_start and period_end = the statement period as YYYY-MM-DD (Zeitraum / von ... bis; if only a statement date is printed, use the first booking date and the statement date). opening_balance = Kontostand alt / Saldo alt at the start; closing_balance = Kontostand neu / Saldo neu at the end; negative when overdrawn (S, Soll or minus). lines = EVERY booking in order: date = booking date (Buchungstag) as YYYY-MM-DD; amount = signed number, negative for debits (S, Soll, minus, Lastschrift, Abbuchung, Kartenzahlung), positive for credits (H, Haben, Gutschrift, Eingang); counterparty = name of the payee or payer; counterparty_iban = the IBAN of the other side if printed; creditor_id = Glaeubiger-ID (CI) if printed; mandate_ref = Mandatsreferenz (MREF) if printed; purpose = Verwendungszweck, shortened to the essential words. Carry-over lines (Uebertrag), page subtotals, the Saldo alt / Saldo neu lines and summary boxes are NOT lines; a booked interest, fee or Rechnungsabschluss posting IS a line. If the document holds several consecutive statements of the same account, merge them only when each opening balance equals the previous closing balance. German number format 1.234,56 means 1234.56. Use an empty string for any text field that is not printed.\", messages: [{ role: \u0027user\u0027, content: ([ (($(\u0027Fetch telegram file\u0027).item.json.mime) === \u0027application/pdf\u0027 ? { type: \u0027document\u0027, source: { type: \u0027base64\u0027, media_type: \u0027application/pdf\u0027, data: ($(\u0027Fetch telegram file\u0027).item.json.b64) } } : { type: \u0027image\u0027, source: { type: \u0027base64\u0027, media_type: ($(\u0027Fetch telegram file\u0027).item.json.mime), data: ($(\u0027Fetch telegram file\u0027).item.json.b64) } }), { type: \u0027text\u0027, text: \u0027Context from the user: \u0027 + ($(\u0027Start\u0027).item.json.doc_hint || \u0027none\u0027) + \u0027. Read the statement now.\u0027 } ]) }], output_config: { effort: \u0027medium\u0027, format: { type: \u0027json_schema\u0027, schema: {\"type\":\"object\",\"properties\":{\"is_statement\":{\"type\":\"boolean\"},\"account_number\":{\"type\":\"string\"},\"currency\":{\"type\":\"string\"},\"period_start\":{\"type\":\"string\"},\"period_end\":{\"type\":\"string\"},\"opening_balance\":{\"type\":\"number\"},\"closing_balance\":{\"type\":\"number\"},\"lines\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"date\":{\"type\":\"string\"},\"amount\":{\"type\":\"number\"},\"counterparty\":{\"type\":\"string\"},\"counterparty_iban\":{\"type\":\"string\"},\"creditor_id\":{\"type\":\"string\"},\"mandate_ref\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"} },\"required\":[\"date\",\"amount\",\"counterparty\",\"counterparty_iban\",\"creditor_id\",\"mandate_ref\",\"purpose\"],\"additionalProperties\":false} } },\"required\":[\"is_statement\",\"account_number\",\"currency\",\"period_start\",\"period_end\",\"opening_balance\",\"closing_balance\",\"lines\"],\"additionalProperties\":false} } } }) }}",
+                                         "options":  {
+                                                         "timeout":  240000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "b5e470ca-09fb-5e45-8d6e-18f483eda4f4",
+                      "name":  "Read statement",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const anthropicText = (r) =\u003e {\n  if (!r || !Array.isArray(r.content)) {\n    const m = (r \u0026\u0026 r.error \u0026\u0026 (r.error.message || r.error.type || r.error.description)) || \u0027no response\u0027;\n    return { ok: false, error: String(m).slice(0, 200) };\n  }\n  if (r.stop_reason === \u0027max_tokens\u0027) return { ok: false, error: \u0027answer truncated (max_tokens)\u0027 };\n  if (r.stop_reason === \u0027refusal\u0027) return { ok: false, error: \u0027model declined the request\u0027 };\n  if (r.stop_reason === \u0027pause_turn\u0027) return { ok: false, error: \u0027web search did not finish (pause_turn)\u0027 };\n  const text = r.content.filter(b =\u003e b \u0026\u0026 b.type === \u0027text\u0027 \u0026\u0026 b.text).map(b =\u003e b.text).join(\u0027\u0027).trim();\n  if (!text) return { ok: false, error: \u0027empty answer\u0027 };\n  return { ok: true, text };\n};\nconst stripFences = (t) =\u003e String(t).replace(/^\\s*```[a-z]*\\s*/i, \u0027\u0027).replace(/\\s*```\\s*$/, \u0027\u0027);const r = $input.first().json;\nconst fail = (code, m) =\u003e [{ json: { ok: false, code, error: m } }];\nconst res = anthropicText(r);\nif (!res.ok) return fail(\u0027unreadable\u0027, \u0027The statement could not be read (\u0027 + res.error + \u0027) - ask the user for the PDF from online banking or a sharper photo.\u0027);\nlet s;\ntry { s = JSON.parse(stripFences(res.text)); } catch (e) { return fail(\u0027unreadable\u0027, \u0027The statement could not be read - ask the user for the PDF from online banking.\u0027); }\nif (!s || s.is_statement !== true) return fail(\u0027not_a_statement\u0027, \u0027This is not an account statement with opening and closing balance. A depot statement, insurance or pension letter goes to tool_extract_finance_document; a plain transaction list cannot be checked against balances - ask for the monthly statement PDF.\u0027);\nconst txt = (v) =\u003e (typeof v === \u0027string\u0027 \u0026\u0026 v.trim() !== \u0027\u0027) ? v.trim() : null;\nconst lines = (Array.isArray(s.lines) ? s.lines : []).map((l) =\u003e ({\n  date: txt(l.date), amount: Number(l.amount), counterparty: txt(l.counterparty), counterparty_iban: txt(l.counterparty_iban),\n  creditor_id: txt(l.creditor_id), mandate_ref: txt(l.mandate_ref), purpose: txt(l.purpose) }));\nreturn [{ json: { ok: true, account_number: txt(s.account_number), currency: txt(s.currency), period_start: txt(s.period_start),\n  period_end: txt(s.period_end), opening_balance: Number(s.opening_balance), closing_balance: Number(s.closing_balance),\n  lines, line_count: lines.length } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "d6787de4-3340-58eb-8afb-8c494032a556",
+                      "name":  "Shape statement"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "01deb6e7-ae52-5706-832c-79ac42090a9d",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "b54fa2dd-c5eb-5b2a-be76-955abd4a4838",
+                      "name":  "Statement read?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "efb39a5b-4f79-5aa0-8a8c-3bad743cf9aa",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6ce5b064-481a-58d2-a10d-7ac40a2d9f6a",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Shape statement\u0027).item.json.code }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "14ab842e-7f6e-5f7b-9864-7d56e38670fd",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Shape statement\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "66b4ce1c-2c0c-5912-9624-d93fc0398532",
+                      "name":  "Not readable"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_statement_prepare($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_number: $(\u0027Shape statement\u0027).item.json.account_number, account_name: $(\u0027Start\u0027).item.json.account_name || null, currency: $(\u0027Shape statement\u0027).item.json.currency, period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, opening_balance: $(\u0027Shape statement\u0027).item.json.opening_balance, closing_balance: $(\u0027Shape statement\u0027).item.json.closing_balance, lines: $(\u0027Shape statement\u0027).item.json.lines }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "6ce90cce-0ba2-5057-a43b-b2921c489dfa",
+                      "name":  "Prepare statement",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ef64d33b-63eb-5630-8403-1f30a557da1a",
+                                                                                   "leftValue":  "={{ $json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "76fc8b36-1349-516f-bd52-f8a0abcf367c",
+                      "name":  "Statement ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3a24a82c-9b7a-575c-8a30-4fab986cfa7f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3ea9ac6b-0a78-515e-8590-85f034b2e944",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.code }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "14819fde-f7f3-5540-bd4a-d5e7e617de30",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.reason }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ba9cc001-6ba2-508d-9a76-09e03f3b3cc6",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4ad00eae-768a-5caa-baf7-c970a3a75ab1",
+                                                                                     "name":  "account_number",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.account_number || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cfe745d3-4490-5eed-b59f-fd8630a57c8b",
+                                                                                     "name":  "difference",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.difference === undefined || $(\u0027Prepare statement\u0027).item.json.r.difference === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.difference) }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "66ea053c-758e-5b57-985d-2d7b858d9dc3",
+                                                                                     "name":  "balance_verified",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.balance_verified === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d9a804c7-80f1-5355-b773-cf699ae4f723",
+                                                                                     "name":  "closing_balance",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.closing_balance === undefined || $(\u0027Prepare statement\u0027).item.json.r.closing_balance === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.closing_balance) }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "da54bd2c-56a7-5fb1-85e3-5a4266c90210",
+                                                                                     "name":  "balance_date",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.balance_date || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "21738918-f49b-5972-adc6-b31459f94734",
+                                                                                     "name":  "currency",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       200
+                                   ],
+                      "id":  "3a688838-3a64-5ed4-b4cf-669a1f12eaaf",
+                      "name":  "Statement not ready"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "aa2492c9-990e-550d-8ba7-f2dad5999002",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.reconcile_bank_statement\u0027, title_params: { account: ($(\u0027Prepare statement\u0027).item.json.r.account_name) }, lines: [  ].concat(($(\u0027Prepare statement\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "646990ac-9c24-564c-802a-9da1c00ce99c",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "43a8afc4-11c2-58f1-9043-e5151cb49a34",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "efa33432-28d8-5d8f-94e4-624a5e658f1c",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "50270ccb-3d6e-5b9a-a13b-797d7dfc0d0b",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b838e822-fad2-5810-bcea-6a4abcd93c5d",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f3ee9553-12cb-5382-8d5f-2091c6957499",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3a1105b7-9635-5c1f-a4b6-d268fcbbc686",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the monthly statement import (nothing was booked). Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       200
+                                   ],
+                      "id":  "5cd2771f-7829-5d2b-ba18-22557fbf34db",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_apply_bank_statement($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_number: $(\u0027Shape statement\u0027).item.json.account_number, account_name: $(\u0027Start\u0027).item.json.account_name || null, currency: $(\u0027Shape statement\u0027).item.json.currency, period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, opening_balance: $(\u0027Shape statement\u0027).item.json.opening_balance, closing_balance: $(\u0027Shape statement\u0027).item.json.closing_balance, lines: $(\u0027Shape statement\u0027).item.json.lines, fingerprint: $(\u0027Prepare statement\u0027).item.json.r.fingerprint }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "e20cb0e8-f433-5080-a83d-1beee243cbe6",
+                      "name":  "Apply statement",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "df2143ce-b51d-56c6-be1c-75ffa0b5763b",
+                                                                                   "leftValue":  "={{ $json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2860,
+                                       0
+                                   ],
+                      "id":  "12153e93-2508-5321-ae0e-8d0ca0a7cde4",
+                      "name":  "Booked?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "05c6fd5a-e6b6-5707-9140-df350b6f37e1",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3a07167a-ea51-5217-a689-ab19723f55ea",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6bc00ded-5b89-5a1d-b82f-98c3a2beb37d",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       3080,
+                                       200
+                                   ],
+                      "id":  "57ac5c8c-613e-51e8-b079-56af786a22e5",
+                      "name":  "Not booked"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1b00cada-43a5-53e6-a6d0-1efe7ceed320",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "93e76a3f-d04c-5171-9c6f-b63255127560",
+                                                                                     "name":  "account_name",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.account_name }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1efe5a4f-33b0-5edb-8395-162bdbf6492c",
+                                                                                     "name":  "period_start",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.period_start }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "67207827-4bcb-5ac2-940f-4993d739a961",
+                                                                                     "name":  "period_end",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.period_end }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8166fd8f-7723-59b9-8886-03a608fae21f",
+                                                                                     "name":  "currency",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "eb9f8acd-3db2-5e27-8058-0d23a941ea00",
+                                                                                     "name":  "booked_count",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.booked_count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "222ad9ca-9506-5880-abd1-8e9d1a36740d",
+                                                                                     "name":  "everyday_spending",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.lump_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4320c1bc-c580-5e7c-893b-a92b9a6bfe93",
+                                                                                     "name":  "difference_before_period",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.drift_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ef11c482-675e-53df-8782-56c67c2a6532",
+                                                                                     "name":  "skipped_payments",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.skipped_occurrences }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5ab15c1c-f666-5548-9035-5cbe3d945097",
+                                                                                     "name":  "plan_adjusted",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.plan_adjusted || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "56bfb20a-96aa-5960-9efe-791a82f930de",
+                                                                                     "name":  "savings_plan_estimated",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.savings_plan_estimated || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "89a290be-9ff7-534a-924f-299c80fd1802",
+                                                                                     "name":  "unknown_direct_debits",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.unknown_mandates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f6c44134-96c1-5e70-abf1-b36493c375c8",
+                                                                                     "name":  "balance_after",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.balance_after }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d30a20a8-1960-5ab3-9b79-782b0724e9db",
+                                                                                     "name":  "outlook",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       3080,
+                                       0
+                                   ],
+                      "id":  "b28f51de-0f05-531a-942e-14468cd761c9",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Monats-Check: Kontoauszug -\u003e eine Karte -\u003e Buchung (Einzelumsätze werden nicht gespeichert)**\n\nFetch telegram file (Core-Baustein) -\u003e Claude-Vision (model.vision_extract, Denk-Tiefe mittel, JSON-Schema) liest NUR gedruckte Rohwerte: Konto-IBAN, Zeitraum, Anfangs-/Endstand, alle Zeilen. Shape statement prüft is_statement (Depotauszug/Police -\u003e tool_extract_finance_document). Prepare statement = finance.fn_statement_prepare: Konto per IBAN (unbekannt -\u003e account_unknown + Kandidaten + gedruckte IBAN, bei stimmender Saldo-Probe auch Endsaldo + Stichtag; bestehendes Konto -\u003e der Agent ruft mit account_name erneut; neues Konto -\u003e tool_create_account mit dieser IBAN und dem Endsaldo zum Stichtag, der Auszug wird danach nicht mehr eingespielt), Saldo-Probe Anfang + Zeilen = Ende (sonst balance_check_failed, nichts wird geschrieben), Zuordnung zu den erwarteten Zahlungen (Stufe 0/A/B), Rest, Kartenzeilen, fingerprint. Karte (Zeilen kommen fertig strukturiert aus der DB) -\u003e Gate -\u003e Apply statement = finance.fn_apply_bank_statement. PRIVACY: Kontoauszüge nur über die bezahlte Anthropic-API.",
+                                         "height":  360,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -460
+                                   ],
+                      "id":  "6383206f-1f77-581a-9b72-7c295bcb6b24",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Prepare läuft zweimal: für die Karte und unter Lock in der Buchung**\n\nfn_apply_bank_statement sperrt die Salden der beteiligten Konten, rechnet fn_statement_prepare mit denselben Rohwerten neu und bucht nur, wenn der fingerprint der Karte gleich ist (Plan/Apply-Muster). Hat sich zwischen Karte und Tipp etwas geändert (manuelle Buchung, Gegenbein aus dem Auszug des Partnerkontos, Dauerauftrag geändert) -\u003e stale_preview, nichts gebucht, der Agent schickt den Auszug neu. Eine innere Buch-Ablehnung -\u003e booking_failed, alles zurückgerollt.",
+                                         "height":  320,
+                                         "width":  360,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1540,
+                                       -420
+                                   ],
+                      "id":  "980ef329-bf44-5fce-a855-bef53f4b6763",
+                      "name":  "Vorschau = Buchung"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Fetch telegram file",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Fetch telegram file":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "File ok?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "File ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "File unusable",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Read statement",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Read statement":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Shape statement",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Shape statement":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Statement read?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Statement read?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Prepare statement",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Not readable",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Prepare statement":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Statement ok?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Statement ok?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Build Approval Summary",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Statement not ready",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Apply statement",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Apply statement":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Booked?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Booked?":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Return",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Not booked",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

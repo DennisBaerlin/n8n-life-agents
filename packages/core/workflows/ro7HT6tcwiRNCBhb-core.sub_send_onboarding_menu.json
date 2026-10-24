@@ -1,0 +1,662 @@
+{
+    "id":  "ro7HT6tcwiRNCBhb",
+    "name":  "core.sub_send_onboarding_menu",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "area"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "done_area"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "done_mode"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -840,
+                                       0
+                                   ],
+                      "id":  "63184aeb-e0b3-58a0-ad10-23a1bed30097",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_onboarding_overview(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS overview, core.fn_ui_texts(agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.onboarding.household\u0027,\u0027finance.onboarding.accounts\u0027,\u0027finance.onboarding.investments\u0027,\u0027finance.onboarding.liabilities\u0027,\u0027finance.onboarding.protection\u0027,\u0027finance.onboarding.goals\u0027,\u0027finance.onboarding.monthly_check\u0027,\u0027estate.onboarding.documents\u0027,\u0027estate.onboarding.insurance_check\u0027,\u0027estate.onboarding.contracts\u0027,\u0027estate.onboarding.digital_accounts\u0027,\u0027estate.onboarding.contacts\u0027,\u0027estate.onboarding.wishes\u0027,\u0027estate.onboarding.system_profile\u0027,\u0027career.onboarding.profile_basics\u0027,\u0027career.onboarding.skills_overview\u0027,\u0027career.onboarding.goals_targets\u0027,\u0027finance.package.name\u0027,\u0027estate.package.name\u0027,\u0027career.package.name\u0027,\u0027core.onboarding.menu.owner_note\u0027,\u0027core.onboarding.menu.not_installed\u0027,\u0027core.onboarding.menu.progress\u0027,\u0027core.onboarding.menu.install_hint\u0027,\u0027core.onboarding.menu.owner_area\u0027,\u0027core.onboarding.menu.wait_household_area\u0027,\u0027core.onboarding.menu.next\u0027,\u0027core.onboarding.menu.tap_section\u0027,\u0027core.onboarding.menu.area_done\u0027,\u0027core.onboarding.menu.title\u0027,\u0027core.onboarding.menu.next_in_area\u0027,\u0027core.onboarding.menu.tap_next\u0027,\u0027core.onboarding.menu.wait_household\u0027,\u0027core.onboarding.menu.all_done\u0027,\u0027core.onboarding.menu.footer_not_installed\u0027,\u0027core.onboarding.menu.btn_next\u0027,\u0027core.onboarding.menu.btn_wait\u0027,\u0027core.onboarding.menu.btn_all_done\u0027,\u0027core.onboarding.menu.btn_overview\u0027,\u0027core.onboarding.menu.done_area\u0027,\u0027core.onboarding.menu.skipped_area\u0027,\u0027core.onboarding.menu.done_everything\u0027]::text[]) AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -620,
+                                       0
+                                   ],
+                      "id":  "529445cf-933d-5ee0-852e-5276c095dc58",
+                      "name":  "Read onboarding status",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const SECTIONS = [{\"package\":\"core\",\"key\":\"household\",\"labelKey\":\"core.onboarding.household\",\"groupKey\":\"\"},{\"package\":\"finance\",\"key\":\"accounts\",\"labelKey\":\"finance.onboarding.accounts\",\"groupKey\":\"finance.package.name\"},{\"package\":\"finance\",\"key\":\"investments\",\"labelKey\":\"finance.onboarding.investments\",\"groupKey\":\"finance.package.name\"},{\"package\":\"finance\",\"key\":\"liabilities\",\"labelKey\":\"finance.onboarding.liabilities\",\"groupKey\":\"finance.package.name\"},{\"package\":\"finance\",\"key\":\"protection\",\"labelKey\":\"finance.onboarding.protection\",\"groupKey\":\"finance.package.name\"},{\"package\":\"finance\",\"key\":\"goals\",\"labelKey\":\"finance.onboarding.goals\",\"groupKey\":\"finance.package.name\"},{\"package\":\"finance\",\"key\":\"monthly_check\",\"labelKey\":\"finance.onboarding.monthly_check\",\"groupKey\":\"finance.package.name\"},{\"package\":\"estate\",\"key\":\"documents\",\"labelKey\":\"estate.onboarding.documents\",\"groupKey\":\"estate.package.name\"},{\"package\":\"estate\",\"key\":\"insurance_check\",\"labelKey\":\"estate.onboarding.insurance_check\",\"groupKey\":\"estate.package.name\"},{\"package\":\"estate\",\"key\":\"contracts\",\"labelKey\":\"estate.onboarding.contracts\",\"groupKey\":\"estate.package.name\"},{\"package\":\"estate\",\"key\":\"digital_accounts\",\"labelKey\":\"estate.onboarding.digital_accounts\",\"groupKey\":\"estate.package.name\"},{\"package\":\"estate\",\"key\":\"contacts\",\"labelKey\":\"estate.onboarding.contacts\",\"groupKey\":\"estate.package.name\"},{\"package\":\"estate\",\"key\":\"wishes\",\"labelKey\":\"estate.onboarding.wishes\",\"groupKey\":\"estate.package.name\"},{\"package\":\"estate\",\"key\":\"system_profile\",\"labelKey\":\"estate.onboarding.system_profile\",\"groupKey\":\"estate.package.name\"},{\"package\":\"career\",\"key\":\"profile_basics\",\"labelKey\":\"career.onboarding.profile_basics\",\"groupKey\":\"career.package.name\"},{\"package\":\"career\",\"key\":\"skills_overview\",\"labelKey\":\"career.onboarding.skills_overview\",\"groupKey\":\"career.package.name\"},{\"package\":\"career\",\"key\":\"goals_targets\",\"labelKey\":\"career.onboarding.goals_targets\",\"groupKey\":\"career.package.name\"}];\nconst AREAS = [{\"package\":\"finance\",\"groupKey\":\"finance.package.name\"},{\"package\":\"estate\",\"groupKey\":\"estate.package.name\"},{\"package\":\"career\",\"groupKey\":\"career.package.name\"}];\nconst NL = String.fromCharCode(10);\nlet ov = $json.overview;\nif (typeof ov === \u0027string\u0027) { try { ov = JSON.parse(ov); } catch (e) { ov = {}; } }\nov = ov || {};\n// Textkatalog Phase B: alle Texte aus der t-Map in der Sprache des Betrachters (Read onboarding status); fehlt ein Key\n// (Lesefehler), steht der Key selbst da (sichtbar, kein Crash). Platzhalter {name} wie core.fn_ui_text.\nlet T = $json.t;\nif (typeof T === \u0027string\u0027) { try { T = JSON.parse(T); } catch (e) { T = {}; } }\nT = T || {};\nconst tx = (k, p) =\u003e { let s = String(T[k] || k); for (const n of Object.keys(p || {})) { s = s.split(\u0027{\u0027 + n + \u0027}\u0027).join(String(p[n])); } return s; };\nconst label = (s) =\u003e tx(s.labelKey);\nconst group = (a) =\u003e (a \u0026\u0026 a.groupKey) ? tx(a.groupKey) : \u0027\u0027;\nconst list = Array.isArray(ov.sections) ? ov.sections : [];\nconst st = {};\nfor (const s of list) { st[s.package + \u0027:\u0027 + s.key] = s.status; }\nconst EMOJI = {\n  completed: String.fromCharCode(0x2705),\n  skipped: String.fromCharCode(0x23ED),\n  unknown: String.fromCharCode(0x25FB)\n};\nconst POINT = String.fromCodePoint(0x1F449);\n// Install-UX-Phase 4: Knoepfe sind build-time (alle Pakete), aber nur aktive Pakete sind nutzbar. Liefert die fn\n// active_packages, bekommen Sektionen nicht aktiver Pakete den Zusatz \u0027nicht installiert\u0027 (Tipp -\u003e freundliche\n// Antwort ueber agent.sub_dispatch_agent). Lesefehler (kein active_packages) -\u003e KEIN Zusatz (fail-open wie bisher).\nconst active = (ov.ok === true \u0026\u0026 Array.isArray(ov.active_packages)) ? ov.active_packages : null;\nconst usable = (pkg) =\u003e pkg === \u0027core\u0027 || active === null || active.includes(pkg);\nconst statusOf = (s) =\u003e st[s.package + \u0027:\u0027 + s.key] || \u0027unknown\u0027;\n// Mitglieder-Menue: viewer_role (fn_onboarding_overview) != owner -\u003e nur persoenliche Bereiche (per_user) sind \u0027fuer dich\u0027;\n// Haushalts-Bereiche richtet der Owner ein (ein Tipp darauf gibt einen Toast, core.fn_handle_onboarding_cb).\n// Nur der positiv erkannte Owner bekommt die Owner-Sicht; ein unbekannter Betrachter (z. B. /onboarding in einer\n// Gruppe: negative chat_id -\u003e viewer_role null) die eingeschraenkte. Lesefehler (ov.ok fehlt) -\u003e Owner-Sicht wie\n// bisher (fail-open; die Rechte prueft ohnehin die DB beim Tipp).\nconst member = (ov.ok === true) \u0026\u0026 ov.viewer_role !== \u0027owner\u0027;\nconst pu = {}; for (const s of list) { if (s.per_user === true) pu[s.package] = true; }\nconst mine = (pkg) =\u003e !member || pu[pkg] === true;\nconst OWNER_NOTE = \u0027 \u0027 + tx(\u0027core.onboarding.menu.owner_note\u0027);\nconst NOT_INST = \u0027 - \u0027 + tx(\u0027core.onboarding.menu.not_installed\u0027);\n// Haushalt-zuerst gilt auch fuer Mitglieder (Core-first-Gate der Paket-Agenten): solange der Owner den Haushalt\n// nicht abgeschlossen hat, ist fuer ein Mitglied NICHTS offen -\u003e kein Weiter auf einen Bereich, der sofort mit\n// \"erst Haushalt\" antworten wuerde (sonst Kreis Menue \u003c-\u003e Agent).\nconst coreOpen = SECTIONS.some(s =\u003e s.package === \u0027core\u0027 \u0026\u0026 statusOf(s) === \u0027unknown\u0027);\nconst waitOwner = member \u0026\u0026 coreOpen;\nconst isOpen = (s) =\u003e !waitOwner \u0026\u0026 usable(s.package) \u0026\u0026 mine(s.package) \u0026\u0026 statusOf(s) === \u0027unknown\u0027;\nconst prog = (pkg) =\u003e { const ss = SECTIONS.filter(s =\u003e s.package === pkg); return { done: ss.filter(s =\u003e statusOf(s) !== \u0027unknown\u0027).length, total: ss.length }; };\nconst next = SECTIONS.find(isOpen) || null;\nconst reqArea = String($(\u0027Start\u0027).item.json.area || \u0027\u0027);\nconst area = AREAS.some(a =\u003e a.package === reqArea) ? reqArea : \u0027\u0027;\n// Der Marker sitzt auf dem Knopf, den der Text als \"Als Naechstes\" nennt: Uebersicht = global naechster Abschnitt,\n// Bereich = naechster offener Abschnitt DIESES Bereichs.\nconst mark = area ? (SECTIONS.find(s =\u003e s.package === area \u0026\u0026 isOpen(s)) || null) : next;\nconst btn = {};\nfor (const s of SECTIONS) {\n  btn[s.package + \u0027:\u0027 + s.key] = (s === mark ? POINT + \u0027 \u0027 : \u0027\u0027) + label(s) + (usable(s.package) ? (mine(s.package) ? \u0027\u0027 : OWNER_NOTE) : NOT_INST);\n}\nconst abtn = {};\nfor (const a of AREAS) {\n  const p = prog(a.package);\n  abtn[a.package] = !usable(a.package) ? (group(a) + NOT_INST) : (mine(a.package) ? (group(a) + \u0027 (\u0027 + p.done + \u0027/\u0027 + p.total + \u0027)\u0027) : (group(a) + OWNER_NOTE));\n}\nconst lines = [];\nif (area) {\n  const a = AREAS.find(x =\u003e x.package === area);\n  const p = prog(area);\n  const inst = usable(area);\n  lines.push(group(a) + (inst ? \u0027 - \u0027 + tx(\u0027core.onboarding.menu.progress\u0027, { done: p.done, total: p.total }) : NOT_INST), \u0027\u0027);\n  for (const s of SECTIONS.filter(x =\u003e x.package === area)) { lines.push((EMOJI[statusOf(s)] || EMOJI.unknown) + \u0027 \u0027 + label(s)); }\n  lines.push(\u0027\u0027);\n  const n = mark;\n  if (!inst) { lines.push(tx(\u0027core.onboarding.menu.install_hint\u0027)); }\n  else if (!mine(area)) { lines.push(tx(\u0027core.onboarding.menu.owner_area\u0027)); }\n  else if (waitOwner) { lines.push(tx(\u0027core.onboarding.menu.wait_household_area\u0027)); }\n  else if (n) { lines.push(POINT + \u0027 \u0027 + tx(\u0027core.onboarding.menu.next\u0027, { label: label(n) }), tx(\u0027core.onboarding.menu.tap_section\u0027)); }\n  else { lines.push(tx(\u0027core.onboarding.menu.area_done\u0027)); }\n} else {\n  // Roter Faden: Aufruf aus core.sub_onboarding_progress nach einem geschlossenen Bereich -\u003e Kopfzeile vor der Uebersicht\n  // (done_mode done|skipped|all; Bereichsname aus dem Katalog, Haushalt = Abschnitts-Label). Sonst (/onboarding) ohne.\n  const doneArea = String($(\u0027Start\u0027).item.json.done_area || \u0027\u0027);\n  const doneMode = String($(\u0027Start\u0027).item.json.done_mode || \u0027\u0027);\n  if (doneMode === \u0027all\u0027) {\n    lines.push(tx(\u0027core.onboarding.menu.done_everything\u0027), \u0027\u0027);\n  } else if (doneArea) {\n    const da = AREAS.find(x =\u003e x.package === doneArea);\n    const daName = da ? group(da) : (SECTIONS.filter(s =\u003e s.package === doneArea).map(label)[0] || doneArea);\n    lines.push(tx(doneMode === \u0027skipped\u0027 ? \u0027core.onboarding.menu.skipped_area\u0027 : \u0027core.onboarding.menu.done_area\u0027, { area: daName }), \u0027\u0027);\n  }\n  const use = SECTIONS.filter(s =\u003e usable(s.package) \u0026\u0026 mine(s.package));\n  const done = use.filter(s =\u003e statusOf(s) !== \u0027unknown\u0027).length;\n  lines.push(tx(\u0027core.onboarding.menu.title\u0027, { done: done, total: use.length }), \u0027\u0027);\n  for (const s of SECTIONS.filter(x =\u003e x.package === \u0027core\u0027)) { lines.push((EMOJI[statusOf(s)] || EMOJI.unknown) + \u0027 \u0027 + label(s) + (mine(\u0027core\u0027) ? \u0027\u0027 : OWNER_NOTE)); }\n  let missing = 0;\n  for (const a of AREAS) {\n    const p = prog(a.package);\n    if (!usable(a.package)) { missing++; lines.push(EMOJI.unknown + \u0027 \u0027 + abtn[a.package]); continue; }\n    lines.push((p.done \u003e= p.total ? EMOJI.completed : EMOJI.unknown) + \u0027 \u0027 + abtn[a.package]);   // Mitglied: Haushalts-Status nur zur Info\n  }\n  lines.push(\u0027\u0027);\n  if (next) {\n    const ng = group(AREAS.find(x =\u003e x.package === next.package));\n    lines.push(POINT + \u0027 \u0027 + (ng ? tx(\u0027core.onboarding.menu.next_in_area\u0027, { label: label(next), area: ng }) : tx(\u0027core.onboarding.menu.next\u0027, { label: label(next) })));\n    lines.push(tx(\u0027core.onboarding.menu.tap_next\u0027));\n  } else if (waitOwner) {\n    lines.push(tx(\u0027core.onboarding.menu.wait_household\u0027));\n  } else {\n    lines.push(tx(\u0027core.onboarding.menu.all_done\u0027));\n  }\n  // Install-UX-Phase 6: ausblenden geht nicht (n8n-Tastatur ist build-time, Issue #19955) -\u003e wenigstens sagen,\n  // wie ein \u0027nicht installiert\u0027-Bereich dazukommt.\n  if (missing \u003e 0) {\n    lines.push(\u0027\u0027);\n    lines.push(tx(\u0027core.onboarding.menu.footer_not_installed\u0027));\n  }\n}\n// Weiter-Knopf (nur Uebersicht): Ziel = naechster offener Abschnitt; alles erledigt -\u003e zurueck zur Uebersicht\n// (callback_data darf nicht leer sein, die Knopf-Anzahl ist build-time fest).\nconst next_text = next ? (POINT + \u0027 \u0027 + tx(\u0027core.onboarding.menu.btn_next\u0027, { label: label(next) })) : (waitOwner ? tx(\u0027core.onboarding.menu.btn_wait\u0027) : (EMOJI.completed + \u0027 \u0027 + tx(\u0027core.onboarding.menu.btn_all_done\u0027)));\nconst next_cb = next ? (\u0027onboarding:\u0027 + next.package + \u0027:\u0027 + next.key) : \u0027onboarding:_area:\u0027;\nconst back_text = tx(\u0027core.onboarding.menu.btn_overview\u0027);\nreturn { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, back_text, area, chat_id: $(\u0027Start\u0027).item.json.chat_id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -400,
+                                       0
+                                   ],
+                      "id":  "798f5952-ad11-58ca-b43a-186321d3d0fa",
+                      "name":  "Build menu"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "fallbackOutput":  "extra"
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "7e5eaf40-a8f2-52f7-8348-bfa89a6eab1e",
+                                                                                                                    "leftValue":  "={{ String($json.area || \u0027\u0027) }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "finance"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "finance",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "c6227cb7-e3c9-53ca-9dd7-b71b58615e1b",
+                                                                                                                    "leftValue":  "={{ String($json.area || \u0027\u0027) }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "estate"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "estate",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "fd31dc88-e6dc-5f8d-9750-40d1229e2add",
+                                                                                                                    "leftValue":  "={{ String($json.area || \u0027\u0027) }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "career"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "career",
+                                                                          "renameOutput":  true
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -180,
+                                       0
+                                   ],
+                      "id":  "30edc28a-9d6e-5ad5-8e7b-c2fd21dc885a",
+                      "name":  "Which menu?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027finance:accounts\u0027] || \u0027finance.onboarding.accounts\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:finance:accounts"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027finance:investments\u0027] || \u0027finance.onboarding.investments\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:finance:investments"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027finance:liabilities\u0027] || \u0027finance.onboarding.liabilities\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:finance:liabilities"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027finance:protection\u0027] || \u0027finance.onboarding.protection\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:finance:protection"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027finance:goals\u0027] || \u0027finance.onboarding.goals\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:finance:goals"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027finance:monthly_check\u0027] || \u0027finance.onboarding.monthly_check\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:finance:monthly_check"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.back_text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       40,
+                                       200
+                                   ],
+                      "id":  "7178f88d-b865-5701-8e41-aa78c2746666",
+                      "name":  "Send area finance",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027estate:documents\u0027] || \u0027estate.onboarding.documents\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:estate:documents"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027estate:insurance_check\u0027] || \u0027estate.onboarding.insurance_check\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:estate:insurance_check"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027estate:contracts\u0027] || \u0027estate.onboarding.contracts\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:estate:contracts"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027estate:digital_accounts\u0027] || \u0027estate.onboarding.digital_accounts\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:estate:digital_accounts"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027estate:contacts\u0027] || \u0027estate.onboarding.contacts\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:estate:contacts"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027estate:wishes\u0027] || \u0027estate.onboarding.wishes\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:estate:wishes"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027estate:system_profile\u0027] || \u0027estate.onboarding.system_profile\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:estate:system_profile"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.back_text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       40,
+                                       400
+                                   ],
+                      "id":  "cc712862-9b33-5b3f-ad05-551f94cbd78f",
+                      "name":  "Send area estate",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027career:profile_basics\u0027] || \u0027career.onboarding.profile_basics\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:career:profile_basics"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027career:skills_overview\u0027] || \u0027career.onboarding.skills_overview\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:career:skills_overview"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027career:goals_targets\u0027] || \u0027career.onboarding.goals_targets\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:career:goals_targets"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.back_text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       40,
+                                       600
+                                   ],
+                      "id":  "96fde1db-f8c7-5b26-a8c9-b4625781fa09",
+                      "name":  "Send area career",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.next_text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.next_cb }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.btn || {})[\u0027core:household\u0027] || \u0027core.onboarding.household\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:core:household"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.abtn || {})[\u0027finance\u0027] || \u0027finance.package.name\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:finance"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.abtn || {})[\u0027estate\u0027] || \u0027estate.package.name\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:estate"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($json.abtn || {})[\u0027career\u0027] || \u0027career.package.name\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:career"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       40,
+                                       0
+                                   ],
+                      "id":  "5fdfb033-9849-562c-a0ec-ce959daf93f1",
+                      "name":  "Send overview",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_send_onboarding_menu — Onboarding-Menü in zwei Ebenen (deterministisch, KEIN LLM)**\n\nStart (chat_id, area; optional done_area + done_mode aus core.sub_onboarding_progress = Kopfzeile \u003cBereich\u003e eingerichtet / übersprungen / alles eingerichtet vor der Übersicht, Roter Faden) -\u003e Read onboarding status (core.fn_onboarding_overview(chat_id) + Menütexte als t-Map in der Sprache des Betrachters, core_ro, fail-open) -\u003e Build menu (Code: Status je Abschnitt U+2705 erledigt / U+23ED übersprungen / U+25FB offen, gekeyt auf \u003cpackage\u003e:\u003ckey\u003e; nächster Schritt = erster offener, nutzbarer Abschnitt in Menü-Reihenfolge, markiert mit U+1F449) -\u003e Which menu? (Switch auf area) -\u003e Send overview (area leer: Weiter-Knopf auf den nächsten Abschnitt + Haushalt + ein Knopf je Bereich mit Fortschritt, callback onboarding:_area:\u003cpackage\u003e) bzw. Send area \u003cpackage\u003e (nur dessen Abschnitte, callback onboarding:\u003cpackage\u003e:\u003ckey\u003e, plus Zur Übersicht). TEXTE aus dem Textkatalog (Phase B): Abschnitte \u003cpkg\u003e.onboarding.\u003ckey\u003e (Haushalt core.onboarding.household), Bereichsnamen \u003cpkg\u003e.package.name, Menüsätze core.onboarding.menu.*; Sprache = die des Betrachters (Person -\u003e Owner -\u003e en). REIHENFOLGE build-time: Haushalt zuerst, dann $OnboardingPackageOrder (Get-OnboardingPackageOrder, lib/agent_routing.ps1: wer per consumes Daten eines anderen Onboarding-Pakets liest, kommt danach; Gleichstand haushaltsweit vor persönlich, dann Name). Aufrufer: /onboarding-Command (area leer), der Orchestrator-Callback onboarding:_area:\u003cpackage\u003e und core.sub_onboarding_progress (nach einem geschlossenen Bereich, DB-Latch: genau einmal je Übergang) -\u003e nur deterministische Eintrittspunkte, kein Knopf-Spam. Abschnitts-Tap -\u003e Orchestrator-Switch auf das \u003cpackage\u003e-Glied: core -\u003e agent.guide, Paket -\u003e sein Onboarding-Agent. per_user-Pakete (career) zeigen den Status der TAPPENDEN Person (DEFINER-fn löst sie aus chat_id auf, nie LLM). Knopf-STRUKTUR build-time (n8n-Inline-Keyboard = statische fixedCollection -\u003e ein Send je Ansicht); Knopf-TEXT Ausdruck auf $json.btn/abtn/next_text/back_text -\u003e nicht aktive Pakete (fn active_packages) tragen den Zusatz nicht installiert, eine Fusszeile nennt den Server-Befehl (ausblenden geht nicht, Issue #19955). MITGLIEDER: viewer_role != owner -\u003e nur persönliche Bereiche (per_user je Sektion aus der fn) zählen als offen (Weiter/Als Nächstes/Zähler), Haushalts-Bereiche tragen (richtet der Owner ein); ihre Taps laufen über core.fn_handle_onboarding_cb (Registry, member_permeable) und geben dort einen Toast.",
+                                         "height":  380,
+                                         "width":  860,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -860,
+                                       -360
+                                   ],
+                      "id":  "a8847f73-ac38-560e-9400-6689d72617ca",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read onboarding status",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read onboarding status":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Build menu",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Build menu":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Which menu?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Which menu?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send area finance",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send area estate",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send area career",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send overview",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

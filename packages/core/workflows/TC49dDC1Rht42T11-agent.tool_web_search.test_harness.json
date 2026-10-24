@@ -1,0 +1,127 @@
+{
+    "id":  "TC49dDC1Rht42T11",
+    "name":  "agent.tool_web_search.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "websearch-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "ae5d5b41-ce71-5cfe-a1d8-c5fbcbe6eca8",
+                      "name":  "Test Webhook",
+                      "webhookId":  "92fc9b76-adf9-51e4-98c1-c6c3f3add1ff",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "iArgQhPnv72v3cSw",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/iArgQhPnv72v3cSw",
+                                                            "cachedResultName":  "agent.tool_web_search"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "query":  "={{ $(\u0027Test Webhook\u0027).item.json.body.query }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "b3802bc8-af34-5def-a87a-76d1756b9811",
+                      "name":  "Run agent.tool_web_search",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "3e410df9-fda7-5ee0-9c64-fcdc624f4b5b",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.tool_web_search.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.tool_web_search\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: query, chat_id.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "92ab09cf-a929-56ae-8f6f-c5bd0a0ee4c8",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.tool_web_search",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.tool_web_search":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Run Info",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

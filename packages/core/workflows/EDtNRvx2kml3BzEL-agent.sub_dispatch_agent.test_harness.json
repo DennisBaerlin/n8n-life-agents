@@ -1,0 +1,130 @@
+{
+    "id":  "EDtNRvx2kml3BzEL",
+    "name":  "agent.sub_dispatch_agent.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "dispatch-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "3abd59fe-75fa-5741-8e73-09636a31ae89",
+                      "name":  "Test Webhook",
+                      "webhookId":  "6d09b91d-3868-5025-a8d1-1127225a35a1",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "vouYE8U4Nd3ivmtQ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/vouYE8U4Nd3ivmtQ",
+                                                            "cachedResultName":  "agent.sub_dispatch_agent"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "workflow_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.workflow_id }}",
+                                                                              "package":  "={{ $(\u0027Test Webhook\u0027).item.json.body.package }}",
+                                                                              "task":  "={{ $(\u0027Test Webhook\u0027).item.json.body.task }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}",
+                                                                              "call_depth":  "={{ $(\u0027Test Webhook\u0027).item.json.body.call_depth }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "3af736f1-fcf7-5674-b0da-b529e318a3bf",
+                      "name":  "Run agent.sub_dispatch_agent",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "9116bd21-5cd3-508e-87f9-534627a0ff5b",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.sub_dispatch_agent.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.sub_dispatch_agent\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: workflow_id, package, task, chat_id, call_depth.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "db170c2e-9a93-5b92-9787-23762d1110d4",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.sub_dispatch_agent",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.sub_dispatch_agent":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Run Info",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

@@ -1,0 +1,158 @@
+{
+  "name": "estate",
+  "version": "0.1.0",
+  "description": "Estate/emergency-preparedness domain: a household register of Vorsorge documents (Testament, Vorsorgevollmacht, Patientenverfügung, ...), non-finance provider contracts with customer numbers and death actions, the digital estate (accounts WITHOUT passwords, only access-path references), key contacts, official personal records, funeral preferences, storage places and special-asset stubs (vehicle/business/firearm/pet) - plus, from WS-3 on, a guided event-case checklist (death/incapacity) with DB-computed legal deadlines and, from WS-4/5 on, a yearly review and a printable emergency binder. Financial entities (accounts, insurances) stay in the finance package and are referenced, never duplicated.",
+  "core_api": "0.4.0",
+  "requires": [],
+  "schema": "estate",
+  "schemas": ["estate"],
+  "provides": {
+    "_comment": "WS-2 (Plan groovy-watching-wave): agent.estate_advisor führt jetzt das VOLLE Register (record_/create_/set_/delete_/confirm_review) — HITL owner_info (record_/create_) bzw. owner_approval (set_/delete_), confirm_review = Fortschritts-Flag ohne Gate; adults_only-DB-Backstop je fn. order=5 = letzte Routing-Reihenfolge (nach finance/advisor/monitor/guide/career). Ereignisfall-Crons (remind_case_tasks/review_register) kommen mit WS-3/4 samt schedule/cron_enable/advisor-Config.",
+    "agents": [
+      { "name": "estate_advisor", "router_description": "Estate/emergency-preparedness advisor (Nachlass & Vorsorge): the household emergency register (Vorsorge documents like Testament/Vorsorgevollmacht/Patientenverfügung, provider contracts with customer numbers, the digital estate, key contacts, funeral wishes, document storage places) AND the guided support when a household member has DIED or become INCAPACITATED (Todesfall, Pflegefall, Vorsorgefall). Route here for preparedness questions (\"Was passiert eigentlich, wenn mir etwas zustößt?\", \"Welche Vollmachten brauchen wir?\", \"Wo liegt unser Testament?\") AND for event messages, including emotional phrasings (\"Mein Mann ist gestorben. Was muss ich jetzt alles erledigen?\", \"Meine Frau liegt nach einem Unfall im Koma. Ich weiss nicht, an welche Unterlagen ich muss.\"). NOT for real-estate topics despite the English word estate (Immobilien-Bewertung/-Verkauf, Makler/\"estate agent\", property value updates) -> agent.finance (bookings/values) or agent.finance_advisor (advice). NOT for insurance/account/loan MASTER DATA (create/update policies, accounts, values) -> agent.finance. NOT for money/investment/affordability advice -> agent.finance_advisor. NOT for setting up value watchers/reminders -> agent.monitor.", "order": 5 }
+    ],
+    "onboarding": {
+      "_comment": "Generisches Paket-Onboarding (docs/package-contract.md §3.2, Muster career): deklariert NUR den erfassenden Agenten; die Sektionen kommen aus der KONVENTION packages/estate/onboarding/sections.json (Host-Seeder _seed_onboarding_sections; household-Form wie finance/guide - KEINE context_scopes-Zeile, anders als career per_user). build.ps1 generiert daraus den Orchestrator-Onboarding-Dispatch-Arm: onboarding:estate:<key> -> agent.estate_advisor (Self-Onboarding-Task). agent = bare Name; der Build prefixt agent.<agent>. KEIN estate-Pflicht-Onboarding-Gate am Agenten (arch-challenge P3, fail-open für den Notfall-Pfad).",
+      "agent": "estate_advisor"
+    },
+    "tools": [
+      "set_onboarding_section", "record_directive",
+      "create_provider_contract", "create_digital_account", "create_contact",
+      "create_storage_place", "create_special_asset",
+      "set_provider_contract", "set_digital_account", "set_contact",
+      "set_storage_place", "set_person_record", "set_funeral_preferences",
+      "confirm_review",
+      "delete_provider_contract", "delete_digital_account", "delete_contact",
+      "delete_special_asset",
+      "create_case", "set_case", "cancel_case", "set_case_task", "create_case_task",
+      "set_system_profile", "export_emergency_binder"
+    ],
+    "crons": ["remind_case_tasks", "review_register"],
+    "routes": ["estate"],
+    "config": ["model", "schedule", "cron_enable", "general", "advisor"],
+    "models": []
+  },
+  "callback_handlers": {
+    "_comment": "Generische Callback-Dispatch-Registry (docs/package-contract.md §3, Phase 0 WS-0c CB, Muster career job:): das Prefix 'est' der Ereignisfall-Reminder-Buttons (est:done:<task_id> / est:skip:<task_id>) bindet an estate.fn_handle_case_task_callback. Der Orchestrator dispatcht über core.fn_dispatch_callback (kein Orchestrator-Edit, additiv auf der 'extra'-Ausgabe). member_permeable=true: ein aufgelöstes Haushaltsmitglied darf den Tap auslösen — die FEINE Autorisierung (adults_only, HAUSHALTS-skopiert = jeder Erwachsene handelt an jedem offenen Fall = Break-Glass überlebender Partner) macht estate.fn_set_case_task; der Dispatcher core.fn_dispatch_callback enforced member_permeable fail-closed + re-resolvt den Sender selbst. Der Host (seed_data.sh) upsertet die Zeile own-schema-scoped (handler_fn muss estate.* sein); contract_lint prüft Prefix-Kollisionsfreiheit + das nested {handler_fn, member_permeable}-Schema.",
+    "est": { "handler_fn": "estate.fn_handle_case_task_callback", "member_permeable": true }
+  },
+  "commands": {
+    "_comment": "WS-5 Command-Registry (docs/package-contract.md §3.5 + docs/reference/packages.md Command-Registry): der ERSTE Nicht-Core-`commands`-Block. /notfall = deterministischer, LLM-unabhängiger Telegram-Einstieg für den Hinterbliebenen. dispatch {agent, task} = CODE-PFAD-Command -> build.ps1 $CommandDispatchList generiert einen '/notfall'-Switch-Case im Orchestrator-`Command router` + einen Run/Relay-Dispatch-Arm -> agent.estate_advisor INLINE (synthetischer Task). DISCRIMINANT: Code-Pfad-Command (startet Agenten) -> Build-Zeit-Switch; reiner Callback-Prefix (est:) -> Laufzeit-core.callback_handlers. command_lint prüft cmd<->Switch<->catalog.tail-Parität; visibility=all (der Hinterbliebene ist Member, nicht nur Owner). Menü-Text = Katalog-Key estate.cmd.notfall (§3.11).",
+    "list": [
+      { "cmd": "/notfall", "visibility": "all", "dispatch": { "agent": "estate_advisor", "task": "Der Nutzer hat /notfall getippt — den deterministischen Notfall-Einstieg für den Hinterbliebenen. Begrüße ihn einfühlsam und knapp, ohne Fachjargon (er ist möglicherweise trauernd oder überfordert). Biete konkret zwei Wege an: (1) die Notfallmappe als Dokument abrufen (Tool export_emergency_binder), oder (2) einen Ereignisfall starten (Todesfall/Vorsorgefall) und die geführte Fristen-Checkliste beginnen. Frage, was gerade gebraucht wird, und handle im Ereignisfall-Modus: erst Anteilnahme, dann EINE nächste Aufgabe nach der anderen." } }
+    ]
+  },
+  "consumes": {
+    "_comment": "services = die Core-Dienste des estate_advisor (WS-1: Load Config/Context + web_search; KEIN human_approval - dieser WS hat keine HITL-Tools, kommt mit WS-2). reads = das Core-API-Versions-Fenster (Parität career) + die drei finance-Nachlass-Register (fn_insurance_register/fn_account_register/fn_liability_register, §4.2 optionale Dependency: finance steht bewusst NICHT in requires -> die WS-1-Renderer-Call-Site estate.fn_render_estate_overview doppel-guardet fn_package_active('finance') + to_regprocedure, graceful sichtbare Absenz-Zeile). Oberfläche A (PLAIN STABLE, kein Grant): gelesen NICHT unter estate_ro, sondern render-at-fetch im core.fn_fetch_context-DEFINER; contract_lint erzwingt nur die Deklaration hier (Spiegel zu finance provides.reads).",
+    "services": ["core:load_config", "core:load_context", "core:web_search", "core:onboarding_progress",
+                 "paperless:search_documents", "paperless:get_document", "paperless:ask_documents"],
+    "reads": ["core.fn_core_api_version()", "finance.fn_insurance_register()", "finance.fn_account_register()", "finance.fn_liability_register()"]
+  },
+  "config": {
+    "_comment": "Per-Paket-Config (docs/package-contract.md §3.6): geseedet paket-skopiert (package='estate') via _seed_package_config; runtime via core.sub_load_config (model.*) ; schedule.* beim Deploy eingesetzt (__CFG_SCHEDULE_*__), Schwellen runtime via core.fn_config_get. WS-3: + schedule/cron_enable des Ereignisfall-Reminders + general.bundesland (fail-closed Default für die Fristen-Berechnung). WS-4: + schedule/cron_enable des Jahres-Reviews (review_register) + advisor.estate_review_days (Staleness-Schwelle des Reviews).",
+    "model": {
+      "estate_advisor": { "value": "claude-opus-latest", "description": "LLM for the Estate-Advisor agent (Nachlass & Vorsorge: register coaching + grief-aware event support). Opus by owner decision (parity finance_advisor/career_advisor: only the advisor agents use Opus; low request volume, quality over cost - the event mode carries the highest human stakes in the system; a higher tier than the Haiku router). Swap = change value to any model_key in agent.ai_models; a NEW model first needs a row in packages/core/seed/ai_models.json + selector regeneration (build script). Runtime-switchable: lifeagents config set model estate_advisor <key> (no rebuild).", "summary": "KI-Modell für den Nachlass- und Vorsorge-Berater." }
+    },
+    "schedule": {
+      "remind_case_tasks": { "value": "0 10 * * *", "type": "cron", "description": "Daily 10:00 - the event-case deadline reminder (agent.estate.cron_remind_case_tasks). No-op without an open case; sends one aggregated card of due/overdue open tasks with per-task latch (core.fn_should_notify, 3-day cooldown). Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan der Fristen-Erinnerung im Ernstfall (Cron; „0 10 * * *“ = täglich 10:00 Uhr)" },
+      "review_register": { "value": "5 10 1 * *", "type": "cron", "description": "Monthly (1st, 10:05) - the yearly preparedness review (agent.estate.cron_review_register). Calls core.fn_advisor_review_evaluate('estate', NULL, '{}') -> the generic engine latches estate.fn_advisor_review's alerts (register staleness > advisor.estate_review_days, missing Vorsorge documents per adult, finance nachlass-field gaps). Self-silent via the latch (only NEW breaches send) - so a monthly cadence yields at most a few nudges a year. estate has NO publish button (unlike finance/career) -> it needs its OWN thin enable-cron (the shared advisor crons default off and only the publish button turns them on). Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan der Prüfung, ob das Notfall-Register aktuell ist (Cron; „5 10 1 * *“ = am 1., 10:05)" }
+    },
+    "cron_enable": {
+      "remind_case_tasks": { "value": "true", "type": "boolean", "description": "Master switch for the event-case deadline reminder. Default true (always-on: an event checklist without reminders would silently miss deadlines). Listed as MANDATORY reminder (cron_labels.mandatory): /reminders shows it as info only, never a chat switch (Roter Faden Paket B) - toggle via console only: lifeagents config set cron_enable remind_case_tasks false.", "summary": "Schaltet die Fristen-Erinnerung im Todes- oder Vorsorgefall ein oder aus (true/false)." },
+      "review_register": { "value": "true", "type": "boolean", "description": "Master switch for the yearly preparedness review (agent.estate.cron_review_register). Default true (always-on: the notification latch makes it self-silent -> it only speaks when a NEW gap or staleness appears, so a permanent 'on' is not spammy and guarantees the household is reminded even though estate has no publish button). Household reminder (cron_labels.list, Roter Faden Paket B): the owner switches it in /reminders or with the switch-off button on the review card; console: lifeagents config set cron_enable review_register false.", "summary": "Schaltet die jährliche Erinnerung zum Notfall-Register ein oder aus (true/false)." }
+    },
+    "general": {
+      "bundesland": { "value": "", "description": "German state slug used to compute legal deadlines (public holidays / Werktage) for event cases when create_case is called without a bundesland parameter. FAIL-CLOSED: empty by default -> the agent must pass the state or the owner sets it once (lifeagents config set general bundesland bayern). Valid slugs: baden_wuerttemberg, bayern, berlin, brandenburg, bremen, hamburg, hessen, mecklenburg_vorpommern, niedersachsen, nordrhein_westfalen, rheinland_pfalz, saarland, sachsen, sachsen_anhalt, schleswig_holstein, thueringen.",
+      "summary": "Euer Bundesland – nötig, um Fristen mit Feiertagen richtig zu berechnen (z. B. bayern).",
+        "prompt": "In welchem Bundesland lebt ihr?",
+        "help": "Fristen im Ereignisfall (z. B. Ausschlagung einer Erbschaft) rechnen mit Werktagen — und welche Tage Feiertage sind, hängt vom Bundesland ab.",
+        "choices": [
+          { "value": "baden_wuerttemberg", "label": "Baden-Württemberg" },
+          { "value": "bayern", "label": "Bayern" },
+          { "value": "berlin", "label": "Berlin" },
+          { "value": "brandenburg", "label": "Brandenburg" },
+          { "value": "bremen", "label": "Bremen" },
+          { "value": "hamburg", "label": "Hamburg" },
+          { "value": "hessen", "label": "Hessen" },
+          { "value": "mecklenburg_vorpommern", "label": "Mecklenburg-Vorpommern" },
+          { "value": "niedersachsen", "label": "Niedersachsen" },
+          { "value": "nordrhein_westfalen", "label": "Nordrhein-Westfalen" },
+          { "value": "rheinland_pfalz", "label": "Rheinland-Pfalz" },
+          { "value": "saarland", "label": "Saarland" },
+          { "value": "sachsen", "label": "Sachsen" },
+          { "value": "sachsen_anhalt", "label": "Sachsen-Anhalt" },
+          { "value": "schleswig_holstein", "label": "Schleswig-Holstein" },
+          { "value": "thueringen", "label": "Thüringen" }
+        ]
+      }
+    },
+    "advisor": {
+      "estate_review_days": { "value": "365", "type": "integer", "minimum": 1, "description": "Staleness threshold (days) of the yearly preparedness review: estate.fn_advisor_review nudges each adult whose person_records.last_reviewed_at is older than this. fn_confirm_review stamps last_reviewed_at -> re-arms the latch. Read via core.fn_config_get('estate','advisor','estate_review_days') with a COALESCE default of 365. Parity: core advisor.plan_stale_days / career advisor.career_plan_stale_days.", "summary": "Nach so vielen Tagen erinnert der Berater, die Angaben im Notfall-Register zu prüfen." }
+    }
+  },
+  "context_renderers": {
+    "_comment": "Generische Render-Registry (docs/package-contract.md §3.3): bindet den EINEN estate-Lese-Kontext estate_overview an die Renderer-fn (render-at-fetch: baut das volle Haushalts-Notfall-Register aus den estate-Tabellen + den doppel-guardet konsumierten finance-Registern; NIE Publish-Ziel, arch-challenge P5). DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): seed_data.sh upsertet die Zeile in core.context_renderers; core.fn_fetch_context dispatcht generisch + wrappt Banner/Prosa. render_fn MUSS ins eigene Schema (estate.*) zeigen, UNIFORME Signatur fn(text)->text. context_validators/context_scopes bleiben bewusst LEER: kein schreibbarer Facts-Sidecar (Register = Tabellen mit CHECKs), estate_overview ist household (Check-10-Parität: Scope-Zeilen nur je Validator-Context).",
+    "estate_overview": "estate.fn_render_estate_overview"
+  },
+  "cron_labels": {
+    "_comment": "Erinnerungs-Registry (Roter Faden Paket B, docs/package-contract.md §8): list = Haushalts-Erinnerung, der Owner schaltet sie in /reminders oder per Knopf an der Karte; mandatory = Pflicht-Erinnerung (gesetzliche Fristen im Ereignisfall), in /reminders nur angezeigt, nie schaltbar.",
+    "list": ["review_register"],
+    "mandatory": ["remind_case_tasks"]
+  },
+  "advisors": {
+    "_comment": "Generische Advisor-Registry (docs/package-contract.md §3.3): deklariert die estate-Domäne mit ihren 3 Werten (Plan WS-0a 'advisors 3-Werte'). WS-4 LIVE: die review_fn estate.fn_advisor_review existiert (R__fn_advisor_review.sql; Staleness/Dokument-/finance-Gaps) + der eigene Enable-Cron agent.estate.cron_review_register ruft core.fn_advisor_review_evaluate('estate', NULL, '{}') monatlich (schedule.review_register, always-on, Latch-selbst-still) -> die install-zeitige to_regprocedure-Warnung entfällt, der Wrapper liefert echten Digest. BEGRÜNDETE ABWEICHUNG (Opus-M4): estate hat KEIN Publish -> die geteilten Advisor-Crons (default-OFF, publish-getriggert) liefen für estate nie -> eigener dünner Cron. plan_context estate_overview = der EINE Lese-Kontext des Pakets (render-at-fetch, seit WS-1 live; realer Primär-Anker, NIE Publish-Ziel - arch-challenge P5). advisor_agent = das Orchestrator-Router-Ziel (seit WS-1 live).",
+    "estate": {
+      "plan_context": "estate_overview",
+      "review_fn": "estate.fn_advisor_review",
+      "advisor_agent": "agent.estate_advisor",
+      "own_review_cron": true
+    }
+  },
+  "protected_contexts": ["estate_advisor_instructions", "estate_overview"],
+  "read_surface": {
+    "_comment": "Paket-Lese-Vertrag (docs/package-contract.md §4.1): das Aufsichts-Lesefenster für den privilegierten Core-Host - core.fn_provision_package_roles('estate') grantet core_ro UNBEDINGT SELECT auf Schema estate (System-Invariante, verifiziert in tests/db/estate/test_estate_isolation.sql B1). host_read_role = core_ro WIE finance/career (Parität) - NICHT estate_ro (das ist die ENGE Paket-Isolationsrolle). preferred_views folgt mit den Gap-/Overview-Views (WS-2).",
+    "host_read_role": "core_ro",
+    "preferred_views": [],
+    "tables_readable": true
+  },
+  "backup": {
+    "_comment": "Paket-Backup-Oberfläche (docs/package-contract.md §3.7): schema_dump=true sichert das GANZE Paket-Schema estate via pg_dump - das Register IST hochsensible Nutzer-Eingabe (Kundennummern, Steuer-ID, Fundorte) und existiert nirgends sonst. directive_types ist zwar code-geseedet, aber ON CONFLICT DO UPDATE beim Re-Seed konvergiert sie nach jedem Restore wieder auf den Code-Stand (kein M4-Konflikt: der Seed überschreibt den Dump-Stand, nicht umgekehrt). Die PII-losen Instruktions-/Overview-Contexts des Pakets leben in agent.core_contexts (managed_by='seed') und kommen aus dem Baum - NICHT hier.",
+    "schema_dump": true,
+    "exclude_tables": []
+  },
+  "catalog": {
+    "_comment": "Per-Fragment-Katalog (docs/package-contract.md §3.5): ord 300 = nach finance(100)/career(200), vor dem Core-Host-Chrome(900). Die Register-Write-Tools tragen die Kategorie 'register' (Texte + Beispiele im Textkatalog estate.help.register.*, die deutschen Beispiele = verbatim Case-Tasks aus estate_cases.json, -VerifyCatalog-geprüft). Die tail-Sektion 'advice' trägt die Berater-/Ereignisfall-Capability (agent-derived, kein Tool - Muster career).",
+    "ord": 300,
+    "categories": [
+      { "id": "register", "ord": 10 }
+    ],
+    "tail": [
+      { "id": "advice", "ord": 300 }
+    ]
+  },
+  "migrations": "db",
+  "approval_matrix": {
+    "_comment": "Maker-Checker-Stufe je Gate-Aufrufer dieses Pakets (WS-5b): Workflow-Name -> {tier, reason}. build.ps1 injiziert den tier in jeden Gate-Call-Node (fail-closed: Gate-Aufrufer ohne Eintrag = Build-Fehler), approval_lint prüft die gebauten JSONs. Stufen, Verb-Präfix-Strenge + Besitz-Regel -> docs/package-contract.md §3.10.",
+    "agent.estate.tool_record_directive": { "tier": "owner_info", "reason": "record_: Vorsorge-Dokument ins Register (UPSERT auf owner_person_id+doc_type). Additiver Register-Eintrag, member-tauglich. adults_only-DB-Backstop in der fn (estate WS-2, erste Live-Nutzung)." },
+    "agent.estate.tool_create_provider_contract": { "tier": "owner_info", "reason": "create_: Nicht-finance-Vertrag ins Register (additiv). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_create_digital_account": { "tier": "owner_info", "reason": "create_: digitales Konto ins Register OHNE Passwörter (additiv). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_create_contact": { "tier": "owner_info", "reason": "create_: Schlüssel-Kontakt ins Register (additiv). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_create_storage_place": { "tier": "owner_info", "reason": "create_: Fundstelle ins Register (additiv). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_create_special_asset": { "tier": "owner_info", "reason": "create_: Sonderfall-Stub ins Register (additiv). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_set_provider_contract": { "tier": "owner_approval", "reason": "set_: Vertrag-Register ändern (Floor: gegatetes Mitglied -> Owner-Vier-Augen). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_set_digital_account": { "tier": "owner_approval", "reason": "set_: digitales Konto-Register ändern. adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_set_contact": { "tier": "owner_approval", "reason": "set_: Kontakt-Register ändern. adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_set_storage_place": { "tier": "owner_approval", "reason": "set_: Fundstellen-Register ändern/umwidmen. adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_set_person_record": { "tier": "owner_approval", "reason": "set_: amtliche Stammdaten je Person (Steuer-ID/RV-Nr.). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_set_funeral_preferences": { "tier": "owner_approval", "reason": "set_: Bestattungswünsche je Person. adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_delete_provider_contract": { "tier": "owner_approval", "reason": "delete_: Vertrag aus dem Register löschen (Hard-DELETE). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_delete_digital_account": { "tier": "owner_approval", "reason": "delete_: digitales Konto aus dem Register löschen (Hard-DELETE). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_delete_contact": { "tier": "owner_approval", "reason": "delete_: Kontakt aus dem Register löschen (Hard-DELETE). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_delete_special_asset": { "tier": "owner_approval", "reason": "delete_: Sonderfall-Stub aus dem Register löschen (Hard-DELETE). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_create_case": { "tier": "owner_info", "reason": "create_: Ereignisfall (Todesfall/Vorsorgefall) anlegen — BREAK-GLASS owner_info (der Owner kann der Betroffene sein; Missbrauch < Blockade; Audit via owner_info). Verb create Floor 0. adults_only-DB-Backstop + subject_is_sender-Guard in der fn (estate WS-3)." },
+    "agent.estate.tool_set_case": { "tier": "owner_approval", "reason": "set_: einen offenen Fall ändern (knowledge/bundesland/flags -> Fristen-Recompute + Reconcile). adults_only-DB-Backstop in der fn." },
+    "agent.estate.tool_cancel_case": { "tier": "owner_info", "reason": "cancel_: einen offenen Fall abbrechen — NEUES Verb cancel Floor 0 (owner_info-fähig, Break-Glass wie create_case; ein erwachsenes Mitglied kann einen Fall allein abbrechen, Owner-Info = Audit). adults_only-DB-Backstop in der fn (estate WS-3)." },
+    "agent.estate.tool_set_system_profile": { "tier": "owner_approval", "reason": "set_: System-Steckbrief + backup_key-Offline-Fundort (Haushalts-Singleton). Floor owner_approval (gegatetes Mitglied -> Owner-Vier-Augen). adults_only-DB-Backstop in der fn (estate WS-5)." },
+    "agent.estate.tool_export_emergency_binder": { "tier": "owner_info", "reason": "export_: das GANZE Nachlass-Register als weiterleitbares Dokument — ERSTER gegateter READ-Egress (größter PII-Egress). BREAK-GLASS owner_info (Floor 0): owner_approval deadlockte bei totem/abwesendem Owner (Owner-Entscheid 8, überlebender Partner MUSS exportieren können); kompensierende Kontrolle ist das Audit (HITL-Tap + Chat-History). adults_only DOPPELT (n8n-IF + fn-RAISE-Backstop). NIST/HIPAA Break-the-Glass (estate WS-5)." }
+  }
+}

@@ -1,0 +1,986 @@
+{
+    "id":  "er2DXGWMgJWr25DA",
+    "name":  "agent.finance.tool_set_insurance",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "insurance_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "new_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "insurance_company"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "policy_number"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "policyholder_person"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "annual_premium"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_interval"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_unit"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_day_of_month"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "valid_to"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "status"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "notes"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "insurance_type"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "beneficiary"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "coverage_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "claim_deadline_hours"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "978812b2-7ad9-53cf-bf81-6ccd42230744",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_insurance(($1::jsonb)-\u003e\u003e\u0027insurance_name\u0027, TRUE);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_name: $(\u0027Start\u0027).item.json.insurance_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "ce98f3f6-2895-5df6-8d9f-9e4dcf47eeb2",
+                      "name":  "Resolve Insurance",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f46a5510-6cb0-53c1-a698-ee06f33cbdc7",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "e0ea340c-3c9a-5e9e-8d0e-2d20c7b998a5",
+                      "name":  "Insurance unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "08fcc8b8-069c-5d0d-a380-50c0f393dc7c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c4cb3d13-a0c0-5824-9ace-7cf48693b84f",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Insurance \u0027{{ $(\u0027Start\u0027).item.json.insurance_name }}\u0027 resolves to {{ $(\u0027Resolve Insurance\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Insurance\u0027).item.json.candidates) }}. Ask the user which exact policy.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "c7dc6c1b-253e-563c-acdd-8ed4869f55dc",
+                      "name":  "Insurance ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT annual_premium, schedule_interval, schedule_unit::text AS schedule_unit, status::text AS status FROM finance.insurances WHERE id = (($1::jsonb)-\u003e\u003e\u0027id\u0027)::int;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ id: $(\u0027Resolve Insurance\u0027).item.json.id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "543c27ff-0446-5e5b-bd30-01574037b289",
+                      "name":  "Read Current",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT x.ok, x.reason, x.annual_premium, x.coverage_amount, CASE WHEN x.ok THEN finance.fn_insurance_period_amount(COALESCE(x.annual_premium, i.annual_premium), COALESCE(NULLIF(($1::jsonb)-\u003e\u003e\u0027schedule_interval\u0027,\u0027\u0027)::int, i.schedule_interval), COALESCE(NULLIF(($1::jsonb)-\u003e\u003e\u0027schedule_unit\u0027,\u0027\u0027)::finance.schedule_unit, i.schedule_unit)) END AS period_amount FROM finance.insurances i CROSS JOIN LATERAL (SELECT r IS NULL AND (f-\u003e\u003e\u0027ok\u0027)::boolean AS ok, COALESCE(r, f-\u003e\u003e\u0027reason\u0027) AS reason, (f-\u003e\u003e\u0027annual_premium\u0027)::numeric AS annual_premium, (f-\u003e\u003e\u0027coverage_amount\u0027)::numeric AS coverage_amount FROM finance.fn_insurance_fields($1::jsonb) AS f, finance.fn_enum_reason(\u0027finance.insurance_status\u0027::regtype, ($1::jsonb)-\u003e\u003e\u0027status\u0027, \u0027status\u0027) AS r) x WHERE i.id = (($1::jsonb)-\u003e\u003e\u0027id\u0027)::int;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ id: $(\u0027Resolve Insurance\u0027).item.json.id, annual_premium: $(\u0027Start\u0027).item.json.annual_premium, coverage_amount: $(\u0027Start\u0027).item.json.coverage_amount, claim_deadline_hours: $(\u0027Start\u0027).item.json.claim_deadline_hours, insurance_type: $(\u0027Start\u0027).item.json.insurance_type, status: $(\u0027Start\u0027).item.json.status, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "541fa9c9-538d-5da1-98f6-b1ab9054b02e",
+                      "name":  "Preview Rate",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "063d7fc5-4f16-5d61-90bd-2082d7d67d46",
+                                                                                   "leftValue":  "={{ $(\u0027Preview Rate\u0027).item.json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       -120
+                                   ],
+                      "id":  "5868adbf-807d-5716-8600-ca808cbafbb3",
+                      "name":  "Fields ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "310db5ba-1889-50f9-9377-9497b56c68da",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "73f82978-e0a9-5b68-bc19-a4ff67914be6",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Preview Rate\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       -240
+                                   ],
+                      "id":  "e0915580-a6cc-5b2f-b6e5-91747860f902",
+                      "name":  "Invalid values"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027policyholder_person\u0027, \u0027\u0027));",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ policyholder_person: $(\u0027Start\u0027).item.json.policyholder_person }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       360
+                                   ],
+                      "id":  "269e2cb6-6f75-5f4f-b0e8-ef984d8123df",
+                      "name":  "Resolve Person",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1ea633f0-4790-5c05-badf-12e146ff6a1b",
+                                                                                   "leftValue":  "={{ !!$(\u0027Start\u0027).item.json.policyholder_person \u0026\u0026 $(\u0027Resolve Person\u0027).item.json.hit_count !== 1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       360
+                                   ],
+                      "id":  "507bec93-1dfa-581e-a6b6-bc3cd099fc2c",
+                      "name":  "Person invalid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c5236577-d4d2-516c-96c8-424f8930ce85",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e16152c8-6175-55bc-ad73-9f4042cd1414",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The policyholder \u0027{{ $(\u0027Start\u0027).item.json.policyholder_person }}\u0027 could not be uniquely resolved ({{ $(\u0027Resolve Person\u0027).item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify($(\u0027Resolve Person\u0027).item.json.candidates) }}. Ask which household member.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       480
+                                   ],
+                      "id":  "fb1a13e8-7166-55b3-b4e7-28cf748a9fdb",
+                      "name":  "Person unresolved"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_set_insurance(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_id: $(\u0027Resolve Insurance\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, insurance_company: $(\u0027Start\u0027).item.json.insurance_company, policy_number: $(\u0027Start\u0027).item.json.policy_number, policyholder_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, annual_premium: $(\u0027Start\u0027).item.json.annual_premium, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, valid_to: $(\u0027Start\u0027).item.json.valid_to, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, insurance_type: $(\u0027Start\u0027).item.json.insurance_type, beneficiary: $(\u0027Start\u0027).item.json.beneficiary, coverage_amount: $(\u0027Start\u0027).item.json.coverage_amount, claim_deadline_hours: $(\u0027Start\u0027).item.json.claim_deadline_hours }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "fb564ffa-7cba-5192-87dc-67871978e62f",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "13f87cf4-a2c5-56a1-9c96-0131e1841ce0",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "a33707df-0ce3-5b86-ab4e-9d6068e09b16",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "9a961d78-f4e3-5fc7-bc0f-729e1746f480",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c9b4d720-f350-5507-9502-b4fe2c8dd1e5",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "64d354a1-9ff5-5975-8d79-f720a79851f2",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9a43670f-442c-53b3-a0f4-743f20d2a3de",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a0e02dae-5d60-5385-af77-ce02ccd6c80a",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "04d6eff8-84bf-5a22-ad7b-4791175a4a19",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027insurance_id\u0027)::int AS insurance_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id FROM finance.fn_set_insurance(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_id: $(\u0027Resolve Insurance\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, insurance_company: $(\u0027Start\u0027).item.json.insurance_company, policy_number: $(\u0027Start\u0027).item.json.policy_number, policyholder_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, annual_premium: $(\u0027Start\u0027).item.json.annual_premium, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, valid_to: $(\u0027Start\u0027).item.json.valid_to, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, insurance_type: $(\u0027Start\u0027).item.json.insurance_type, beneficiary: $(\u0027Start\u0027).item.json.beneficiary, coverage_amount: $(\u0027Start\u0027).item.json.coverage_amount, claim_deadline_hours: $(\u0027Start\u0027).item.json.claim_deadline_hours, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "5fc5ad0f-3293-5426-97b9-fb62d2a6b2e0",
+                      "name":  "Set insurance (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "99a31518-c62d-5f8c-9af0-5cced57f3b64",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_insurance\u0027, lines: [ { label: \u0027finance.label.insurance\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.insurance_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), (($(\u0027Start\u0027).item.json.annual_premium) ? { label: \u0027finance.label.annual_contribution\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.annual_premium), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Preview Rate\u0027).item.json.annual_premium), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.schedule_unit) ? { label: \u0027finance.label.payment_mode\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.every_unit\u0027), params: { interval: (($(\u0027Start\u0027).item.json.schedule_interval || \u00271\u0027)), unit: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.schedule_unit), enum: \u0027finance.enum.schedule_unit\u0027 }) } } : null), ((($(\u0027Start\u0027).item.json.annual_premium || $(\u0027Start\u0027).item.json.schedule_unit || $(\u0027Start\u0027).item.json.schedule_interval)) ? { label: \u0027finance.label.rate_per_debit\u0027, kind: \u0027money\u0027, value: ($(\u0027Preview Rate\u0027).item.json.period_amount), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.policyholder_person) ? { label: \u0027finance.label.policyholder_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.policyholder_person)) } : null), (($(\u0027Start\u0027).item.json.insurance_company) ? { label: \u0027finance.label.company\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.insurance_company) } : null), (($(\u0027Start\u0027).item.json.policy_number) ? { label: \u0027finance.label.policy_number\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.policy_number) } : null), (($(\u0027Start\u0027).item.json.insurance_type) ? { label: \u0027finance.label.insurance_type\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.insurance_type), enum: \u0027finance.enum.insurance_type\u0027 } : null), (($(\u0027Start\u0027).item.json.coverage_amount) ? { label: \u0027finance.label.coverage_amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Preview Rate\u0027).item.json.coverage_amount), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.beneficiary) ? { label: \u0027finance.label.beneficiary\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.beneficiary) } : null), (($(\u0027Start\u0027).item.json.claim_deadline_hours) ? { label: \u0027finance.label.claim_deadline\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.hours\u0027), params: { value: ($(\u0027Start\u0027).item.json.claim_deadline_hours) } } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.insurance_status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.insurance_status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.valid_to) ? { label: \u0027finance.label.valid_to\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.valid_to) } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null), ((($(\u0027Start\u0027).item.json.status == \u0027cancelled\u0027 || $(\u0027Start\u0027).item.json.status == \u0027expired\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.set_insurance_pause\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "4e34c03e-011f-56b3-9446-af6d2ddcbd5b",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "5f8baad1-6350-5dcc-ac6b-c130acc576d5",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "100e492e-0aec-5770-8f43-a3dd8602ded1",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "a1c42b9e-fc6b-53c1-b7f7-0f47e500cd27",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ca93c30a-ab07-58b1-b6d8-cc676f9645ac",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4b6c86df-515a-5d0b-bd28-57986c12fe74",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "21abc911-f253-5dc7-9349-4fac5db1fcb6",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_insurance action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       240
+                                   ],
+                      "id":  "744cc730-82c0-5281-a40d-eb923578fccb",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "97a5f5dd-8011-59cd-9cc3-b1064c16f217",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "e56ebf71-1c3b-5810-8ba7-01dbb5e358b2",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e0465d6d-af22-5e6e-88e8-533577ba7925",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1e8229cb-10d1-592d-9a4a-48ce9d35449b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set insurance (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       240
+                                   ],
+                      "id":  "ab790891-563a-5efa-8784-6e8dca9c17b8",
+                      "name":  "Update rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3a394484-ffc8-5181-aca9-5469c85d848e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1995ef84-f1e2-5ca6-88f6-fd86914b1951",
+                                                                                     "name":  "insurance_id",
+                                                                                     "value":  "={{ $(\u0027Set insurance (atomic)\u0027).item.json.insurance_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "977d1a76-a6e8-517e-bfd9-48e3da667a4e",
+                                                                                     "name":  "recurring_payment_id",
+                                                                                     "value":  "={{ $(\u0027Set insurance (atomic)\u0027).item.json.recurring_payment_id }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       0
+                                   ],
+                      "id":  "0388d7cf-37c0-5d17-883c-f5b3bcb0b92c",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_insurance mit denselben Werten, immer zurückgerollt (nach Preview Rate / Fields ok?). ok:false (z. B. nicht-positiver Jahresbeitrag) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception (CHECK, Recurring-Sync) -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1100,
+                                       -440
+                                   ],
+                      "id":  "81a14f4f-ae39-54b7-9948-34237339e030",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**GENERATED monthly_equivalent + Recurring-Sync**\n\nmonthly_equivalent (÷12) ist GENERATED. fn_set_insurance synct den verknüpften Beitrag (recurring_payment) IN-PLACE: Prämie/Schedule -\u003e amount/schedule mit; status=cancelled/expired -\u003e recurring paused + valid_to. Compute Schedule rechnet amount aus Merge(neu||aktuell). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden partiell mitgesetzt (leer=unverändert) und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) gelesen.",
+                                         "height":  220,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2420,
+                                       -280
+                                   ],
+                      "id":  "589837a9-3cef-5119-819d-476cd896e9d5",
+                      "name":  "DB-Automatik monthly_equivalent"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nNicht-positiver Jahresbeitrag -\u003e {ok:false, reason} -\u003e Update rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true ändert wirklich. Normalerweise fängt schon der Probelauf diese Fälle vor der Karte ab; hier landet nur, was sich zwischen Karte und Tipp geändert hat.",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2860,
+                                       -240
+                                   ],
+                      "id":  "8171efb1-526c-5871-8fc9-ab09d0526b98",
+                      "name":  "Write ok? (korrigierbare Ablehnung)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Insurance",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Insurance":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Insurance unique?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Insurance unique?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Read Current",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ],
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Insurance ambiguous",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Read Current":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Preview Rate",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Preview Rate":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Fields ok?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Fields ok?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Resolve Person",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Invalid values",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Resolve Person":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Person invalid?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Person invalid?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Person unresolved",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set insurance (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Set insurance (atomic)":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Write ok?",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Update rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

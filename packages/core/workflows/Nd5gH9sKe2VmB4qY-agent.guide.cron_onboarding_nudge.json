@@ -1,0 +1,300 @@
+{
+    "id":  "Nd5gH9sKe2VmB4qY",
+    "name":  "agent.guide.cron_onboarding_nudge",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_ONBOARDING_NUDGE__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1320,
+                                       0
+                                   ],
+                      "id":  "39a7d063-7802-55ca-80a2-a42aff0268f5",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_package_active(\u0027core\u0027) AND COALESCE(core.fn_config_get(\u0027core\u0027,\u0027cron_enable\u0027,\u0027onboarding_nudge\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "3180a2cd-2d85-5667-8820-c36c2f70ab14",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d5e21678-b830-5636-9ef7-7e07aade031b",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "5784b46a-ba09-5555-964f-08c608827216",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -880,
+                                       200
+                                   ],
+                      "id":  "0eba5d8e-f80f-5687-a31f-8e5b4c0187af",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH n AS MATERIALIZED (SELECT core.fn_onboarding_nudges_due(jsonb_build_object(\u0027order\u0027, jsonb_build_array(\u0027core\u0027, \u0027finance\u0027, \u0027estate\u0027, \u0027career\u0027))) AS r) SELECT n.r::text AS r FROM n;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "efcaeb43-6193-58b0-9d48-9ca269334a69",
+                      "name":  "Find nudges",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let r = {};\ntry { r = JSON.parse($input.first().json.r || \u0027{}\u0027); } catch (e) { r = {}; }\nconst list = Array.isArray(r.nudges) ? r.nudges : [];\nreturn list.map(n =\u003e ({ json: {\n  chat_id: String(n.chat_id), stage: Number(n.stage), package: String(n.package), section_key: String(n.section_key),\n  label_key: (n.package === \u0027core\u0027) ? (\u0027core.onboarding.\u0027 + n.section_key) : (n.package + \u0027.onboarding.\u0027 + n.section_key),\n  area_key: (n.package === \u0027core\u0027) ? \u0027\u0027 : (n.package + \u0027.package.name\u0027)\n} }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "5a8726ac-7352-5ed2-8b11-a30a412cd45b",
+                      "name":  "Split nudges"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027core.nudge.stage1\u0027,\u0027core.nudge.stage2\u0027,\u0027core.nudge.btn_continue\u0027,\u0027core.nudge.btn_stop\u0027]::text[]), \u0027doc\u0027, jsonb_build_array(($1::jsonb)-\u003e\u003e\u0027label_key\u0027, NULLIF(($1::jsonb)-\u003e\u003e\u0027area_key\u0027, \u0027\u0027))))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($json.chat_id || \u0027\u0027), label_key: String($json.label_key || \u0027\u0027), area_key: String($json.area_key || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -220,
+                                       0
+                                   ],
+                      "id":  "cb0195b1-6945-5a61-b549-35c7915576eb",
+                      "name":  "Load card texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Split nudges\u0027).item.json.chat_id) }}",
+                                         "text":  "={{ ((($(\u0027Split nudges\u0027).item.json.stage === 2) ? String((($(\u0027Load card texts\u0027).item.json.t) || {})[\u0027core.nudge.stage2\u0027] || \u0027core.nudge.stage2\u0027) : String((($(\u0027Load card texts\u0027).item.json.t) || {})[\u0027core.nudge.stage1\u0027] || \u0027core.nudge.stage1\u0027)).split(\u0027{step}\u0027).join((String(($(\u0027Load card texts\u0027).item.json.t || {})[$(\u0027Split nudges\u0027).item.json.label_key] || $(\u0027Split nudges\u0027).item.json.label_key) + (($(\u0027Split nudges\u0027).item.json.area_key \u0026\u0026 ($(\u0027Load card texts\u0027).item.json.t || {})[$(\u0027Split nudges\u0027).item.json.area_key]) ? (\u0027 (\u0027 + ($(\u0027Load card texts\u0027).item.json.t || {})[$(\u0027Split nudges\u0027).item.json.area_key] + \u0027)\u0027) : \u0027\u0027)))).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Load card texts\u0027).item.json.t) || {})[\u0027core.nudge.btn_continue\u0027] || \u0027core.nudge.btn_continue\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027onboarding:\u0027 + $(\u0027Split nudges\u0027).item.json.package + \u0027:\u0027 + $(\u0027Split nudges\u0027).item.json.section_key }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Load card texts\u0027).item.json.t) || {})[\u0027core.nudge.btn_stop\u0027] || \u0027core.nudge.btn_stop\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "rem:off:onboarding_nudge"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "73b8144a-bc5f-5577-85c7-ad75188092d5",
+                      "name":  "Send nudge",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Nachfassen bei liegengebliebenem Einrichten (Roter Faden, deterministisch, kein LLM)**\n\nTäglich 10:30 (schedule.onboarding_nudge, im Erinnerungs-Fenster general.reminders_from..until). F9-Gate: core aktiv UND cron_enable.onboarding_nudge (Konsolen-Notschalter für ALLE; jede Person schaltet sich selbst per [Nicht mehr erinnern] = rem:off:onboarding_nudge ab -\u003e agent.reminder_prefs, core.fn_reminder_allowed). Find nudges = core.fn_onboarding_nudges_due (MATERIALIZED, ein Aufruf): je verbundener Person mit offenem Abschnitt in einem für sie offenen Bereich (Owner alles, Mitglied nur persönliche Bereiche und erst nach dem Haushalt) Stufe 1 nach \u003e= 3 Tagen Stillstand, Stufe 2 (letzte) nach \u003e= 10 Tagen und \u003e= 7 Tage nach Stufe 1, dann Ruhe; ein neu geöffneter Abschnitt (Paket installiert) re-armt. Latch source onboarding_nudge in core.notification_state, höchstens eine Karte je Person und Lauf. Reihenfolge = Menü-Reihenfolge (build-time, p.order). Split nudges -\u003e Load card texts (Sprache der Person, Abschnitts-/Bereichsname über doc-Keys) -\u003e Send nudge: [Weiter] = onboarding:\u003cpkg\u003e:\u003ckey\u003e (gleicher Einstieg wie der Menü-Knopf, Owner-Arm bzw. Mitglieder-Registry) + [Nicht mehr erinnern]. Send onError=continue: ein Telegram-Fehler einer Person stoppt die anderen nicht.",
+                                         "height":  420,
+                                         "width":  760,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1360,
+                                       -400
+                                   ],
+                      "id":  "e8eeed84-a60c-596b-9eb8-57f70084f1e3",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Find nudges",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Find nudges":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Split nudges",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Split nudges":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Load card texts",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Load card texts":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Send nudge",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

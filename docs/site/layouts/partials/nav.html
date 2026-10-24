@@ -1,0 +1,20 @@
+<!-- Geteiltes Nav-Chrome: EINE Quelle fuer Landing UND Docs (Owner-Vorgabe: identisches Menue,
+     Rueckweg zum One-Pager). Links via relURL + explizite .html-Ziele (file://-Disziplin). -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="{{ "index.html" | relURL }}">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <circle cx="13" cy="13" r="12" fill="#E2E0FF"/>
+        <path d="M 2.5 13 A 10.5 10.5 0 0 1 23.5 13 Z" fill="#9896FF"/>
+        <circle cx="13" cy="16.5" r="3.4" fill="#211D1D"/>
+      </svg>
+      n8n-life-agents
+    </a>
+    <span class="nav-links">
+      <a class="ghost" href="{{ "index.html" | relURL }}#agenten">Agenten</a>
+      <a class="ghost" href="{{ "index.html" | relURL }}#sicherheit">Sicherheit</a>
+      <a class="ghost" href="{{ "index.html" | relURL }}#faq">FAQ</a>
+      <a class="btn btn-soft" href="{{ "docs/ueberblick.html" | relURL }}">Docs</a>
+    </span>
+  </div>
+</nav>

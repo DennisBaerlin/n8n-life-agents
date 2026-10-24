@@ -1,0 +1,8 @@
+[
+  { "key": "accounts",    "ord": 1 },
+  { "key": "investments", "ord": 2 },
+  { "key": "liabilities", "ord": 3 },
+  { "key": "protection",  "ord": 4 },
+  { "key": "goals",       "ord": 5 },
+  { "key": "monthly_check", "ord": 6 }
+]

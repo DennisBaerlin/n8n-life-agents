@@ -1,0 +1,830 @@
+{
+    "id":  "yPggCfgaj73xUWco",
+    "name":  "agent.finance.tool_book_savings_reservation",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "savings_goal_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "depot_account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "a6ca0583-f3e4-575d-8150-114aaea0398d",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_savings_goal(($1::jsonb)-\u003e\u003e\u0027savings_goal_name\u0027, TRUE);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_name: $(\u0027Start\u0027).item.json.savings_goal_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "067c8f74-5888-512a-b034-545e05a53f7b",
+                      "name":  "Resolve Goal",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0a527474-5e53-5efa-a0ab-4d2126e4c047",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "dcf139bb-cc1a-5c05-b74d-7a1d80b0b97d",
+                      "name":  "Goal unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "864424f6-073f-5575-91ff-0b5302954c3f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5a841b05-a483-5018-96c9-fdc8062bd8ec",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Savings goal \u0027{{ $(\u0027Start\u0027).item.json.savings_goal_name }}\u0027 resolves to {{ $(\u0027Resolve Goal\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Goal\u0027).item.json.candidates) }}. Ask the user which exact goal.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "086f996b-e778-506c-b92c-af618cff9b60",
+                      "name":  "Goal ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027depot_account_name\u0027, ARRAY[\u0027stocks_depot\u0027,\u0027crypto_depot\u0027]);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_account_name: $(\u0027Start\u0027).item.json.depot_account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "bdd07f75-8337-502f-900e-cadcbed2f770",
+                      "name":  "Resolve Depot",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ebe04b90-0fc4-5dde-b415-289198e6f12c",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "7b8bde30-7400-5379-8e47-84b46d0d1dd3",
+                      "name":  "Depot unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "96ece89b-c760-5a78-8f63-ac0abdda44b2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2338743c-3b31-5beb-b107-6dcde6f2c60f",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Depot account \u0027{{ $(\u0027Start\u0027).item.json.depot_account_name }}\u0027 resolves to {{ $(\u0027Resolve Depot\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Depot\u0027).item.json.candidates) }}. Ask the user which exact depot.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "4119a28e-11f7-5e12-9af6-da1775b88230",
+                      "name":  "Depot ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_savings_reservation(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, depot_account_id: $(\u0027Resolve Depot\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "93fe4456-1edc-5aaf-80fc-a51ceacb01bd",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "bea9b9c5-dcbb-54a6-bf01-0be10653edcb",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "4d37db99-e39a-5d88-bd38-64cbeb5e6d44",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "762d0d06-1638-5777-a60e-122e65ba6460",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "72f8b4bf-386a-546c-97dc-20e3ec6cef3d",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "94840c61-0853-5132-b151-5fe7ad014fa6",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "279d4f96-fe42-57a8-80ba-9212d692a9ab",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "79ab0da5-4026-5544-9903-8c46c2f0f115",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "3bd74f85-5775-5ee4-9c49-149b38522241",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027entry_id\u0027)::int AS entry_id, (r-\u003e\u003e\u0027delta\u0027)::numeric AS delta, (r-\u003e\u003e\u0027reserved\u0027)::numeric AS reserved, (r-\u003e\u003e\u0027market_value\u0027)::numeric AS market_value, (r-\u003e\u003e\u0027shortfall\u0027)::numeric AS shortfall FROM finance.fn_book_savings_reservation(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, depot_account_id: $(\u0027Resolve Depot\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "c037b440-351d-5281-b6d0-86aa58a01ea4",
+                      "name":  "Book depot reservation (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c07d3e07-65b7-5ecf-a117-33926cc34ddf",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_savings_reservation\u0027, lines: [ { label: \u0027finance.label.savings_goal\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.savings_goal_name) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.depot_account_name) }, { label: \u0027finance.label.reserved_amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: (\u0027EUR\u0027) }, { kind: \u0027note\u0027, value: \u0027finance.note.reserve_fixed\u0027 } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "cac64c44-a044-516d-a280-1cd3384b32ff",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "ff8ac6ab-72e7-5dbc-9602-3079c69b2d5a",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "195abf01-7bbb-55a0-a35f-5fb831775141",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "04d81cb5-4ee7-59d8-a0cf-285766d0f9b3",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8816271c-eeea-5fde-83e5-7ed937f8caf8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "089ccccc-1549-5a1f-a611-9e6252b215a5",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "73e147e8-1042-54f1-9725-919245b38eed",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the book_savings_reservation action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       200
+                                   ],
+                      "id":  "898b7510-9836-508e-a133-0af84eab570a",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "07b9ae85-bbfb-565e-a57b-d3b3dc3d915e",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "55639dfc-ca44-5200-964d-be26c5ea0f90",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "837fbbc4-12f3-5f41-842d-ebc3012c32e3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "72802ee4-4aee-51bc-8152-b062ae4a1d81",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       200
+                                   ],
+                      "id":  "46e96185-7474-5f41-bd88-27aa9b26afbf",
+                      "name":  "Reservation rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a2d4527f-7729-5a17-9792-f73f66db2667",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f05681e4-ea23-5cdd-b980-538ef181623a",
+                                                                                     "name":  "entry_id",
+                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.entry_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0584ea4a-3e79-5f76-8ff5-3ea1909f9ad8",
+                                                                                     "name":  "delta",
+                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.delta }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "839d7fd9-318a-58e3-ab85-4da48ed793b7",
+                                                                                     "name":  "reserved",
+                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.reserved }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "48aa0262-b71e-5465-9d3d-6e7513cf05ee",
+                                                                                     "name":  "market_value",
+                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.market_value }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8bc43115-7009-504a-bcfc-a5daa3612a9f",
+                                                                                     "name":  "shortfall",
+                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.shortfall }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       0
+                                   ],
+                      "id":  "5d7c4502-a177-54b2-aae5-b54bc219c235",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Depot-Anteil einer Sparziel-Reserve buchen (Phase S WS-B)**\n\nReserviert einen ABSOLUTEN €-Betrag des DEPOTS für ein Sparziel — der Depot-Anteil der Reserve (der Cash-Anteil läuft über tool_book_savings_goal_transfer). Eingänge: savings_goal_name, depot_account_name (stocks_depot/crypto_depot), amount (absoluter Ziel-Betrag). Ablauf: Resolve Ziel + Depot -\u003e Probelauf (Dry run, ohne Karte bei Ablehnung) -\u003e HITL-Gate -\u003e atomarer Write via fn_book_savings_reservation (rechnet delta = amount - Σ Journal, hängt EINE Zeile an -\u003e append-only, driftfrei). Der Marktwert ist Deckel/Deckung (depot_reserve_status), NIE die gespeicherte Reserve. Ausgang {ok:true, entry_id, delta, reserved (= amount), market_value, shortfall} bzw. {ok:false} (korrigierbar) / {cancelled} (Decline).",
+                                         "height":  260,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "fa396246-ad0b-52a9-aa28-a493acdf9a79",
+                      "name":  "Überblick tool_book_savings_reservation"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_savings_reservation mit denselben Werten, immer zurückgerollt. ok:false (Betrag negativ, Ziel nicht gefunden, Konto kein Depot, delta=0 = gleicher Betrag wie bisher) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  240,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1100,
+                                       -260
+                                   ],
+                      "id":  "efb61c6d-2955-54cd-84fe-086f16e2b167",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_book_savings_reservation (atomar, append-only)**\n\nAbsolut-rein -\u003e delta-append (das LLM rechnet NICHT): die fn liest die aktuelle Σ des Journals je (Ziel, Depot), rechnet delta = amount - Σ und hängt GENAU EINE savings_goal_reserve_entries-Zeile (kind=manual) an — NIE UPDATE einer Zahl -\u003e der Stand bleibt DERIVED -\u003e strukturell driftfrei. Marktwert ist Deckel/Deckung, NIE die gespeicherte Reserve. Post-State {reserved (= amount), delta, market_value (Depot-Marktwert EUR, NULL ohne Kurs), shortfall} liest die fn aus depot_reserve_status.",
+                                         "height":  240,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2420,
+                                       -260
+                                   ],
+                      "id":  "8ebd3bec-6ed9-5a5c-96b6-7c07a59beecf",
+                      "name":  "fn_book_savings_reservation: absolut -\u003e delta-append"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\namount\u003c0 (keine negative Reserve) / Ziel nicht gefunden / Konto kein Depot / delta=0 (no-op, gleicher Betrag) liefert die fn als {ok:false, reason} -\u003e Reservation rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true hängt die Journal-Zeile an. Normalerweise fängt schon der Probelauf das vor der Karte ab.",
+                                         "height":  240,
+                                         "width":  440,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2860,
+                                       -260
+                                   ],
+                      "id":  "78ad3a36-7868-55d3-b8bc-5c6a911b9d89",
+                      "name":  "Write ok? (korrigierbare Ablehnung)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Goal",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Goal":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Goal unique?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Goal unique?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Resolve Depot",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Goal ambiguous",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Resolve Depot":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Depot unique?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Depot unique?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Dry run",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Depot ambiguous",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Book depot reservation (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Book depot reservation (atomic)":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Write ok?",
+                                                                                     "type":  "main"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Reservation rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

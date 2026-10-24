@@ -1,0 +1,32 @@
+{
+  // markdownlint config for hand-authored **/*.md — used by the markdownlint-cli2 hook in
+  // .pre-commit-config.yaml. Curated in the Phase-3 baseline pass (2026-06-14). Defaults stay ON;
+  // only the rules below are tuned off, each with a reason. Generated/seeded markdown
+  // (docs/fn_catalog.md + packages/*/{contexts,seed}/) is excluded at the hook level, not here. Rule ref:
+  // https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+  "default": true,
+
+  // Dense, hand-maintained developer docs (the CLAUDE.md family) use deliberate long lines —
+  // wrapping prose at 80 cols would hurt, not help, readability.
+  "MD013": false,
+
+  // Whitespace cosmetics that would rewrite the deliberate dense layout of the docs (same reason we
+  // do NOT run a reformatter like shfmt on the shell scripts): blank lines around headings / lists /
+  // fenced blocks, and table pipe-padding. The content is what matters, not the vertical spacing.
+  "MD022": false,
+  "MD032": false,
+  "MD031": false,
+  "MD060": false,
+
+  // Many fenced blocks are intentionally language-less: directory trees, console/psql output,
+  // placeholder snippets. A forced ```text tag would be noise, not information.
+  "MD040": false,
+
+  // GitHub PR/issue templates (and some partial docs) intentionally open with a section heading
+  // (## Summary) rather than a top-level H1 — the H1 would leak into every PR body.
+  "MD041": false,
+
+  // README uses GitHub-native inline HTML (<details> progressive disclosure) — an established
+  // README device that has no pure-Markdown equivalent; opened deliberately (Site-Phase 2026-07-02).
+  "MD033": false
+}

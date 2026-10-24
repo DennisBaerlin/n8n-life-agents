@@ -1,0 +1,684 @@
+{
+    "id":  "iJT9B7zgcD3IxHNc",
+    "name":  "agent.estate.tool_set_digital_account",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "provider"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "username"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "new_provider"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "new_username"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "new_category"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "is_key_account"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "desired_action"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "access_path"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "legacy_contact_status"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "twofa_hint"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "seed_backup_location"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "notes"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "669fa650-39ad-5c7d-86a3-0b6f1fd4cbd6",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM estate.fn_resolve_digital_account(($1::jsonb)-\u003e\u003e\u0027provider\u0027, NULLIF(($1::jsonb)-\u003e\u003e\u0027username\u0027,\u0027\u0027));",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ provider: $(\u0027Start\u0027).item.json.provider, username: $(\u0027Start\u0027).item.json.username }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "6085ec2a-5784-5bc4-9b89-11eabe2e536b",
+                      "name":  "Resolve Account",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7fcd886a-753f-5cf5-9c43-08084807f585",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "3fe4e4b6-55d4-5520-8e9a-ca606cb29c51",
+                      "name":  "Account unique?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "4176b6cb-7eb1-553a-9dfa-fe57abfb7c00",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a3b9d039-0f2f-57cb-9a53-35aaa6359cf6",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The account \u0027{{ $(\u0027Start\u0027).item.json.provider }}\u0027 resolves to {{ $(\u0027Resolve Account\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Account\u0027).item.json.candidates) }}. Ask which one (add the username), or check the provider.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "4f25b0f9-fec0-5004-b18e-f60c3b59aa8b",
+                      "name":  "Account ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027estate.fn_set_digital_account(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, digital_account_id: $(\u0027Resolve Account\u0027).item.json.id, new_provider: $(\u0027Start\u0027).item.json.new_provider, new_username: $(\u0027Start\u0027).item.json.new_username, new_category: $(\u0027Start\u0027).item.json.new_category, is_key_account: $(\u0027Start\u0027).item.json.is_key_account, desired_action: $(\u0027Start\u0027).item.json.desired_action, access_path: $(\u0027Start\u0027).item.json.access_path, legacy_contact_status: $(\u0027Start\u0027).item.json.legacy_contact_status, twofa_hint: $(\u0027Start\u0027).item.json.twofa_hint, seed_backup_location: $(\u0027Start\u0027).item.json.seed_backup_location, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "56bff44f-c451-5359-9754-8f0fc4adb0e3",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c73d0e2e-b217-5f69-ab0e-843c4673502a",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "dba81473-f9be-5f85-8eb9-fc22b77fb664",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "81c68fa1-a3ee-5509-a2e2-872b565156be",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "91dd7a7a-b04e-5d2b-b154-337c02570f60",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "763a9673-4347-5582-a974-b8ff658baf8b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3b3afe41-4da8-537a-a6b7-20ec0dfa5273",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "40377467-ff7a-50e5-9a5f-0a6aad66c36a",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "aeaa530a-5c51-5e58-8182-a74dcbad309d",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027digital_account_id\u0027)::bigint AS digital_account_id FROM estate.fn_set_digital_account(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, digital_account_id: $(\u0027Resolve Account\u0027).item.json.id, new_provider: $(\u0027Start\u0027).item.json.new_provider, new_username: $(\u0027Start\u0027).item.json.new_username, new_category: $(\u0027Start\u0027).item.json.new_category, is_key_account: $(\u0027Start\u0027).item.json.is_key_account, desired_action: $(\u0027Start\u0027).item.json.desired_action, access_path: $(\u0027Start\u0027).item.json.access_path, legacy_contact_status: $(\u0027Start\u0027).item.json.legacy_contact_status, twofa_hint: $(\u0027Start\u0027).item.json.twofa_hint, seed_backup_location: $(\u0027Start\u0027).item.json.seed_backup_location, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "f79489c9-7d35-5166-999f-401ff4028735",
+                      "name":  "Set account (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c8f84f44-718a-5e28-9e0c-af395791f840",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027estate.hitl.set_digital_account\u0027, lines: [ { label: \u0027estate.label.account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.provider) }, (($(\u0027Start\u0027).item.json.new_provider) ? { label: \u0027estate.label.new_provider\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_provider) } : null), (($(\u0027Start\u0027).item.json.new_username) ? { label: \u0027estate.label.new_username\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_username) } : null), (($(\u0027Start\u0027).item.json.new_category) ? { label: \u0027estate.label.new_category\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.new_category), enum: \u0027estate.enum.digital_category\u0027 } : null), (($(\u0027Start\u0027).item.json.is_key_account) ? { label: \u0027estate.label.key_account\u0027, kind: \u0027bool\u0027, value: (([\u0027true\u0027,\u0027yes\u0027,\u00271\u0027,\u0027ja\u0027].indexOf(String($(\u0027Start\u0027).item.json.is_key_account || \u0027\u0027).toLowerCase()) \u003e= 0)) } : null), (($(\u0027Start\u0027).item.json.desired_action) ? { label: \u0027estate.label.death_action\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.desired_action), enum: \u0027estate.enum.digital_action\u0027 } : null), (($(\u0027Start\u0027).item.json.legacy_contact_status) ? { label: \u0027estate.label.legacy_function\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.legacy_contact_status), enum: \u0027estate.enum.legacy_status\u0027 } : null), (($(\u0027Start\u0027).item.json.access_path) ? { label: \u0027estate.label.access_path\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.access_path) } : null), (($(\u0027Start\u0027).item.json.twofa_hint) ? { label: \u0027estate.label.twofa_location\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.twofa_hint) } : null), (($(\u0027Start\u0027).item.json.seed_backup_location) ? { label: \u0027estate.label.seed_backup_location\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.seed_backup_location) } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027estate.label.notes\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null), { kind: \u0027note\u0027, value: \u0027estate.note.unchanged_fields\u0027 } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "8cc5a04d-2066-5576-b27e-29a2c553e021",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "eb991889-69f6-5646-b3c1-9d21ba629474",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b0a2f12e-1e0a-501e-b71d-58e0acd37976",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "e9dd5cef-1d2e-5571-8cb4-106fa4fd297b",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a2537162-5a94-5d1d-b8fb-74032f2fe901",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "418a12ea-ff83-5edf-bc3b-e864d233a25f",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ce08eb42-bd00-5e31-bcd9-e4c8cd165c69",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_digital_account action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       200
+                                   ],
+                      "id":  "19687410-8c8f-5764-821c-c28a9b1017e9",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "2deac61a-1687-5c97-a5e8-6e0120c496cd",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "180ec2e6-26b1-57ae-8257-d642411c3dfb",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a19c8edb-715e-5dde-b759-8cd14e805dbd",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "eec60f62-a4e7-53f2-857f-c95697024898",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set account (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       200
+                                   ],
+                      "id":  "e6ef019a-f1d0-5023-9844-b1be2e625f17",
+                      "name":  "Set rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "04093bbf-9243-52ce-98cb-36291bcc46dd",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "138bca1d-6718-5d46-865a-75dd2930b79b",
+                                                                                     "name":  "digital_account_id",
+                                                                                     "value":  "={{ $(\u0027Set account (atomic)\u0027).item.json.digital_account_id }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "b2c1ccf1-d980-5791-945f-e97959e3859a",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = estate.fn_set_digital_account mit denselben Werten, immer zurückgerollt. ok:false (z. B. Seed-Backup passt nicht zur Kategorie, Wert ungültig, Person nicht erwachsen/berechtigt) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       660,
+                                       -260
+                                   ],
+                      "id":  "15818ca1-3c78-5340-a5c8-fd06777670e2",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_set_digital_account (partielles UPDATE) — NIE Geheimnisse**\n\nResolve (Anbieter + optional Nutzername) -\u003e Account unique? VOR dem Gate. estate.fn_set_digital_account updated partiell; NIE Passwörter (Fundort-Verweise); seed_backup_location bleibt crypto-gekoppelt gegen die EFFEKTIVE Kategorie (bestehend ODER neu); adults_only-DB-Backstop; not-found = RAISE. updated_at pflegt der Touch-Trigger.",
+                                         "height":  250,
+                                         "width":  540,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1980,
+                                       -260
+                                   ],
+                      "id":  "211c075f-6cce-5577-8b19-08e651c88be2",
+                      "name":  "set_ (partiell) + adults_only + Fundort-Regel"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve Account",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve Account":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account unique?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Account unique?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account ambiguous",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set account (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Set account (atomic)":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Write ok?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

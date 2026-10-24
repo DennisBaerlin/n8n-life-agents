@@ -1,0 +1,275 @@
+{
+    "id":  "sNmIVML4vJ2Ypv9T",
+    "name":  "agent.guide.tool_set_onboarding_section",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "section_key"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "status"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "2a36803e-23d7-5f37-8219-6d021371ea22",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027section_key\u0027 AS section_key, r-\u003e\u003e\u0027status\u0027 AS status, (r-\u003e\u003e\u0027complete\u0027)::boolean AS complete, (r-\u003e\u003e\u0027area_completed_now\u0027)::boolean AS area_completed_now, (r-\u003e\u003e\u0027area_all_skipped\u0027)::boolean AS area_all_skipped FROM core.fn_set_onboarding_section($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ package: \u0027core\u0027, section_key: $(\u0027Start\u0027).item.json.section_key, status: $(\u0027Start\u0027).item.json.status, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "adc1ca8b-9c2c-5458-95d2-467e1650decb",
+                      "name":  "Set section",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "a288bd9b-4e11-51a6-9256-123269ab3d16",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "3e3f68c4-000b-5152-a18e-32c0361cfd90",
+                      "name":  "Set ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "32a3ea06-38e7-5d49-8cef-5e33cc5d5371",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "735994c2-da2c-5d36-b947-30a213315994",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set section\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "881ff1dc-8ca7-514f-9646-5aab3441a6af",
+                      "name":  "Set failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Rf7pQ2nWx8LkT3aZ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Rf7pQ2nWx8LkT3aZ",
+                                                            "cachedResultName":  "core.sub_onboarding_progress"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }}",
+                                                                              "package":  "core",
+                                                                              "area_completed_now":  "={{ $(\u0027Set section\u0027).item.json.area_completed_now === true }}",
+                                                                              "area_all_skipped":  "={{ $(\u0027Set section\u0027).item.json.area_all_skipped === true }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+                                                         "waitForSubWorkflow":  false
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "8fedd8e1-e28e-5b50-bf81-03f6a532e4ac",
+                      "name":  "Onboarding progress",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "64ccf05e-a1ae-5277-beb9-b9331a6a73d6",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3bd04cb7-6eda-5480-b4ae-0133c6f8da8d",
+                                                                                     "name":  "section_key",
+                                                                                     "value":  "={{ $(\u0027Set section\u0027).item.json.section_key }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f95211db-41f5-5fa4-b5a5-2604f9f25a53",
+                                                                                     "name":  "status",
+                                                                                     "value":  "={{ $(\u0027Set section\u0027).item.json.status }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "68612cab-ca48-5528-aa37-7114378e9d75",
+                                                                                     "name":  "onboarding_complete",
+                                                                                     "value":  "={{ $(\u0027Set section\u0027).item.json.complete }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "e3109aec-cb61-5008-9bfb-5ad1c6f5f0c0",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_set_onboarding_section (package=core): Tri-State-Marker (kein HITL)**\n\nWS-B3: Core-generische Schnittstelle (paket-schlüssel-parametrisiert), package=core hartkodiert -\u003e setzt agent.guide_onboarding_state.status (completed/skipped/unknown) + skipped_at (SECURITY INVOKER, Owner/Host-Cred schreibt agent.*). KEIN HITL-Gate: nur ein Fortschritts-Flag, kein Domänen-Write; die fn lässt aber nur den Owner schreiben (chat_id im Payload, Mitglied -\u003e {ok:false, owner_only}). onboarding_complete im Return = ob im Core jetzt KEINE Sektion mehr unknown ist. Plan §1b: skipped ist ein bewusster Beratungsfakt, kein Fehler. Der Guide besitzt NUR household; die 5 Finanz-Sektionen pflegt der Finance-Agent selbst (finance.onboarding_state). Roter Faden: nach erfolgreichem Set ruft Onboarding progress den Core-Dienst core:onboarding_progress (core.sub_onboarding_progress, fire-and-forget, onError continue); die fn meldet area_completed_now genau dann, wenn dieser Schritt den Haushalt geschlossen hat -\u003e Weiter-Karte auf den nächsten Bereich + einmalig Es kann losgehen an die Mitglieder. Das Lern-Angebot kommt dort am Ende ALLER Bereiche (nicht mehr hier). Reset: packages/core/db/util/util_reset_onboarding_state.sql.",
+                                         "height":  260,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -380
+                                   ],
+                      "id":  "5b2f9f94-376f-56da-ade4-41861bb7c120",
+                      "name":  "Onboarding-Fortschritt"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Set section",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Set section":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Set ok?",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Set ok?":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Onboarding progress",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Set failed",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Onboarding progress":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Return",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

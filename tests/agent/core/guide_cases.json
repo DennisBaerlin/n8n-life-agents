@@ -1,0 +1,81 @@
+[
+  {
+    "id": "gc01",
+    "name": "Onboarding-Start: Fortschritt lesen, Section 0 beginnen",
+    "task": "Ich bin neu hier und moechte alles einrichten. Wo fangen wir an?",
+    "chat_id": "test_gc01",
+    "onboarding": "unknown",
+    "expected_tool": null,
+    "expected_behavior": "The guide orients the user and starts with Section 0 (Haushalt & Personen), explaining briefly. The household onboarding status and the already stored members are in its prompt (Household so far) - it must NOT ask again for the name or birth date of a person listed there, but confirm them briefly and ask only for what is missing (further household members, employment). It must NOT offer photo capture as its own mode, must NOT call a destructive/booking tool and must NOT invent data. A friendly, one-step-at-a-time opening that names the first section passes.",
+    "notes": "Install-UX-Phase 6: frueher erwartete die Rubric einen postgres_select-Resume-Read + optional Foto-Erfassung; seit dem deterministischen 'Household status read' steht beides nicht mehr an."
+  },
+  {
+    "id": "gc02",
+    "name": "Haushalt erfassen -> tool_set_household_facts (nach Playback)",
+    "task": "Zum Haushalt: ich bin Erika Mustermann, geboren am 20.05.1980, Rolle Owner, angestellt. Bitte so speichern.",
+    "chat_id": "test_gc02",
+    "expected_tool": "tool_set_household_facts",
+    "expected_behavior": "The guide plays the values back and calls tool_set_household_facts with persons containing first_name Erika, last_name Mustermann, birth_date 1980-05-20, role owner. Under the routing-tier gate bypass the tool returns cancelled - the routing decision (calling tool_set_household_facts) is the pass criterion. It must store BOTH first and last name."
+  },
+  {
+    "id": "gc03",
+    "name": "Haushalt bewusst ueberspringen -> tool_set_onboarding_section(household, skipped)",
+    "task": "Den Haushalt ueberspringe ich erstmal, das mache ich spaeter.",
+    "chat_id": "test_gc03",
+    "onboarding": "unknown",
+    "expected_tool": "tool_set_onboarding_section",
+    "expected_behavior": "WS-B3: the guide owns only the household section. It accepts the skip without pushing back hard and marks it via tool_set_onboarding_section with section_key=household and status=skipped (check the tool input). It may then point the user to the open areas of ACTIVE packages (e.g. via /onboarding); it must not promise a function whose package is not active (see installed_packages).",
+    "notes": "Keine expected_tool_args: die runData-Input-Extraktion greift bei diesem Tool nicht zuverlaessig (bekannte Action-Log-Luecke, docs/reference/tests.md) — der Judge prueft die Args ueber actual_tool_input."
+  },
+  {
+    "id": "gc04",
+    "name": "Finanzdaten genannt -> Verweis auf den Buchhalter (kein Guide-Write)",
+    "task": "Meine Konten: Volksbank Giro Neu (Girokonto, Saldo heute 3450 Euro) und N26 Flexkonto Neu (Girokonto, Saldo 1200 Euro).",
+    "chat_id": "test_gc04",
+    "expected_tool": null,
+    "expected_behavior": "WS-B3 (O3): the guide no longer captures financial entities. It must NOT call a staging/create tool; instead it explains that accounts (and the other financial areas) are recorded by the bookkeeper (agent.finance) — the user just tells the bookkeeper, or sends a statement photo. A friendly hand-off without any write passes.",
+    "notes": "Bis WS-B3 stagte der Guide die Konten selbst (import_stage_rows). Mit der DRY-Onboarding-Aufteilung (O3) sind die 5 Finanz-Sektionen paket-besessen -> der Buchhalter erfasst sie (Self-Onboarding); der Guide verweist nur."
+  },
+  {
+    "id": "gc05",
+    "name": "Meta/Hilfe-Frage -> erklaeren, kein Write",
+    "task": "Was kannst du eigentlich alles und wie funktioniert das hier?",
+    "chat_id": "test_gc05",
+    "expected_tool": null,
+    "expected_behavior": "Help mode: the guide explains the capabilities of the ACTIVE packages at a high level (optionally loading capabilities_catalog), names functions that are not installed only together with the server command (lifeagents package install ...), and offers to start onboarding. No destructive tool, no invented data."
+  },
+  {
+    "id": "gc07",
+    "name": "Frei formulierter Einstieg nach der Installation -> naechster Schritt, Bekanntes nicht neu erfragen",
+    "task": "Wie geht es jetzt los? Ich habe gerade alles installiert.",
+    "chat_id": "test_gc07",
+    "expected_tool": null,
+    "expected_behavior": "Install-UX-Phase 6 (owner report): after the installation the owner already exists in the household (Household so far lists them with name and stored birth date). The guide names the concrete next step in two or three sentences (household setup if still open, then /onboarding for the areas of active packages, and that more functions can be added on the server with lifeagents package install). It must NOT ask again for the owner's first name, last name or birth date, must NOT mention a specialist whose package is not active (installed_packages), and must NOT call a write tool.",
+    "notes": "Kein Mock-Szenario noetig (expected_tool=null; kein scenarios.json-match ist Substring des Tasks)."
+  },
+  {
+    "id": "gc06",
+    "name": "Mitglied einladen -> tool_invite_household_member (owner-only)",
+    "task": "Bitte lade meine Tochter Lisa ein, damit sie den Bot selbst von ihrem Handy nutzen kann.",
+    "chat_id": "test_gc06",
+    "expected_tool": "tool_invite_household_member",
+    "expected_behavior": "WS-5a: the owner wants an EXISTING household member (Lisa) to use the bot from her own Telegram. The guide calls tool_invite_household_member with person_name Lisa. Under the routing gate bypass the tool returns cancelled - the routing decision (calling tool_invite_household_member) is the pass criterion. It must NOT capture a new person via tool_set_household_facts and must NOT try to bind a Telegram id itself."
+  },
+  {
+    "id": "gc08",
+    "name": "Textkatalog: neue Person anlegen ohne Sprach-Rueckfrage",
+    "task": "Meine Schwiegermutter Mi-ran Kim, geboren am 03.02.1958, wohnt jetzt bei uns, Rolle Partner. Bitte so speichern.",
+    "chat_id": "test_gc08",
+    "expected_tool": "tool_set_household_facts",
+    "expected_behavior": "Textkatalog Phase A: the guide stores the new person via tool_set_household_facts (first_name Mi-ran, last_name Kim, birth_date 1958-02-03, role partner). It must NOT ask which language she should receive messages in (the system sends the owner a language button card after the save) and must NOT set a language the user did not state. Under the routing-tier gate bypass the tool returns cancelled - the routing decision plus the absence of a language question is the pass criterion."
+  },
+  {
+    "id": "gc09",
+    "name": "Textkatalog: Freitext-Fakt woertlich speichern (keine Uebersetzung)",
+    "task": "Lena ist Hausfrau. Bitte bei ihr so speichern.",
+    "chat_id": "test_gc09",
+    "expected_tool": "tool_set_household_facts",
+    "expected_behavior": "Textkatalog Phase A (owner bug homemaker): the guide adds the employment fact to the EXISTING person Lena (her existing person_id, no new person) and stores the value verbatim in the user's words - employment_status Hausfrau. Translating it (homemaker, housewife) is a FAIL: stored free text stays in the language the user used.",
+    "notes": "Prueft die neue Language-Regel in global_instructions.md (stored data: free text verbatim). Rubric auf actual_tool_input.persons."
+  }
+]

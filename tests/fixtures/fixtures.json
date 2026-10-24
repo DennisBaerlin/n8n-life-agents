@@ -1,0 +1,85 @@
+{
+  "_doc": "Single-Source der Routing-Suite-Fixtures (Tier 2). EINE Liste statt zwei driftender: der Pre-Flight in scripts/n8n_test.ps1 UND scripts/test_fixtures.ps1 -Verify lesen GENAU diese Datei; doc_lint erzwingt, dass jeder Eintrag im Seed tests/fixtures/util_seed_test_fixtures.sql vorkommt (Manifest erwartet => Seed legt an). Neue Case-Entitaet => hier EINEN Eintrag ergaenzen + Seed-Block in util_seed_test_fixtures.sql. 'check' ist das Existenz-Praedikat fuer den Pre-Flight; der Seed haelt die vollen fn_create_*-Payloads. NICHT-anzulegende Entitaeten (create_*-Dedup-Cases) gehoeren NICHT hierher (Liste im Seed-Kopf).",
+  "fixtures": [
+    {
+      "name": "DKB Giro",
+      "check": { "type": "name", "table": "finance.accounts", "column": "name", "value": "DKB Giro" },
+      "note": "cash; tc05-07/17/19 + multiturn. Eroeffnungssaldo 2500, dazu eine Ausgabe 42,90 (Tankstelle)."
+    },
+    {
+      "name": "DKB Giro Tankstelle",
+      "check": { "type": "name", "table": "finance.transactions", "column": "description", "value": "Tankstelle (Testfixture)" },
+      "note": "normale Ausgabe auf DKB Giro (CURRENT_DATE-5) = die 'letzte Buchung' fuer tc32 void_transaction (nicht der Eroeffnungssaldo)."
+    },
+    {
+      "name": "Wechselkurs EUR/KRW",
+      "check": { "type": "name", "table": "finance.fx_rates", "column": "quote_currency", "value": "KRW" },
+      "note": "EUR/KRW 1450 mit Datum des Seed-Laufs; die FX-Probe von mc01 (Monitor) und ac07 (Berater) liest ihn."
+    },
+    {
+      "name": "Trade Republic Cash Girokonto",
+      "check": { "type": "name", "table": "finance.accounts", "column": "name", "value": "Trade Republic Cash Girokonto" },
+      "note": "cash; Verrechnungskonto des Depots. Eroeffnungssaldo 5000."
+    },
+    {
+      "name": "Bargeld",
+      "check": { "type": "name", "table": "finance.accounts", "column": "name", "value": "Bargeld" },
+      "note": "cash; Eroeffnungssaldo 100."
+    },
+    {
+      "name": "Trade Republic Depot",
+      "check": { "type": "name", "table": "finance.accounts", "column": "name", "value": "Trade Republic Depot" },
+      "note": "stocks_depot; settlement = Trade Republic Cash."
+    },
+    {
+      "name": "VWCE-Holding",
+      "check": { "type": "isin", "table": "finance.depot_holdings", "column": "isin", "value": "IE00BK5BQT80" },
+      "note": "30 Stueck VWCE im TR Depot (>5 fuer tc16-Sell, <<999 fuer tc21-Oversell)."
+    },
+    {
+      "name": "VWCE Bestandsplan",
+      "check": { "type": "name", "table": "finance.savings_plans", "column": "name", "value": "VWCE Bestandsplan" },
+      "note": "bestehender Sparplan im TR Depot (VWCE) fuer tc34/35/36 (book/set/close auf BESTEHENDEM Plan). tc33 legt den NEUEN 'EIMI Monatsplan' (anderes Wertpapier) an (muss frei bleiben)."
+    },
+    {
+      "name": "Baufinanzierung ING",
+      "check": { "type": "name", "table": "finance.loans", "column": "name", "value": "Baufinanzierung ING" },
+      "note": "Restschuld 250k, Rate 1200; tc17/tc22."
+    },
+    {
+      "name": "HUK Hausratversicherung",
+      "check": { "type": "name", "table": "finance.insurances", "column": "name", "value": "HUK Hausratversicherung" },
+      "note": "89/Jahr; tc29 set / tc37 close."
+    },
+    {
+      "name": "Musterimmobilie",
+      "check": { "type": "name", "table": "finance.real_estate", "column": "name", "value": "Musterimmobilie" },
+      "note": "320k; tc28 Neubewertung / tc38 Hard-DELETE (KEIN Kredit verknuepft)."
+    },
+    {
+      "name": "family:Lena",
+      "check": { "type": "family_person", "first_name": "lena" },
+      "note": "Lena Beispiel als Partnerin im family-Kontext; tc07 Personenaufloesung, tc14 load_context."
+    },
+    {
+      "name": "family:Lisa",
+      "check": { "type": "family_person", "first_name": "lisa" },
+      "note": "Lisa Mustermann als Kind im family-Kontext (ohne Telegram-Konto); gc06 Mitglied einladen."
+    },
+    {
+      "name": "Stromabschlag Stadtwerke",
+      "check": { "type": "name", "table": "finance.recurring_payments", "column": "name", "value": "Stromabschlag Stadtwerke" },
+      "note": "monatlicher Dauerauftrag (Ausgabe 80) auf DKB Giro, erste Zahlung CURRENT_DATE-30 -> offenes Vorkommen; tc42 book_recurring_occurrence (Betrags-Anpassung)."
+    },
+    {
+      "name": "Tagesgeld Plus",
+      "check": { "type": "name", "table": "finance.accounts", "column": "name", "value": "Tagesgeld Plus" },
+      "note": "verzinstes cash-Konto (2% p.a. monatlich ab CURRENT_DATE-60, Saldo 10000) -> offene Zins-Faelligkeit; tc43 book_interest."
+    },
+    {
+      "name": "Finanzplan Gold-Regeln",
+      "check": { "type": "name", "table": "agent.advisor_plans", "column": "plan_name", "value": "Haushaltsplan (Testfixture)" },
+      "note": "veroeffentlichter finance-Plan (5 % Gold, Kauf unter 2.000 Euro je Unze, physische Muenzen); ac01 prueft Plan-first-Grounding dagegen. Der Seed legt ihn nur an, wenn noch kein aktiver finance-Plan existiert."
+    }
+  ]
+}

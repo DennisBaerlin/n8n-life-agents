@@ -1,0 +1,424 @@
+{
+    "id":  "Jm4Kx9Qp2Rb7Nt3W",
+    "name":  "agent.career.tool_extract_cv",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "file_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "doc_hint"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "ff40d5a3-996f-5f16-ba33-e94712e5e19f",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PWPPVNrauWK7EpuB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PWPPVNrauWK7EpuB",
+                                                            "cachedResultName":  "agent.tool_fetch_telegram_file"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Start\u0027).item.json.file_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       420,
+                                       60
+                                   ],
+                      "id":  "02f52474-94df-5566-803c-1b1ba9d598bc",
+                      "name":  "Fetch telegram file"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "4b28bdc7-3ab4-5363-becf-e394d55122ac",
+                                                                                   "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       860,
+                                       60
+                                   ],
+                      "id":  "31b2e3da-5a5f-5676-979e-8f86c4a105e3",
+                      "name":  "File ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a160ac42-e4ce-5af4-acdd-492a73a98b79",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d7ad044e-9dfc-5b5c-9fd5-210bc68af1ed",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1080,
+                                       240
+                                   ],
+                      "id":  "aaeff628-b88e-57a4-b90c-d7bd2a8757d0",
+                      "name":  "File unusable"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"career\",\"key\":\"cv_extract\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1080,
+                                       -100
+                                   ],
+                      "id":  "87ac454a-bf80-50e3-804c-2425ef7fa38c",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/v1/messages",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "anthropicApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "anthropic-version",
+                                                                                         "value":  "2023-06-01"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: ({\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"}[$(\u0027Load model config\u0027).first().json.model.cv_extract] || null), max_tokens: 16000, system: \"You extract a structured career profile from a photographed or scanned CV / resume / Lebenslauf. Output ONLY a JSON object, no prose. All fields are optional - omit any field that is not clearly printed or readable; never invent. Output RAW printed values only - never compute or estimate. Fields: current_title = the current or most recent job title (string); industry = the sector of the current or most recent role (string); experience_years = total years of professional experience ONLY if the document states it explicitly as a number - do NOT add up employment dates yourself (the database derives time spans); skills = array of objects {name, level one of beginner|intermediate|advanced|expert only if the document grades it else omit level, years_experience number only if printed} - only clearly evidenced skills, at most 20; last_job_change_date = the start date of the current or most recent role as YYYY-MM-DD. German dates DD.MM.YYYY become YYYY-MM-DD; a month-year like 03/2021 becomes 2021-03-01. If the document is not a CV or resume, return {}.\", messages: [{ role: \u0027user\u0027, content: ([ (($(\u0027Fetch telegram file\u0027).item.json.mime) === \u0027application/pdf\u0027 ? { type: \u0027document\u0027, source: { type: \u0027base64\u0027, media_type: \u0027application/pdf\u0027, data: ($(\u0027Fetch telegram file\u0027).item.json.b64) } } : { type: \u0027image\u0027, source: { type: \u0027base64\u0027, media_type: ($(\u0027Fetch telegram file\u0027).item.json.mime), data: ($(\u0027Fetch telegram file\u0027).item.json.b64) } }), { type: \u0027text\u0027, text: \u0027Document context from the user: \u0027 + ($(\u0027Start\u0027).item.json.doc_hint || \u0027none\u0027) + \u0027. Extract the career profile now.\u0027 } ]) }], output_config: { effort: \u0027low\u0027 } }) }}",
+                                         "options":  {
+                                                         "timeout":  180000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       1080,
+                                       60
+                                   ],
+                      "id":  "999f924b-8bc5-5350-a58b-011598e0b5ad",
+                      "name":  "Vision extract",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const anthropicText = (r) =\u003e {\n  if (!r || !Array.isArray(r.content)) {\n    const m = (r \u0026\u0026 r.error \u0026\u0026 (r.error.message || r.error.type || r.error.description)) || \u0027no response\u0027;\n    return { ok: false, error: String(m).slice(0, 200) };\n  }\n  if (r.stop_reason === \u0027max_tokens\u0027) return { ok: false, error: \u0027answer truncated (max_tokens)\u0027 };\n  if (r.stop_reason === \u0027refusal\u0027) return { ok: false, error: \u0027model declined the request\u0027 };\n  if (r.stop_reason === \u0027pause_turn\u0027) return { ok: false, error: \u0027web search did not finish (pause_turn)\u0027 };\n  const text = r.content.filter(b =\u003e b \u0026\u0026 b.type === \u0027text\u0027 \u0026\u0026 b.text).map(b =\u003e b.text).join(\u0027\u0027).trim();\n  if (!text) return { ok: false, error: \u0027empty answer\u0027 };\n  return { ok: true, text };\n};\nconst stripFences = (t) =\u003e String(t).replace(/^\\s*```[a-z]*\\s*/i, \u0027\u0027).replace(/\\s*```\\s*$/, \u0027\u0027);const r = $input.first().json;\nconst fail = (m) =\u003e [{ json: { ok: false, error: \u0027CV extraction failed (\u0027 + m + \u0027) - ask the user for a sharper photo or to dictate the facts instead.\u0027 } }];\nconst res = anthropicText(r);\nif (!res.ok) return fail(res.error);\nconst txt = stripFences(res.text);\nconst a = txt.indexOf(\u0027{\u0027), z = txt.lastIndexOf(\u0027}\u0027);\nlet prof;\ntry { prof = JSON.parse(a \u003e= 0 \u0026\u0026 z \u003e a ? txt.slice(a, z + 1) : txt); }\ncatch (e) { return fail(\u0027unparseable model output\u0027); }\nif (!prof || typeof prof !== \u0027object\u0027 || Array.isArray(prof)) return fail(\u0027model did not return an object\u0027);\nif (Array.isArray(prof.skills)) prof.skills = prof.skills.slice(0, 20).filter(s =\u003e s \u0026\u0026 typeof s === \u0027object\u0027 \u0026\u0026 s.name);\nconst keys = Object.keys(prof).filter(k =\u003e prof[k] !== null \u0026\u0026 prof[k] !== \u0027\u0027 \u0026\u0026 !(Array.isArray(prof[k]) \u0026\u0026 prof[k].length === 0));\nif (keys.length === 0) return [{ json: { ok: false, error: \u0027No CV data recognized - is this really a CV/resume? Ask the user, then capture by asking if needed.\u0027 } }];\nreturn [{ json: { ok: true, profile: JSON.stringify(prof), field_count: keys.length } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1300,
+                                       60
+                                   ],
+                      "id":  "b92c8c3b-cc42-5315-a478-a81263410d05",
+                      "name":  "Shape profile"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f0c9f679-ec4c-579d-aaa9-fd196f7d0235",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1520,
+                                       60
+                                   ],
+                      "id":  "42979e4c-d75a-578a-8730-c715ca632f59",
+                      "name":  "Profile ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "00e85dab-96a0-5ac4-b2ed-6d072bd2064a",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5f888c93-5c51-512d-a029-1bfc9eeb0db8",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Shape profile\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1740,
+                                       240
+                                   ],
+                      "id":  "ca928da5-d10e-58af-bacf-76b47c6aa36e",
+                      "name":  "Extraction failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b498dd58-15b7-573a-9322-b9cb3b37dd19",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7aa34050-4c03-59e7-97d0-13b1e9c69e29",
+                                                                                     "name":  "profile",
+                                                                                     "value":  "={{ $(\u0027Shape profile\u0027).item.json.profile }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b042b9da-b055-5cb1-88d7-7fab0ef45b96",
+                                                                                     "name":  "field_count",
+                                                                                     "value":  "={{ $(\u0027Shape profile\u0027).item.json.field_count }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1740,
+                                       60
+                                   ],
+                      "id":  "bd6a3c45-40fc-58a0-8a08-55bc26f411ae",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Fetch telegram file (Core-Baustein: Download/base64) -\u003e Load model config -\u003e Claude-Vision aufs Bild/PDF (model.cv_extract, Denk-Tiefe niedrig) -\u003e Rohfelder zurück**\n\nPRIVACY: ein Lebenslauf ist sensible PII -\u003e geht NUR über die bezahlte Anthropic-API (anthropicApi-Credential; trainiert laut Commercial Terms nicht auf Kundeninhalten) — nie über einen Free-Tier-Zugang. Der Download/die base64-Wandlung kommt aus dem generischen Baustein agent.tool_fetch_telegram_file (kein Key dort; Allow-List jpeg/png/gif/webp/pdf, Bild \u003c= 5 MB); die CV-Vision bleibt HIER, der Aufruf über den geteilten Baustein New-AnthropicMessagesNode (Bild = image-Block, PDF = document-Block; abgeschnittene Antwort/Ablehnung -\u003e ok:false). READ-ONLY BY CONSTRUCTION: KEIN DB-Write, KEIN HITL-Gate, KEIN Staging — die Extraktion liefert NUR die rohen career_profile-Felder (current_title/industry/experience_years/skills/last_job_change_date) als JSON-Objekt zurück (Prompt-Vertrag, Parse toleriert Zäune). Der Advisor spielt jede Zeile im Chat zurück und schreibt das bestätigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL, owner_only). \"LLM rechnet NICHT\": experience_years nur wenn explizit gedruckt — NIE aus Job-Datumsangaben summiert (die DB leitet \"Jahre seit Wechsel\" aus last_job_change_date ab). Modell: Load model config liest bei JEDEM Lauf core.config model.cv_extract (Wechsel: lifeagents config set model cv_extract \u003ckey\u003e, wirkt sofort).",
+                                         "height":  320,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       420,
+                                       -420
+                                   ],
+                      "id":  "f96d21c8-54dc-5371-917d-b4a25c59a85a",
+                      "name":  "CV-Vision (paid-key Pflicht, read-only)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Fetch telegram file",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Fetch telegram file":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "File ok?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "File ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "File unusable",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Vision extract",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Vision extract":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Shape profile",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Shape profile":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Profile ok?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Profile ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Return",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Extraction failed",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

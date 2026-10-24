@@ -1,0 +1,112 @@
+# Release-Artefakt-Action (Phase 6b). Auf einen SemVer-Tag baut sie den getrackten Install-Baum als
+# reproduzierbares tar.gz + SHA256-Sidecar und laedt beide als Release-Assets hoch, dazu den Bootstrap-
+# Launcher provisioning/install.sh als Asset `install.sh` (stabiler Einstieg .../releases/latest/download/
+# install.sh, nicht main). Oeffentliches Repo: install.sh / provisioning/lib/fetch_release.sh laden die Assets
+# anonym (kein Token).
+#
+# "Was kommt ins Release" = EINE Wahrheit: die git-archive-Pathspec unten (provisioning packages
+# .gitattributes) — genau die Pfade, die provision.sh zur Laufzeit liest (REPO_ROOT/packages = Core-Paket +
+# Pakete inkl. packages/<pkg>/workflows und packages/<pkg>/db, Schema/Migrationen paket-relativ;
+# provisioning/ = der Kern, install.sh + provision.sh inklusive). `git archive` ist deterministisch
+# (mtime = Commit-Zeit) und nimmt NUR
+# getrackte Dateien -> gitignorte Secrets (.env/.local/.claude) koennen strukturell nicht hinein;
+# der Gate-Schritt prueft das zusaetzlich.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # gh release create/upload braucht Schreibrecht auf Releases
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (Tag-Commit)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false   # git archive needs no git creds; gh uses GH_TOKEN env
+
+      - name: Build tar.gz + SHA256-Sidecar
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TARBALL="n8n-life-agents-${TAG}.tar.gz"
+          # Allowlist-Pathspec = die einzige Quelle der "was kommt ins Release"-Wahrheit.
+          # --prefix verhindert einen Tarbomb (alles unter einem Top-Verzeichnis).
+          git archive --format=tar.gz \
+            --prefix="n8n-life-agents-${TAG}/" \
+            -o "${TARBALL}" \
+            HEAD provisioning packages .gitattributes
+
+          # No-Secrets-Gate (Defense-in-Depth; git archive nimmt ohnehin nur getrackte Dateien).
+          if tar tzf "${TARBALL}" | grep -Eiq '(^|/)(\.env|\.local/|\.claude/|\.git/)|\.(key|pem)$|(^|/)id_rsa'; then
+            echo "::error::Verdaechtiger (geheim aussehender) Pfad im Release-Asset gefunden — Abbruch."
+            tar tzf "${TARBALL}" | grep -Ei '(^|/)(\.env|\.local/|\.claude/|\.git/)|\.(key|pem)$|(^|/)id_rsa' || true
+            exit 1
+          fi
+
+          sha256sum "${TARBALL}" > "${TARBALL}.sha256"
+          # Pruefsummenliste fuer die Release-Signatur (Debian-SecureApt-Muster): Tarball + Bootstrap-Launcher, je
+          # "<sha256>  <asset-name>". Unterschrieben wird sie NICHT hier (ein Schluessel als Actions-Secret schuetzte nicht
+          # gegen ein gekapertes Konto), sondern lokal mit dem Offline-Schluessel: scripts/sign_release.ps1 <tag>.
+          cp provisioning/install.sh install.sh
+          sha256sum "${TARBALL}" install.sh > SHA256SUMS
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+          echo "--- Asset-Inhalt (Top-Ebene) ---"
+          tar tzf "${TARBALL}" | sed "s|^n8n-life-agents-${TAG}/||" | cut -d/ -f1 | sort -u
+
+      - name: Release anlegen + Assets hochladen (idempotent)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Release-Text = die Nachricht des annotierten Tags (`git tag -a`, englische Aenderungsliste — oeffentliches Repo,
+          # Owner-Entscheid 2026-10-24: auf der Release-Seite lesen, was sich geaendert hat), ueber die API gelesen (unabhaengig davon, wie der
+          # Checkout den Tag holt). Leichtgewichtiger Tag -> nur der Installations-Hinweis.
+          obj="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.type + " " + .object.sha')"
+          : > notes.md
+          if [ "${obj%% *}" = tag ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/git/tags/${obj#* }" --jq '.message' > notes.md
+          fi
+          # Kurzfassung fuer die Update-Karte im Chat (core.fn_release_intro, Muster Home Assistant release_summary): der
+          # Einleitungsabsatz der Tag-Nachricht — bis zur ersten Leerzeile, '#'-Ueberschrift oder '---'. Pflicht, <= 300
+          # Zeichen (sonst kuerzt die Karte mitten im Satz). Gleiche Grenzen wie die DB-fn.
+          intro="$(awk '/^[[:space:]]*$/ { if (s) exit; next } /^#/ || /^-{3,}[[:space:]]*$/ { exit } { s = 1; printf "%s ", $0 }' notes.md | sed 's/[[:space:]]*$//')"
+          if [ -z "$intro" ]; then
+            echo "::error::Die Tag-Nachricht braucht einen Einleitungsabsatz (1-3 Saetze vor der ersten Ueberschrift: was sich fuer Nutzer aendert) — die Update-Karte im Chat zeigt ihn. Annotiert taggen: git tag -a ${TAG} --cleanup=whitespace -F <datei>."
+            exit 1
+          fi
+          if [ "${#intro}" -gt 300 ]; then
+            echo "::error::Einleitungsabsatz der Tag-Nachricht ist ${#intro} Zeichen lang (max. 300)."
+            exit 1
+          fi
+          printf '\n---\nInstall (as root, via the bootstrap launcher asset `install.sh`): `curl -fsSL https://github.com/%s/releases/download/%s/install.sh -o install.sh && bash install.sh --version %s --domain <fqdn>` (without `--version` = latest stable release). Update an existing instance: `lifeagents update`.\n' "${GITHUB_REPOSITORY}" "${TAG}" "${TAG}" >> notes.md
+          # Release ggf. anlegen (existiert bereits -> ueberspringen); Assets mit --clobber neu hoch
+          # -> ein erneuter Lauf desselben Tags ist idempotent.
+          # Signierendes Projekt (provisioning/keys/release-signing.gpg im Tag): nur als ENTWURF anlegen — Installationen mit
+          # Schluesselbund nehmen nur unterschriebene Releases an, und /releases/latest zeigt nie auf einen Entwurf.
+          # Veroeffentlicht wird erst nach der lokalen Unterschrift (scripts/sign_release.ps1 laedt SHA256SUMS.sig hoch).
+          draft=()
+          if [ -s provisioning/keys/release-signing.gpg ]; then
+            draft=(--draft)
+            echo "::notice::Release ${TAG} ist ein Entwurf — zum Veroeffentlichen lokal unterschreiben: .\\scripts\\sign_release.ps1 ${TAG}"
+          fi
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --notes-file notes.md \
+            "${draft[@]}" \
+            --verify-tag || echo "Release ${TAG} existiert bereits — nur Assets aktualisieren."
+          # Schon unterschrieben (SHA256SUMS.sig haengt am Release) -> NICHTS ueberschreiben: ein neu gebauter Tarball (andere
+          # gzip-Bytes) passte nicht mehr zur Unterschrift, und jede Installation mit Schluesselbund lehnte das Release ab.
+          if gh release view "${TAG}" --json assets --jq '.assets[].name' | grep -qx 'SHA256SUMS.sig'; then
+            echo "::error::Release ${TAG} ist bereits unterschrieben — Assets bleiben unveraendert. Neu bauen nur als neues Tag."
+            exit 1
+          fi
+          # .sha256-Sidecar bleibt fuer Installationen ohne Schluesselbund (und aeltere CLIs); SHA256SUMS ist die signierte Liste.
+          gh release upload "${TAG}" "${TARBALL}" "${TARBALL}.sha256" install.sh SHA256SUMS --clobber

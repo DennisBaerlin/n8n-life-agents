@@ -1,0 +1,305 @@
+{{ define "main" }}
+{{/* Bespoke Aave-Landing (einzige HTML-autorierte Quelle, arch-challenge D3);
+     Nav/Footer kommen aus den geteilten Partials (baseof) — kein Chrome-Duplikat.
+     Kommunikations-Prinzip (Owner + Persona-Runde wf_a1da1b76): Zielgruppe = NUTZER
+     (Entwickler-Tiefe lebt in den Docs); Problem -> Loesung statt Feature-Liste;
+     Sektions-Reihenfolge = Nutzungs-Chronologie (Einladung/Onboarding zuerst);
+     Jargon (self-hosted/HITL/Orchestrator/…) nur unten bzw. in Klammern.
+     Seit dem Public-Schalten zweite Zielgruppe Selbst-Betreiber: eigener Hero-Knopf + FAQ-Eintrag,
+     Details auf docs/installation (die Nutzer-Chronologie oben bleibt unveraendert). */}}
+
+<header class="hero">
+  <svg class="hero-deco" aria-hidden="true" width="100%" height="100%" preserveAspectRatio="none">
+    <circle cx="8%" cy="118%" r="340" fill="#E2E0FF" opacity="0.55"/>
+    <circle cx="94%" cy="-10%" r="180" fill="#BDBBFF" opacity="0.25"/>
+  </svg>
+  <div class="hero-inner rise">
+    <span class="eyebrow"><span class="dot"></span>Läuft in Telegram · nichts wird ohne dein OK gespeichert</span>
+    <h1>Dein Alltag im Griff —<br><span class="accent">ein Bot für alles, was zählt.</span></h1>
+    <p class="sub">Geld, Fristen, Sparziele, Jobwechsel: Schreib es einfach in den Chat — wie einer Freundin. Gebucht wird erst, wenn du per Knopfdruck bestätigst. Deine Daten liegen auf einem Rechner deiner Familie, nicht in einer fremden Cloud — und alles läuft in Telegram, der App, die du eh schon hast.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="{{ "docs/erste-schritte.html" | relURL }}">So kommst du rein</a>
+      <a class="btn btn-soft" href="#agenten">Was der Bot alles kann</a>
+      <a class="btn btn-soft" href="{{ "docs/installation.html" | relURL }}">Selbst betreiben</a>
+    </div>
+  </div>
+</header>
+
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat"><b>✅</b><span>Nichts wird gespeichert, bevor du nicht bestätigst</span></div>
+    <div class="stat"><b>1 App</b><span>Nur Telegram — nichts zu installieren</span></div>
+    <div class="stat"><b>Zuhause</b><span>Daten bleiben bei euch, nicht in fremder Cloud</span></div>
+    <div class="stat"><b>0</b><span>Daten an Dritte verkauft</span></div>
+  </div>
+</section>
+
+{{/* ==================== 1 · Guide / Onboarding (Chronologie: so faengt es an) ==================== */}}
+<section class="section" id="agenten">
+  <div class="feature">
+    <div class="feature-text">
+      <span class="kicker">🚪 Der Anfang</span>
+      <h2>Kein Setup-Marathon — du wirst eingeladen und legst los.</h2>
+      <p>Du musst nichts installieren und kein Konto anlegen: Du wirst eingeladen, startest den Bot mit einem kurzen Code in Telegram — und die Einrichtung passiert <b>im Gespräch</b>: Der Guide erfasst mit dir den Haushalt; Konten, Vorsorge und Karriere-Profil übernimmt danach je Thema der passende Spezialist. Jeder Abschnitt lässt sich überspringen und später nachholen.</p>
+      <ul class="feature-points">
+        <li><span class="tick">✓</span><code>/onboarding</code> zeigt jederzeit, was schon erledigt ist</li>
+        <li><span class="tick">✓</span><code>/help</code> — der Katalog dessen, was das System kann</li>
+        <li><span class="tick">✓</span>Gemerkt wird nur, was du einzeln bestätigst</li>
+      </ul>
+    </div>
+    <div class="phone-col">
+      {{ partial "phone-frame-open.html" (dict "time" "19:02" "label" "Telegram-Chat: Onboarding-Dialog mit dem Guide") }}
+        <div class="msg msg-out">/onboarding<span class="time">19:02 ✓✓</span></div>
+        <div class="msg msg-in">Willkommen! 👋 Womit starten wir — <b>Haushalt</b>, <b>Konten</b> oder <b>Vorsorge</b>? Du kannst jeden Abschnitt auch überspringen.<span class="time">19:02</span></div>
+        <div class="msg msg-out">Ich bin Erika, verheiratet, ein Kind (Ben, 8).<span class="time">19:03 ✓✓</span></div>
+        <div class="msg msg-in">Notiert ✅ Haushalt: 3 Personen. Als Nächstes: welche <b>Konten</b> soll ich anlegen — Girokonto, Sparkonto, Depot?<span class="time">19:03</span></div>
+      {{ partial "phone-frame-close.html" . }}
+    </div>
+  </div>
+</section>
+
+{{/* ==================== 2 · Buchhalter ==================== */}}
+<div class="band">
+<section class="section">
+  <div class="feature">
+    <div class="feature-text">
+      <span class="kicker">📒 Ausgaben &amp; Konten</span>
+      <h2>Sag einfach, was du ausgegeben hast — kein Excel, kein Haushaltsbuch.</h2>
+      <p>Dreimal ein Haushaltsbuch angefangen, dreimal nach zwei Wochen aufgegeben? Hier tippst oder sprichst du einfach, was du bezahlt hast — der Buchhalter versteht ganz normale Sätze, rechnet den neuen Kontostand selbst aus und legt dir <b>vor dem Speichern</b> alles zur Bestätigung vor. Erst dein Tap bucht.</p>
+      <ul class="feature-points">
+        <li><span class="tick">✓</span>Dein Kontostand stimmt immer von allein — nie wieder nachrechnen</li>
+        <li><span class="tick">✓</span>Erst dein Tap speichert — nichts passiert, was du nicht gesehen hast</li>
+        <li><span class="tick">✓</span>Auch Depot, Krypto und Fremdwährung mit automatischen Kursen — wenn du das brauchst</li>
+      </ul>
+    </div>
+    <div class="phone-col">
+      {{ partial "phone-frame-open.html" (dict "time" "9:41" "label" "Telegram-Chat: Ausgabe buchen mit Bestätigungs-Buttons") }}
+        <div class="msg msg-out">Ich habe heute 45,90&nbsp;€ bei Rewe für Lebensmittel bezahlt, vom Girokonto.<span class="time">9:41 ✓✓</span></div>
+        <div class="msg msg-in"><b>Ausgabe buchen – bitte prüfen:</b>
+          <span class="rows">
+            <div><span class="k">Konto</span> Girokonto</div>
+            <div><span class="k">Betrag</span> 45,90 €</div>
+            <div><span class="k">Kategorie</span> Lebensmittel</div>
+            <div><span class="k">Datum</span> 02.07.2026</div>
+          </span>
+          <span class="time">9:41</span>
+        </div>
+        <div class="tg-buttons">
+          <span class="tg-btn">✅ Bestätigen</span>
+          <span class="tg-btn">❌ Ablehnen</span>
+        </div>
+        <div class="msg msg-in">Gebucht. Neuer Saldo Girokonto: <b>1.234,56&nbsp;€</b><span class="time">9:42</span></div>
+      {{ partial "phone-frame-close.html" . }}
+    </div>
+  </div>
+</section>
+</div>
+
+{{/* ==================== 3 · Foto-Import ==================== */}}
+<section class="section">
+  <div class="feature">
+    <div class="feature-text">
+      <span class="kicker">📸 Foto statt Abtippen</span>
+      <h2>Kontoauszug abfotografieren — statt abtippen.</h2>
+      <p>Belege und Kontoauszüge stapeln sich, weil das Abtippen nervt? Fotografier sie einfach ab oder schick das PDF in den Chat — die Bild-Erkennung liest alle Positionen aus, und <b>eine einzige Bestätigung</b> bucht den ganzen Stapel. Sprachnachrichten werden automatisch in Text umgewandelt und ganz normal verarbeitet.</p>
+      <ul class="feature-points">
+        <li><span class="tick">✓</span>Foto/PDF → erkannte Buchungen als geprüfter Stapel</li>
+        <li><span class="tick">✓</span>Dokumente laufen nur über den bezahlten KI-Tarif (trainiert nicht auf deinen Daten)</li>
+        <li><span class="tick">✓</span>Sprachnachricht rein, Buchungsvorschlag raus</li>
+      </ul>
+    </div>
+    <div class="phone-col">
+      {{ partial "phone-frame-open.html" (dict "time" "11:07" "label" "Telegram-Chat: Kontoauszug als PDF, Sammel-Import mit einer Bestätigung") }}
+        <div class="msg msg-out msg-doc">
+          <span class="doc-icon">📄</span>
+          <span class="doc-meta"><b>Kontoauszug_Juni.pdf</b><small>2 Seiten · 184 KB</small></span>
+        </div>
+        <div class="msg msg-in">Ich habe <b>12 Buchungen</b> erkannt (Summe −843,20&nbsp;€, Girokonto). Stapel prüfen und buchen?<span class="time">11:07</span></div>
+        <div class="tg-buttons">
+          <span class="tg-btn">✅ Alle buchen</span>
+          <span class="tg-btn">✏️ Einzeln prüfen</span>
+        </div>
+        <div class="msg msg-in">Gebucht: 12 Positionen. Neuer Saldo: <b>2.108,44&nbsp;€</b><span class="time">11:08</span></div>
+      {{ partial "phone-frame-close.html" . }}
+    </div>
+  </div>
+</section>
+
+{{/* ==================== 4 · Monitor ==================== */}}
+<div class="band">
+<section class="section">
+  <div class="feature">
+    <div class="feature-text">
+      <span class="kicker">🔭 Fristen &amp; Erinnerungen</span>
+      <h2>Nie wieder eine Frist verpassen — ohne Kalender zu pflegen.</h2>
+      <p>Handyvertrag, Zahnzusatz, Kita-Beitrag, ein Kurs, der unter eine Schwelle fällt: Im Chat sagst du <b>einmal</b>, worauf der Bot achten soll — geprüft wird dann automatisch im Takt. Gemeldet wird genau einmal, bis du die Erinnerung wieder scharf stellst. Ratschläge gibt der Monitor bewusst nicht — dafür sind die Berater da.</p>
+      <ul class="feature-points">
+        <li><span class="tick">✓</span>Vier Arten: Schwellwert, Rückgang-vom-Hoch, Fälligkeit, Wiederkehr</li>
+        <li><span class="tick">✓</span>Werte kommen per Web-Suche, Kurs-Feed oder aus deinen Daten</li>
+        <li><span class="tick">✓</span>Der Vergleich läuft in der Datenbank — nicht im Sprachmodell</li>
+      </ul>
+    </div>
+    <div class="phone-col">
+      {{ partial "phone-frame-open.html" (dict "time" "8:10" "label" "Telegram-Chat: Erinnerung anlegen und Alarm erhalten") }}
+        <div class="msg msg-out">Warne mich, wenn der DAX unter 15.000 fällt.<span class="time">Di ✓✓</span></div>
+        <div class="msg msg-in">Trigger angelegt: <b>„DAX unter 15.000"</b> — ich prüfe täglich. 🔭<span class="time">Di</span></div>
+        <div class="msg msg-in">⚠️ <b>Trigger ausgelöst:</b> DAX bei <b>14.850</b> <i>(Quelle: Web, 08:10&nbsp;Uhr)</i>. Der Trigger ist jetzt pausiert — sag „reaktivieren", wenn ich weiter wachen soll.<span class="time">8:10</span></div>
+        <div class="msg msg-out">Was soll ich jetzt tun?<span class="time">8:12 ✓✓</span></div>
+        <div class="msg msg-in">🧭 <b>Dein Finanzberater übernimmt:</b> Laut Plan sparst du monatlich — ein Rücksetzer ändert daran nichts. Soll ich einen Nachkauf durchrechnen?<span class="time">8:12</span></div>
+      {{ partial "phone-frame-close.html" . }}
+    </div>
+  </div>
+</section>
+</div>
+
+{{/* ==================== 5 · Finanzberater ==================== */}}
+<section class="section">
+  <div class="feature">
+    <div class="feature-text">
+      <span class="kicker">🧭 Geld-Fragen</span>
+      <h2>Reicht das Geld? Schaffe ich mein Sparziel?</h2>
+      <p>Statt Bauchgefühl: Der Berater kennt deinen Finanzplan und deine echten Konten, sagt dir, ob dein Sparziel in der Zeit klappt, und meldet sich von selbst, wenn etwas <b>neu</b> vom Plan abweicht. Buchen kann er nichts — er darf technisch nur lesen.</p>
+      <ul class="feature-points">
+        <li><span class="tick">✓</span>Antworten aus deinen echten Zahlen, nicht aus der Glaskugel</li>
+        <li><span class="tick">✓</span>Recherche mit datierten Quellen; Experten-Panel für die großen Fragen</li>
+        <li><span class="tick">✓</span>Meldet Abweichungen, statt dich zu fluten</li>
+      </ul>
+    </div>
+    <div class="phone-col">
+      {{ partial "phone-frame-open.html" (dict "time" "17:23" "label" "Telegram-Chat: Finanzberater beantwortet ETF-Frage aus dem Plan") }}
+        <div class="msg msg-out">Sollte ich mehr in ETFs investieren?<span class="time">17:23 ✓✓</span></div>
+        <div class="msg msg-in">Dein Plan sieht <b>60 % Aktien/ETF</b> vor — aktuell hältst du <b>48 %</b>, der Rest liegt als Cash. Eine Umschichtung von rund 8.000&nbsp;€ würde die Lücke schließen. Marktlage: ruhig <i>(Quelle: dpa, 01.07.2026)</i>.<span class="time">17:23</span></div>
+        <div class="msg msg-out">Und mein Sparziel „Urlaub 2027"?<span class="time">17:24 ✓✓</span></div>
+        <div class="msg msg-in">Du liegst <b>4 Monate vor Plan</b> — Fortschritt 62&nbsp;%, erwartet 55&nbsp;%. Weiter so! 🎯<span class="time">17:24</span></div>
+      {{ partial "phone-frame-close.html" . }}
+    </div>
+  </div>
+</section>
+
+{{/* ==================== 6 · Karriere-Coach (Kuer, bewusst zuletzt) ==================== */}}
+<div class="band">
+<section class="section">
+  <div class="feature">
+    <div class="feature-text">
+      <span class="kicker">💼 Und beim Jobwechsel</span>
+      <h2>Jobwechsel mit Zahlen statt Bauchgefühl.</h2>
+      <p>Und wenn irgendwann ein Wechsel ansteht: Fotografier deinen Lebenslauf ab — der Coach macht daraus ein strukturiertes Profil, scannt werktags den Stellenmarkt (Bundesagentur für Arbeit), bewertet Treffer gegen dein Zielprofil und lernt aus deinem 👍/👎. Für die entscheidende Frage — „kann ich mir den Wechsel leisten?" — schaut er auf deine echte Liquidität.</p>
+      <ul class="feature-points">
+        <li><span class="tick">✓</span>Automatischer Stellen-Scan mit Feedback-Lernen</li>
+        <li><span class="tick">✓</span>Skill-Lücken-Analyse je Ziel-Rolle</li>
+        <li><span class="tick">✓</span>Eigenes Profil je Haushaltsmitglied</li>
+      </ul>
+    </div>
+    <div class="phone-col">
+      {{ partial "phone-frame-open.html" (dict "time" "7:45" "label" "Telegram-Chat: Job-Match-Karte mit Daumen-Feedback und Runway-Frage") }}
+        <div class="msg msg-in"><b>Neue Stelle gefunden:</b>
+          <span class="rows">
+            <div><span class="k">Rolle</span> Scrum Master (m/w/d)</div>
+            <div><span class="k">Firma</span> Musterwerk GmbH</div>
+            <div><span class="k">Ort</span> Berlin</div>
+            <div><span class="k">Match</span> ★★★★ 4/4</div>
+          </span>
+          <span class="time">7:45</span>
+        </div>
+        <div class="tg-buttons">
+          <span class="tg-btn">👍 Passt</span>
+          <span class="tg-btn">👎 Eher nicht</span>
+        </div>
+        <div class="msg msg-out">Kann ich mir den Wechsel leisten, wenn das Gehalt erst mal sinkt?<span class="time">7:48 ✓✓</span></div>
+        <div class="msg msg-in">Dein Puffer trägt ca. <b>7 Monate</b> reduziertes Einkommen, bevor deine Notreserve angetastet würde.<span class="time">7:48</span></div>
+      {{ partial "phone-frame-close.html" . }}
+    </div>
+  </div>
+</section>
+</div>
+
+{{/* ==================== Sicherheit ==================== */}}
+<section class="section" id="sicherheit">
+  <div class="section-head">
+    <span class="kicker">🔐 Sicherheit &amp; Privatsphäre</span>
+    <h2>Vertrauen ist Architektur, kein Versprechen.</h2>
+    <p>Deine größte Sorge zuerst: Wer liest das mit, und kann der Bot hinter meinem Rücken etwas ändern? Antwort: Die wichtigsten Schutzmechanismen sind fest eingebaut — man kann sie nicht vergessen oder umgehen.</p>
+  </div>
+  <div class="cards3">
+    <div class="card">
+      <span class="icon">✅</span>
+      <h3>Bestätigen vor Buchen</h3>
+      <p>Jede Änderung zeigt vorher alle Werte. Erst dein Tap schreibt; Ablehnen bricht sauber ab. Im Haushalt gibt es Stufen — heikle Aktionen brauchen zusätzlich das Okay der Hauptperson (Vier-Augen-Prinzip).</p>
+    </div>
+    <div class="card">
+      <span class="icon">⚛️</span>
+      <h3>Ganz oder gar nicht</h3>
+      <p>Alle Schritte einer Aktion laufen als ein Paket. Es gibt keine halben Buchungen — ein Fehler heißt: alles bleibt, wie es war. Und Vertipptes lässt sich per Chat korrigieren oder löschen, wieder mit Bestätigung.</p>
+    </div>
+    <div class="card">
+      <span class="icon">🏠</span>
+      <h3>Deine Daten bleiben bei euch</h3>
+      <p>Alles läuft auf einem eigenen Rechner. Dokumente gehen nur über den bezahlten KI-Tarif (trainiert nicht auf deinen Daten), Backups sind verschlüsselt, und der Bot reagiert ausschließlich auf eingeladene Personen.</p>
+    </div>
+  </div>
+</section>
+
+{{/* ==================== Unter der Haube (kurzer Teaser — Tiefe lebt in den Docs) ==================== */}}
+<div class="band">
+<section class="section center">
+  <div class="section-head">
+    <span class="kicker">🧩 Unter der Haube</span>
+    <h2>Ein fester Weg für jede Nachricht.</h2>
+  </div>
+  <div class="flow">
+    <span class="chip">Telegram</span><span class="arrow">→</span>
+    <span class="chip">Verteiler</span><span class="arrow">→</span>
+    <span class="chip hot">passender Spezialist</span><span class="arrow">→</span>
+    <span class="chip">deine Bestätigung</span><span class="arrow">→</span>
+    <span class="chip">Datenbank</span>
+  </div>
+  <p style="color:var(--gray); max-width: 620px; margin: 0 auto 28px;">Jede Nachricht nimmt denselben festen Weg — und die Rechenarbeit (Kontostände, Raten, Regeln) macht die Datenbank, nicht die KI: Das Sprachmodell kann sich gar nicht verrechnen, weil es nicht rechnet. Wie das genau gebaut ist, warum es keine Endlos-Schleifen geben kann und wie neue Lebensbereiche andocken, steht in den Docs.</p>
+  <div class="hero-ctas">
+    <a class="btn btn-primary" href="{{ "docs/so-funktionierts.html" | relURL }}">So funktioniert's im Detail</a>
+    <a class="btn btn-soft" href="{{ "docs/mitwirken.html" | relURL }}">Für Entwickler: Architektur &amp; Mitmachen</a>
+  </div>
+</section>
+</div>
+
+{{/* ==================== FAQ ==================== */}}
+<section class="section" id="faq">
+  <div class="section-head">
+    <span class="kicker">FAQ</span>
+    <h2>Kurz beantwortet.</h2>
+  </div>
+  <div class="faq">
+    <details>
+      <summary>Ich bin eingeladen — was brauche ich?</summary>
+      <p>Nur Telegram, das du vermutlich eh hast. Du bekommst einen Einladungs-Link und tippst ihn an — sobald die Hauptperson deine Anfrage per Knopfdruck freigibt, begrüßt dich der Bot. Nichts installieren, kein Konto anlegen — die Einrichtung passiert im Gespräch (<a href="{{ "docs/erste-schritte.html" | relURL }}">Erste Schritte</a>).</p>
+    </details>
+    <details>
+      <summary>Ich will das selbst betreiben — was brauche ich?</summary>
+      <p>Einen kleinen eigenen Server mit Debian 12 (als Container oder virtuelle Maschine), eine Internet-Adresse (Domain), die auf ihn zeigt, einen Reverse Proxy für den verschlüsselten Zugang (HTTPS), einen Telegram-Bot und einen Anthropic-Schlüssel für die KI. Ein einziger Befehl installiert alles und fragt dich Schritt für Schritt ab. Das Projekt ist kostenlos und quelloffen (MIT-Lizenz); laufende Kosten entstehen nur für deinen Rechner und die KI-Nutzung nach Verbrauch. Einige Funktionen sind auf Deutschland zugeschnitten (Steuer- und Vorsorge-Begriffe, Feiertage je Bundesland, Stellen-Scan der Bundesagentur für Arbeit). Alles Weitere: <a href="{{ "docs/installation.html" | relURL }}">Installation &amp; Betrieb</a>.</p>
+    </details>
+    <details>
+      <summary>Kann der Bot ungefragt Geld buchen oder Daten ändern?</summary>
+      <p>Nein. Jede Änderung zeigt dir vorher eine Bestätigungs-Karte mit allen Werten — erst dein Tap auf ✅ schreibt. Wichtig: Eine <i>Text</i>-Antwort erreicht eine wartende Bestätigung nicht; zum Korrigieren erst ❌ tippen, dann neu formulieren.</p>
+    </details>
+    <details>
+      <summary>Was, wenn ich mich vertippe — kann ich Buchungen korrigieren?</summary>
+      <p>Ja. Sag es dem Bot einfach („die Rewe-Buchung war falsch, lösch sie" oder „ändere den Betrag auf 54,90"), und er legt dir die Korrektur bzw. Löschung wieder zur Bestätigung vor. Nichts ist in Stein gemeißelt.</p>
+    </details>
+    <details>
+      <summary>Wer im Haushalt sieht was?</summary>
+      <p>Die Haushalts-Finanzen (Konten, Buchungen, Sparziele) sind bewusst gemeinsam angelegt — ihr führt sie ja zusammen. Persönliches wie dein Karriere-Profil und dein Karriereplan gehören dagegen nur dir. Und bei heiklen Änderungen gilt das Vier-Augen-Prinzip mit der Hauptperson.</p>
+    </details>
+    <details>
+      <summary>Wo liegen meine Daten?</summary>
+      <p>Auf dem eigenen Rechner eurer Familie, in einer eigenen Datenbank. Nach draußen gehen nur die bewussten Anfragen an die Sprachmodelle; Dokumente laufen ausschließlich über den bezahlten KI-Tarif, der laut Anbieter nicht auf deinen Daten trainiert. Verkauft wird nichts.</p>
+    </details>
+    <details>
+      <summary>Was kostet der Betrieb?</summary>
+      <p>Den eigenen Rechner plus die KI-Nutzung nach Verbrauch — die trägt, wer das System betreibt, nicht du als eingeladene Person. Die Modell-Wahl ist bewusst sparsam: Das teure Modell arbeitet nur dort, wo es zählt — bei den Beratern.</p>
+    </details>
+    <details>
+      <summary>Wie kommen neue Lebensbereiche dazu?</summary>
+      <p>Als installierbarer Baustein (Paket): Finanzen, Karriere und Vorsorge sind heute solche Pakete — mit eigenem Datenbereich und eigenen Zugriffsrechten, einzeln installier- und deinstallierbar. Der Kern bleibt unangetastet.</p>
+    </details>
+  </div>
+</section>
+{{ end }}

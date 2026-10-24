@@ -1,0 +1,43 @@
+# gitleaks — secret scanner. Used by the prek `gitleaks` hook (staged diff) and the dedicated CI
+# step (full tree + history). This is the SECOND secret net beside the hygiene-layer
+# detect-private-key (which only catches PEM key blocks). Our policy: no secret ever enters the
+# tracked tree (secrets live in the n8n credential store / core.secret / gitignored .env; the
+# pull pipeline redacts the owner Telegram id to __OWNER_CHAT_ID__).
+#
+# Baseline-first: this extends gitleaks' built-in ruleset and adds a documented allowlist ONLY for
+# verified false positives (synthetic test fixtures, the redaction placeholder). Every allowlist
+# entry must name WHY it is not a real secret.
+title = "n8n-life-agents gitleaks config"
+
+[extend]
+# Start from the full upstream ruleset (hundreds of provider token patterns), then narrow below.
+useDefault = true
+
+[[allowlists]]
+description = "Verified non-secrets (synthetic fixtures + redaction placeholder)"
+# Precise regexes (NOT whole-file paths) so a REAL secret added later is still caught:
+#  - __OWNER_CHAT_ID__: the pull pipeline's redaction placeholder for the owner Telegram id.
+#  - __<word>_\d+: synthetic `__`-sentinel test values. Historic: the pgcrypto round-trip test
+#    (test_fn_backup_crypto.sql, since removed) used __test_crypto_key_*/__anderer_key_* keys that
+#    still live in old commits — the CI gitleaks job scans the FULL history, so the pattern must
+#    stay. Present working-tree matches are synthetic fixtures only (e.g.
+#    tests/db/finance/test_schedule_dom_domain.sql). Real secrets never start with the `__` prefix.
+# Verified 2026-06-14: a full-history scan (177 commits) found ONLY these — no real secret ever
+# entered the tree.
+regexes = [
+  '''__OWNER_CHAT_ID__''',
+  '''__[a-z_]+_\d+''',
+]
+
+[[allowlists]]
+# The project's PUBLIC release-signing key (OpenPGP public keyring, base64), embedded in install.sh so a first install
+# can verify signed releases (mirror of provisioning/keys/release-signing.gpg, contract_lint 24). Public by design;
+# generic-api-key only sees a long high-entropy string. condition AND: only this exact variable line in this one file
+# -- a real secret elsewhere in install.sh is still caught. The "line" gitleaks matches against starts with the
+# preceding \n (gitleaks 8.30.1, --staged and git mode), so the anchors are (?:^|\n) / (?:\r?\n|$), not ^ / $.
+# Never anchor with $ alone: that also suppresses a real token elsewhere in the same file.
+description = "Public release-signing key embedded in provisioning/install.sh"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^provisioning/install\.sh$''']
+regexes = ['''(?:^|\n)RELEASE_KEY_B64='[A-Za-z0-9+/=]*'(?:\r?\n|$)''']

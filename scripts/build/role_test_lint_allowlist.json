@@ -1,0 +1,4 @@
+{
+  "_comment": "role_test_lint Ratchet-Allowlist (Vorbild core_literal_allowlist.json). Jeder Eintrag {fn, reason} nimmt EINE unter einer Lese-Rolle EXECUTE-gegrantete DEFINER-Bruecken-fn von der SET-LOCAL-ROLE-Perspektiv-Test-Pflicht (tests/db/cross/test_role_permissions.sql) aus. Mit dem DEFINER-Filter (provides.reads Oberflaeche A = PLAIN STABLE -> nie unter *_ro -> nicht in scope) bleibt sie LEER: alle 12 heutigen Fenster tragen einen Rollen-Test. Ein Eintrag ohne echte Luecke = Orphan-FAIL (Ratchet schrumpft).",
+  "allow": []
+}

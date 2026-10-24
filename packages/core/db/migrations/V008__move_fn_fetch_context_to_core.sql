@@ -1,0 +1,23 @@
+-- ============================================================
+-- V008 (core) — fn_fetch_context von Schema `agent` nach `core` verschieben.
+--
+--   WARUM eine V-Migration: CREATE OR REPLACE kann das Schema einer Function NICHT wechseln. Die
+--   R__fn_fetch_context.sql legt jetzt `core.fn_fetch_context` an; die alte `agent.fn_fetch_context`
+--   bliebe sonst als Leiche stehen (doppelt, verwirrend, alter INVOKER-Stand bei sehr alten DBs).
+--   Diese V droppt sie EINMALIG.
+--
+--   WARUM der Umzug (Owner-Entscheid 2026-06-22): publizierte cross-schema-Lesefenster (DEFINER, von
+--   engen Rollen aufgerufen) gehoeren per Konvention nach `core` — zu fn_advisor_read_plan/fn_config_get/
+--   fn_package_active/fn_onboarding_status/fn_monitor_trigger_summary. fn_fetch_context lag als einzige in
+--   `agent` (historisch: war mal ein harmloser INVOKER-Helfer, WS1b machte sie zur Bruecke). Jetzt
+--   konsistent: EINE auditierbare Stelle aller Grenzuebertritte.
+--
+--   SICHER: kein DB-Objekt (Trigger/View/fn/Default) haengt an agent.fn_fetch_context -> kein CASCADE
+--   noetig. Aufrufer sind nur Workflow-SQL (load_context-Bindings, neu auf core.* gebaut) + util-Seed
+--   (auf core.* umgestellt) -> keine DB-Dependency. IDEMPOTENT (IF EXISTS); Fresh DB = no-op (die R__
+--   legt dort direkt core.fn_fetch_context an, agent.fn_fetch_context entstand nie).
+--
+-- APPLY-ORDER: Inits -> V (hier, droppt agent.fn) -> R (legt core.fn an) -> util (grantet core.fn). Re-run-sicher.
+-- ============================================================
+
+DROP FUNCTION IF EXISTS agent.fn_fetch_context(text);

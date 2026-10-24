@@ -1,0 +1,978 @@
+{
+    "id":  "80lexKwhObHhBrMB",
+    "name":  "agent.finance.tool_extract_finance_document",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "file_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "doc_hint"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "batch_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "fdd4eeb9-1e23-593e-a21b-396f0d635975",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PWPPVNrauWK7EpuB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PWPPVNrauWK7EpuB",
+                                                            "cachedResultName":  "agent.tool_fetch_telegram_file"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Start\u0027).item.json.file_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       420,
+                                       60
+                                   ],
+                      "id":  "49b2e173-e4c5-5fb9-8e03-3ea6756ce05a",
+                      "name":  "Fetch telegram file"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "4effb19f-8562-58b4-b89c-8c48011d0ada",
+                                                                                   "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       860,
+                                       60
+                                   ],
+                      "id":  "ef869792-1150-58ec-8c49-f1fb42169759",
+                      "name":  "File ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0d8309cd-ff56-5a59-8c57-aa54f4f4ec63",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "501f943e-ab8b-56ee-9203-2016f3150214",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1080,
+                                       240
+                                   ],
+                      "id":  "27a12e37-0f76-5c7b-9770-4094c1d74d6a",
+                      "name":  "File unusable"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"finance\",\"key\":\"vision_extract\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1080,
+                                       -100
+                                   ],
+                      "id":  "ea25a0da-7f76-5d45-b307-d5ee6b903e88",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/v1/messages",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "anthropicApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "anthropic-version",
+                                                                                         "value":  "2023-06-01"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: ({\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"}[$(\u0027Load model config\u0027).first().json.model.vision_extract] || null), max_tokens: 16000, system: \"You extract structured finance data from a photographed or scanned German finance document (Depotauszug, insurance policy, Renteninformation, Standmitteilung, a document listing accounts). Output ONLY a JSON array, no prose. If the document is a bank account statement with individual booking lines and an opening and closing balance (Kontoauszug, credit card statement), return exactly [{\\\"entity_type\\\":\\\"bank_statement\\\"}] and nothing else - it belongs to the monthly check, not to this import. Each element has entity_type plus RAW printed values - never compute, never estimate; omit fields that are not printed or unreadable. German number format 1.234,56 means 1234.56; output plain numbers. Dates as YYYY-MM-DD. Supported entity_type and fields: account {name, account_type one of cash|p2p|stocks_depot|crypto_depot|fixed_deposit, bank, opening_balance = the printed CURRENT or closing balance, account_number, currency}; stock_buy {depot = depot account name if known, depot_number = the printed depot or account number of the depot (Depot, Depotnummer), depot_holder = the printed depot holder (first and last name), symbol = the ticker ONLY if a ticker is printed (an ISIN is not a ticker; never derive a ticker from the name), isin, name, shares, price_per_share = printed purchase price PER UNIT (labels: Einstandskurs, durchschnittlicher Einstandskurs, Ø Einstand, Kaufkurs, Einstandspreis), cost_basis_total = printed TOTAL purchase value of the position (labels: Einstandswert, Einstand gesamt, Kaufwert) - give whichever is printed (both if both), NEVER the current market price or market value (Kurswert, Marktwert, aktueller Kurs); omit both only if neither is printed} one element PER POSITION of a Depotauszug; insurance {name, annual_premium, insurance_company, policy_number}; pension {name, pension_type one of statutory|occupational|riester|ruerup|private, provider, current_value, contract_number}; recurring_payment {name, direction one of income|expense, amount, schedule_unit one of day|week|month|year}; real_estate {name, current_value}; pension_statement {pension = name of the pension this statement belongs to, statement_date, reached_claim, projection, em_monthly = Erwerbsminderungsrente} for a Renteninformation or Standmitteilung; settlement_balance {depot = depot account name if known, depot_number, depot_holder, balance = the printed cash balance, balance_date = the printed as-of date of that balance (labels: zum, Stand, Datum)} for the cash or settlement line of a depot overview (labels: Cash, Cashkonto, Verrechnungskonto, Guthaben) - NEVER output that cash line as an account. If the document is not a finance document, return [].\", messages: [{ role: \u0027user\u0027, content: ([ (($(\u0027Fetch telegram file\u0027).item.json.mime) === \u0027application/pdf\u0027 ? { type: \u0027document\u0027, source: { type: \u0027base64\u0027, media_type: \u0027application/pdf\u0027, data: ($(\u0027Fetch telegram file\u0027).item.json.b64) } } : { type: \u0027image\u0027, source: { type: \u0027base64\u0027, media_type: ($(\u0027Fetch telegram file\u0027).item.json.mime), data: ($(\u0027Fetch telegram file\u0027).item.json.b64) } }), { type: \u0027text\u0027, text: \u0027Document context from the user: \u0027 + ($(\u0027Start\u0027).item.json.doc_hint || \u0027none\u0027) + \u0027. Extract the finance data now.\u0027 } ]) }], output_config: { effort: \u0027medium\u0027 } }) }}",
+                                         "options":  {
+                                                         "timeout":  180000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       1080,
+                                       60
+                                   ],
+                      "id":  "86fcd469-3d23-5e37-80fe-b0303307ec5f",
+                      "name":  "Vision extract",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const anthropicText = (r) =\u003e {\n  if (!r || !Array.isArray(r.content)) {\n    const m = (r \u0026\u0026 r.error \u0026\u0026 (r.error.message || r.error.type || r.error.description)) || \u0027no response\u0027;\n    return { ok: false, error: String(m).slice(0, 200) };\n  }\n  if (r.stop_reason === \u0027max_tokens\u0027) return { ok: false, error: \u0027answer truncated (max_tokens)\u0027 };\n  if (r.stop_reason === \u0027refusal\u0027) return { ok: false, error: \u0027model declined the request\u0027 };\n  if (r.stop_reason === \u0027pause_turn\u0027) return { ok: false, error: \u0027web search did not finish (pause_turn)\u0027 };\n  const text = r.content.filter(b =\u003e b \u0026\u0026 b.type === \u0027text\u0027 \u0026\u0026 b.text).map(b =\u003e b.text).join(\u0027\u0027).trim();\n  if (!text) return { ok: false, error: \u0027empty answer\u0027 };\n  return { ok: true, text };\n};\nconst stripFences = (t) =\u003e String(t).replace(/^\\s*```[a-z]*\\s*/i, \u0027\u0027).replace(/\\s*```\\s*$/, \u0027\u0027);const r = $input.first().json;\nconst fail = (m) =\u003e [{ json: { ok: false, error: \u0027Extraction failed (\u0027 + m + \u0027) - ask the user for a sharper photo or to dictate the data instead.\u0027 } }];\nconst res = anthropicText(r);\nif (!res.ok) return fail(res.error);\nconst txt = stripFences(res.text);\nconst a = txt.indexOf(\u0027[\u0027), z = txt.lastIndexOf(\u0027]\u0027);\nlet rows;\ntry { rows = JSON.parse(a \u003e= 0 \u0026\u0026 z \u003e a ? txt.slice(a, z + 1) : txt); }\ncatch (e) { return fail(\u0027unparseable model output\u0027); }\nif (!Array.isArray(rows)) return fail(\u0027model did not return an array\u0027);\nif (Array.isArray(rows) \u0026\u0026 rows.some(x =\u003e x \u0026\u0026 x.entity_type === \u0027bank_statement\u0027)) return [{ json: { ok: false, code: \u0027use_reconcile_bank_statement\u0027, error: \u0027This is a bank account statement with booking lines - call tool_reconcile_bank_statement with the same file_id instead (nothing was staged).\u0027 } }];\nif (rows.length === 0) return [{ json: { ok: false, error: \u0027No finance data recognized - is this really a statement? Ask the user, then enter via chat if needed.\u0027 } }];\nrows = rows.slice(0, 60).filter(x =\u003e x \u0026\u0026 typeof x === \u0027object\u0027 \u0026\u0026 x.entity_type);\n// Cash-/Verrechnungs-Stand einer Depot-Uebersicht wird NICHT gestaged (2026-10-23): fn_import_balance_targets ordnet\n// ihn dem Verrechnungskonto zu, der Agent bietet danach tool_reconcile_account an (eigene Karte).\nconst balances = rows.filter(x =\u003e x.entity_type === \u0027settlement_balance\u0027).map(({ entity_type, ...b }) =\u003e b);\nrows = rows.filter(x =\u003e x.entity_type !== \u0027settlement_balance\u0027);\nif (rows.length === 0 \u0026\u0026 balances.length === 0) return fail(\u0027rows without entity_type\u0027);\nreturn [{ json: { ok: true, rows: JSON.stringify(rows), row_count: rows.length, balances: JSON.stringify(balances) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1300,
+                                       60
+                                   ],
+                      "id":  "9854e49f-8192-5a9e-80b7-b45b7f62f8d7",
+                      "name":  "Shape rows"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "98fe4cdf-c859-5391-a411-d3ac18539f62",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1520,
+                                       60
+                                   ],
+                      "id":  "a3f4930c-e984-5419-a7ac-d5a038abb5e4",
+                      "name":  "Rows ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8463fcb9-575a-51db-bc14-cff1fd0512cb",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5b39a4c9-8769-5b21-ae1b-a894a4c5e52d",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Shape rows\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bd8238e5-41f2-5f68-a9aa-23e188de2f36",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Shape rows\u0027).item.json.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1740,
+                                       240
+                                   ],
+                      "id":  "22c2facd-ddd0-5e5d-9751-0b750197590e",
+                      "name":  "Extraction failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027batch_id\u0027 AS batch_id, (r-\u003e\u003e\u0027staged\u0027)::int AS staged, (r-\u003e\u003e\u0027valid\u0027)::int AS valid, (r-\u003e\u003e\u0027invalid\u0027)::int AS invalid, r-\u003e\u0027errors\u0027 AS errors FROM finance.fn_import_stage($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ rows: JSON.parse($(\u0027Shape rows\u0027).item.json.rows), batch_id: $(\u0027Start\u0027).item.json.batch_id || null, source: \u0027vision\u0027 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1740,
+                                       60
+                                   ],
+                      "id":  "f7c22277-ab84-52a3-9456-9dc219a5210b",
+                      "name":  "Stage extracted rows",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1d80ae0f-28c7-5507-a216-064a7e428d44",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1960,
+                                       60
+                                   ],
+                      "id":  "cc51ec90-08eb-5c97-a66b-22bccad81fe5",
+                      "name":  "Stage ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "adc34270-7d1e-5c7b-bb78-7d8656cb3ad9",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1e195e85-e313-565a-9d43-6003d60844bb",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Stage extracted rows\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2180,
+                                       240
+                                   ],
+                      "id":  "0c372373-6cd5-54c2-bc55-73dd198ef544",
+                      "name":  "Stage failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0e7b74ca-dfd9-5afb-b96f-c3dc7788c572",
+                                                                                   "leftValue":  "={{ $(\u0027Stage extracted rows\u0027).item.json.invalid === 0 \u0026\u0026 $(\u0027Stage extracted rows\u0027).item.json.valid \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2180,
+                                       -140
+                                   ],
+                      "id":  "4ed19aae-3063-534b-878c-215b3a016aad",
+                      "name":  "All rows valid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "LqstOsRNyRtED737",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/LqstOsRNyRtED737",
+                                                            "cachedResultName":  "agent.finance.tool_commit_import"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "batch_id":  "={{ $(\u0027Stage extracted rows\u0027).item.json.batch_id }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2400,
+                                       -140
+                                   ],
+                      "id":  "ae76ebef-6c55-55e3-b13d-9ef1a2576417",
+                      "name":  "Send approval card"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "08e04b62-b3bf-5e51-9680-b492d44035cc",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "={{ $json.ok === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9bc667ab-3a18-5a2c-9b37-cb3b5699fccd",
+                                                                                     "name":  "approval_card_sent",
+                                                                                     "value":  "={{ $json.card_sent !== false }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "23874aee-3d2a-5d01-87b3-7b0931e4cca3",
+                                                                                     "name":  "batch_id",
+                                                                                     "value":  "={{ $(\u0027Stage extracted rows\u0027).item.json.batch_id }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cfd2a6b5-3d87-5f9a-9180-f3be7923676b",
+                                                                                     "name":  "extracted_rows",
+                                                                                     "value":  "={{ $(\u0027Shape rows\u0027).item.json.row_count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "21eb716f-bebd-511b-b5f2-6f609095a2fb",
+                                                                                     "name":  "committed",
+                                                                                     "value":  "={{ $json.committed || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b9426e7d-de0b-5a54-9c3e-297ae17ac2f5",
+                                                                                     "name":  "created",
+                                                                                     "value":  "={{ $json.created || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fdf4e615-e8ef-583f-af50-8cc840eff1be",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "={{ $json.cancelled === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "08f5fa5b-ca76-5a42-9011-c4db3d5fa07d",
+                                                                                     "name":  "message",
+                                                                                     "value":  "={{ $json.message || $json.error || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "91310270-8db7-50f1-9f25-699a511cb418",
+                                                                                     "name":  "errors",
+                                                                                     "value":  "={{ $json.errors || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e317ee0b-539a-51e8-9c54-68bada627e82",
+                                                                                     "name":  "error_summary",
+                                                                                     "value":  "={{ $json.error_summary || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d6eca290-2f52-55d6-a6b4-7eeb0923391f",
+                                                                                     "name":  "positions_without_price",
+                                                                                     "value":  "={{ $json.positions_without_price || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2f2b8d50-48e3-5f99-bd65-1a41c743ad22",
+                                                                                     "name":  "positions_without_asset_class",
+                                                                                     "value":  "={{ $json.positions_without_asset_class || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "37e99b4e-2c72-5395-9b81-0622d1e711af",
+                                                                                     "name":  "balances",
+                                                                                     "value":  "={{ $(\u0027Resolve balances\u0027).item.json.balances || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2620,
+                                       -140
+                                   ],
+                      "id":  "3162f025-304c-5240-ace4-0fb089a276f8",
+                      "name":  "Return card result"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "dfa2ba25-3d33-53f7-8ba8-456e8c1b336c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "58b7b463-c284-5310-a04d-fde1d03f168b",
+                                                                                     "name":  "batch_id",
+                                                                                     "value":  "={{ $(\u0027Stage extracted rows\u0027).item.json.batch_id }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6a80d3c8-4827-5f65-95d7-a5dd9f6885ad",
+                                                                                     "name":  "extracted_rows",
+                                                                                     "value":  "={{ $(\u0027Shape rows\u0027).item.json.row_count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0dd989c5-5226-5afb-929c-0ecfc90a7c81",
+                                                                                     "name":  "valid",
+                                                                                     "value":  "={{ $(\u0027Stage extracted rows\u0027).item.json.valid }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e2cd8327-5b34-5130-aeaf-ca695d6751bf",
+                                                                                     "name":  "invalid",
+                                                                                     "value":  "={{ $(\u0027Stage extracted rows\u0027).item.json.invalid }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7e868181-eebe-58bc-a37a-0213b67a4fc5",
+                                                                                     "name":  "errors",
+                                                                                     "value":  "={{ $(\u0027Stage extracted rows\u0027).item.json.errors }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5ea4bdc9-afcf-597e-b787-916098f21a9a",
+                                                                                     "name":  "balances",
+                                                                                     "value":  "={{ $(\u0027Resolve balances\u0027).item.json.balances || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2400,
+                                       60
+                                   ],
+                      "id":  "edbf86ae-9229-5330-aa93-0663fa6b0229",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Fetch telegram file (Core-Baustein: Download/base64) -\u003e Load model config -\u003e Claude-Vision aufs Bild/PDF (model.vision_extract, Denk-Tiefe mittel: Depotauszüge mit Stück-/Gesamt-Einstand brauchen sorgfältiges Lesen, Owner-Befund 2026-10-22) -\u003e Staging -\u003e alle gültig: Sammelkarte (tool_commit_import)**\n\nPRIVACY: Kontoauszüge gehen NUR über die bezahlte Anthropic-API (anthropicApi-Credential; die API trainiert laut Commercial Terms nicht auf Kundeninhalten) — nie über einen Free-Tier-Zugang. Der Download/die base64-Wandlung kommt seit WS-4 aus dem generischen Baustein agent.tool_fetch_telegram_file (kein Key dort; Allow-List jpeg/png/gif/webp/pdf, Bild \u003c= 5 MB); die FINANZ-Vision aufs BILD (volle Genauigkeit: Layout/Spalten/Einstandskurs/ISIN) bleibt HIER, der Aufruf über den geteilten Baustein New-AnthropicMessagesNode (Bild = image-Block, PDF = document-Block). Extraktion liefert NUR Rohwerte (Bestände, keine Historie, nichts Abgeleitetes — System-Prompt + Staging-Denylist) als JSON-Array (Prompt-Vertrag, Parse toleriert Zäune; abgeschnittene Antwort/Ablehnung -\u003e ok:false). Depot-Positionen: Ticker nur, wenn gedruckt (sonst ist die ISIN die Kennung, fn_holding_symbol); gedruckte Depotnummer/Inhaber (depot_number/depot_holder) -\u003e fn_import_stage wählt das Depot deterministisch (fn_import_resolve_depot) statt des geratenen Namens, Widersprüche werden Zeilenfehler (Owner-Befund 2026-10-23). Jede Zahl läuft durch fn_import_validate und das EINE Commit-Gate (tool_commit_import) — dieses Tool selbst schreibt nichts in die Bücher; sind alle Zeilen gültig, ruft es tool_commit_import auf (Karte, Write erst nach dem Tipp; Sticky Karte kommt sicher). Modell: Load model config liest bei JEDEM Lauf core.config model.vision_extract (Wechsel: lifeagents config set model vision_extract \u003ckey\u003e, wirkt sofort; nur Claude = bezahlte API).",
+                                         "height":  320,
+                                         "width":  680,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       420,
+                                       -420
+                                   ],
+                      "id":  "c744dc3c-0e7d-5851-992f-88c1ac2164cc",
+                      "name":  "Vision-Extraktion (paid-key Pflicht)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Alle Zeilen gültig -\u003e Sammelkarte direkt (tool_commit_import inline)**\n\nOwner 2026-10-22: nach dem Auslesen fragte der Agent im Text nach (\"Soll ich es so übernehmen?\") statt die Karte zu schicken - keine Knöpfe. Fester Ablauf statt Modell-Entscheid (arch-challenge: Anthropic \"Building effective agents\" - feste Reihenfolgen gehören in den Code; erzwungene Tool-Aufrufe lehnen die aktuellen Claude-Modelle ab). Alle Zeilen gültig -\u003e Send approval card ruft tool_commit_import (Karte mit Knöpfen, atomarer Write nach dem Tipp) und gibt dessen Ergebnis zurück (approval_card_sent, committed bzw. cancelled). Ungültige Zeilen -\u003e Return wie bisher, der Agent klärt sie und ruft danach tool_commit_import. Ein zweiter Commit desselben Batches wird abgelehnt (already committed).",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2180,
+                                       -420
+                                   ],
+                      "id":  "e405a02d-aec1-5bdc-a1f1-aade9a3b6470",
+                      "name":  "Karte kommt sicher"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e88ce4f8-eb0f-57d6-9241-63be9dcfd6b5",
+                                                                                   "leftValue":  "={{ $(\u0027Shape rows\u0027).item.json.row_count \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1630,
+                                       -60
+                                   ],
+                      "id":  "374e0da8-1223-5668-84a2-0ec6f49b8cfe",
+                      "name":  "Any rows to stage?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_import_balance_targets(NULLIF(($1::jsonb)-\u003e\u003e\u0027batch_id\u0027, \u0027\u0027)::uuid, ($1::jsonb)-\u003e\u0027rows\u0027) AS balances;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ batch_id: $(\u0027Stage extracted rows\u0027).item.json.batch_id, rows: JSON.parse($(\u0027Shape rows\u0027).item.json.balances || \u0027[]\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2070,
+                                       -60
+                                   ],
+                      "id":  "7f4fe7d2-9aa3-557b-adcf-30d5ac2664d6",
+                      "name":  "Resolve balances",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_import_balance_targets(NULL, ($1::jsonb)-\u003e\u0027rows\u0027) AS balances;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ rows: JSON.parse($(\u0027Shape rows\u0027).item.json.balances || \u0027[]\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1850,
+                                       -260
+                                   ],
+                      "id":  "7f354e4a-e120-5737-b387-05fd34bfa094",
+                      "name":  "Resolve balances only",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "aadf8090-5a7f-5015-9cea-f970a8a39c57",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7e620723-0c7d-5f35-be4f-c209f6b656d7",
+                                                                                     "name":  "extracted_rows",
+                                                                                     "value":  "0",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ba2a1735-8d66-5809-8038-e2bc774693b5",
+                                                                                     "name":  "valid",
+                                                                                     "value":  "0",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "50b4c25e-7260-573e-8485-acf8b5fa3e88",
+                                                                                     "name":  "invalid",
+                                                                                     "value":  "0",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7dc3587f-6808-5089-ac6e-19ec9a77c090",
+                                                                                     "name":  "errors",
+                                                                                     "value":  "={{ [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "97592730-9944-53fb-8602-e7f70934652d",
+                                                                                     "name":  "balances",
+                                                                                     "value":  "={{ $json.balances || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2070,
+                                       -260
+                                   ],
+                      "id":  "1ca6215b-5f78-506e-9a99-dd92244f7fdf",
+                      "name":  "Return balances only"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**settlement_balance -\u003e zweite Karte über tool_reconcile_account (nie als Konto-Zeile)**\n\nOwner-Fall 2026-10-23: die Vermögensübersicht druckt \"Cash 3.054,97\"; als account-Zeile wurde sie als Dublette eines FREMDEN Kontos abgelehnt und verworfen. Jetzt trennt Shape rows settlement_balance ab (nicht gestaged). Resolve balances (fn_import_balance_targets, read-only) ordnet über Depotnummer/Inhaber/Name dem Verrechnungskonto des Depots zu (nur Bestandskonten; Depot neu im Batch -\u003e Saldo als opening_balance der Konto-Zeile), Druckdatum Pflicht, Blocker wie der Abgleich, liefert Saldo zum Datum + Differenz + skip_count. balances[] geht an den Agenten; er ruft danach je Abweichung tool_reconcile_account (eigene Karte, Owner-Entscheid \"zweite Karte statt neuer Import-Art\"). Nur ein Cash-Stand im Dokument -\u003e Any rows to stage? false -\u003e Resolve balances only.",
+                                         "height":  320,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1630,
+                                       -560
+                                   ],
+                      "id":  "aa9b37e8-62de-56fe-8ebf-842f88ff07d0",
+                      "name":  "Cash-Stand einer Depot-Übersicht"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Fetch telegram file",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Fetch telegram file":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "File ok?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "File ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "File unusable",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Vision extract",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Vision extract":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Shape rows",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Shape rows":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Rows ok?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Rows ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Any rows to stage?",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Extraction failed",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Any rows to stage?":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Stage extracted rows",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ],
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Resolve balances only",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Resolve balances only":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Return balances only",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Stage extracted rows":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Stage ok?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Stage ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Resolve balances",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Stage failed",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Resolve balances":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "All rows valid?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "All rows valid?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Send approval card",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Return",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Send approval card":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Return card result",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

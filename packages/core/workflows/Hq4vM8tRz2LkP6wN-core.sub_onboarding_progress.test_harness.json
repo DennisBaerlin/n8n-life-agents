@@ -1,0 +1,129 @@
+{
+    "id":  "Hq4vM8tRz2LkP6wN",
+    "name":  "core.sub_onboarding_progress.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "onboarding-progress-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "d04e81f2-a3a1-5734-aa5e-18dd760baeb9",
+                      "name":  "Test Webhook",
+                      "webhookId":  "bfda1619-3b54-59df-9fd6-435e86787f11",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Rf7pQ2nWx8LkT3aZ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Rf7pQ2nWx8LkT3aZ",
+                                                            "cachedResultName":  "core.sub_onboarding_progress"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}",
+                                                                              "package":  "={{ $(\u0027Test Webhook\u0027).item.json.body.package }}",
+                                                                              "area_completed_now":  "={{ $(\u0027Test Webhook\u0027).item.json.body.area_completed_now }}",
+                                                                              "area_all_skipped":  "={{ $(\u0027Test Webhook\u0027).item.json.body.area_all_skipped }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "6893c0bf-de1e-5e4a-b888-5aa162e5d483",
+                      "name":  "Run core.sub_onboarding_progress",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "db1fe2d5-df13-52e3-b3be-cbde5cc6797d",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## core.sub_onboarding_progress.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft core.sub_onboarding_progress\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: chat_id, package, area_completed_now, area_all_skipped.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "b77e43a6-c7d5-5fbc-84d3-40be6ef8c7fb",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run core.sub_onboarding_progress",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run core.sub_onboarding_progress":  {
+                                                                 "main":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Run Info",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                             }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

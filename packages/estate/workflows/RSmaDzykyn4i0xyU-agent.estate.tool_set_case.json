@@ -1,0 +1,564 @@
+{
+    "id":  "RSmaDzykyn4i0xyU",
+    "name":  "agent.estate.tool_set_case",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "case_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "knowledge_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "bundesland"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "tenant"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "employed"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "pension_relevant"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "has_will"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "no_poa"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "abroad_or_work_accident"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "e760c119-aba3-568e-be11-6851c3eea2fb",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027estate.fn_set_case(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, case_id: $(\u0027Start\u0027).item.json.case_id, knowledge_date: $(\u0027Start\u0027).item.json.knowledge_date, bundesland: $(\u0027Start\u0027).item.json.bundesland, flags: Object.fromEntries([\u0027tenant\u0027,\u0027employed\u0027,\u0027pension_relevant\u0027,\u0027has_will\u0027,\u0027no_poa\u0027,\u0027abroad_or_work_accident\u0027].filter(k =\u003e $(\u0027Start\u0027).item.json[k] === \u0027true\u0027).map(k =\u003e [k, true])) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "9a25794c-be5c-5232-90e5-80f59030737f",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0737760d-b554-57d5-ad8f-83ea3d15335f",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "b536298a-33f2-5b2e-b9fa-f619dd04252e",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a8faebb7-e2b3-5096-a789-8c88b8ffcb29",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f9e239f1-7a9c-5f39-a087-cb033d93d142",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6c5531b1-3d75-55b7-8245-70f3880f3fb1",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4fe4c4ec-3fc6-52ee-bcf5-6e546ccce5f8",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3e8811cf-0fc1-5add-86c5-17a97c9b2498",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "27a3cae4-0696-5a12-a0f1-46764c57a11d",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027case_id\u0027)::bigint AS case_id, (r-\u003e\u003e\u0027total_open\u0027)::int AS total_open FROM estate.fn_set_case(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, case_id: $(\u0027Start\u0027).item.json.case_id, knowledge_date: $(\u0027Start\u0027).item.json.knowledge_date, bundesland: $(\u0027Start\u0027).item.json.bundesland, flags: Object.fromEntries([\u0027tenant\u0027,\u0027employed\u0027,\u0027pension_relevant\u0027,\u0027has_will\u0027,\u0027no_poa\u0027,\u0027abroad_or_work_accident\u0027].filter(k =\u003e $(\u0027Start\u0027).item.json[k] === \u0027true\u0027).map(k =\u003e [k, true])), _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "f0b3ddcf-ff56-5dde-8f9b-3fc79c5c8935",
+                      "name":  "Set case (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "bb1d5a70-abee-5af2-a4aa-40ec9fd29311",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027estate.hitl.set_case\u0027, lines: [ { label: \u0027estate.label.case_no\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.case_id) }, (($(\u0027Start\u0027).item.json.knowledge_date) ? { label: \u0027estate.label.new_knowledge_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.knowledge_date) } : null), ((!$(\u0027Start\u0027).item.json.knowledge_date) ? { label: \u0027estate.label.new_knowledge_date\u0027, kind: \u0027key\u0027, value: (\u0027estate.value.unchanged\u0027) } : null), (($(\u0027Start\u0027).item.json.bundesland) ? { label: \u0027estate.label.new_state\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.bundesland), enum: \u0027estate.enum.state\u0027 } : null), ((!$(\u0027Start\u0027).item.json.bundesland) ? { label: \u0027estate.label.new_state\u0027, kind: \u0027key\u0027, value: (\u0027estate.value.unchanged\u0027) } : null), { label: \u0027estate.label.new_flags\u0027, kind: \u0027list\u0027, value: ([\u0027tenant\u0027,\u0027employed\u0027,\u0027pension_relevant\u0027,\u0027has_will\u0027,\u0027no_poa\u0027,\u0027abroad_or_work_accident\u0027].filter(k =\u003e $(\u0027Start\u0027).item.json[k] === \u0027true\u0027).map(k =\u003e ({ kind: \u0027enum\u0027, value: k, enum: \u0027estate.enum.case_flag\u0027 }))) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "844a93d4-d01d-5081-b934-0eeb159fa227",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "8e3e4c7f-200a-57c3-bd5e-27de758ae308",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "34018971-44cb-567e-8219-f93d8fc5673b",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "e192fada-8363-52ef-ad85-62cf8720cd01",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "f0b3a3f1-6cbe-532a-a374-4b68ae6226f6",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2e4de4a0-2a00-54b8-b720-8edabbab9b04",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "78caece5-671c-555a-ac6d-c520ab47e43b",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_case action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "cc59cefb-a861-5d23-bce5-da08e64ffa5f",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3c7ae1cb-4928-533e-af51-4c0e8964344f",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "2ca43f2f-9280-5704-a8b2-2cfc73de9782",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d239cdcc-8ed2-5755-be4c-264277fd7a3b",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4e6ef2c1-b97e-52ed-b131-8280849432d1",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set case (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       200
+                                   ],
+                      "id":  "80a7fcd5-717b-590e-bdd6-e4c1585561cc",
+                      "name":  "Set case rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "891387b4-731d-5125-9def-18675eee2368",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "40c6eca2-fc82-5148-b8fa-4072af6a6e2d",
+                                                                                     "name":  "case_id",
+                                                                                     "value":  "={{ $(\u0027Set case (atomic)\u0027).item.json.case_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "97d14520-ff7d-5780-ac0a-f17557c6aea9",
+                                                                                     "name":  "total_open",
+                                                                                     "value":  "={{ $(\u0027Set case (atomic)\u0027).item.json.total_open }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "e780eac4-4563-53c6-bf3b-809b48396bcd",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = estate.fn_set_case mit denselben Werten, immer zurückgerollt (Fristen-Recompute und Task-Reconcile bleiben NICHT stehen). ok:false (z. B. Fall nicht offen, Bundesland ungültig, Person nicht erwachsen/berechtigt) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -280
+                                   ],
+                      "id":  "047de4d2-d317-5515-af03-17cf9ee3fa34",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_set_case (partielles UPDATE offener Fall -\u003e Fristen-Recompute + Reconcile)**\n\nÄndert knowledge_date/bundesland/flags eines OFFENEN Falls. estate.fn_set_case ruft danach estate.fn_instantiate_case_tasks (ON CONFLICT): due_date aller offenen Tasks neu (bundesland -\u003e Werktage, knowledge -\u003e kenntnis-verankerte Fristen), und eine not_applicable-Task, deren Condition jetzt zutrifft, kippt auf open (additiv). NICHTS wird auto-n.a. (open/done bleiben). flags additiv (nur true-Merkmale gemergt). adults_only-DB-Backstop.",
+                                         "height":  300,
+                                         "width":  640,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1540,
+                                       -280
+                                   ],
+                      "id":  "d0b050aa-fc85-57f9-a2a6-632a458379e5",
+                      "name":  "HITL owner_approval + additiver Reconcile"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Dry run",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set case (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Set case (atomic)":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Write ok?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set case rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

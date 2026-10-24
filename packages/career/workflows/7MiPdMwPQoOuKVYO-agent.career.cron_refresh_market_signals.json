@@ -1,0 +1,324 @@
+{
+    "id":  "7MiPdMwPQoOuKVYO",
+    "name":  "agent.career.cron_refresh_market_signals",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REFRESH_MARKET_SIGNALS__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1120,
+                                       0
+                                   ],
+                      "id":  "ae8cfe14-d89a-5bb0-9a5b-a40fc5d253fa",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_package_active(\u0027career\u0027) AND COALESCE(core.fn_config_get(\u0027career\u0027,\u0027cron_enable\u0027,\u0027refresh_market_signals\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -900,
+                                       0
+                                   ],
+                      "id":  "c939b29c-5f14-5c12-b01b-6b2515b9b258",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "eaac1a30-b5fa-5b39-a8ae-8ea8395d2941",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -680,
+                                       0
+                                   ],
+                      "id":  "e587f018-331e-57bd-a330-c0624ef18aa2",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -460,
+                                       200
+                                   ],
+                      "id":  "d1f36573-b9f9-576a-9be2-91083bca360f",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT COALESCE(\n         jsonb_agg(DISTINCT jsonb_build_object(\u0027role\u0027, role_title, \u0027loc\u0027, COALESCE(location, \u0027\u0027)))\n           FILTER (WHERE role_title IS NOT NULL AND btrim(role_title) \u003c\u003e \u0027\u0027),\n         \u0027[]\u0027::jsonb) AS pairs\nFROM (\n  SELECT\n    (SELECT metadata-\u003e\u0027facts\u0027-\u003e\u0027target_roles\u0027-\u003e0-\u003e\u003e\u0027title\u0027 FROM agent.core_contexts WHERE name = \u0027career_planning__\u0027 || p.person_id) AS role_title,\n    (SELECT metadata-\u003e\u0027facts\u0027-\u003e\u0027target_locations\u0027-\u003e\u003e0       FROM agent.core_contexts WHERE name = \u0027career_planning__\u0027 || p.person_id) AS location\n  FROM agent.fn_context_persons(\u0027career_planning\u0027) p\n) s",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -460,
+                                       0
+                                   ],
+                      "id":  "08e4bdfc-fc18-5d9b-8213-3a88c33551fd",
+                      "name":  "Load context",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "95d67af2-aa73-5b3a-9ae6-1332f896a28f",
+                                                                                   "leftValue":  "={{ Array.isArray($json.pairs) \u0026\u0026 $json.pairs.length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -240,
+                                       0
+                                   ],
+                      "id":  "622a74d6-89ce-57aa-b742-0e304cc0f49e",
+                      "name":  "Have criteria?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -20,
+                                       200
+                                   ],
+                      "id":  "a9a1e738-4a34-588c-85c4-3875d06ea3f3",
+                      "name":  "No criteria"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const pairs = ($(\u0027Load context\u0027).first().json.pairs) || [];\nconst signals = [];\n\n// Je (Rolle, Ort)-Paar EIN Posting-Count via Jobsuche maxErgebnisse (keyless, oeffentliche X-API-Key-Konstante;\n// size=1 = nur die Zahl). Die Paare sind in SQL bereits auf DISTINCT (Rolle, Ort) dedupliziert -\u003e kein Doppel-\n// API-Call. Ein Ausfall je Paar -\u003e still uebersprungen, die anderen Paare laufen weiter.\nfor (const pr of pairs) {\n  const role = String((pr \u0026\u0026 pr.role) || \u0027\u0027).trim();\n  const loc  = String((pr \u0026\u0026 pr.loc) || \u0027\u0027).trim();\n  if (!role) continue;\n  try {\n    const params = [\u0027size=1\u0027, \u0027page=1\u0027];\n    params.push(\u0027was=\u0027 + encodeURIComponent(role));\n    if (loc) params.push(\u0027wo=\u0027 + encodeURIComponent(loc));\n    const jres = await this.helpers.httpRequest({\n      url: \u0027https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs?\u0027 + params.join(\u0027\u0026\u0027),\n      headers: { \u0027X-API-Key\u0027: \u0027jobboerse-jobsuche\u0027 }, json: true, timeout: 15000 });\n    const cnt = (jres \u0026\u0026 jres.maxErgebnisse != null) ? Number(jres.maxErgebnisse) : NaN;\n    if (Number.isFinite(cnt) \u0026\u0026 cnt \u003e= 0) {\n      signals.push({ kind: \u0027postings\u0027, primary: role, secondary: loc, postings_count: Math.round(cnt),\n                     raw: { maxErgebnisse: Math.round(cnt) } });\n    }\n  } catch (e) { /* API-Ausfall fuer dieses Paar -\u003e still */ }\n}\n\nreturn [{ json: { signals } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -20,
+                                       0
+                                   ],
+                      "id":  "4f3f5e29-3104-551a-9175-9d9e1918a6f7",
+                      "name":  "Fetch market data",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, (r-\u003e\u003e\u0027upserted\u0027)::int AS upserted FROM career.fn_upsert_market_signals($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ signals: $json.signals }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       200,
+                                       0
+                                   ],
+                      "id":  "c9b25ca4-8789-559f-80fd-206045e839f6",
+                      "name":  "Upsert signals",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Stellen-Nachfrage-Refresh (ALWAYS-ON-Cron, deterministisch, KEIN LLM/KEIN paid Key)**\n\nF9-Gate (career aktiv UND cron_enable.refresh_market_signals=true — always-on, nur Konsole abschaltbar, KEINE Chat-Buttons; Muster finance.cron_refresh_market_prices) -\u003e Kriterien ALLER aktiven Personen laden (P2b-2: agent.fn_context_persons(career_planning) -\u003e je Person primäre Rolle/Ort am Suffix career_planning__\u003cpid\u003e -\u003e EIN auf (Rolle, Ort) DEDUPLIZIERTES pairs-Array; market_signals ist household-global -\u003e kein splitInBatches/kein person_id/keine Sends) -\u003e Have criteria? (kein Paar -\u003e still) -\u003e EIN Code-Node iteriert die Paare + holt KEYLESS je Paar die öffentliche Bundesagentur-Jobsuche /pc/v6/jobs?size=1 -\u003e maxErgebnisse (Posting-Count, X-API-Key=jobboerse-jobsuche, öffentliche Konstante; DISTINCT -\u003e kein Doppel-Call). try/catch je Paar = graceful degrade. -\u003e career.fn_upsert_market_signals (datierter Cache career.market_signals, scope_key via fn_market_scope_key aus rohen Feldern). Den Trend liest der Renderer via career.fn_market_trend (Posting-Count über die Zeit). ROLLE: Haupt-RW-Cred (liest agent.core_contexts, schreibt career.market_signals; deterministische SQL, kein LLM-SELECT). PRIVACY: KEIN PII (nur öffentlicher Rollen-Titel/Ort), KEIN paid Key. GEHALTSBAND v1 NICHT hier (Entgeltatlas 403 -\u003e Gehalt on-demand via web_search; strukturiertes Band Destatis GENESIS = BACKLOG).",
+                                         "height":  360,
+                                         "width":  940,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1160,
+                                       -380
+                                   ],
+                      "id":  "4bfe57ce-e0c3-59af-a764-1e3f7604cf91",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Keyless (öffentliche X-API-Key-Konstante, kein Secret); der Trend braucht \u003e= 2 wöchentliche Messungen**\n\nDer Posting-Count braucht nur den Rollen-Titel (+Ort) -\u003e der Trend läuft beim Erst-Setup ~1-2 Wochen als nackter Count an (career.fn_market_trend: erst ab der 2. Messung ein Delta). Ein reiner Wert ginge nicht -\u003e dedizierte datierte Cache-Tabelle career.market_signals (Muster finance.market_prices).",
+                                         "height":  320,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -20,
+                                       200
+                                   ],
+                      "id":  "0c47c4fe-0065-523b-b981-916b378ba85d",
+                      "name":  "Trend braucht Historie"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load context",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load context":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Have criteria?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Have criteria?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Fetch market data",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "No criteria",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Fetch market data":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Upsert signals",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -1,0 +1,248 @@
+{
+    "id":  "OvrPN4VccrfpURDx",
+    "name":  "agent.finance.tool_update_staging_row",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "batch_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "row_no"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "payload_merge"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "delete_row"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "f6c37407-db46-5e02-a2db-282b8d11df8c",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027row_no\u0027)::int AS row_no, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027validation_error\u0027 AS validation_error, (r-\u003e\u003e\u0027deleted_row\u0027)::int AS deleted_row, (r-\u003e\u003e\u0027valid\u0027)::int AS valid, (r-\u003e\u003e\u0027invalid\u0027)::int AS invalid FROM finance.fn_import_update_row($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ batch_id: $(\u0027Start\u0027).item.json.batch_id, row_no: $(\u0027Start\u0027).item.json.row_no, payload_merge: (() =\u003e { try { return $(\u0027Start\u0027).item.json.payload_merge ? JSON.parse($(\u0027Start\u0027).item.json.payload_merge) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), delete_row: $(\u0027Start\u0027).item.json.delete_row === true || $(\u0027Start\u0027).item.json.delete_row === \u0027true\u0027 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "54bac40b-9380-598d-ad1c-33759d460326",
+                      "name":  "Update row + revalidate",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "15ad338b-b8b4-55a6-a946-67c00fbc7500",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "fc54380b-02fe-522c-896e-518aae2c5e25",
+                      "name":  "Update ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b9c8b9fd-90df-5a77-97b0-537e1d607c4c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ee22159d-c5a9-5de6-81fa-2e542a33495d",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Update row + revalidate\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "3c2c0c5a-c3ed-52b8-a060-f44aa5096ff7",
+                      "name":  "Update failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "64fe3c9b-45ba-5e95-b30d-331787224ad8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "69e1d585-78f9-587a-993d-1c60e3acaf75",
+                                                                                     "name":  "row_no",
+                                                                                     "value":  "={{ $json.row_no }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ca5d0eb9-cb99-59dd-b074-506ff645f3b1",
+                                                                                     "name":  "status",
+                                                                                     "value":  "={{ $json.status }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2f1c5658-60b1-557c-b6e4-19d12656d3f0",
+                                                                                     "name":  "validation_error",
+                                                                                     "value":  "={{ $json.validation_error }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "10ae56fe-ea5a-5b5f-9613-5fe7c50bc7c6",
+                                                                                     "name":  "deleted_row",
+                                                                                     "value":  "={{ $json.deleted_row }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8ee4e7cb-2d5f-5198-b6eb-0449d937e849",
+                                                                                     "name":  "valid",
+                                                                                     "value":  "={{ $json.valid }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f528444d-78dd-5fc6-84f6-610f4e0a6e1e",
+                                                                                     "name":  "invalid",
+                                                                                     "value":  "={{ $json.invalid }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "583bd3b2-9b3c-5fcd-81f5-cd66394eb431",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_import_update_row: Key-Merge/Delete + Batch-Revalidate**\n\npayload_merge merged Keys in den Row-Payload (JSON-null entfernt einen Key), delete_row entfernt die Row; danach läuft fn_import_validate über den GANZEN Batch (Referenzen können sich ändern). Kein Gate: Staging ist Arbeitskopie — der Nutzer korrigiert im Chat, approved wird erst der Commit (tool_commit_import).",
+                                         "height":  240,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -240
+                                   ],
+                      "id":  "6408a180-02e9-57d7-af7b-777be843fef1",
+                      "name":  "Korrektur VOR dem Gate"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Update row + revalidate",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Update row + revalidate":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Update ok?",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Update ok?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Return",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Update failed",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

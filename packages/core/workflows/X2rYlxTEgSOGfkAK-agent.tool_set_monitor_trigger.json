@@ -1,0 +1,945 @@
+{
+    "id":  "X2rYlxTEgSOGfkAK",
+    "name":  "agent.tool_set_monitor_trigger",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "label"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "new_label"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "acquisition_prompt"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "acquisition_sql"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "acquisition_params"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "comparator"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "threshold_value"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "drawdown_pct"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "due_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "warn_days_before"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "expected_unit"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "min_plausible"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "max_plausible"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "max_jump_pct"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "check_interval"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "action_note"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "status"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "reset_peak"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7239e21b-2884-5309-84d6-2fc9c57e6642",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "67d088dc-4409-5e90-a34f-5f4492883fa8",
+                                                                                     "name":  "domain",
+                                                                                     "value":  "={{ String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_monitor__\u0027 : ($(\u0027Start\u0027).item.json.domain || \u0027general\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       180,
+                                       0
+                                   ],
+                      "id":  "ea645e8d-4bc1-55f6-9692-1e15b8ddfa8a",
+                      "name":  "Resolve domain"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT r.id, r.hit_count, r.candidates::text AS candidates, t.trigger_type, t.acquisition_method, t.acquisition_spec::text AS spec, t.expected_unit AS cur_unit, t.min_plausible AS cur_min, t.max_plausible AS cur_max, t.max_jump_pct AS cur_jump, t.last_value AS cur_last, t.status AS cur_status FROM agent.fn_resolve_monitor_trigger(($1::jsonb)-\u003e\u003e\u0027label\u0027, ($1::jsonb)-\u003e\u003e\u0027domain\u0027, false) AS r LEFT JOIN agent.monitor_triggers t ON t.id = r.id;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ label: $(\u0027Start\u0027).item.json.label, domain: $(\u0027Resolve domain\u0027).item.json.domain }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       360,
+                                       0
+                                   ],
+                      "id":  "6a671289-5270-5aac-bd9a-9faf226a2b52",
+                      "name":  "Resolve trigger",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ef8aa5b2-b8c0-564d-be82-1a5d292773f7",
+                                                                                   "leftValue":  "={{ $json.hit_count }}",
+                                                                                   "rightValue":  1,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       540,
+                                       0
+                                   ],
+                      "id":  "ada19d12-857c-563c-ae47-56d217ccd70d",
+                      "name":  "Found?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0ca16bf0-6ad1-5e65-b399-2378308b0b3c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0b475e06-fb1d-5a4e-86a6-995e0a64cb05",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Resolve trigger\u0027).item.json.hit_count === 0 ? \u0027No trigger with this label in this domain. List existing triggers via postgres_select on agent.monitor_triggers and ask the user.\u0027 : \u0027Label is ambiguous across domains - specify the domain. Candidates: \u0027 + $(\u0027Resolve trigger\u0027).item.json.candidates }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       720,
+                                       -200
+                                   ],
+                      "id":  "9695b011-f786-52d7-b7f1-1b10e8b45983",
+                      "name":  "Not found"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0729bf9d-35cb-50fc-b1b8-8203b81f8797",
+                                                                                   "leftValue":  "={{ ($(\u0027Resolve trigger\u0027).item.json.acquisition_method === \u0027web_search\u0027 ? ($(\u0027Start\u0027).item.json.acquisition_prompt || \u0027\u0027) : $(\u0027Resolve trigger\u0027).item.json.acquisition_method === \u0027sql\u0027 ? ($(\u0027Start\u0027).item.json.acquisition_sql || \u0027\u0027) : $(\u0027Resolve trigger\u0027).item.json.acquisition_method === \u0027none\u0027 ? \u0027\u0027 : String($(\u0027Start\u0027).item.json.acquisition_params || \u0027\u0027)).trim().length }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       720,
+                                       0
+                                   ],
+                      "id":  "db626c7e-1d8d-59ac-95b1-227b7ef1794f",
+                      "name":  "Spec changed?"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "876b7e84-fe2c-5eae-89ff-4a33174e73fb",
+                                                                                   "leftValue":  "={{ String(($(\u0027Resolve trigger\u0027).item.json.acquisition_method) || \u0027\u0027) }}",
+                                                                                   "rightValue":  "web_search",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       900,
+                                       -80
+                                   ],
+                      "id":  "d5248be5-360a-568e-9738-0cbe85911f21",
+                      "name":  "Web probe?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"core\",\"key\":\"monitor_acquisition\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       990,
+                                       -340
+                                   ],
+                      "id":  "8c3b853d-3293-5129-9a49-f39c5aaa60d0",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/v1/messages",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "anthropicApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "anthropic-version",
+                                                                                         "value":  "2023-06-01"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: ({\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"}[$(\u0027Load model config\u0027).first().json.model.monitor_acquisition] || null), max_tokens: 16000, system: \"You retrieve exactly ONE metric value via web search. Respond with ONLY a single JSON object, no prose, no markdown fences: {\\\"ok\\\": true|false, \\\"value\\\": number|null, \\\"unit\\\": \\\"unit exactly as requested in the query\\\", \\\"as_of\\\": \\\"date the value refers to (YYYY-MM-DD if known)\\\", \\\"source_url\\\": \\\"best source url\\\", \\\"reason\\\": \\\"only when ok=false\\\"}. Set ok=false with a concrete reason when the value cannot be RELIABLY determined (sources conflict, data is stale or paywalled). Never guess. value is a plain number with dot decimal, no thousands separators, no units inside value.\", messages: [{ role: \u0027user\u0027, content: (String($(\u0027Start\u0027).item.json.acquisition_prompt || \u0027\u0027)) }], output_config: { effort: \u0027medium\u0027 }, tools: [{ type: \u0027web_search_20260209\u0027, name: \u0027web_search\u0027, max_uses: 3 }] }) }}",
+                                         "options":  {
+                                                         "timeout":  120000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       1080,
+                                       -200
+                                   ],
+                      "id":  "49ae443d-9014-5d2e-ba49-62996d1c5d3c",
+                      "name":  "Acquire web value",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "\nconst anthropicText = (r) =\u003e {\n  if (!r || !Array.isArray(r.content)) {\n    const m = (r \u0026\u0026 r.error \u0026\u0026 (r.error.message || r.error.type || r.error.description)) || \u0027no response\u0027;\n    return { ok: false, error: String(m).slice(0, 200) };\n  }\n  if (r.stop_reason === \u0027max_tokens\u0027) return { ok: false, error: \u0027answer truncated (max_tokens)\u0027 };\n  if (r.stop_reason === \u0027refusal\u0027) return { ok: false, error: \u0027model declined the request\u0027 };\n  if (r.stop_reason === \u0027pause_turn\u0027) return { ok: false, error: \u0027web search did not finish (pause_turn)\u0027 };\n  const text = r.content.filter(b =\u003e b \u0026\u0026 b.type === \u0027text\u0027 \u0026\u0026 b.text).map(b =\u003e b.text).join(\u0027\u0027).trim();\n  if (!text) return { ok: false, error: \u0027empty answer\u0027 };\n  return { ok: true, text };\n};\nconst stripFences = (t) =\u003e String(t).replace(/^\\s*```[a-z]*\\s*/i, \u0027\u0027).replace(/\\s*```\\s*$/, \u0027\u0027);\nconst r = $input.first().json;\nconst mk = (o) =\u003e { const obs = o; return [{ json: { probe: obs } }]; };\nconst fail = (m) =\u003e mk({ ok: false, reason: String(m).slice(0, 300) });\nconst res = anthropicText(r);\nif (!res.ok) return fail(res.error);\nconst text = stripFences(res.text);\nconst start = text.indexOf(\u0027{\u0027);\nif (start \u003c 0) return fail(\u0027no JSON object in model output\u0027);\nlet depth = 0, end = -1;\nfor (let i = start; i \u003c text.length; i++) {\n  if (text[i] === \u0027{\u0027) depth++;\n  else if (text[i] === \u0027}\u0027) { depth--; if (depth === 0) { end = i; break; } }\n}\nif (end \u003c 0) return fail(\u0027unbalanced JSON in model output\u0027);\nlet o;\ntry { o = JSON.parse(text.slice(start, end + 1)); } catch (e) { return fail(\u0027unparseable model output\u0027); }\nif (o.ok !== true) return mk({ ok: false, reason: String(o.reason || \u0027model reported cannot_determine\u0027).slice(0, 300) });\nif (typeof o.value !== \u0027number\u0027 || !isFinite(o.value)) return fail(\u0027value is not a finite number\u0027);\nreturn mk({ ok: true, value: o.value, unit: String(o.unit || \u0027\u0027), as_of: String(o.as_of || \u0027\u0027), source_url: String(o.source_url || \u0027\u0027) });"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1260,
+                                       -200
+                                   ],
+                      "id":  "07025277-1e72-5c24-b304-281566cb7365",
+                      "name":  "Shape probe observation"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS probe_ok, (r-\u003e\u003e\u0027value\u0027)::numeric AS probe_value, r-\u003e\u003e\u0027unit\u0027 AS probe_unit, r-\u003e\u003e\u0027as_of\u0027 AS probe_as_of, r-\u003e\u003e\u0027source_url\u0027 AS probe_source, r-\u003e\u003e\u0027reason\u0027 AS probe_reason, r-\u003e\u0027display\u0027 AS probe_display FROM agent.fn_monitor_probe($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ acquisition_method: $(\u0027Resolve trigger\u0027).item.json.acquisition_method, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (x =\u003e (x \u0026\u0026 typeof x === \u0027object\u0027) ? Object.assign({}, JSON.parse($(\u0027Resolve trigger\u0027).item.json.spec || \u0027{}\u0027), x) : x)((() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })()), expected_unit: ($(\u0027Start\u0027).item.json.expected_unit || $(\u0027Resolve trigger\u0027).item.json.cur_unit || \u0027\u0027), min_plausible: ($(\u0027Start\u0027).item.json.min_plausible || $(\u0027Resolve trigger\u0027).item.json.cur_min || \u0027\u0027), max_plausible: ($(\u0027Start\u0027).item.json.max_plausible || $(\u0027Resolve trigger\u0027).item.json.cur_max || \u0027\u0027), max_jump_pct: ($(\u0027Start\u0027).item.json.max_jump_pct || $(\u0027Resolve trigger\u0027).item.json.cur_jump || \u0027\u0027), last_value: ($(\u0027Resolve trigger\u0027).item.json.cur_last || \u0027\u0027), observation: ($json.probe || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1440,
+                                       -80
+                                   ],
+                      "id":  "c97b359f-638b-5b6f-8e5c-4d80e2b27ff5",
+                      "name":  "Probe (validate)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b21fd002-3de2-5e82-b67f-5c79121aa109",
+                                                                                   "leftValue":  "={{ $json.probe_ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1620,
+                                       -80
+                                   ],
+                      "id":  "f966b21a-e16d-5f06-aa12-5ecee8d0e498",
+                      "name":  "Probe ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "fd69853d-05c0-59bc-bd35-279a6fe9838e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d087d7be-80e2-5ca0-8095-832a24781779",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ \u0027Test acquisition with the NEW spec failed BEFORE approval - nothing was changed. Reason: \u0027 + ($(\u0027Probe (validate)\u0027).item.json.probe_reason || \u0027unknown\u0027) + \u0027. Refine the acquisition with the user and retry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1800,
+                                       -280
+                                   ],
+                      "id":  "522d2420-f333-5e45-91a9-8b38bfd665bb",
+                      "name":  "Probe failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b7674624-d578-58bb-84d4-7bd513ce6539",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027core.hitl.set_monitor_trigger\u0027, lines: [  ].concat((() =\u003e {\n  const s = $(\u0027Start\u0027).item.json;\n  const r = $(\u0027Resolve trigger\u0027).item.json;\n  let p = null;\n  try { p = $(\u0027Probe (validate)\u0027).item.json; } catch (e) { p = null; }\n  const cut = (x) =\u003e { const v = String(x || \u0027\u0027); return v.slice(0, 200) + (v.length \u003e 200 ? \u0027…\u0027 : \u0027\u0027); };\n  const unit = (u) =\u003e (u ? \u0027 \u0027 + u : \u0027\u0027);\n  const L = [];\n  L.push({ label: \u0027core.label.trigger\u0027, kind: \u0027tpl\u0027, value: \u0027core.tpl.monitor_trigger_ref\u0027,\n    params: { label: s.label, domain: $(\u0027Resolve domain\u0027).item.json.domain,\n              status: { kind: \u0027enum\u0027, enum: \u0027core.enum.trigger_status\u0027, value: r.cur_status } } });\n  const add = (cond, line) =\u003e { if (cond) L.push(line); };\n  add(s.new_label, { label: \u0027core.label.new_label\u0027, kind: \u0027text\u0027, value: s.new_label });\n  add(s.comparator, { label: \u0027core.label.comparison\u0027, kind: \u0027text\u0027, value: (s.comparator === \u0027lte\u0027 ? \u0027\u003c=\u0027 : \u0027\u003e=\u0027) });\n  add(s.threshold_value, { label: \u0027core.label.new_threshold\u0027, kind: \u0027text\u0027, value: s.threshold_value });\n  add(s.drawdown_pct, { label: \u0027core.label.new_drawdown\u0027, kind: \u0027tpl\u0027, value: \u0027core.tpl.percent\u0027, params: { pct: s.drawdown_pct } });\n  add(s.due_date, { label: \u0027core.label.new_due\u0027, kind: \u0027date\u0027, value: s.due_date });\n  add(s.warn_days_before, { label: \u0027core.label.warn_before\u0027, kind: \u0027tpl\u0027, value: \u0027core.tpl.days\u0027, params: { days: s.warn_days_before } });\n  add(s.check_interval, { label: \u0027core.label.new_check_interval\u0027, kind: \u0027tpl\u0027, value: \u0027core.tpl.monitor_every\u0027, params: { interval: s.check_interval } });\n  add(s.expected_unit, { label: \u0027core.label.unit\u0027, kind: \u0027text\u0027, value: s.expected_unit });\n  add(s.min_plausible || s.max_plausible, { label: \u0027core.label.plausible\u0027, kind: \u0027tpl\u0027, value: \u0027core.tpl.range\u0027,\n    params: { min: s.min_plausible || \u0027-\u0027, max: s.max_plausible || \u0027-\u0027 } });\n  add(s.max_jump_pct, { label: \u0027core.label.jump_guard\u0027, kind: \u0027tpl\u0027, value: \u0027core.tpl.monitor_jump_max\u0027, params: { pct: s.max_jump_pct } });\n  add(s.action_note, { label: \u0027core.label.action_on_fire\u0027, kind: \u0027text\u0027, value: s.action_note });\n  add(s.acquisition_prompt, { label: \u0027core.label.new_prompt_start\u0027, kind: \u0027text\u0027, value: \u0027\"\u0027 + cut(s.acquisition_prompt) + \u0027\"\u0027 });\n  add(s.acquisition_sql, { label: \u0027core.label.new_sql_start\u0027, kind: \u0027text\u0027, value: cut(s.acquisition_sql) });\n  if (p \u0026\u0026 p.probe_display) L.push({ kind: \u0027raw\u0027, value: p.probe_display });\n  if (s.status === \u0027armed\u0027 \u0026\u0026 r.cur_status === \u0027fired\u0027) L.push({ label: \u0027core.label.rearm\u0027, kind: \u0027bool\u0027, value: true });\n  else add(s.status, { label: \u0027core.label.status\u0027, kind: \u0027enum\u0027, enum: \u0027core.enum.trigger_status_change\u0027, value: s.status });\n  add(String(s.reset_peak) === \u0027true\u0027, { label: \u0027core.label.reset_peak\u0027, kind: \u0027bool\u0027, value: true });\n  if (p) {\n    const has = p.probe_value !== null \u0026\u0026 p.probe_value !== undefined;\n    L.push(!has ? { label: \u0027core.label.probe_new_source\u0027, kind: \u0027text\u0027, value: \u0027\u0027 }\n      : (p.probe_source\n        ? { label: \u0027core.label.probe_new_source\u0027, kind: \u0027tpl\u0027, value: (p.probe_as_of ? \u0027core.tpl.monitor_probe_source_asof\u0027 : \u0027core.tpl.monitor_probe_source\u0027),\n            params: { value: p.probe_value, unit: unit(p.probe_unit), source: p.probe_source, asof: p.probe_as_of || \u0027\u0027 } }\n        : { label: \u0027core.label.probe_new_source\u0027, kind: \u0027text\u0027, value: String(p.probe_value) + unit(p.probe_unit) }));\n  }\n  L.push({ kind: \u0027note\u0027, value: \u0027core.note.unchanged_fields\u0027 });\n  return L;\n})()).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1800,
+                                       0
+                                   ],
+                      "id":  "15fbf090-bc9b-52ed-bc15-d581fc1cacda",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "45c79c21-b59e-5c55-abf6-278a283807f5",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "12447829-012c-5d0f-9295-b53258ed529c",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2160,
+                                       0
+                                   ],
+                      "id":  "7c43cc60-40f9-5303-8350-3de933db5c78",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "fb2c7a08-3214-5630-9b36-ed2589dbf04f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "844d12b2-2d81-58fa-9b96-96446e6b3daf",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1d86173f-051b-5857-9c22-0f2328d714b6",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the set_monitor_trigger action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2340,
+                                       200
+                                   ],
+                      "id":  "62a9bc29-cc5d-5d75-8159-808ed8b2dc15",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027next_check_at\u0027 AS next_check_at, r-\u003e\u003e\u0027check_interval\u0027 AS check_interval, (r-\u003e\u003e\u0027reference_value\u0027)::numeric AS reference_value FROM agent.fn_set_monitor_trigger($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label, new_label: $(\u0027Start\u0027).item.json.new_label, acquisition_prompt: $(\u0027Start\u0027).item.json.acquisition_prompt, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), comparator: $(\u0027Start\u0027).item.json.comparator, threshold_value: $(\u0027Start\u0027).item.json.threshold_value, drawdown_pct: $(\u0027Start\u0027).item.json.drawdown_pct, due_date: $(\u0027Start\u0027).item.json.due_date, warn_days_before: $(\u0027Start\u0027).item.json.warn_days_before, expected_unit: $(\u0027Start\u0027).item.json.expected_unit, min_plausible: $(\u0027Start\u0027).item.json.min_plausible, max_plausible: $(\u0027Start\u0027).item.json.max_plausible, max_jump_pct: $(\u0027Start\u0027).item.json.max_jump_pct, check_interval: $(\u0027Start\u0027).item.json.check_interval, action_note: $(\u0027Start\u0027).item.json.action_note, status: $(\u0027Start\u0027).item.json.status, reset_peak: $(\u0027Start\u0027).item.json.reset_peak }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2340,
+                                       0
+                                   ],
+                      "id":  "962e57e9-5de9-57c8-abad-4e057be46ea5",
+                      "name":  "Set trigger (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0124d7d6-a93b-5525-a544-0965a35333b1",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2520,
+                                       0
+                                   ],
+                      "id":  "826e20af-3440-5caa-9b7b-eb707ee65703",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "06553b52-1319-5374-805a-257e4aae04d3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2f922df9-6c82-5659-8e23-d1b503853e0c",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set trigger (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2700,
+                                       200
+                                   ],
+                      "id":  "81db7fd9-5421-58dd-aea2-fde0ceb430c2",
+                      "name":  "Set rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d04bd2ea-795d-5b7c-96d9-caafc83f089f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2b5e63d7-890c-5ade-80de-47f6aabe326d",
+                                                                                     "name":  "trigger_id",
+                                                                                     "value":  "={{ $json.trigger_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b5d7cb73-d0bc-5b45-a524-500e1d2b2b74",
+                                                                                     "name":  "status",
+                                                                                     "value":  "={{ $json.status }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "05bac1ce-9511-50ca-a2f0-3549be716d92",
+                                                                                     "name":  "next_check_at",
+                                                                                     "value":  "={{ $json.next_check_at }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0ed13afa-d26c-54e6-83a3-7bc26e35a38f",
+                                                                                     "name":  "check_interval",
+                                                                                     "value":  "={{ $json.check_interval }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "51dd0764-0981-54fe-815d-c46d86e1d620",
+                                                                                     "name":  "reference_value",
+                                                                                     "value":  "={{ $json.reference_value }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2700,
+                                       0
+                                   ],
+                      "id":  "5cee9ca7-50e9-50b5-aeff-a1bdd4f17891",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Re-Probe bei Spec-Änderung + agent.fn_set_monitor_trigger (atomar)**\n\nNur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -\u003e Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). Web-Cadence \u003e= 12h DB-CHECK.",
+                                         "height":  320,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -460
+                                   ],
+                      "id":  "17a3b4a1-4162-536a-bc3b-ad6d377628bc",
+                      "name":  "Doc Set Trigger"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Resolve domain",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Resolve domain":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Resolve trigger",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Resolve trigger":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Found?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Found?":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Spec changed?",
+                                                            "type":  "main"
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Not found",
+                                                            "type":  "main"
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Spec changed?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Web probe?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Build Approval Summary",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Web probe?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Load model config",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Probe (validate)",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Acquire web value",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Acquire web value":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Shape probe observation",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Shape probe observation":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Probe (validate)",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Probe (validate)":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Probe ok?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Probe ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Build Approval Summary",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Probe failed",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set trigger (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Set trigger (atomic)":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Write ok?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Set rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

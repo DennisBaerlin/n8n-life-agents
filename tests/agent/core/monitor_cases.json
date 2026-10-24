@@ -1,0 +1,39 @@
+[
+  {
+    "id": "mc01",
+    "name": "Vollstaendig bestaetigter FX-Trigger -> tool_create_monitor_trigger",
+    "task": "Ich bestaetige den besprochenen Trigger: Label 'EUR-KRW unter 1300', Typ Schwellwert, Quelle FX-Kurstabelle mit Paar EUR/KRW, feuert ab 1300 oder tiefer (lte), Pruefung taeglich (1 day), Bereich finance, Aktion: 'Guenstigen Umtauschkurs nutzen'. Lege den Trigger jetzt an.",
+    "chat_id": "test_mc01",
+    "expected_tool": "tool_create_monitor_trigger",
+    "expected_tool_args": { "trigger_type": "threshold", "acquisition_method": "fx_rate", "comparator": "lte", "threshold_value": "1300" },
+    "expected_behavior": "The user explicitly confirms a fully specified trigger - the monitor agent must call tool_create_monitor_trigger with acquisition_method fx_rate, acquisition_params naming the pair base EUR / quote KRW, comparator lte, threshold 1300, daily cadence. Under the test bypass the gate declines; the agent must then report the creation as cancelled/aborted, not as done.",
+    "notes": "Det-Gate inkl. Args. FX-Beschaffung -> Probe laeuft ueber den FX-Fast-Path (kein Grounding-Call im Test)."
+  },
+  {
+    "id": "mc02",
+    "name": "Trigger auflisten -> postgres_select, kein Write",
+    "task": "Welche Überwachungs-Trigger sind gerade aktiv?",
+    "chat_id": "test_mc02",
+    "expected_tool": null,
+    "expected_behavior": "A listing/status question: the agent must answer from agent.monitor_triggers (read via postgres_select) - either listing the existing triggers (label, type, status, next check) or stating that none exist. It must NOT call any write tool (tool_create/tool_set/tool_delete_monitor_trigger).",
+    "notes": "Read-Pfad: Status-Fragen beantwortet der Watchdog direkt aus seinen Home-Tabellen."
+  },
+  {
+    "id": "mc03",
+    "name": "Vage Anfrage -> Co-Design-Dialog statt sofortigem Create",
+    "task": "Überwache bitte den Goldpreis für mich.",
+    "chat_id": "test_mc03",
+    "expected_tool": null,
+    "expected_behavior": "The request is underspecified - the agent must START the co-design dialogue instead of creating anything: clarify the metric (unit USD/oz vs EUR, spot vs future), the condition (threshold value and direction, or drawdown), and the cadence. Loading the trigger_design context and/or researching sources is good behavior. It must NOT call tool_create_monitor_trigger in this turn.",
+    "notes": "Guardrail-Case: nie eine ungeklaerte/ungetestete Beschaffung anlegen - erst das Protokoll aus trigger_design."
+  },
+  {
+    "id": "mc04",
+    "name": "Beratungsfrage -> Verweis an den Advisor, kein Tool",
+    "task": "Sollte ich angesichts der aktuellen Goldpreise mein Depot umschichten?",
+    "chat_id": "test_mc04",
+    "expected_tool": null,
+    "expected_behavior": "A value/advice question, not trigger mechanics: the monitor agent must NOT give investment advice and must NOT call any write tool. It must point the user to the finance advisor for the recommendation (new message / orchestrator routes it).",
+    "notes": "Ownership-Regel: Wert-Fragen -> Fach-Advisor; der Watchdog besitzt nur die Mechanik."
+  }
+]

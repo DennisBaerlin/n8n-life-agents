@@ -1,0 +1,35 @@
+[
+  {
+    "id": "ae01",
+    "name": "save_plan_section: Draft entsteht unter Sentinel-Domain (echter Write)",
+    "task": "Ich bestaetige die Sektion household_basics wie besprochen: Nettoeinkommen 5000 Euro pro Monat, 2 Erwachsene. Speichere die Sektion jetzt in den Plan-Entwurf, Plan-Name __E2E__ Advisor Plan.",
+    "chat_id": "test_e2e_ae01",
+    "sentinel_accounts": 0,
+    "verify_sql": "SELECT count(*) FROM agent.advisor_plans WHERE domain = '__e2e_finance__' AND status = 'draft' AND interview_state ? 'household_basics';",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "Auto-Approve (test_e2e) -> fn_advisor_save_section legt den Draft an. Domain-Switch im Advisor (chat_id test_e2e -> __e2e_finance__) schuetzt die echte finance-Plan-Kette; fn_clear_e2e_data raeumt domain ILIKE __E2E%."
+  },
+  {
+    "id": "ae02",
+    "name": "save + publish: Context-Doc traegt managed_by=agent (echter Write)",
+    "task": "Zwei Schritte fuer meinen Plan-Entwurf, beide bereits von mir bestaetigt - KEINE Rueckfrage, direkt ausfuehren: 1) Speichere die bestaetigte Sektion goals_triggers mit Inhalt: Ziel ist ein Notgroschen von 10000 Euro bis 2027. 2) Veroeffentliche danach sofort den Plan als bewusste MINIMAL-Erstversion (das ist ein Test und so gewollt): komponiere das Plan-Dokument mit allen Katalogsektionen, wobei nicht erfasste Sektionen als 'noch nicht erfasst' markiert werden, mit Trigger-Liste, Aenderungszusammenfassung 'Erstversion (E2E-Test)'.",
+    "chat_id": "test_e2e_ae02",
+    "sentinel_accounts": 0,
+    "verify_sql": "SELECT count(*) FROM agent.core_contexts c JOIN agent.advisor_plans p ON p.domain = '__e2e_finance__' AND p.status = 'active' WHERE c.name = '__e2e_finance___planning' AND c.managed_by = 'agent' AND c.load_strategy = 'lazy' AND c.agent_name IS NULL;",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "Multi-Step in EINER Execution (jeder Write auto-approved): tool_save_plan_section -> tool_publish_plan. Verifiziert die ganze Publish-Kette: Draft->active + Context-Doc lazy/global mit managed_by=agent. Cleanup (fn_clear_e2e_data) entfernt advisor_plans-Zeilen + Context-Doc."
+  },
+  {
+    "id": "ae03",
+    "name": "save_plan_section risk_profile: section_data-Block landet im Draft (Phase A, echter Write)",
+    "task": "Ich bestaetige die Risikoprofil-Sektion wie besprochen: Risikobereitschaft mittel, Risikotragfaehigkeit hoch, Stand heute. Speichere die Sektion risk_profile jetzt in den Plan-Entwurf, Plan-Name __E2E__ Advisor Risk.",
+    "chat_id": "test_e2e_ae03",
+    "sentinel_accounts": 0,
+    "verify_sql": "SELECT count(*) FROM agent.advisor_plans WHERE domain = '__e2e_finance__' AND status = 'draft' AND interview_state->'risk_profile'->'data'->'risk_profile'->>'risk_tolerance' = 'medium' AND interview_state->'risk_profile'->'data'->'risk_profile' ? 'as_of';",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "Schema-Fidelity Payload->DB: der Agent legt unter der Sentinel-Domain (__e2e_finance__) den Draft an, die risk_profile-section_data (block {risk_tolerance, risk_capacity, as_of}) landet in interview_state.risk_profile.data.risk_profile. Datums-robust (kein Date-Window). fn_clear_e2e_data raeumt domain ILIKE __E2E%."
+  }
+]

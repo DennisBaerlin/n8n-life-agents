@@ -1,0 +1,229 @@
+{
+    "id":  "Nd3UVmUTzTLOBeba",
+    "name":  "core.sub_error_notify",
+    "nodes":  [
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.errorTrigger",
+                      "typeVersion":  1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "4ae2a50d-046c-5fab-bbaa-1673538acb97",
+                      "name":  "On Error"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027core.error.title\u0027,\u0027core.error.workflow\u0027,\u0027core.error.node\u0027,\u0027core.error.error\u0027,\u0027core.error.time\u0027,\u0027core.error.unknown\u0027]::text[]))) AS r;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       110,
+                                       160
+                                   ],
+                      "id":  "3c3cca80-5898-50c8-8587-bde9e5d13619",
+                      "name":  "Load alert texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Texte aus \u0027Load alert texts\u0027 (Owner-Sprache); DB weg/Fehler -\u003e englische Ersatztexte (der Alarm geht immer raus).\nlet ui = {};\ntry { ui = ($(\u0027Load alert texts\u0027).first().json || {}).r || {}; } catch (e) { ui = {}; }\nconst T = ui.t || {};\nconst EN = { \u0027core.error.title\u0027: \u0027n8n error\u0027, \u0027core.error.workflow\u0027: \u0027Workflow\u0027, \u0027core.error.node\u0027: \u0027Node\u0027,\n  \u0027core.error.error\u0027: \u0027Error\u0027, \u0027core.error.time\u0027: \u0027Time\u0027, \u0027core.error.unknown\u0027: \u0027Unknown error\u0027 };\nconst t = (k) =\u003e (T[k] \u0026\u0026 T[k] !== k) ? T[k] : EN[k];\nconst loc = ui.locale || \u0027en-GB\u0027;\nconst out = [];\nfor (const item of $(\u0027On Error\u0027).all()) {\n  const e = item.json.execution;\n  const w = item.json.workflow;\n  // Suite-Rauschen unterdruecken: Harness-getriggerte Executions (Root-Trigger = Test Webhook)\n  // alerten nie -- die Test-Skripte berichten Fehler/Timeout-Stopps selbst.\n  const trig = e \u0026\u0026 e.executionContext \u0026\u0026 e.executionContext.triggerNode;\n  if (trig \u0026\u0026 trig.type === \u0027n8n-nodes-base.webhook\u0027 \u0026\u0026 trig.name === \u0027Test Webhook\u0027) continue;\n  let ts;\n  try { ts = new Date().toLocaleString(loc, { timeZone: $now.zoneName }); } catch (x) { ts = new Date().toISOString(); }\n  const lines = [\n    \u0027⚠️ \u0027 + t(\u0027core.error.title\u0027), \u0027\u0027,\n    t(\u0027core.error.workflow\u0027) + \u0027: \u0027 + w.name,\n    t(\u0027core.error.node\u0027) + \u0027: \u0027 + (e.lastNodeExecuted || \u0027?\u0027),\n    t(\u0027core.error.error\u0027) + \u0027: \u0027 + ((e.error \u0026\u0026 e.error.message) || t(\u0027core.error.unknown\u0027)),\n    t(\u0027core.error.time\u0027) + \u0027: \u0027 + ts\n  ];\n  if (e.url) lines.push(e.url);\n  out.push({ json: { text: lines.join(String.fromCharCode(10)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) } });\n}\nreturn out;",
+                                         "mode":  "runOnceForAllItems"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "7f49de09-b2ff-583a-b2b4-bc62f7c1ec85",
+                      "name":  "Format Message"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ $json.text }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "136f7d48-be5d-5e89-a56a-3a5f45c723fd",
+                      "name":  "Send Telegram Alert",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "webhookId":  "bc7ef076-6511-5250-8586-4ce1d4aa50fa",
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_set_hitl_pending_released($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: String(($(\u0027On Error\u0027).first().json.execution || {}).id || \u0027\u0027), grace_minutes: 0 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       110,
+                                       320
+                                   ],
+                      "id":  "b82927e8-7143-5ec0-b20b-e3ffc29c53b5",
+                      "name":  "Clear card lock",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_delete_thinking_lease($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: String(($(\u0027On Error\u0027).first().json.execution || {}).id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       110,
+                                       -140
+                                   ],
+                      "id":  "816d1bed-6b9b-59ac-8128-db58bc35cf6e",
+                      "name":  "Clear thinking lease",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## core.sub_error_notify\n\nGlobaler Fehler-Notifier. Wird von n8n automatisch aufgerufen wenn ein verlinkter Workflow faellt (settings.errorWorkflow in den Workflow-Einstellungen).\n\n**Ablauf:** On Error (Error Trigger) -\u003e Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -\u003e Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -\u003e englische Ersatztexte, der Alarm geht immer raus) -\u003e Send Telegram Alert (an Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs loeschen). Erster Ast (liegt hoeher, laeuft vor dem Alarm): Clear thinking lease (Schalter der \"Bot denkt nach\"-Schleife eines gescheiterten Orchestrator-Laufs loeschen, agent.fn_delete_thinking_lease).\n\n**Empfangene Daten (n8n Error Trigger):**\n- execution.error.message - Fehlermeldung\n- execution.lastNodeExecuted - letzter Node vor dem Fehler\n- execution.url - Execution-Link (optional)\n- workflow.name - Name des fehlgeschlagenen Workflows\n\n**Einschraenkung:** Feuert nur bei automatischen Executions - nicht bei manuellen Tests im n8n-Editor.",
+                                         "height":  360,
+                                         "width":  500,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -240,
+                                       -380
+                                   ],
+                      "id":  "a0649046-1e02-5e91-8cb2-6359619f0e42",
+                      "name":  "Doc: Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Format Message\n\nBaut plain-text Telegram-Nachricht aus den Error-Trigger-Daten.\nKein Markdown (Telegram rendert sonst inkonsistent bei Sonderzeichen).\n\nBeispiel-Output:\n⚠️ n8n Fehler\n\nWorkflow: agent.monitor\nNode: Monitor Agent\nFehler: connection refused\nZeit: 05.06.2026, 14:23:01\nhttps://n8n.example.com/...",
+                                         "height":  240,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -280
+                                   ],
+                      "id":  "1c5344a1-157b-57ec-9256-00781df56e28",
+                      "name":  "Doc: Format"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Clear card lock\n\nScheitert ein Lauf des HITL-Gates (agent.tool_human_approval), bleibt seine Zeile in agent.hitl_pending (Karte-offen-Sperre) liegen, weil \u0027Close pending\u0027 nie laeuft. Dieser Ast gibt sie per execution.id sofort frei (agent.fn_set_hitl_pending_released, Gnadenfrist 0). Laeuft NACH dem Alarm, onError continue; fremde Workflows = no-op. Backstop bleibt die TTL (expires_at).",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -240,
+                                       260
+                                   ],
+                      "id":  "3ec7b870-50b9-5611-89ba-d1a985441082",
+                      "name":  "Doc: Clear card lock"
+                  }
+              ],
+    "connections":  {
+                        "On Error":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load alert texts",
+                                                              "type":  "main"
+                                                          },
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Clear card lock",
+                                                              "type":  "main"
+                                                          },
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Clear thinking lease",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load alert texts":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Format Message",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Format Message":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send Telegram Alert",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

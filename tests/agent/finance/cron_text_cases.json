@@ -1,0 +1,42 @@
+[
+  {
+    "kind": "cron_text",
+    "id": "ctf02",
+    "name": "Zins-Erinnerung an den Owner (ko): Frage + Knöpfe, Ablehnen -> Morgen-Frage, Morgen -> Ergebnis-Zeile",
+    "workflow": "agent.finance.cron_remind_interest",
+    "schedule_key": "remind_interest",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM finance.interest_skips s USING finance.accounts a WHERE a.id = s.account_id AND a.name = 'Tagesgeld Plus';"
+    ],
+    "expect_keys": ["finance.dialog.interest_ask"],
+    "expect_buttons": ["finance.dialog.btn_book", "finance.dialog.btn_other"],
+    "taps": [
+      { "approved": false, "expect_keys": ["finance.dialog.interest_defer"], "expect_buttons": ["finance.dialog.btn_tomorrow", "finance.dialog.btn_skip"] },
+      { "approved": true, "expect_keys": ["finance.dialog.remind_tomorrow"] }
+    ]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf03",
+    "name": "Monats-Check-Erinnerung an den Owner (ko): Kopf mit Stichtag, Konto-Zeile (Datum im Owner-Locale), Anleitung",
+    "workflow": "agent.finance.cron_reconcile_accounts",
+    "schedule_key": "reconcile_accounts",
+    "recipient": "owner",
+    "reset_sql": ["UPDATE finance.accounts SET created_at = now() WHERE name = 'DKB Giro';"],
+    "seed_sql": ["UPDATE finance.accounts SET created_at = now() - interval '400 days' WHERE name = 'DKB Giro' AND last_reconciled_at IS NULL;"],
+    "expect_keys": ["finance.dialog.monthly_check_intro", "finance.dialog.monthly_check_line", "finance.dialog.monthly_check_howto"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf04",
+    "name": "Kontrollfall Owner de: Monats-Check-Erinnerung deutsch",
+    "workflow": "agent.finance.cron_reconcile_accounts",
+    "schedule_key": "reconcile_accounts",
+    "recipient": "owner",
+    "owner_lang": "de",
+    "reset_sql": ["UPDATE finance.accounts SET created_at = now() WHERE name = 'DKB Giro';"],
+    "seed_sql": ["UPDATE finance.accounts SET created_at = now() - interval '400 days' WHERE name = 'DKB Giro' AND last_reconciled_at IS NULL;"],
+    "expect_keys": ["finance.dialog.monthly_check_intro", "finance.dialog.monthly_check_howto"]
+  }
+]

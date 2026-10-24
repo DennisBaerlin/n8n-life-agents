@@ -1,0 +1,56 @@
+# Doku-Seite auf GitHub Pages (kostenlos, solange das Repo oeffentlich ist — GitHub Free kennt Pages nur fuer
+# oeffentliche Repos). Veroeffentlicht den GETRACKTEN Hugo-Output docs/site/public/ unveraendert: kein
+# Hugo-Build in der CI, denn public/ ist per pre-push site-verify (build_site.ps1 -Verify) byte-genau gegen die
+# Quelle geprueft. uglyURLs + relativeURLs (docs/site/hugo.toml) => laeuft unter dem Unterpfad /<repo>/ ohne
+# baseURL-Anpassung. Einmalige Voraussetzung: Settings -> Pages -> Source "GitHub Actions".
+# Privates Repo => Jobs werden uebersprungen (kein roter Lauf vor dem Public-Schalten); das Public-Schalten
+# selbst loest ueber das `public`-Event den Erst-Deploy aus (sonst bliebe die Seite bis zum naechsten
+# Site-Push 404). Laeuft der Erst-Deploy ins Leere (Pages-Source noch nicht gesetzt) -> workflow_dispatch.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/site/public/**'
+      - '.github/workflows/pages.yml'
+  public:
+  workflow_dispatch:
+
+# Least privilege: der Deploy-Job hebt sich selbst auf pages/id-token an.
+permissions:
+  contents: read
+
+# Nie einen laufenden Deploy abbrechen (halb veroeffentlichte Seite); neuere Laeufe warten.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false   # liest nur den Baum
+
+      - name: Upload docs/site/public als Pages-Artefakt
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/site/public
+
+  deploy:
+    needs: upload
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write      # Deployment anlegen
+      id-token: write   # OIDC-Nachweis der Herkunft fuer deploy-pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

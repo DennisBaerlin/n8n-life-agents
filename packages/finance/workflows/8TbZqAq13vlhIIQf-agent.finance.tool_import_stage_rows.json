@@ -1,0 +1,245 @@
+{
+    "id":  "8TbZqAq13vlhIIQf",
+    "name":  "agent.finance.tool_import_stage_rows",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "rows"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "batch_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "source"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "9c867159-2eab-55b5-8ccf-08e3a56521bc",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027batch_id\u0027 AS batch_id, (r-\u003e\u003e\u0027staged\u0027)::int AS staged, (r-\u003e\u003e\u0027total\u0027)::int AS total, (r-\u003e\u003e\u0027valid\u0027)::int AS valid, (r-\u003e\u003e\u0027invalid\u0027)::int AS invalid, r-\u003e\u0027errors\u0027 AS errors FROM finance.fn_import_stage($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ rows: (() =\u003e { try { return JSON.parse($(\u0027Start\u0027).item.json.rows); } catch (e) { return \u0027__invalid_json__\u0027; } })(), batch_id: $(\u0027Start\u0027).item.json.batch_id || null, source: $(\u0027Start\u0027).item.json.source || null }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "94fe56b0-2656-5301-96ff-d7ac6c327c4b",
+                      "name":  "Stage + validate",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fdfd1e4d-3d16-5d84-9fe5-b6a047fba677",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "e99180f0-eff4-5e0a-aeb7-bfd5f7a1eede",
+                      "name":  "Stage ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e25e80fd-6dd8-5371-b0ee-259b35b0d70f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b7f8b602-9883-5a4e-a437-6990dee2fd36",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Stage + validate\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "3c41fd5a-c655-5c52-8c17-0ff6daf6cbe4",
+                      "name":  "Stage failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1ac9a560-8adf-5367-ba14-12f5fb5ad6e8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6cbdd878-e884-59f2-81ee-6593009b7212",
+                                                                                     "name":  "batch_id",
+                                                                                     "value":  "={{ $json.batch_id }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c569199a-e39a-53a4-a8e5-8b4b746cb1c5",
+                                                                                     "name":  "staged",
+                                                                                     "value":  "={{ $json.staged }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "470a54bd-41aa-5c2e-99ed-4207ed2c5e05",
+                                                                                     "name":  "total",
+                                                                                     "value":  "={{ $json.total }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "91bba498-3d59-5098-be5b-b5ed7ebaad5f",
+                                                                                     "name":  "valid",
+                                                                                     "value":  "={{ $json.valid }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "75685aea-b94c-519e-9c4a-552c03e537e0",
+                                                                                     "name":  "invalid",
+                                                                                     "value":  "={{ $json.invalid }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a305376b-8232-521c-a493-d909c96358c6",
+                                                                                     "name":  "errors",
+                                                                                     "value":  "={{ $json.errors }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "80c0c4d8-74d5-591d-b05b-8a2a99b23333",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_import_stage: Insert + sofortige Validierung**\n\nRows landen ROH (Namen statt IDs) in finance.import_staging; fn_import_validate prüft je Row Pflichtfelder/Enums/Datums-Casts, Dubletten-Backstop (fn_resolve_* + In-Batch) und Konto-Referenzen (Bestand ODER account-Row im selben Batch). KEIN Domänen-Write, KEIN Gate — Korrekturen laufen VOR dem Gate per tool_update_staging_row; der atomare Commit ist tool_commit_import. Nicht-committete Batches verfallen nach 7 Tagen.",
+                                         "height":  240,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -260
+                                   ],
+                      "id":  "483b0f2e-867d-5bc6-88f5-3afeb7d0e930",
+                      "name":  "Staging = propose-Store, kein Write"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Stage + validate",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Stage + validate":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Stage ok?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Stage ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Stage failed",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

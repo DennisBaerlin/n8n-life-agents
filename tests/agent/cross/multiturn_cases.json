@@ -1,0 +1,26 @@
+[
+  {
+    "id": "mt01",
+    "name": "HITL-Korrektur-Loop: ablehnen -> korrigieren -> neu planen",
+    "chat_id": "test_mt01",
+    "turns": [
+      "Lege ein neues Comdirect Tagesgeldkonto an, Inhaber bin ich, ohne Zinsen.",
+      "Den Namen bitte aendern: nenne es lieber 'N26 Tagesgeld' statt Comdirect."
+    ],
+    "expected_tool": "tool_create_account",
+    "expected_tool_args": { "name": "N26 Tagesgeld" },
+    "notes": "M9 Korrektur-Loop: Turn 1 wird unter dem Routing-Bypass abgelehnt (cancelled). Turn 2 korrigiert NUR den Namen -> der Agent muss aus dem Chat-Memory wissen, dass es weiterhin ein Cash-Konto fuer Erika anlegt, und mit dem KORRIGIERTEN Namen 'N26 Tagesgeld' erneut tool_create_account aufrufen (nicht den alten Comdirect-Plan). Prueft Memory + Re-Planung ueber Turns."
+  },
+  {
+    "id": "mt02",
+    "name": "Memory: Pronomen-Aufloesung ueber Turns ('dort')",
+    "chat_id": "test_mt02",
+    "turns": [
+      "Wie hoch ist aktuell mein Saldo beim DKB Giro?",
+      "Buche dort bitte eine Ausgabe von 25 Euro fuer Kaffee, Datum heute."
+    ],
+    "expected_tool": "tool_book_transaction",
+    "expected_tool_args": { "amount": 25 },
+    "notes": "M9 Multi-Turn-Memory: Turn 1 ist ein Lese-Pfad (DKB Giro). Turn 2 sagt 'dort' -> der Agent muss aus dem Memory wissen, dass 'dort' = DKB Giro ist, und tool_book_transaction mit amount=25 (outflow) auf das DKB Giro aufrufen. Prueft Kontext-Erhalt ueber Turns."
+  }
+]

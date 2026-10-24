@@ -1,0 +1,647 @@
+{
+    "id":  "gpzrnZgQmqyw4ms2",
+    "name":  "agent.advisor.cron_review",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_PLAN_REVIEW__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "4e8adc7d-4627-5f57-8a40-76219f24cdd0",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_package_active(\u0027core\u0027) AND COALESCE(core.fn_config_get(\u0027core\u0027,\u0027cron_enable\u0027,\u0027plan_review\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "b7369747-4d52-5e39-a19d-f073f7854a3b",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "553b6ec8-357c-5dd2-8ab6-24ff75bf36da",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "08b0c4fd-d52a-59f2-a23b-4e60bc13d4b4",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -440,
+                                       200
+                                   ],
+                      "id":  "83da78de-2789-58bb-9408-ab7a3398da0c",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"core\",\"key\":\"advisor_review\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -550,
+                                       -180
+                                   ],
+                      "id":  "ac341911-328c-5094-bc26-903cdf83854e",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH adv AS (\n  SELECT a.domain, a.plan_context, COALESCE(cs.scope, \u0027household\u0027) AS scope\n  FROM core.advisors a\n  LEFT JOIN core.context_scopes cs ON cs.context_name = a.plan_context\n  WHERE NOT a.own_review_cron\n),\npids AS (\n  SELECT a.domain, p.person_id,\n         (SELECT split_part(ap.full_name, \u0027 \u0027, 1) FROM agent.persons ap WHERE ap.person_id = p.person_id) AS person_name\n  FROM adv a\n  CROSS JOIN LATERAL (\n    SELECT person_id FROM agent.fn_context_persons(a.plan_context) WHERE a.scope = \u0027per_user\u0027\n    UNION ALL\n    SELECT NULL::text WHERE a.scope \u003c\u003e \u0027per_user\u0027\n  ) p\n),\nev AS MATERIALIZED (\n  SELECT domain, person_id, person_name, core.fn_advisor_review_evaluate(domain, person_id, \u0027{}\u0027::jsonb) AS r FROM pids\n),\nagg AS (\n  SELECT COALESCE(\n           jsonb_agg(jsonb_build_object(\u0027domain\u0027, domain, \u0027person_id\u0027, person_id, \u0027lines\u0027, r-\u003e\u0027digest\u0027-\u003e\u0027lines\u0027,\n                                        \u0027text\u0027, r-\u003e\u0027digest\u0027-\u003e\u003e\u0027text\u0027,\n                                        \u0027person_name\u0027, person_name)\n                     ORDER BY domain, person_id NULLS FIRST),\n           \u0027[]\u0027::jsonb) AS digests\n  FROM ev\n)\nSELECT agg.digests::text AS digests,\n       core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027core.advisor.footer_off\u0027,\u0027core.advisor.btn_off\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027]::text[]), \u0027doc\u0027, agg.digests))::text AS ui\nFROM agg;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "20ae9e5e-7646-5844-8dbb-2ca137b9cb72",
+                      "name":  "Evaluate advisors",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const digests = JSON.parse($input.first().json.digests || \u0027[]\u0027);\nconst ui = JSON.parse($input.first().json.ui || \u0027{}\u0027);\nconst U = uiRender(ui);const chrome = { footer: U.t(\u0027core.advisor.footer_off\u0027), btn_off: U.t(\u0027core.advisor.btn_off\u0027),\n  language_label: ui.language_label || \u0027en\u0027 };\n// lines = Struktur der Paket-Review-fn (Textkatalog Phase C); text nur noch Rueckfall fuer aeltere Pakete\nconst parts = (Array.isArray(digests) ? digests : [])\n  .map(d =\u003e { const b = (d \u0026\u0026 Array.isArray(d.lines)) ? U.lines(d.lines).trim() : (d \u0026\u0026 d.text ? String(d.text).trim() : \u0027\u0027);\n              // Roter Faden: per_user-Digests (career) tragen den Vornamen der Person als Kopfzeile.\n              return (b \u0026\u0026 d \u0026\u0026 d.person_name) ? (d.person_name + \u0027:\\n\u0027 + b) : b; })\n  .filter(Boolean);\nif (parts.length === 0) { return [{ json: Object.assign({ det_text: \u0027\u0027, report: false }, chrome) }]; }\nreturn [{ json: Object.assign({ det_text: parts.join(\u0027\\n\\n----------\\n\\n\u0027), report: true }, chrome) }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -220,
+                                       0
+                                   ],
+                      "id":  "807c603c-2b7f-5eae-8be3-75f9363fe265",
+                      "name":  "Build message"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ab8a38c1-334c-54c5-98eb-cc4ec397c5f6",
+                                                                                   "leftValue":  "={{ $json.report }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "202c0730-36be-556e-9df9-d9b79a7bd72f",
+                      "name":  "Anything to report?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       180,
+                                       200
+                                   ],
+                      "id":  "ce6cb346-40f9-50e1-a3c8-dc1ab8bdd05d",
+                      "name":  "Quiet run"
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ \u0027Rewrite the following periodic advisor check-in as a short, friendly Telegram message, written in the language \u0027 + $json.language_label + \u0027. PLAIN TEXT only (no markdown, no asterisks). Keep EVERY number, amount and date EXACTLY as written (do not reformat them) and keep every warning or hint sentence. Maximum 16 lines. Text:\\n\\n\u0027 + $json.det_text }}"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.chainLlm",
+                      "typeVersion":  1.7,
+                      "position":  [
+                                       180,
+                                       0
+                                   ],
+                      "id":  "6fe9de70-dd5b-5437-886c-9d84ecb394c1",
+                      "name":  "Phrase message",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-haiku-5-5",
+                                                       "cachedResultName":  "Claude Haiku 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "low"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       40,
+                                       400
+                                   ],
+                      "id":  "7179b2f0-84ab-58dd-92ff-80f39ac9ac77",
+                      "name":  "claude-haiku-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-sonnet-5-5",
+                                                       "cachedResultName":  "Claude Sonnet 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "low"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       216,
+                                       400
+                                   ],
+                      "id":  "1de6dec0-fd06-5dc7-9982-1fb44e0f6535",
+                      "name":  "claude-sonnet-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-opus-5-5",
+                                                       "cachedResultName":  "Claude Opus 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "low"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       392,
+                                       400
+                                   ],
+                      "id":  "36c44f2c-1851-5796-aaa6-70e5f0a7d38a",
+                      "name":  "claude-opus-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "numberInputs":  3,
+                                         "rules":  {
+                                                       "rule":  [
+                                                                    {
+                                                                        "modelIndex":  1,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "e14e12e4-c74f-5219-a4c6-f076fcf987ff",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.advisor_review }}",
+                                                                                                                  "rightValue":  "claude-haiku-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  2,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "6cb2c728-01ce-59b4-9521-a43ba32c4419",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.advisor_review }}",
+                                                                                                                  "rightValue":  "claude-sonnet-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  3,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "0b8c96b9-e815-56fc-9ce7-69b0a4e3998b",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.advisor_review }}",
+                                                                                                                  "rightValue":  "claude-opus-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    }
+                                                                ]
+                                                   }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.modelSelector",
+                      "typeVersion":  1,
+                      "position":  [
+                                       180,
+                                       220
+                                   ],
+                      "id":  "d7af6f5e-4749-5232-853a-572c5bc7a732",
+                      "name":  "Model Selector"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const llm = ($input.first().json \u0026\u0026 $input.first().json.text) || \u0027\u0027;\nconst det = $(\u0027Build message\u0027).first().json.det_text;\nreturn [{ json: { message: llm.trim() ? llm.trim() : det } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       400,
+                                       0
+                                   ],
+                      "id":  "eedbdec6-1a51-5dad-882a-c00a494ab779",
+                      "name":  "Choose text"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.message + \u0027\\n\\n\u0027 + $(\u0027Build message\u0027).first().json.footer).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build message\u0027).first().json.btn_off }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_off:plan_review"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       620,
+                                       0
+                                   ],
+                      "id":  "66f0336e-9277-5c0b-bd1e-752c55a3b07f",
+                      "name":  "Send review",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Generische Core-Advisor-Engine (Latch entscheidet DB, LLM nur Phrasing)**\n\nQuartalsweiser Voll-Review (schedule.plan_review aus core.config, EMPFOHLEN quartalsweise). Iteriert core.advisors und schickt je Advisor den UNBEDINGTEN Voll-Digest (kein Latch — periodischer Voll-Report; Build message setzt report=true, sobald die digest.lines mindestens eine Zeile ergeben; ein älteres Paket ohne lines liefert noch digest.text). Löst den retired paket-eigenen Plan-Review-Cron ab (seit WS2 generisch). F9-Gate (Cron on?): core.fn_package_active(core) AND core.fn_config_get(core,cron_enable,plan_review)=true (fail-closed; default false = opt-in). Nutzt denselben Eval-Pfad core.fn_advisor_review_evaluate und rendert NUR die digest.lines-Struktur in Owner-Sprache (geteilter Renderer, Zahlen per Intl) — der Latch-Write ist ein harmloser Seiteneffekt (cron_drift_check 10:00 \u003c cron_review 10:05 fängt Breaches zuerst). Phrase formuliert in dieser Sprache um (model.advisor_review, jede Zahl wörtlich), onError continue -\u003e deterministischer Fallback. WS-3 Phase A: der Send trägt einen Abschalten-Inline-Button (callback_data cron_off:plan_review) -\u003e der Owner schaltet diesen Wächter-Cron per Tipp ab (Orchestrator-Callback -\u003e core.fn_set_cron_enable, core.config cron_enable); Re-Aktivieren per /reminders (Roter Faden Paket B).",
+                                         "height":  340,
+                                         "width":  760,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -360
+                                   ],
+                      "id":  "727b893f-407f-54e1-ad2a-89abaa15c3ba",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_advisor_review_evaluate (Registry-Dispatch + Latch, off-canvas)**\n\nEvaluate advisors FÄCHERT core.advisors x Personen (P2b-2 Get-AdvisorFanoutCte: per_user-Domains wie career je Person via agent.fn_context_persons(plan_context), household-Domains wie finance mit person_id=NULL) und ruft je (Domain, Person) core.fn_advisor_review_evaluate(domain, person_id) (MATERIALIZED CTE -\u003e die VOLATILE Eval-fn läuft EXAKT 1x je (Advisor, Person)). Der Core-Wrapper: Registry-Lookup domain-\u003ereview_fn (z. B. finance.fn_advisor_review), dyn. EXECUTE, dann LATCH gegen die geteilte core.notification_state (source=advisor:domain[:person_id]) über core.fn_should_notify/fn_notify_reconcile (Erst-/Re-Breach -\u003e send=true; bereits fired -\u003e still; wieder im Band -\u003e Re-Arm via Reconcile-GC räumt stale metric_keys; person_id=NULL byte-gleich heute). Läuft unter dem Haupt-RW-Credential (Build-Pg-Default) — die fn SCHREIBT Latch-State (Präzedenz cron_monitor_check_triggers). GENERIK: der Cron kennt keine Paket-Felder, er rendert die paket-gelieferte Struktur (alert.msg / digest.lines) in Owner-Sprache, die Texte kommen aus derselben Anweisung wie der Latch (core.fn_ui_texts_for); model.advisor_review formuliert in dieser Sprache um (jede Zahl wörtlich) (Load model config liest es bei JEDEM Lauf VOR Evaluate -\u003e ein Ladefehler stoppt den Lauf, bevor ein Latch geschrieben ist; Umschalter mit einem Knoten je Claude-Modell), onError continue -\u003e Fallback = der deterministische Text (Choose text). Build message setzt report=false -\u003e Quiet run (keine Message).",
+                                         "height":  360,
+                                         "width":  700,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -480,
+                                       -360
+                                   ],
+                      "id":  "c74d9647-f212-5938-9e93-706a9926bd3c",
+                      "name":  "Doc Engine"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Evaluate advisors",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Evaluate advisors":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Build message",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Build message":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Anything to report?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Anything to report?":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Phrase message",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Quiet run",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Choose text":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send review",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Phrase message":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Choose text",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "claude-haiku-latest":  {
+                                                    "ai_languageModel":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Model Selector",
+                                                                                     "type":  "ai_languageModel"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                },
+                        "claude-sonnet-latest":  {
+                                                     "ai_languageModel":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  1,
+                                                                                      "node":  "Model Selector",
+                                                                                      "type":  "ai_languageModel"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                 },
+                        "claude-opus-latest":  {
+                                                   "ai_languageModel":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  2,
+                                                                                    "node":  "Model Selector",
+                                                                                    "type":  "ai_languageModel"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                               },
+                        "Model Selector":  {
+                                               "ai_languageModel":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Phrase message",
+                                                                                "type":  "ai_languageModel"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

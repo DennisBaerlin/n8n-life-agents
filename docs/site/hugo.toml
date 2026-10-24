@@ -1,0 +1,20 @@
+# Hugo-Konfiguration der Showcase-Site (Owner-Entscheid 2026-07-02: Hugo, Version gepinnt in
+# scripts/build_site.ps1). file://-Disziplin: uglyURLs (explizite .html-Dateien, keine Pretty-URLs)
+# + relativeURLs (alle Links relativ, kein Server-Root noetig) — die Seite laeuft per Doppelklick und
+# unveraendert unter dem GitHub-Pages-Unterpfad /n8n-life-agents/ (.github/workflows/pages.yml).
+baseURL = "https://example.org/"   # nie ausgegeben (relativeURLs schreibt alle Links relativ um)
+title = "n8n-life-agents"
+
+uglyURLs = true
+relativeURLs = true
+canonifyURLs = false
+
+# Determinismus fuers -Verify-Regenerat-Diff: keine Versions-Meta im Output.
+disableHugoGeneratorInject = true
+
+# Nur echte Seiten — keine Feeds/Sitemaps/Taxonomien; keine eigene 404 (relative Links brechen auf
+# beliebigen 404-Pfaden, der GitHub-Pages-Default reicht).
+disableKinds = ["taxonomy", "term", "RSS", "sitemap", "robotsTXT", "404"]
+
+[markup.goldmark.renderer]
+  unsafe = false

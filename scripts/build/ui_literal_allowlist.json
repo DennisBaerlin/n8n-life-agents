@@ -1,0 +1,251 @@
+{
+    "_comment":  "Ratchet-Allowlist von scripts/ui_literal_lint.ps1 (Textkatalog, docs/package-contract.md §3.11): jede verbliebene fest deutsche Text-Stelle mit Begruendung. Seit Phase C gibt es keine Nutzertexte mehr ausserhalb des Katalogs; erlaubt sind nur model:/admin:/data: (kein fester Nutzertext: Modell-Eingabe/-Kontext, Konsolen-RAISE, gespeicherte Inhalte). Nur schrumpfen; neue Nutzertexte kommen in den Katalog.",
+    "allow":  [
+                  {
+                      "where":  "agent.guide / Build Agent Input",
+                      "literal":  "\\nDo NOT ask again for the name or birth date of anyone listed here - confirm briefly instead (e.g. Dich kenne ich schon aus der Installation). Ask only for what is still missing (e.g. partner, children, employment).",
+                      "count":  1,
+                      "reason":  "model:agent-eingabe (Prompt-/Marker-Text fuer das Sprachmodell)"
+                  },
+                  {
+                      "where":  "agent.orchestrator.main_route / Chat message normalization document",
+                      "literal":  "Der Nutzer hat ein Dokument ohne Bildunterschrift gesendet.",
+                      "count":  1,
+                      "reason":  "model:agent-eingabe (Prompt-/Marker-Text fuer das Sprachmodell)"
+                  },
+                  {
+                      "where":  "agent.orchestrator.main_route / Chat message normalization photo",
+                      "literal":  "Der Nutzer hat ein Foto ohne Bildunterschrift gesendet.",
+                      "count":  1,
+                      "reason":  "model:agent-eingabe (Prompt-/Marker-Text fuer das Sprachmodell)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: career.job_matches Sentinel-Zeilen nach Cleanup noch vorhanden — Abbruch",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: ungültige run-id % (nur [a-z0-9])",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_render_career_planning.sql",
+                      "literal":  " für ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_render_career_planning.sql",
+                      "literal":  "\\n  ⚠ Hinweis: ein Fremdwährungs-Konto ohne aktuellen Wechselkurs ist noch NICHT ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_render_career_planning.sql",
+                      "literal":  "eingerechnet - die tatsächliche Liquidität (und damit die Runway) liegt höher.",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_render_career_planning.sql",
+                      "literal":  "NICHT gedeckt - Lücke ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_render_career_planning.sql",
+                      "literal":  "Skill-Lücken (Ziel ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/R__fn_render_career_preferences.sql",
+                      "literal":  "Arbeitsort-Präferenz: ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: Hook %.fn_clear_e2e_data liefert einen bereits belegten Zähler-Key — Keys je Paket eindeutig halten",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: Paket % hat ein Schema, aber keinen Hook %.fn_clear_e2e_data(text) — Abbruch",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: Sentinel-Zeilen nach Cleanup noch vorhanden — Abbruch",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: ungültige run-id % (nur [a-z0-9])",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_config_seed.sql",
+                      "literal":  "core.config %/%: Wert \"%\" passt nicht zu %, zurück auf den Standard \"%\"",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_config_seed.sql",
+                      "literal":  "core.config model/%: Modell \"%\" passt nicht zur Art des Standards, zurück auf \"%\"",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_household_context.sql",
+                      "literal":  " · Staatsangehörigkeit: ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_reset_user_data.sql",
+                      "literal":  "(Inhaber bei der Installation angelegt; weitere Personen folgen im Onboarding)",
+                      "count":  1,
+                      "reason":  "model:family-prosa (Platzhalter im Kontext-Text fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_reset_user_data.sql",
+                      "literal":  "(noch keine Daten erfasst - Onboarding ausstehend)",
+                      "count":  1,
+                      "reason":  "model:family-prosa (Platzhalter im Kontext-Text fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_reset_user_data.sql",
+                      "literal":  "fn_reset_user_data: Person % nicht entfernbar: %",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Werkszustand-Reset, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/estate/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: estate Sentinel-Zeilen nach Cleanup noch vorhanden — Abbruch",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/estate/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: ungültige run-id % (nur [a-z0-9])",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__finance_views.sql",
+                      "literal":  "Haushalt",
+                      "count":  5,
+                      "reason":  "model:view-wert (Personen-Bezeichnung in Views fuer postgres_select)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
+                      "literal":  "Bestandsübernahme ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
+                      "literal":  "Gegenbuchung Bestandsübernahme ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_create_account.sql",
+                      "literal":  "Eröffnungssaldo",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_apply_bank_statement.sql",
+                      "literal":  "Monats-Check: Abweichung vor dem Zeitraum",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung der Abgleichsbuchung, Originalsprache; Muster Saldo-Abgleich)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
+                      "literal":  " (Gebühr ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Transaktions-Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_book_stock_sell.sql",
+                      "literal":  " (Gebühr ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Transaktions-Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: finance-Sentinel-Zeilen nach Cleanup noch vorhanden — Abbruch",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: Nicht-Sentinel-Konto in Löschmenge — Abbruch",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: ungültige run-id % (nur [a-z0-9])",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_render_finance_profile.sql",
+                      "literal":  " · steuerliche Ansässigkeit: ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_render_plan_facts.sql",
+                      "literal":  " % Inflation über ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_render_plan_facts.sql",
+                      "literal":  " €/Monat nominal bei Beginn der Auszahlungsphase ~",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_render_plan_facts.sql",
+                      "literal":  " Tragfähigkeit ",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_sell_real_estate.sql",
+                      "literal":  "Verkaufserlös ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_settle_loan.sql",
+                      "literal":  "Ablösung ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_settle_loan.sql",
+                      "literal":  "Ablösung Tilgung ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/paperless/db/migrations/R__fn_clear_e2e_data.sql",
+                      "literal":  "fn_clear_e2e_data GUARD: ungültige run-id % (nur [a-z0-9])",
+                      "count":  1,
+                      "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  }
+              ]
+}

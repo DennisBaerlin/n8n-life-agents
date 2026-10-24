@@ -1,0 +1,489 @@
+{
+    "id":  "M33X2T4hAtlVSB9Q",
+    "name":  "agent.estate.tool_export_emergency_binder",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "mask_sensitive"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "ef62b324-537b-5887-b81c-9c0c81e62953",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (core.fn_check_write_permission(\u0027adults_only\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, NULL) IS NULL) AS is_adult;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "314ad40d-acaf-5efd-8174-fa68ff47865b",
+                      "name":  "Check adult",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5fca0a73-27ce-55d5-b435-55a973b13172",
+                                                                                   "leftValue":  "={{ $(\u0027Check adult\u0027).item.json.is_adult }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "24a7305c-1c09-5ed9-8697-f9eabcf1c111",
+                      "name":  "Adult?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "6dbb0443-1132-5426-924f-4933d7b2796f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b1c12f22-f027-523e-8f1a-a5e4ab74ac86",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Only adult household members (owner/partner) may export the emergency binder.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "d36196bc-4c1c-5a3a-a640-b6d3df5bf4b9",
+                      "name":  "Not adult"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "dbcd2d8d-9c3a-57f2-9509-d2999fa96724",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027estate.hitl.export_emergency_binder\u0027, lines: [ { label: \u0027estate.label.scope\u0027, kind: \u0027key\u0027, value: (\u0027estate.value.binder_scope\u0027) }, { label: \u0027estate.label.sensitive_ids\u0027, kind: \u0027key\u0027, value: (((String($(\u0027Start\u0027).item.json.mask_sensitive) === \"true\") ? \u0027estate.value.masked\u0027 : \u0027estate.value.fully_visible\u0027)) } ].filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "c9937420-2a76-53d0-9c7c-4eb8361ee6bc",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "7a896aed-c0b5-51a2-995b-447059156687",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fe483f33-1c42-5ab7-9799-aa3740f4ec44",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "9db86cb9-bcca-502c-b405-af14dafd468e",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d1ed01c4-7df1-5f97-ba29-357628acaba9",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "de0e298d-5613-52be-9237-b48dab4ca885",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e8b67d2c-7651-557a-adc5-5d65433f7ee9",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the export_emergency_binder action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "ef3d21fd-6671-520d-8d16-fbe16e81d69f",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT estate.fn_render_emergency_binder($1::jsonb) AS binder, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027estate.binder.caption\u0027,\u0027estate.binder.file_name\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, mask_sensitive: $(\u0027Start\u0027).item.json.mask_sensitive }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "d86d4a7c-f409-546f-abd6-b11b382642fd",
+                      "name":  "Render binder",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "toText",
+                                         "sourceProperty":  "binder",
+                                         "binaryPropertyName":  "data",
+                                         "options":  {
+                                                         "fileName":  "={{ String((($(\u0027Render binder\u0027).item.json.t) || {})[\u0027estate.binder.file_name\u0027] || \u0027estate.binder.file_name\u0027) }}",
+                                                         "encoding":  "utf8"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.convertToFile",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "edbcbf08-f305-59ab-8ba6-614c68aae2d1",
+                      "name":  "Convert to File"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendDocument",
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "binaryData":  true,
+                                         "binaryPropertyName":  "data",
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "caption":  "={{ (String((($(\u0027Render binder\u0027).item.json.t) || {})[\u0027estate.binder.caption\u0027] || \u0027estate.binder.caption\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                                                  "parse_mode":  "Markdown"
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "09345fa9-cd86-5290-b317-4b326ad4fb6c",
+                      "name":  "Send binder",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "948bcfeb-7816-5e2a-8be3-83497619bd9a",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "937bec4c-683a-5a9a-879b-1bfc5e7dbc61",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "7bbbcce4-8f06-50ad-92f0-e71a4d1e2710",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**export_emergency_binder (erster gegateter READ-Egress, owner_info Break-Glass)**\n\nGRÖSSTER PII-Egress: das GANZE Register als weiterleitbares Telegram-Dokument (Owner-Entscheid 8). adults_only DOPPELT: n8n-IF Adult? (UX-Pre-Gate vor dem HITL) + fn-interner RAISE (DB-Backstop, entkoppelt vom Tool). HITL owner_info = Break-Glass (Floor 0; owner_approval deadlockte bei totem Owner). Maskierung mask_sensitive -\u003e Steuer-ID/RV-Nr. redigiert (Default voll). Egress: estate.fn_render_emergency_binder (DEFINER -\u003e sieht finance) -\u003e Convert to File (.md-Binary Feld data) -\u003e Telegram sendDocument (caption plain). Kein Write -\u003e Audit = HITL-Tap + Chat-History (Projekt-Stance). estate_rw hat EXECUTE (Fenster + Blanket-Grant).",
+                                         "height":  300,
+                                         "width":  620,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -300
+                                   ],
+                      "id":  "eb7c5d67-6a74-5e9c-9dc1-fe39634ca63b",
+                      "name":  "Gegateter Read-Egress + Break-Glass + Maskierung"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Check adult",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Check adult":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Adult?",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Adult?":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Build Approval Summary",
+                                                            "type":  "main"
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Not adult",
+                                                            "type":  "main"
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Render binder",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Render binder":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Convert to File",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Convert to File":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Send binder",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Send binder":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Return",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

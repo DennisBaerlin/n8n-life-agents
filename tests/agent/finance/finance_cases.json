@@ -1,0 +1,809 @@
+[
+    {
+        "id":  "tc01",
+        "name":  "Girokonto anlegen",
+        "task":  "Lege ein neues Comdirect Girokonto an, Inhaber bin ich, ohne Zinsen.",
+        "chat_id":  "test_tc01",
+        "expected_tool":  "tool_create_account",
+        "notes":  "Self-contained create (neuer Name, kein Dub, ohne Zinsen) -\u003e tool_create_account."
+    },
+    {
+        "id":  "tc02",
+        "name":  "Depot anlegen (mit Settlement)",
+        "task":  "Lege ein neues Scalable Capital Aktien-Depot an, Inhaber bin ich (Erika). Verrechnungskonto ist das DKB Giro.",
+        "chat_id":  "test_tc02",
+        "expected_tool":  "tool_create_account",
+        "notes":  "Neuer Depot-Name (kein Dub mit Trade Republic Depot) + existierendes Settlement-Konto -\u003e tool_create_account."
+    },
+    {
+        "id":  "tc03",
+        "name":  "Aktien kaufen",
+        "task":  "Kauf im Trade Republic Depot 10 Anteile Vanguard FTSE All-World (ISIN IE00BK5BQT80, Symbol VWCE) zu 110 Euro je Anteil, Ordergebühr 1 Euro, Kaufdatum heute.",
+        "chat_id":  "test_tc03",
+        "expected_tool":  "tool_book_stock_buy",
+        "expected_tool_args":  {
+                                   "isin":  "IE00BK5BQT80",
+                                   "symbol":  "VWCE",
+                                   "shares":  10,
+                                   "price_per_share":  110,
+                                   "order_fee":  1
+                               },
+        "expected_behavior":  "Ruft tool_book_stock_buy mit der korrekten ISIN IE00BK5BQT80 auf (nicht leer, nicht erfunden). symbol=VWCE, shares=10, price_per_share=110, order_fee=1.",
+        "notes":  "Aktien-Kauf: ISIN muss im actual_tool_input gesetzt sein (Regression gegen unbeabsichtigtes Weglassen nach isin-optional-Aenderung). Judge prueft actual_tool_input."
+    },
+    {
+        "id":  "tc04",
+        "name":  "Dividende buchen",
+        "task":  "Buche eine Dividende von 12,50 Euro für meine Vanguard FTSE All-World Position (VWCE) im Trade Republic Depot auf das Trade Republic Cash Girokonto, Datum heute.",
+        "chat_id":  "test_tc04",
+        "expected_tool":  "tool_book_dividend",
+        "expected_tool_args":  {
+                                   "symbol":  "VWCE",
+                                   "amount":  12.5
+                               },
+        "notes":  "Existierende Holding (VWCE) + Verrechnungskonto explizit -\u003e tool_book_dividend."
+    },
+    {
+        "id":  "tc05",
+        "name":  "Transfer zwischen Konten",
+        "task":  "Überweise 500 Euro vom DKB Giro auf das Trade Republic Cash Girokonto, Datum heute.",
+        "chat_id":  "test_tc05",
+        "expected_tool":  "tool_book_transfer",
+        "expected_tool_args":  {
+                                   "amount":  500
+                               },
+        "notes":  "Beide Konten existieren, interner Transfer -\u003e tool_book_transfer (nicht tool_book_transaction)."
+    },
+    {
+        "id":  "tc06",
+        "name":  "Externe Ausgabe buchen",
+        "task":  "Ich habe heute 85 Euro für Lebensmittel mit dem DKB Giro bezahlt. Bitte als Ausgabe buchen.",
+        "chat_id":  "test_tc06",
+        "expected_tool":  "tool_book_transaction",
+        "expected_tool_args":  {
+                                   "amount":  85
+                               },
+        "notes":  "Externe Ausgabe, Konto explizit -\u003e tool_book_transaction (outflow)."
+    },
+    {
+        "id":  "tc07",
+        "name":  "Versicherung anlegen (Personenaufloesung)",
+        "task":  "Erfasse eine neue Haftpflichtversicherung bei der HUK-COBURG, Policennummer HUK-9876, Jahresprämie 89 Euro, Inhaberin ist meine Frau, Abbuchung vom DKB Giro, gültig ab 01.01.2026, jährliche Zahlung jeweils am 15., erste Abbuchung am 15.01.2026.",
+        "chat_id":  "test_tc07",
+        "expected_tool":  "tool_create_insurance",
+        "expected_tool_args":  {
+                                   "policyholder_person":  "Lena Beispiel",
+                                   "annual_premium":  89,
+                                   "policy_number":  "HUK-9876"
+                               },
+        "expected_behavior":  "Loest \u0027meine Frau\u0027 korrekt zur Partnerin Lena Beispiel auf und uebergibt sie als policyholder_person (Vorname \u0027Lena\u0027 genuegt, das Tool loest auf). Erfindet keine Gruende fuer eine abgelehnte Karte.",
+        "notes":  "Personenaufloesung (meine Frau -\u003e Lena via family) + alle Pflichtfelder -\u003e tool_create_insurance. Judge prueft die Aufloesung."
+    },
+    {
+        "id":  "tc08",
+        "name":  "Non-Finance (ablehnen)",
+        "task":  "Wie ist das Wetter heute in Berlin?",
+        "chat_id":  "test_tc08",
+        "expected_tool":  null,
+        "notes":  "Nicht-Finanz -\u003e kein Write-Tool aufgerufen."
+    },
+    {
+        "id":  "tc09",
+        "name":  "Klaerung: Festgeld ohne Zinssatz",
+        "task":  "Lege ein neues Festgeldkonto bei der Comdirect an, Inhaber bin ich (Erika).",
+        "chat_id":  "test_tc09",
+        "expected_tool":  null,
+        "expected_behavior":  "Erkennt, dass fuer ein Festgeldkonto Zinssatz UND Laufzeit (Faelligkeitsdatum) wesentliche fehlende Angaben sind, und fragt gezielt nach beiden, statt das Konto blind anzulegen. Es darf KEIN Write-Tool aufgerufen werden.",
+        "notes":  "Negativ/Klaerung: optionale-aber-wesentliche Felder. Deterministisch: kein Tool. Judge: fragt nach Zinssatz."
+    },
+    {
+        "id":  "tc10",
+        "name":  "Konto ohne Inhaberangabe gehoert dem Haushalt",
+        "task":  "Lege ein neues Norisbank Girokonto an.",
+        "chat_id":  "test_tc10",
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {
+                                   "account_type":  "cash"
+                               },
+        "expected_behavior":  "Legt das Konto direkt an: tool_create_account mit einem Namen fuer das Norisbank Girokonto und account_type=cash. Fragt NICHT, wem das Konto gehoert (ohne genannte Person bleibt owner_person leer = Haushalt) und blockiert nicht auf IBAN oder Kontostand.",
+        "notes":  "2026-10-23 umgedreht (bezahlter Lauf: Sonnet legte richtig an und fiel am alten Rubric durch): Prompt-Regel 7 'Never ask who owns something', owner_person ist optional. Frueher: Klaerung fehlender Inhaber. Deterministisch: tool_create_account. Judge: keine Inhaber-Rueckfrage."
+    },
+    {
+        "id":  "tc11",
+        "name":  "Dedup: existierendes Trade Republic Depot",
+        "task":  "Lege ein Trade Republic Depot an, Inhaber bin ich (Erika), Verrechnungskonto Trade Republic Cash Girokonto.",
+        "chat_id":  "test_tc11",
+        "expected_tool":  "tool_create_account",
+        "expected_behavior":  "Ruft tool_create_account direkt auf (ohne eigene Dubletten-Suche). Der Probelauf der Datenbank lehnt ab (ok:false, card_sent:false, duplicate_name, candidates = das bestehende Trade Republic Depot); es kommt KEINE Bestaetigungskarte. Der Agent weist auf das bestehende Depot hin und fragt, ob das gemeint ist oder welcher andere Name fuer ein zusaetzliches Depot gelten soll; er meldet keinen Erfolg und erwaehnt keine Karte/keinen Knopf.",
+        "notes":  "Paket DB-ist-das-Gesetz 2026-10-23: Dubletten entscheidet die DB (fn_create_account duplicate_name im Probelauf vor der Karte), nicht der Agent vorab. Mock-Tier: Szenario ruft das Tool; Beweis = kein sendAndWait. Judge: weist auf bestehendes Depot hin + fragt nach, keine Erfolgsmeldung."
+    },
+    {
+        "id":  "tc12",
+        "name":  "Zwei Konten in einer Nachricht: Sammel-Import (Cash + Depot)",
+        "quarantined":  true,
+        "task":  "Lege ein neues N26 Girokonto an (Inhaber Erika, ohne Zinsen) und zusaetzlich ein neues N26 Depot, das dieses N26 Girokonto als Verrechnungskonto nutzt.",
+        "chat_id":  "test_tc12",
+        "expected_tool":  "tool_import_stage_rows",
+        "expected_behavior":  "Zwei Eintraege in einer Nachricht -> Sammel-Import: stagt BEIDE Konten in einem Batch (tool_import_stage_rows: N26 Girokonto als cash, N26 Depot als stocks_depot mit settlement_account = N26 Girokonto), nicht zwei Einzel-Anlagen; danach tool_commit_import fuer die eine Sammelkarte. Nach der Ablehnung meldet er den Abbruch. ALT (vor 2026-10-23): Erkennt die Abhaengigkeit, dass das Depot ein Verrechnungskonto braucht, und beginnt mit dem N26 Girokonto (erster Tool-Aufruf = tool_create_account fuer das Cash-Konto), NICHT mit dem Depot. (Unter dem Test-Bypass bricht der erste Write ab, daher ist nur der erste Schritt + die Planung beobachtbar.)",
+        "notes":  "QUARANTAENE 2026-10-23: Sonnet wechselt zwischen Sammel-Import (Tool-Regel, Abschlusslauf) und zwei Einzel-Anlagen in richtiger Reihenfolge (Girokonto zuerst, Nachlauf) - fuer den Nutzer gleiches Ergebnis, nur zwei Karten statt einer. RE-EVALUIEREN, sobald die Import-Regel im Prompt/der Tool-Description geschaerft ist (>=3 isolierte Laeufe mit Sammel-Import -> quarantined entfernen). 2026-10-23 (bezahlter Lauf): die Tool-Regel von tool_import_stage_rows schickt zwei Eintraege in einer Nachricht in den Sammel-Import; der Agent folgte ihr korrekt und fiel am alten Golden (tool_create_account zuerst) durch. Deterministisch jetzt: tool_import_stage_rows. Frueher: Reihenfolge-/Abhaengigkeitslogik, erster Write-Tool = tool_create_account. Judge: beginnt korrekt mit Cash. Volle Sequenz braucht echte Writes (Backlog)."
+    },
+    {
+        "id":  "tc13",
+        "name":  "Lese-Pfad: Kontostand abfragen",
+        "task":  "Wie hoch ist mein aktueller Kontostand beim DKB Giro?",
+        "chat_id":  "test_tc13",
+        "expected_tool":  null,
+        "expected_behavior":  "Ruft KEIN Write-Tool auf und nennt einen konkreten Kontostand fuer das DKB Giro (aus der Datenbank gelesen, nicht erfunden).",
+        "notes":  "Lese-Pfad. Deterministisch: kein tool_*. Judge: Antwort nennt Saldo. 2026-10-23: Pflicht 'postgres_select sichtbar in read_tools' entfernt - der n8n-Action-Log ist unvollstaendig (tests/CLAUDE.md: Rubrics auf Output-Substanz, nicht auf read_tools)."
+    },
+    {
+        "id":  "tc14",
+        "name":  "Lese-Pfad: Familienprofil (load_context)",
+        "task":  "Wie heisst meine Frau laut meinem hinterlegten Familienprofil?",
+        "chat_id":  "test_tc14",
+        "expected_tool":  null,
+        "expected_behavior":  "Laedt den family-Kontext (load_context, sichtbar in read_tools) und antwortet, dass die Frau Lena Beispiel ist. Ruft KEIN Write-Tool auf.",
+        "notes":  "Lese-Pfad ueber Lazy-Context. Deterministisch: kein tool_*. Judge: read_tools enthaelt load_context + Antwort nennt Lena Beispiel."
+    },
+    {
+        "id":  "tc15",
+        "name":  "Crypto kaufen - Depot-Typ-Mismatch",
+        "task":  "Kauf im Trade Republic Depot 0,01 Bitcoin (Symbol BTC, kein ISIN) zu 65000 Euro je Einheit, Ordergebuehr 0 Euro, Kaufdatum heute.",
+        "chat_id":  "test_tc15",
+        "expected_tool":  "tool_book_stock_buy",
+        "expected_behavior":  "Ruft tool_book_stock_buy direkt auf (ohne eigene Depot-Typ-Pruefung). Der Probelauf der Datenbank lehnt ab (ok:false, card_sent:false: Krypto ohne ISIN braucht ein crypto_depot); es kommt KEINE Bestaetigungskarte. Der Agent erklaert den Grund in einfachen Worten und bietet ein passendes Krypto-Depot an bzw., wenn keines existiert, es anzulegen (tool_create_account) oder fragt nach einem anderen Depot; er meldet keinen Erfolg und erwaehnt keine Karte/keinen Knopf.",
+        "notes":  "Paket DB-ist-das-Gesetz 2026-10-23: den Depot-Typ prueft die DB im Probelauf vor der Karte (Tool-Description: on ok:false offer the matching depot). Mock-Tier: Szenario ruft das Tool; Beweis = kein sendAndWait. Judge prueft: erklaert Mismatch + bietet Alternative an, keine Erfolgsmeldung."
+    },
+    {
+        "id":  "tc16",
+        "name":  "Aktien verkaufen",
+        "task":  "Verkaufe 5 Anteile Vanguard FTSE All-World (VWCE) aus meinem Trade Republic Depot zu 115 Euro je Anteil, Ordergebühr 2 Euro, Datum heute.",
+        "chat_id":  "test_tc16",
+        "expected_tool":  "tool_book_stock_sell",
+        "expected_tool_args":  {
+                                   "shares":  5,
+                                   "price_per_share":  115,
+                                   "order_fee":  2
+                               },
+        "quarantined":  true,
+        "expected_behavior":  "Ruft tool_book_stock_sell direkt mit depot_name=Trade Republic Depot, symbol=VWCE, shares=5, price_per_share=115, order_fee=2 auf (keine eigene holding_id-Abfrage vorher, die Position findet das Tool). Rechnet den Erloes nicht selbst.",
+        "notes":  "2026-10-23 (DB-ist-das-Gesetz S8): der holding_id-Lookup entfaellt (depot_name + symbol, fn_find_holding) - die Haupt-Ursache der Varianz ist weg; beim naechsten bezahlten Lauf die Quarantaene pruefen. QUARANTAENE (B3): bekannt flaky (Lauf-zu-Lauf-Varianz error/timeout/pass). Root-Causes adressiert: (1) Tool-Description entzerrt den konkurrierenden Lookup-Pfad (holding_id NUR aus finance_depot_holdings_overview, NIE aus finance_transactions/sells) -\u003e Agent erreicht jetzt zuverlaessig den Tool-Call; (2) holding_id-$fromAI-Typ \u0027number\u0027-\u003e\u0027string\u0027 (Agent quotete die ID -\u003e Schema-Reject behoben; SQL castet ::int). Rest-Varianz (gelegentlicher Timeout) ist LLM-Nichtdeterminismus -\u003e formal quarantaeniert (run+report, NICHT in Pass/Fail/Judge gewertet) statt informellem Nachfeuern. Korrektheit voll via DB-Test (test_fn_book_stock_sell.sql) + E2E (e2e05). RE-EVALUIEREN: wenn ueber \u003e=5 isolierte Laeufe stabil gruen, quarantined entfernen."
+    },
+    {
+        "id":  "tc17",
+        "name":  "Kreditrate buchen",
+        "task":  "Buche die monatliche Kreditrate für meinen Baufinanzierungs-Kredit, Rate 1200 Euro, Datum heute.",
+        "chat_id":  "test_tc17",
+        "expected_tool":  "tool_book_loan_payment",
+        "expected_tool_args":  {
+                                   "payment_amount":  1200
+                               },
+        "expected_behavior":  "Ruft tool_book_loan_payment mit loan_name (passend zum Baufinanzierungs-Kredit) und payment_amount=1200 auf. Datum leer (= heute) oder das heutige Datum, kein anderes erfundenes Datum. Kein explizites principal_amount (Auto-Berechnung).",
+        "notes":  "Neues tool_book_loan_payment. Normaler Raten-Pfad ohne expliziten Tilgungsanteil -\u003e fn berechnet aus Restschuld. Judge: actual_tool_input enthaelt loan_name + payment_amount=1200."
+    },
+    {
+        "id":  "tc18",
+        "name":  "Sparziel anlegen",
+        "task":  "Lege ein neues Sparziel \u0027Notfallfonds\u0027 an: Zielbetrag 10000 Euro, bis Ende 2027, vom DKB Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.07.2026.",
+        "chat_id":  "test_tc18",
+        "expected_tool":  "tool_create_savings_goal",
+        "expected_tool_args":  {
+                                   "target_amount":  10000,
+                                   "target_date":  "2027-12-31",
+                                   "reserve_account_name":  "Tagesgeld Plus"
+                               },
+        "expected_behavior":  "Ruft tool_create_savings_goal ZIEL-getrieben auf (die Dubletten-Pruefung macht das Tool selbst): goal_name=\u0027Notfallfonds\u0027, target_amount=10000, target_date=\u00272027-12-31\u0027, account_name=\u0027DKB Giro\u0027, schedule_day_of_month=1, first_payment_date=\u00272026-07-01\u0027. Der Nutzer nannte KEINE Sparrate -\u003e der Agent darf KEINE monthly_savings_rate selbst ausrechnen/erfinden; das Tool berechnet sie aus Ziel/Zeit.",
+        "notes":  "Neues tool_create_savings_goal, ziel-getrieben. Testet die Regel \u0027LLM rechnet nicht\u0027: nur target_date gegeben, die Rate berechnet die DB. Judge: actual_tool_input enthaelt target_amount=10000 + target_date=\u00272027-12-31\u0027, KEINE selbst-errechnete monthly_savings_rate."
+    },
+    {
+        "id":  "tc19",
+        "name":  "Kontoabgleich (Saldo-Abgleich)",
+        "task":  "Gleiche mein DKB Giro ab: laut Banking-App beträgt der Saldo heute genau 1.234,56 Euro.",
+        "chat_id":  "test_tc19",
+        "expected_tool":  "tool_reconcile_account",
+        "expected_tool_args":  {
+                                   "confirmed_balance":  1234.56
+                               },
+        "expected_behavior":  "Ruft tool_reconcile_account mit account_name=\u0027DKB Giro\u0027 und confirmed_balance=1234.56 auf. Datum leer (= heute) oder das heutige Datum, kein anderes erfundenes Datum (bezahlter Lauf 2026-10-23: Sonnet setzte 2025-01-01).",
+        "notes":  "Neues tool_reconcile_account. Direkter Abgleich-Aufruf ohne Notiz. Judge: actual_tool_input enthaelt confirmed_balance=1234.56."
+    },
+    {
+        "id":  "tc39",
+        "name":  "Sammel-Saldo-Abgleich (mehrere Konten auf einmal)",
+        "task":  "Saldo-Abgleich Monatsende: mein DKB Giro zeigt laut App 1.234,56 Euro und mein Bargeld 80 Euro.",
+        "chat_id":  "test_tc39",
+        "expected_tool":  "tool_reconcile_accounts_batch",
+        "expected_behavior":  "Mehrere Kontostaende in EINER Nachricht -\u003e der Agent waehlt das Batch-Tool tool_reconcile_accounts_batch (NICHT N-mal das Einzel-Tool) und uebergibt beide Konten im accounts-JSON-Array (DKB Giro 1234.56, Bargeld 80). Ein Sammel-Approval deckt beide.",
+        "notes":  "Routing-Golden fuers Batch-Tool: mehrere Staende -\u003e batch statt N Einzelaufrufe. Korrektheit der Buchungen via test_fn_reconcile_accounts (DB) + e2e29 (echte Writes durch JSON.parse-Pfad)."
+    },
+    {
+        "id":  "tc20",
+        "name":  "Konto schliessen",
+        "task":  "Schliesse das Trade Republic Cash Girokonto, Schliessungsdatum heute, Grund: Konto wird nicht mehr benoetigt.",
+        "chat_id":  "test_tc20",
+        "expected_tool":  "tool_close_account",
+        "expected_behavior":  "Ruft tool_close_account direkt mit account_name=\u0027Trade Republic Cash Girokonto\u0027 (oder aehnlich) auf, ohne Text-Vorab-Rueckfrage; closure_date bleibt leer (die Datenbank setzt heute) oder ist das heutige Datum - nie ein erfundenes anderes Datum. Die Warnung zur Unwiderruflichkeit steht auf der Karte, der Antworttext muss sie nicht wiederholen.",
+        "notes":  "Neues tool_close_account. Account muss in der DB existieren (Trade Republic Cash Girokonto ist bekannte Prod-Entitaet). Der Agent ruft das Tool direkt auf — kein Text-Vorab-Confirm, das Tool zeigt Saldo + ACHTUNG-Warnung in der HITL-Approval-Summary mit Approve/Decline-Buttons. Unter Routing-Bypass wird das Tool declined -\u003e kein echter Close."
+    },
+    {
+        "id":  "tc21",
+        "name":  "Oversell: mehr Anteile verkaufen als vorhanden",
+        "task":  "Verkaufe 999 Anteile Vanguard FTSE All-World (VWCE) aus meinem Trade Republic Depot zu 115 Euro je Anteil, Ordergebuehr 2 Euro, Datum heute.",
+        "chat_id":  "test_tc21",
+        "expected_tool":  "tool_book_stock_sell",
+        "expected_tool_args":  {
+                                   "shares":  999
+                               },
+        "expected_behavior":  "Ruft tool_book_stock_sell direkt auf (ohne eigene Bestands-Pruefung). Der Probelauf der Datenbank lehnt ab (ok:false, card_sent:false, nicht genug Anteile, verfuegbare Menge); es kommt KEINE Bestaetigungskarte. Der Agent nennt den tatsaechlichen Bestand und fragt, wie viele verkauft werden sollen (oder bietet \u0027alle\u0027 an); er meldet keinen Erfolg und erwaehnt keine Karte/keinen Knopf.",
+        "notes":  "Paket DB-ist-das-Gesetz 2026-10-23: Oversell entscheidet die DB im Probelauf vor der Karte (wie tc54, hier mit genannter Ordergebuehr). Mock-Tier: Szenario ruft das Tool; Beweis = kein sendAndWait. Judge prueft: nennt Bestand + fragt nach, keine Erfolgsmeldung."
+    },
+    {
+        "id":  "tc22",
+        "name":  "Kredit-Ueberzahlung: Rate uebersteigt Restschuld",
+        "task":  "Buche eine Kreditrate von 999999 Euro fuer meinen Baufinanzierungs-Kredit, Datum heute.",
+        "chat_id":  "test_tc22",
+        "expected_tool":  null,
+        "expected_behavior":  "Erkennt, dass die Rate die Restschuld weit uebersteigt (Ueberzahlung) - vorab aus der Datenbank gelesen oder aus der ok:false-Antwort des Probelaufs -, bucht nichts Falsches, nennt die Restschuld bzw. die Abloesesumme (Restschuld + Zins) und fragt, ob stattdessen die Abloese gebucht werden soll.",
+        "notes":  "Neue weiche Wert-Validierung (Ueberzahlung). Falls der Agent das Tool doch ruft, liefert fn_book_loan_payment {ok:false, payoff_amount} und der Agent bietet die Abloese an. Judge: Agent erkennt die Ueberzahlung + nennt Restschuld/Abloese + fragt nach."
+    },
+    {
+        "id":  "tc23",
+        "name":  "Konto schliessen: Verrechnungskonto eines aktiven Depots",
+        "task":  "Schliesse das Trade Republic Cash Girokonto, Schliessungsdatum heute.",
+        "chat_id":  "test_tc23",
+        "expected_tool":  "tool_close_account",
+        "expected_behavior":  "Ruft tool_close_account fuer das Trade Republic Cash Girokonto auf. Das Tool lehnt ab ({ok:false}), weil dieses Konto das Verrechnungskonto eines aktiven Depots (Trade Republic Depot) ist. Der Agent relayed diesen Grund an den Nutzer und bittet, zuerst das Depot zu schliessen oder umzuhaengen - statt stur zu wiederholen.",
+        "notes":  "Neue weiche Ablehnung aus fn_close_account (settlement-dependency). Hier wird das Tool bewusst AUFGERUFEN (expected_tool gesetzt) und liefert {ok:false, depot_count}; das Pruefobjekt ist, dass der Agent den Grund sauber relayed statt zu retryen. Setzt voraus, dass das Trade Republic Cash Girokonto Verrechnungskonto des Trade Republic Depot ist (Prod-Stand). Judge: Agent erklaert die Abhaengigkeit + bittet, zuerst das Depot zu loesen."
+    },
+    {
+        "id":  "tc24",
+        "name":  "Wiederkehrende Ausgabe anlegen (Abo)",
+        "task":  "Lege eine wiederkehrende Ausgabe an: Netflix-Abo, 13,99 Euro monatlich vom DKB Giro, Abbuchungstag 5, erste Zahlung am 05.07.2026.",
+        "chat_id":  "test_tc24",
+        "expected_tool":  "tool_create_recurring_payment",
+        "expected_tool_args":  {
+                                   "direction":  "expense",
+                                   "amount":  13.99,
+                                   "schedule_unit":  "month"
+                               },
+        "expected_behavior":  "Ruft tool_create_recurring_payment mit name=\u0027Netflix\u0027 (o. ae.), account_name=\u0027DKB Giro\u0027, direction=\u0027expense\u0027, amount=13.99, schedule_unit=\u0027month\u0027, schedule_day_of_month=5, first_payment_date=\u00272026-07-05\u0027 auf. amount bleibt positiv (Tool setzt das Vorzeichen via direction). NICHT als Versicherung/Kredit behandeln.",
+        "notes":  "Neues tool_create_recurring_payment. Standalone Ausgabe (kein insurance/loan/savings). Judge: actual_tool_input enthaelt direction=expense + amount=13.99 (positiv) + schedule_unit=month."
+    },
+    {
+        "id":  "tc24b",
+        "name":  "Wiederkehrenden internen Transfer einrichten",
+        "task":  "Richte einen monatlichen Dauerauftrag ein: 200 Euro vom DKB Giro auf das Trade Republic Cash Girokonto, ab dem 01.07.2026, am 1. des Monats.",
+        "chat_id":  "test_tc24b",
+        "expected_tool":  "tool_create_recurring_transfer",
+        "expected_tool_args":  {
+                                   "from_account_name":  "DKB Giro",
+                                   "to_account_name":  "Trade Republic Cash Girokonto",
+                                   "amount":  200,
+                                   "schedule_unit":  "month"
+                               },
+        "expected_behavior":  "Ruft tool_create_recurring_transfer (NICHT tool_book_transfer = einmalig, NICHT tool_create_recurring_payment = externe Ein-/Ausgabe) mit from_account_name=DKB Giro, to_account_name=Trade Republic Cash Girokonto, amount=200 (positiv), schedule_unit=month, schedule_day_of_month=1, first_payment_date=2026-07-01 auf. Beide Konten existieren, interne Bewegung zwischen eigenen Konten.",
+        "notes":  "Neues tool_create_recurring_transfer. Interner wiederkehrender Transfer (target_account_id) -> cashflow-neutral. Judge: actual_tool_input enthaelt from/to + amount=200 + schedule_unit=month."
+    },
+    {
+        "id":  "tc25",
+        "name":  "Altersvorsorge erfassen (Ruerup mit Beitrag)",
+        "task":  "Erfasse meine Ruerup-Rente bei der Allianz, aktueller Rückkaufswert 12.000 Euro (Stand heute), monatlicher Beitrag 200 Euro vom DKB Giro, Abbuchungstag 1.",
+        "chat_id":  "test_tc25",
+        "expected_tool":  "tool_create_pension",
+        "expected_tool_args":  {
+                                   "pension_type":  "ruerup",
+                                   "current_value":  12000,
+                                   "contribution_amount":  200
+                               },
+        "expected_behavior":  "Ruft tool_create_pension mit pension_type=\u0027ruerup\u0027, provider=\u0027Allianz\u0027, current_value=12000, contribution_amount=200, debit_account_name=\u0027DKB Giro\u0027, schedule_day_of_month=1 auf. Der Beitrag wird als wiederkehrende Ausgabe gebucht.",
+        "notes":  "Neues tool_create_pension. 3-Saeulen-Typ + optionaler Beitrag (recurring). Judge: actual_tool_input enthaelt pension_type=ruerup + current_value=12000 + contribution_amount=200 + debit_account_name."
+    },
+    {
+        "id":  "tc26",
+        "name":  "Konto-Stammdaten aendern (set_account)",
+        "task":  "Ändere die Kontonummer (IBAN) meines DKB Giro auf DE89370400440532013000.",
+        "chat_id":  "test_tc26",
+        "expected_tool":  "tool_set_account",
+        "expected_tool_args":  {
+                                   "account_number":  "DE89370400440532013000"
+                               },
+        "expected_behavior":  "Ruft tool_set_account mit account_name=\u0027DKB Giro\u0027 und account_number=\u0027DE89370400440532013000\u0027 auf. Aendert NUR die Kontonummer (partielles Update), erfindet keine weiteren Felder.",
+        "notes":  "Neues set_*-Tool. DKB Giro ist Prod-Entitaet. Reines Stammdaten-Update -\u003e Agent ruft das Tool direkt (kein Dedup noetig). Judge: actual_tool_input account_name=\u0027DKB Giro\u0027 + account_number gesetzt."
+    },
+    {
+        "id":  "tc27",
+        "name":  "Kontozins setzen (set_account_interest)",
+        "task":  "Mein Trade Republic Cash Girokonto wird ab heute mit 2 % p.a. verzinst. Bitte den Zinssatz eintragen.",
+        "chat_id":  "test_tc27",
+        "expected_tool":  "tool_set_account_interest",
+        "expected_tool_args":  {
+                                   "annual_rate":  2
+                               },
+        "expected_behavior":  "Ruft tool_set_account_interest mit account_name=\u0027Trade Republic Cash Girokonto\u0027, annual_rate=2 auf; valid_from leer (= heute) oder heute. Behandelt es als Zins-Nachtrag/-Aenderung, nicht als Kontoanlage.",
+        "notes":  "Neues set_*-Tool (war Backlog-Punkt). Nachtrag eines Zinssatzes auf bestehendes Konto. Judge: actual_tool_input account_name=\u0027Trade Republic Cash Girokonto\u0027 + annual_rate=2."
+    },
+    {
+        "id":  "tc28",
+        "name":  "Immobilie neubewerten (set_real_estate)",
+        "task":  "Aktualisiere den Wert meiner Musterimmobilie auf 350.000 Euro.",
+        "chat_id":  "test_tc28",
+        "expected_tool":  "tool_set_real_estate",
+        "expected_tool_args":  {
+                                   "current_value":  350000
+                               },
+        "expected_behavior":  "Ruft tool_set_real_estate mit real_estate_name=\u0027Musterimmobilie\u0027 und current_value=350000 auf (Neubewertung). Aendert keine anderen Felder.",
+        "notes":  "Neues set_*-Tool. Musterimmobilie ist Prod-Entitaet. Reine Neubewertung. Judge: actual_tool_input real_estate_name=\u0027Musterimmobilie\u0027 + current_value=350000."
+    },
+    {
+        "id":  "tc29",
+        "name":  "Versicherungspraemie anpassen (set_insurance)",
+        "task":  "Die Jahresprämie meiner HUK Hausratversicherung steigt auf 95 Euro. Bitte anpassen.",
+        "chat_id":  "test_tc29",
+        "expected_tool":  "tool_set_insurance",
+        "expected_tool_args":  {
+                                   "annual_premium":  95
+                               },
+        "expected_behavior":  "Ruft tool_set_insurance mit insurance_name=\u0027HUK Hausratversicherung\u0027 und annual_premium=95 auf. Die verknuepfte wiederkehrende Zahlung wird vom Tool automatisch mit-synchronisiert (kein separater Aufruf noetig).",
+        "notes":  "Neues set_*-Tool (einziges mit Recurring-Sync). HUK Hausratversicherung ist Prod-Entitaet. Judge: actual_tool_input insurance_name=\u0027HUK Hausratversicherung\u0027 + annual_premium=95. set_pension hat keine Prod-Entitaet -\u003e nur DB-Test test_fn_set_pension.sql (+ optional e2e), kein Routing-Golden-Case."
+    },
+    {
+        "id":  "tc30",
+        "name":  "Kredit-Konditionen aendern (set_loan)",
+        "task":  "Meine Baufinanzierung ING hat nach Ablauf der Zinsbindung einen neuen Zinssatz von 4,1 %. Bitte aktualisieren.",
+        "chat_id":  "test_tc30",
+        "expected_tool":  "tool_set_loan",
+        "expected_tool_args":  {
+                                   "interest_rate":  4.1
+                               },
+        "expected_behavior":  "Ruft tool_set_loan mit loan_name=\u0027Baufinanzierung ING\u0027 und interest_rate=4.1 auf. Behandelt es als Konditions-Aenderung des bestehenden Kredits, nicht als neuen Kredit.",
+        "notes":  "Neues set_*-Tool. \u0027Baufinanzierung ING\u0027 ist Prod-Loan. Judge: actual_tool_input loan_name + interest_rate=4.1."
+    },
+    {
+        "id":  "tc31",
+        "name":  "Depot-Position-Metadaten korrigieren (set_holding)",
+        "task":  "Korrigiere bei meiner VWCE-Position im Trade Republic Depot den Anzeigenamen auf \u0027Vanguard FTSE All-World UCITS ETF (Acc)\u0027.",
+        "chat_id":  "test_tc31",
+        "expected_tool":  "tool_set_holding",
+        "expected_tool_args":  {
+                                   "new_name":  "Vanguard FTSE All-World UCITS ETF (Acc)"
+                               },
+        "expected_behavior":  "Ruft tool_set_holding direkt mit depot_name=Trade Republic Depot, position=VWCE und new_name=\u0027Vanguard FTSE All-World UCITS ETF (Acc)\u0027 auf. Aendert keine shares/avg.",
+        "notes":  "Neues set_*-Tool. VWCE ist Fixture-Holding (Name \u0027Vanguard FTSE All-World\u0027) - der Zielname muss davon ABWEICHEN, sonst meldet der Agent korrekt, dass er schon so lautet (real 2026-10-20). Routing: set_holding direkt mit depot_name + position (das Tool findet die Position, S8). Judge: actual_tool_input enthaelt depot_name + position + new_name. set_recurring_payment + set_savings_goal haben keine passende Prod-Entitaet (kein standalone Recurring / kein aktives Sparziel) -\u003e via DB-Tests + e2e12/e2e13 abgedeckt, kein Routing-Golden."
+    },
+    {
+        "id":  "tc32",
+        "name":  "Letzte Buchung stornieren (void_transaction)",
+        "task":  "Storniere meine letzte Buchung auf dem DKB Giro.",
+        "chat_id":  "test_tc32",
+        "expected_tool":  "tool_void_transaction",
+        "expected_behavior":  "Ruft tool_void_transaction fuer die juengste Buchung des DKB Giro auf: transaction_id aus einer Datenbank-Abfrage (Zahl oder Text gleichwertig), identifiziert per id, NICHT per Beschreibung. Ob die id aus einer Abfrage stammt, ist im Protokoll nicht sicher sichtbar; nur eine offensichtlich erfundene id ist falsch.",
+        "notes":  "Neues void_transaction-Tool. Routing: Agent liest die letzte Tx-id via postgres_select, dann void. Unter Bypass declined (kein echtes Loeschen). Judge: actual_tool_input enthaelt transaction_id (Integer)."
+    },
+    {
+        "id":  "tc33",
+        "name":  "Sparplan anlegen (create_savings_plan)",
+        "task":  "Lege einen neuen Sparplan \u0027EIMI Monatsplan\u0027 an: Trade Republic Depot, ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI, 50 Euro monatlich, erste Ausführung am 2027-01-02.",
+        "chat_id":  "test_tc33",
+        "expected_tool":  "tool_create_savings_plan",
+        "expected_tool_args":  {
+                                   "isin":  "IE00BKM4GZ66",
+                                   "symbol":  "EIMI",
+                                   "amount":  50
+                               },
+        "expected_behavior":  "Ruft tool_create_savings_plan mit plan_name=\u0027EIMI Monatsplan\u0027, depot_name=\u0027Trade Republic Depot\u0027, isin=\u0027IE00BKM4GZ66\u0027, symbol=\u0027EIMI\u0027, security_name=\u0027iShares Core MSCI EM IMI\u0027, amount=50, first_payment_date=\u00272027-01-02\u0027 auf.",
+        "notes":  "Neues tool_create_savings_plan. Self-contained create (neuer Name UND anderes Wertpapier als der Fixture-Bestandsplan - bei gleichem Symbol fragt der Agent korrekt nach Dubletten, real 2026-10-20). Judge: actual_tool_input enthaelt plan_name + depot_name=\u0027Trade Republic Depot\u0027 + isin=\u0027IE00BKM4GZ66\u0027 + amount=50. Datum bewusst fest und auf einem Ausfuehrungstag der Bank (2., fn_broker_plan_days: das Fixture-Depot ist Trade Republic): eine erste Ausfuehrung in der Vergangenheit liess den Agenten nachfragen statt anlegen -> sobald 2027-01-02 naeher als ~1 Monat rueckt, in task + expected_tool_args + scenarios.json nachziehen."
+    },
+    {
+        "id":  "tc68",
+        "name":  "Woechentlicher Sparplan bei Bank mit festen Ausfuehrungstagen (create_savings_plan, Rhythmus roh)",
+        "task":  "Lege einen neuen Sparplan 'EIMI Wochenplan' an: Trade Republic Depot, ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI, 25 Euro pro Woche, erste Ausführung am 2027-01-02.",
+        "chat_id":  "test_tc68",
+        "expected_tool":  "tool_create_savings_plan",
+        "expected_tool_args":  {
+                                   "isin":  "IE00BKM4GZ66",
+                                   "amount":  25,
+                                   "schedule_unit":  "week"
+                               },
+        "expected_behavior":  "Ruft tool_create_savings_plan mit schedule_unit='week' (schedule_interval 1 oder leer), amount=25 und first_payment_date='2027-01-02' auf. Rechnet KEINE Ausfuehrungstage oder Monatsbetraege selbst aus, setzt kein depot_execution_days und keine beneficiary_person (Depot-Inhaber per Default).",
+        "notes":  "Live-Befund 2026-10-24: Trade Republic fuehrt woechentlich am 2./9./16./23. aus (4x/Monat). Der Agent uebergibt den Rhythmus roh (week/1); die DB leitet ueber den Depot-Kalender (fn_resolve_plan_schedule, Vorbelegung fn_broker_plan_days) month + Tage {2,9,16,23} und 100 EUR/Monat ab und zeigt sie auf der Karte. Fixture-Depot 'Trade Republic Depot' traegt bank=Trade Republic. Datum auf einem Ausfuehrungstag (2.); sobald 2027-01-02 naeher als ~1 Monat rueckt, in task + scenarios.json nachziehen."
+    },
+    {
+        "id":  "tc69",
+        "name":  "Wochenplan mit Broker-Muster beschrieben: EIN Plan, kein Aufteilen, keine Rueckfrage vorab (create_savings_plan)",
+        "task":  "In meinem Trade Republic Depot gibt es einen Sparplan 'EIMI Viertagesplan' auf ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI. Er wird wöchentlich ausgeführt nach dem Trade-Republic-Muster mit den 4 Tagen im Monat, mit einem Betrag von 40 Euro. Die nächste Ausführung ist am 2027-01-02.",
+        "chat_id":  "test_tc69",
+        "expected_tool":  "tool_create_savings_plan",
+        "expected_tool_args":  {
+                                   "isin":  "IE00BKM4GZ66",
+                                   "amount":  40,
+                                   "schedule_unit":  "week"
+                               },
+        "expected_behavior":  "Ruft tool_create_savings_plan GENAU EINMAL direkt auf (ein Plan, schedule_unit='week', schedule_interval 1 oder leer, amount=40, first_payment_date='2027-01-02'). Fragt NICHT vorab, ob alle 7 Tage oder feste Monatstage gemeint sind, schlaegt KEINE vier Einzel-Plaene vor und rechnet keinen Monatsbetrag selbst aus - die DB kennt den Depot-Kalender.",
+        "notes":  "Live-Befund 2026-10-24 (v0.13.1, vor dem Depot-Kalender): Bei dieser Formulierung rief der Agent das Tool gar nicht auf, hielt 'woechentlich' und '4 Tage im Monat' fuer widerspruechlich und bot 'vier einzelne Sparplaene' an. Der Satz NEVER split / do not ask in der Tool-Description von tool_create_savings_plan sichert das ab. Datum auf einem Ausfuehrungstag (2.); sobald 2027-01-02 naeher als ~1 Monat rueckt, in task + scenarios.json nachziehen."
+    },
+    {
+        "id":  "tc34",
+        "name":  "Sparplan-Ausfuehrung buchen (book_savings_plan_execution)",
+        "task":  "Der Broker hat meinen VWCE Bestandsplan heute ausgeführt: 0,44 Anteile zu 113,50 Euro je Anteil, Ordergebühr 0 Euro.",
+        "chat_id":  "test_tc34",
+        "expected_tool":  "tool_book_savings_plan_execution",
+        "expected_tool_args":  {
+                                   "shares":  0.44,
+                                   "price_per_share":  113.5,
+                                   "order_fee":  0
+                               },
+        "expected_behavior":  "Ruft tool_book_savings_plan_execution mit savings_plan_name=\u0027VWCE Bestandsplan\u0027, shares=0.44, price_per_share=113.5, order_fee=0 auf. Das Tool auto-detektiert das faellige Datum. Unter Bypass declined (kein echtes Buchen).",
+        "notes":  "Neues tool_book_savings_plan_execution. Agent uebergibt plan_name direkt (kein ID-Lookup noetig, stabiler Plan via Bestandsplan-Fixture (Agent verifiziert die Existenz)). Judge: actual_tool_input enthaelt savings_plan_name + shares=0.44 + price_per_share=113.5 + order_fee=0."
+    },
+    {
+        "id":  "tc35",
+        "name":  "Sparplan pausieren (set_savings_plan)",
+        "task":  "Pausiere meinen VWCE Bestandsplan ab sofort.",
+        "chat_id":  "test_tc35",
+        "expected_tool":  "tool_set_savings_plan",
+        "expected_tool_args":  {
+                                   "status":  "paused"
+                               },
+        "expected_behavior":  "Ruft tool_set_savings_plan mit savings_plan_name=\u0027VWCE Bestandsplan\u0027 und status=\u0027paused\u0027 auf. Aendert nur den Status (kein new_amount, kein notes). Unter Bypass declined.",
+        "notes":  "Neues tool_set_savings_plan. Agent erkennt \u0027pausieren\u0027 -\u003e status=paused, leitet plan_name direkt aus dem Task ab (kein ID-Lookup, stabiler Plan via Bestandsplan-Fixture (Agent verifiziert die Existenz)). Judge: actual_tool_input enthaelt savings_plan_name=\u0027VWCE Bestandsplan\u0027 + status=\u0027paused\u0027."
+    },
+    {
+        "id":  "tc36",
+        "name":  "Sparplan schliessen (close_savings_plan)",
+        "task":  "Schliesse meinen VWCE Bestandsplan endgültig.",
+        "chat_id":  "test_tc36",
+        "expected_tool":  "tool_close_savings_plan",
+        "expected_tool_args":  {
+                                   "savings_plan_name":  "VWCE Bestandsplan"
+                               },
+        "expected_behavior":  "Ruft tool_close_savings_plan mit savings_plan_name=\u0027VWCE Bestandsplan\u0027 auf. Smart-Close-Guard (Hard-DELETE vs. Soft-Close) entscheidet die DB-Function. Unter Bypass declined.",
+        "notes":  "Neues tool_close_savings_plan. Direktes name-Passing, kein ID-Lookup, stabiler Plan via Bestandsplan-Fixture (Agent verifiziert die Existenz). Judge: actual_tool_input enthaelt savings_plan_name=\u0027VWCE Bestandsplan\u0027."
+    },
+    {
+        "id":  "tc37",
+        "name":  "Versicherung kuendigen/entfernen (close_insurance)",
+        "task":  "Kündige meine HUK Hausratversicherung.",
+        "chat_id":  "test_tc37",
+        "expected_tool":  "tool_close_insurance",
+        "expected_tool_args":  {
+                                   "insurance_name":  "HUK Hausratversicherung"
+                               },
+        "expected_behavior":  "Ruft tool_close_insurance mit insurance_name=\u0027HUK Hausratversicherung\u0027 DIREKT auf (kein Text-Vorab-Confirm, kein set_insurance). Der Smart-Close-Guard der DB-Function entscheidet Hard-DELETE (keine Buchungen) vs. Soft-Close (Buchungen -\u003e status=cancelled + Praemie beendet). Unter Routing-Bypass declined -\u003e kein echtes Schliessen.",
+        "notes":  "Neues tool_close_insurance (Smart-Close). Abgrenzung zu set_insurance (nur Attribute). Direktes name-Passing. Judge: actual_tool_input enthaelt insurance_name=\u0027HUK Hausratversicherung\u0027."
+    },
+    {
+        "id":  "tc38",
+        "name":  "Immobilie loeschen (delete_real_estate)",
+        "task":  "Bitte lösche die Immobilie \u0027Musterimmobilie\u0027 komplett aus meiner Vermögensübersicht, ich brauche sie nicht mehr.",
+        "chat_id":  "test_tc38",
+        "expected_tool":  "tool_delete_real_estate",
+        "expected_tool_args":  {
+                                   "real_estate_name":  "Musterimmobilie"
+                               },
+        "expected_behavior":  "Ruft tool_delete_real_estate mit real_estate_name=\u0027Musterimmobilie\u0027 auf (Hard-DELETE). Falls Kredite verknuepft sind, liefert die fn {ok:false, loan_count} und der Agent relayed das (erst Kredite loesen) statt zu retryen. Nicht als set_real_estate (status=sold) behandeln. Unter Routing-Bypass declined -\u003e kein echtes Loeschen.",
+        "notes":  "Neues tool_delete_real_estate (Hard-DELETE-if-empty). \u0027Musterimmobilie\u0027 ist die einzige Prod-Immobilie. Abgrenzung zu set_real_estate (status=sold). Judge: actual_tool_input enthaelt real_estate_name=\u0027Musterimmobilie\u0027. HINWEIS: close_pension / close_savings_goal / delete_holding haben KEINE dauerhafte Prod-Entitaet fuer einen Routing-Golden (keine Pension/kein Sparziel in Prod; die VWCE-Holding hat Trades) -\u003e sie sind voll abgedeckt durch (a) deterministische DB-Tests (test_fn_*) UND (b) E2E-Cases e2e18/e2e19/e2e21 (Agent legt __E2E__-Entitaet an -\u003e close/delete -\u003e verify -\u003e fn_clear_e2e_data-Cleanup). close_insurance (tc37) + delete_real_estate (tc38) sind die Routing-Repraesentanten; e2e17/e2e20 ergaenzen sie als Schema-Fidelity-Check."
+    },
+    {
+        "id":  "tc40",
+        "name":  "Bulk-Import: mehrere Entitaeten stagen",
+        "task":  "Stage bitte folgende Daten fuer den Import, aber committe noch NICHT (ich will erst die Validierung sehen): Konto \"Consors Tagesgeldkonto Neu\" (Girokonto bei Consors, Saldo heute 4200 Euro) und Dauerauftrag \"Spotify Family Neu\" (Ausgabe, 17,99 Euro monatlich vom Consors Tagesgeldkonto Neu, erste Zahlung 2026-07-01).",
+        "chat_id":  "test_tc40",
+        "expected_tool":  "tool_import_stage_rows",
+        "notes":  "Stage-only-Intent (explizit KEIN Commit) -\u003e deterministisch genau ein Write-Tool. Erste Fassung (\"importiere in einem Rutsch\") liess den Agenten korrekt stage+commit in einem Turn fahren -\u003e Harness sah den letzten Call (commit) -\u003e False-FAIL. Der volle Pipeline-Pfad ist e2e31."
+    },
+    {
+        "id":  "tc44",
+        "name":  "Konto mit Eigentuemer-Person anlegen (owner_person)",
+        "task":  "Lege ein neues Aktiendepot 'Junior Depot' an, Verrechnungskonto ist das DKB Giro, Eigentuemerin ist meine Frau.",
+        "chat_id":  "test_tc44",
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {
+                                   "account_type":  "stocks_depot"
+                               },
+        "expected_behavior":  "Loest 'meine Frau' via family zu Lena Beispiel auf und uebergibt sie als owner_person; legt ein stocks_depot mit Verrechnungskonto DKB Giro an. Bestaetigt die Personen-Zuordnung (owner_person = Lena) im Tool-Aufruf oder Antworttext.",
+        "notes":  "WS-4 owner_person-Routing (meine Frau -> Lena via family). Neuer Depot-Name (kein Dub). Judge prueft die Person; expected_tool_args bewusst schlank (LLM-Nichtdeterminismus beim Namen)."
+    },
+    {
+        "id":  "tc41",
+        "name":  "Sparziel mit beguenstigter Person (beneficiary_person)",
+        "task":  "Lege ein Sparziel 'Ausbildung Lena' an: Zielbetrag 10000 Euro bis Ende 2035, vom DKB Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.08.2026, beguenstigt ist meine Frau.",
+        "chat_id":  "test_tc41",
+        "expected_tool":  "tool_create_savings_goal",
+        "expected_behavior":  "Loest 'meine Frau' via family zu Lena Beispiel auf und uebergibt sie als beneficiary_person; legt das Sparziel mit Abbuchung vom DKB Giro an. Bestaetigt die Beguenstigte (beneficiary_person = Lena) im Tool-Aufruf oder Antworttext.",
+        "notes":  "WS-4 beneficiary_person-Routing (meine Frau -> Lena via family). Neuer Zielname (kein Dub). Judge prueft die Person; expected_tool_args weggelassen (LLM-Nichtdeterminismus)."
+    },
+    {
+        "id":  "tc42",
+        "name":  "Faelliges Dauerauftrag-Vorkommen mit angepasstem Betrag buchen (book_recurring_occurrence)",
+        "task":  "Mein Stromabschlag Stadtwerke war diesen Monat 95 Euro statt der ueblichen 80 - bitte fuer diesen Monat mit dem tatsaechlichen Betrag buchen.",
+        "chat_id":  "test_tc42",
+        "expected_tool":  "tool_book_recurring_occurrence",
+        "expected_tool_args":  {
+                                   "recurring_payment_name":  "Stromabschlag Stadtwerke",
+                                   "actual_amount":  95
+                               },
+        "expected_behavior":  "Ruft tool_book_recurring_occurrence mit recurring_payment_name='Stromabschlag Stadtwerke' und actual_amount=95 auf. Das Tool auto-detektiert die faellige Periode (kein Datum erfragen) und zeigt Soll (80) vs. Ist (95) zur Bestaetigung. Unter Bypass declined (kein echtes Buchen).",
+        "notes":  "Neues tool_book_recurring_occurrence (WS-5c-A Betrags-Anpassung). Stabiler Dauerauftrag via Stromabschlag-Stadtwerke-Fixture. Abgrenzung zu book_transaction (einmalige Buchung) und set_recurring_payment (dauerhafte Betragsaenderung). Judge: actual_tool_input enthaelt recurring_payment_name + actual_amount=95."
+    },
+    {
+        "id":  "tc43",
+        "name":  "Faellige Zinsgutschrift buchen (book_interest)",
+        "task":  "Bitte buche die faellige Zinsgutschrift auf meinem Tagesgeld Plus Konto.",
+        "chat_id":  "test_tc43",
+        "expected_tool":  "tool_book_interest",
+        "expected_tool_args":  {
+                                   "account_name":  "Tagesgeld Plus"
+                               },
+        "expected_behavior":  "Ruft tool_book_interest mit account_name='Tagesgeld Plus' auf (actual_amount bleibt leer = die DB berechnet den Zins selbst). Das Tool auto-detektiert den Stichtag (kein Datum erfragen) und zeigt den berechneten Vorschlag zur Bestaetigung. Unter Bypass declined.",
+        "notes":  "Neues tool_book_interest (WS-5c-B Zins-Stichtags-Posten). Stabiles verzinstes Konto via Tagesgeld-Plus-Fixture. actual_amount OPTIONAL (DB rechnet Saldo x Satz x Periode, nie das LLM). Judge: actual_tool_input enthaelt account_name='Tagesgeld Plus'."
+    },
+    {
+        "id":  "tc45",
+        "name":  "Kurs-Feed-Symbol einer Depot-Position hinterlegen (set_holding provider_symbol)",
+        "task":  "Fuer meine VWCE-Position im Trade Republic Depot wird kein aktueller Kurs gezogen. Hinterlege bitte das Boersen-Symbol VWCE.DE.",
+        "chat_id":  "test_tc45",
+        "expected_tool":  "tool_set_holding",
+        "expected_tool_args":  {
+                                   "provider_symbol":  "VWCE.DE"
+                               },
+        "expected_behavior":  "Ruft tool_set_holding direkt mit depot_name=Trade Republic Depot, position=VWCE und provider_symbol='VWCE.DE' auf. Aendert keine shares/avg/symbol.",
+        "notes":  "Phase M: provider_symbol-Override fuer den Kurs-Feed (Yahoo braucht den Boersen-Ticker mit Suffix, VWCE.DE). VWCE ist Prod-Holding (gleiche Fixture wie tc31). Judge: actual_tool_input enthaelt depot_name + position + provider_symbol='VWCE.DE'."
+    },
+    {
+        "id":  "tc46",
+        "name":  "Aktienkauf mit Fremdwaehrungs-Kurs (book_stock_buy quote_currency aus Preis)",
+        "task":  "Kauf im Trade Republic Depot 5 Anteile Apple (ISIN US0378331005, Symbol AAPL) zu 293 US-Dollar je Anteil, Ordergebuehr 0 Euro, Kaufdatum heute.",
+        "chat_id":  "test_tc46",
+        "expected_tool":  "tool_book_stock_buy",
+        "expected_tool_args":  {
+                                   "symbol":  "AAPL",
+                                   "shares":  5,
+                                   "price_per_share":  293,
+                                   "quote_currency":  "USD"
+                               },
+        "expected_behavior":  "Ruft tool_book_stock_buy mit symbol=AAPL, shares=5, price_per_share=293 und quote_currency=USD auf (die mit dem Kaufkurs genannte Waehrung 'US-Dollar' wird als quote_currency uebernommen). Unter Bypass declined.",
+        "notes":  "Yahoo-Robustheit WS-2: prueft, dass der Agent die Preis-Waehrung aus '293 US-Dollar' als quote_currency=USD extrahiert (steuert die Yahoo-Listing-Auswahl + wird gespeichert). Trade Republic Depot ist Prod-Fixture (Routing, kein echter Write). Judge: actual_tool_input enthaelt quote_currency=USD."
+    },
+    {
+        "id":  "tc47",
+        "name":  "Konto mit Saldo und Inhaber in EINEM Schritt (opening_balance)",
+        "task":  "Mein 1822direkt Girokonto hat aktuell 1.142 Euro, Inhaber bin ich.",
+        "chat_id":  "test_tc47",
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {
+                                   "account_type":  "cash",
+                                   "opening_balance":  1142
+                               },
+        "expected_behavior":  "Ruft GENAU EINMAL tool_create_account mit account_type=cash, opening_balance=1142 und owner_person=Absender auf (der Absender ist die Fixture-Ownerin Erika; owner_person Erika ist also richtig). Nutzt NICHT den Bulk-Import (tool_import_stage_rows) fuer ein einzelnes Konto und plant keinen zweiten Schritt (kein set_account/reconcile_account danach). Macht die Anlage nicht von IBAN oder Bank-Details abhaengig (ein optionales Angebot, sie nachzutragen, ist in Ordnung).",
+        "notes":  "Eindeutigkeit 2026-10-21: Owner-Onboarding lief fuer genau diesen Fall ueber Import + set_account (zwei Karten). Neuer Kontoname (kein Dub). Judge: ein Tool-Aufruf, Saldo + Inhaber im selben Aufruf."
+    },
+    {
+        "id":  "tc48",
+        "name":  "Bestehende Depot-Position erfassen (existing_position)",
+        "task":  "Im Trade Republic Depot liegen schon 10 Anteile iShares Core MSCI EM IMI (ISIN IE00BKM4GZ66, Symbol EIMI), mein Einstandskurs war 30 Euro je Anteil.",
+        "chat_id":  "test_tc48",
+        "expected_tool":  "tool_book_stock_buy",
+        "expected_tool_args":  {
+                                   "isin":  "IE00BKM4GZ66",
+                                   "shares":  10,
+                                   "price_per_share":  30
+                               },
+        "expected_behavior":  "Ruft tool_book_stock_buy mit existing_position=true auf (Bestandsuebernahme: das Verrechnungskonto wird NICHT belastet), shares=10, price_per_share=30 (der genannte Einstandskurs). Fragt nicht nach einer Ordergebuehr (bei einer bestehenden Position nicht relevant).",
+        "notes":  "Eindeutigkeit/Audit 2026-10-21: ein bestehender Bestand darf den genannten Kontostand nicht still mindern. EIMI ist (anders als VWCE) keine Prod-Holding im TR-Depot -> kein Doppel-Bestand-Guard. Judge: actual_tool_input enthaelt existing_position=true."
+    },
+    {
+        "id":  "tc49",
+        "name":  "Foto-Import: Karte kommt ohne Text-Rueckfrage",
+        "task":  "Hier ist meine Kontenübersicht der Testbank [attachment file_id=mock_photo_001 type=photo]",
+        "chat_id":  "test_tc49",
+        "expected_tool":  "tool_extract_finance_document",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_001"
+                               },
+        "expected_behavior":  "Ruft tool_extract_finance_document mit file_id=mock_photo_001 auf. Sind alle ausgelesenen Zeilen gueltig, schickt das Tool die Sammelkarte selbst (approval_card_sent=true); der Agent fragt NICHT im Text nach ('Soll ich es so uebernehmen?') und ruft tool_commit_import nicht zusaetzlich auf. Nach einer Ablehnung meldet er den Abbruch und fragt, was zu aendern ist.",
+        "notes":  "Owner-Vorfall 2026-10-22 (keine Knoepfe nach dem Auslesen). Mock-Telegram liefert das echte Testbild tests/mock_telegram/docs/mock_photo_001.png (make_doc_fixtures.ps1). Mock-Tier: die Vision-Antwort kommt aus dem Szenario 'Kontenübersicht der Testbank' (alle Zeilen gueltig) -> die Karte geht aus dem Tool heraus, der Routing-Tier lehnt sie ab. Echtes LLM: die Vision liest das Testbild (gleiche Werte wie das Szenario) -> Karte wie im Mock-Tier; bis 2026-10-23 lieferte der Mock nur ein 1x1-PNG, der Bezahl-Tier testete den Import nie wirklich."
+    },
+    {
+        "id":  "tc50",
+        "name":  "Position ohne Kurs: Boersen-Kandidaten nachschlagen",
+        "task":  "Mein ETF mit der ISIN IE00B5BMR087 zeigt keinen aktuellen Kurs. Welche Boerse soll ich nehmen?",
+        "chat_id":  "test_tc50",
+        "expected_tool":  "tool_verify_price_symbol",
+        "expected_tool_args":  {
+                                   "isin":  "IE00B5BMR087"
+                               },
+        "expected_behavior":  "Ruft tool_verify_price_symbol mit der ISIN auf (Lese-Tool, keine Karte) und nennt dem Nutzer die gefundenen Notierungen in einfachen Worten (Boerse, Waehrung, Kurs; Depot-Waehrung zuerst) zur Auswahl - so viele, wie das Tool liefert (auch eine einzige ist in Ordnung). Schreibt nichts, bevor der Nutzer gewaehlt hat; die Wahl laeuft danach ueber tool_set_holding.",
+        "notes":  "Monats-Check WP-G (Owner 2026-10-22: ETF 'P500' ohne Kurs, der Agent soll mit Rueckfragen die Kursabfrage aktivieren). Mock-Tier: Szenario 'zeigt keinen aktuellen Kurs'."
+    },
+    {
+        "id":  "tc51",
+        "name":  "Monats-Check: Kontoauszug-PDF geht an den Kontoauszug-Import",
+        "task":  "Hier ist mein Monatsauszug Mock-DKB vom letzten Monat [attachment file_id=mock_photo_051 type=document]",
+        "chat_id":  "test_tc51",
+        "expected_tool":  "tool_reconcile_bank_statement",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_051"
+                               },
+        "expected_behavior":  "Ruft tool_reconcile_bank_statement mit der file_id auf (nicht tool_extract_finance_document). Das Tool findet das Konto per IBAN, prueft den Saldo und schickt die Karte selbst; der Agent fragt nicht im Text nach.",
+        "notes":  "Monats-Check WP-C. Mock-Telegram liefert das echte Test-PDF tests/mock_telegram/docs/mock_photo_051.pdf (gleiche Werte wie das Szenario; Echt-LLM liest es). Mock-Tier: Szenario 'Monatsauszug Mock-DKB' liefert den gelesenen Auszug (IBAN des Fixture-Kontos DKB Giro, Saldo-Probe stimmt) -> Karte -> Routing-Tier lehnt ab (nichts gebucht)."
+    },
+    {
+        "id":  "tc52",
+        "name":  "Monats-Check: letzten Kontoauszug zuruecknehmen",
+        "task":  "Nimm den letzten Kontoauszug vom DKB Giro wieder zurueck, der gehoerte zum falschen Konto.",
+        "chat_id":  "test_tc52",
+        "expected_tool":  "tool_void_bank_statement",
+        "expected_tool_args":  {
+                                   "account_name":  "DKB Giro"
+                               },
+        "expected_behavior":  "Ruft tool_void_bank_statement mit dem Kontonamen auf (nicht tool_void_transaction und kein Saldo-Abgleich). Ohne eingespielten Auszug meldet das Tool das sachlich; der Agent erfindet keinen Erfolg.",
+        "notes":  "Monats-Check WP-C (Review-Befund: Golden-Case fuer das neue Tool). Im Fixture gibt es keinen Auszug -> fn_void_bank_statement antwortet {ok:false}, Routing ist trotzdem geprueft."
+    },
+    {
+        "id":  "tc53",
+        "name":  "Zweites Konto gleicher Bank fuer ein Kind (keine Dubletten-/Nachnamen-Rueckfrage)",
+        "task":  "Lege ein Trade Republic Cash Konto fuer meine Tochter Lisa an, IBAN DE89 3704 0044 0532 0130 00.",
+        "chat_id":  "test_tc53",
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {
+                                   "account_type":  "cash"
+                               },
+        "expected_behavior":  "Ruft direkt tool_create_account mit account_type=cash, owner_person=Lisa und der IBAN als account_number auf. Fragt NICHT, ob das bestehende Trade Republic Cash Girokonto gemeint ist (andere Inhaberin), fragt NICHT nach Lisas Nachnamen und listet keine weiteren Felder zum Ausfuellen auf.",
+        "notes":  "Owner-Befund 2026-10-23: Konto fuer Tochter per Kontoauszug, Bot fragte Dublette (gleiche Bank, anderer Inhaber) und Nachnamen nach. Fixture: Trade Republic Cash Girokonto existiert, Lisa ist Kind im family-Kontext. Judge prueft owner_person + keine Rueckfrage."
+    },
+    {
+        "id":  "tc54",
+        "name":  "Verkauf von mehr Anteilen als vorhanden: Ablehnung VOR der Karte (Probelauf)",
+        "task":  "Verkaufe 5000 Anteile Vanguard FTSE All-World (VWCE) aus meinem Trade Republic Depot zu 115 Euro je Anteil.",
+        "chat_id":  "test_tc54",
+        "expected_tool":  "tool_book_stock_sell",
+        "expected_tool_args":  {
+                                   "shares":  5000
+                               },
+        "expected_behavior":  "Ruft tool_book_stock_sell direkt auf (ohne eigene Vorab-Pruefung der Stueckzahl). Der Probelauf der Datenbank lehnt ab (ok:false, card_sent:false, zu viele Stuecke); es kommt KEINE Bestaetigungskarte. Der Agent nennt den Grund (nicht genug Anteile, verfuegbare Menge) und fragt, wie viele verkauft werden sollen; er meldet keinen Erfolg und erwaehnt keine Karte/keinen Knopf.",
+        "notes":  "Paket DB-ist-das-Gesetz 2026-10-23: Probelauf (core.fn_dry_run) vor der Karte. Vorher kam die Karte, und die Ablehnung erst nach dem Tipp. Mock-Tier: Szenario ruft das Tool mit 5000 Stueck; Beweis im Mock-Telegram = kein sendAndWait fuer diesen Lauf."
+    },
+    {
+        "id":  "tc55",
+        "name":  "Aktienkauf ohne genannte Gebuehr: keine Rueckfrage (Gebuehr leer = 0)",
+        "task":  "Kauf 3 Anteile Vanguard FTSE All-World (VWCE, ISIN IE00BK5BQT80) im Trade Republic Depot zu 120 Euro.",
+        "chat_id":  "test_tc55",
+        "expected_tool":  "tool_book_stock_buy",
+        "expected_tool_args":  {
+                                   "shares":  3,
+                                   "price_per_share":  120
+                               },
+        "expected_behavior":  "Ruft tool_book_stock_buy direkt auf. Fragt NICHT nach einer Ordergebuehr (Owner-Entscheid: nicht genannt = 0, die Karte zeigt sie) und nicht nach dem Datum (leer = heute). Prueft den Depot-Typ nicht selbst per postgres_select.",
+        "notes":  "Paket DB-ist-das-Gesetz Top-5-Rueckfrage 'Ordergebuehr'. Owner-Entscheid 2026-10-23."
+    },
+    {
+        "id":  "tc56",
+        "name":  "Wiederkehrender Betrag: keine eigene Dubletten-Suche (Hinweis kommt auf die Karte)",
+        "task":  "Buche 49,99 Euro Ausgabe vom DKB Giro fuer Tanken.",
+        "chat_id":  "test_tc56",
+        "expected_tool":  "tool_book_transaction",
+        "expected_tool_args":  {
+                                   "amount":  49.99,
+                                   "direction":  "outflow"
+                               },
+        "expected_behavior":  "Ruft tool_book_transaction direkt auf. Sucht NICHT selbst per postgres_select nach aehnlichen Buchungen der letzten Tage und fragt nicht, ob es eine Doppelbuchung sei (moegliche Dubletten zeigt die Datenbank als Hinweis auf der Karte). Fragt nicht nach dem Datum.",
+        "notes":  "Paket DB-ist-das-Gesetz Top-5-Rueckfrage 'Dublette' (vorher 15-Tage-ILIKE-Regel im Prompt)."
+    },
+    {
+        "id":  "tc57",
+        "name":  "Kredit mit erster Rate: kein zusaetzlicher Abbuchungstag erfragt",
+        "task":  "Lege einen Kredit 'Autokredit VW Bank' an: 18000 Euro ausgezahlt am 01.09.2026 direkt an den Autohaendler, 4,9 Prozent Zins, Rate 350 Euro, erste Rate am 15.10.2026 vom DKB Giro.",
+        "chat_id":  "test_tc57",
+        "expected_tool":  "tool_create_loan",
+        "expected_tool_args":  {
+                                   "first_payment_date":  "2026-10-15"
+                               },
+        "expected_behavior":  "Ruft tool_create_loan direkt auf und laesst schedule_day_of_month leer (der Tag kommt aus der ersten Rate). Fragt nicht zusaetzlich nach dem Abbuchungstag. Laesst disbursement_account_name leer (das Geld ging an den Haendler, nicht auf ein eigenes Konto) und fragt nicht danach. Rechnet Zins/Tilgung nicht selbst.",
+        "notes":  "Paket DB-ist-das-Gesetz Top-5-Rueckfrage 'Tag + Datum doppelt' (W5: monthly_annuity/schedule_day nicht mehr als Pflicht gelistet)."
+    },
+    {
+        "id":  "tc58",
+        "name":  "Versicherung fuer ein Kind per Vorname: keine Nachnamen-Rueckfrage",
+        "task":  "Lege eine Unfallversicherung 'Kinder-Unfall Lisa' bei der Allianz an, 96 Euro im Jahr, erste Abbuchung am 01.12.2026 vom DKB Giro, versichert ist meine Tochter Lisa.",
+        "chat_id":  "test_tc58",
+        "expected_tool":  "tool_create_insurance",
+        "expected_tool_args":  {
+                                   "first_payment_date":  "2026-12-01"
+                               },
+        "expected_behavior":  "Ruft tool_create_insurance direkt mit policyholder_person=Lisa auf (das eine Personen-Feld der Versicherung = das Haushaltsmitglied, dem sie gehoert bzw. das sie absichert; Vorname reicht, das Tool loest ihn gegen den Haushalt auf). Fragt NICHT nach Lisas Nachnamen, laedt dafuer nicht den family-Kontext und sagt nicht, es gebe kein Feld fuer die versicherte Person.",
+        "notes":  "Owner-Befund 2026-10-23 (Nachname der Tochter erfragt, obwohl in den Haushaltsdaten); W10."
+    },
+    {
+        "id":  "tc60",
+        "name":  "Kontozins im Web nachschlagen (web_search, kein Write ohne Ja)",
+        "task":  "Die Trade Republic Cash Konten sind verzinst. Suche die aktuellen Konditionen bitte im Web.",
+        "chat_id":  "test_tc60",
+        "expected_tool":  null,
+        "expected_behavior":  "Schlaegt die aktuellen Trade-Republic-Zinskonditionen per web_search nach (generische Query ohne persoenliche Daten; der Aufruf ist im Protokoll nicht sicher sichtbar - Beleg ist eine Antwort mit Quelle) und nennt Zinssatz, Bedingungen, Quelle und - sofern die Quelle eines traegt - ihr Datum (Webseiten ohne Datum sind kein Fehler des Agenten). Fragt dann, ob der Satz beim Trade Republic Cash Girokonto eingetragen werden soll. Ruft KEIN Write-Tool auf (kein tool_set_account_interest ohne Ja des Nutzers), verweist NICHT an den Finanzberater oder /onboarding.",
+        "notes":  "Owner-Befund 2026-10-23: Nachricht landete beim Finanzberater (einziger mit Websuche) und lief in dessen Onboarding-Sperre. Fix: Buchhalter bekommt web_search (Owner-Entscheid Option A). Substanz im Output pruefen (Satz + datierte Quelle), NICHT die read_tools-Logliste - der n8n-Action-Log erfasst web_search nicht zuverlaessig (vgl. advisor_cases)."
+    },
+    {
+        "id":  "tc61",
+        "name":  "Kontoauszug eines neuen Kontos: in einem Schritt mit IBAN + Endsaldo zum Stichtag anlegen",
+        "task":  "Hier ist der Kontoauszug vom neuen Trade Republic Cash Konto meiner Tochter Lisa [attachment file_id=mock_photo_056 type=document]",
+        "chat_id":  "test_tc61",
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {
+                                   "account_type":  "cash",
+                                   "opening_balance":  "150",
+                                   "opening_balance_date":  "2000-01-31"
+                               },
+        "expected_behavior":  "Liest den Auszug mit tool_reconcile_bank_statement (account_unknown, geprueft: Endsaldo 150 am 31.01.2000) und ruft dann tool_create_account mit account_type=cash, owner_person=Lisa, der gedruckten IBAN als account_number, opening_balance=150 und opening_balance_date=2000-01-31 auf. Fragt NICHT nach Saldo, IBAN oder ob es ein neues Konto ist (steht in der Nachricht) und spielt den Auszug danach NICHT erneut ein.",
+        "notes":  "Owner-Befund 2026-10-23: Saras TR-Auszug wurde korrekt gelesen, aber account_unknown warf den Endsaldo weg; die Karte zeigte 0 EUR. Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_056.pdf (IBAN keines Fixture-Kontos, Saldo-Probe 100 + 100 - 50 = 150). Mock-Tier: Szenario 'Trade Republic Cash Konto meiner Tochter Lisa' (= doc_hint) liefert den gelesenen Auszug -> account_unknown mit closing_balance -> create_account-Karte -> Routing-Tier lehnt ab. opening_balance als String wie vom Trigger geliefert."
+    },
+    {
+        "id":  "tc62",
+        "name":  "Anhang ohne Bildunterschrift: zuerst selbst lesen, nicht nachfragen",
+        "task":  "Der Nutzer hat ein Dokument ohne Bildunterschrift gesendet. [attachment file_id=mock_photo_051 type=document]",
+        "chat_id":  "test_tc62",
+        "expected_tool":  "tool_reconcile_bank_statement",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_051"
+                               },
+        "expected_behavior":  "Fragt NICHT zuerst, was das Dokument ist, sondern liest es: tool_extract_finance_document erkennt den Kontoauszug (code=use_reconcile_bank_statement) und der Agent ruft danach tool_reconcile_bank_statement mit derselben file_id (direkt tool_reconcile_bank_statement ist ebenso richtig). Das Tool findet das DKB-Fixture-Konto per IBAN und schickt die Karte selbst.",
+        "notes":  "Owner-Befund 2026-10-23: Dokument ohne Bildunterschrift -> der Agent rief kein Werkzeug und fragte, was es ist (zwei Tools beanspruchten den Anhang-Marker). Mock-Tier: Szenario 'ohne Bildunterschrift gesendet. [attachment file_id=mock_photo_051' (eindeutig ggü. oc21; extract mit doc_hint 'mock_photo_051 type=document' -> Vision-Szenario liefert bank_statement; dann reconcile mit doc_hint 'Monatsauszug Mock-DKB' -> tc51-Vision-Szenario). PASS, sobald tool_reconcile_bank_statement im runData steht."
+    },
+    {
+        "id":  "tc63",
+        "name":  "Vermoegensuebersicht nur mit ISIN, ohne Einstand: gezielt je Position nach dem Einstand fragen",
+        "task":  "Hier ist die Vermoegensuebersicht meines Trade Republic Depots [attachment file_id=mock_photo_063 type=document]",
+        "chat_id":  "test_tc63",
+        "expected_tool":  "tool_extract_finance_document",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_063"
+                               },
+        "expected_behavior":  "Liest das Dokument mit tool_extract_finance_document. Die Positionen haben nur ISIN und Stueckzahl (kein Ticker, kein Einstand): das Tool meldet sie ungueltig (Einstand fehlt) und liefert je Fehler row mit Name/ISIN/Stueck. Der Agent fragt EINMAL fuer beide Positionen, je mit Name und Stueckzahl, nach dem Einstand (je Stueck oder gesamt). Er fragt NICHT nach ISIN, Stueckzahl oder Ticker, erfindet keinen Einstand und nimmt nicht den aktuellen Kurs (129,54 / 63,12) als Einstand. Die Cash-Zeile (1.234,56 zum 31.01.2000) kommt als balances[] zurueck (nicht als Konto-Zeile); der Agent bietet dafuer den Saldo-Abgleich des Verrechnungskontos an (tool_reconcile_account), sobald die Positionen geklaert sind.",
+        "notes":  "Owner-Befund 2026-10-23 (Annas TR-Vermoegensuebersicht): Import lehnte ISIN-only-Positionen ab ('symbol is required'), der Agent sah die Zeilen nicht und fragte nach ISIN/Stueck. Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_063.pdf. Mock-Tier: Szenario 'Hier ist die Vermoegensuebersicht meines Trade Republic Depots' -> extract (doc_hint 'mock_photo_063 type=document' -> Vision-Szenario ohne Ticker/Einstand). PASS, sobald tool_extract_finance_document im runData steht; Verhalten (gezielte Rueckfrage) bewertet der Judge im Echt-Tier."
+    },
+    {
+        "id":  "tc64",
+        "name":  "Anlageklassen zuordnen: EIN tool_set_asset_classes statt tool_set_holding je Position",
+        "task":  "Ordne die Anlageklassen meiner Depot-Positionen zu: VWCE im Trade Republic Depot ist der Baustein welt.",
+        "chat_id":  "test_tc64",
+        "expected_tool":  "tool_set_asset_classes",
+        "expected_behavior":  "Ruft tool_set_asset_classes EINMAL auf, assignments als JSON-Liste mit depot_name 'Trade Republic Depot', position VWCE (oder ISIN IE00BK5BQT80) und asset_class 'welt'. Nimmt NICHT tool_set_holding, fragt nicht nach weiteren Feldern und rechnet nichts. Unter dem Test-Bypass lehnt das Gate ab; der Agent meldet die Zuordnung dann als abgebrochen, nicht als erledigt.",
+        "notes":  "Paket 3 C (Owner 2026-10-23): Anlageklassen mit einer Karte. Fixture-Position VWCE im Trade Republic Depot. Mock-Tier: Szenario 'Ordne die Anlageklassen meiner Depot-Positionen zu'. PASS, sobald tool_set_asset_classes im runData steht."
+    },
+    {
+        "id":  "tc65",
+        "name":  "Onboarding-Bereich Konten fuer fertig erklaert -> sofort markieren, nicht erneut fragen",
+        "task":  "Okay, das waren erstmal alle Konten. Der Bereich Konten ist damit fertig.",
+        "chat_id":  "test_tc65",
+        "package_onboarding":  {
+                                   "finance.accounts":  "unknown"
+                               },
+        "expected_tool":  "tool_set_onboarding_section",
+        "expected_tool_args":  {
+                                   "section_key":  "accounts",
+                                   "status":  "completed"
+                               },
+        "expected_behavior":  "Ruft tool_set_onboarding_section mit section_key accounts und status completed auf, OHNE vorher erneut zu fragen, ob noch ein Konto fehlt (die Aussage des Nutzers ist die Bestaetigung). Bestaetigt danach kurz und bietet hoechstens den naechsten offenen Finanz-Bereich an; behauptet nichts, was das Tool nicht gemeldet hat.",
+        "notes":  "Live-Befund 2026-10-24: der Orchestrator beantwortete 'Bereich Konten ist damit fertig' selbst, der Bereich blieb unknown und der Buchhalter fragte in jeder Antwort erneut. Vorzustand per package_onboarding (finance.accounts offen). Routing-Gegenstueck oc26. Mock-Tier: Szenario 'das waren erstmal alle Konten'."
+    },
+    {
+        "id":  "tc66",
+        "name":  "Verzinstes Konto ohne Konditionen: erst Websuche + Klartext-Bericht, Write erst nach Ja",
+        "task":  "Lege bitte ein neues Tagesgeldkonto bei der Musterbank Direkt an, Saldo 2.500 Euro. Es ist verzinst.",
+        "chat_id":  "test_tc66",
+        "expected_tool":  null,
+        "expected_behavior":  "Erfindet keinen Zins-Rhythmus und kein 'jaehrlich': schlaegt die Konditionen des Tagesgelds der Musterbank Direkt per web_search nach (generische Query ohne persoenliche Daten) und berichtet in Alltagssprache ohne Codes wie ACT/365 oder -1 (Zinssatz, wie oft und wann gutgeschrieben wird, Quelle und Datum). Fehlt in der Quelle ein noetiges Feld (Zinssatz oder Rhythmus, bei monatlich der Gutschrift-Tag), fragt er genau danach. Fragt dann, ob er das Konto so anlegen soll; ruft tool_create_account erst nach dem Ja des Nutzers auf (in diesem Turn kein Write-Tool).",
+        "notes":  "Live-Befund 2026-10-24 + Owner-Wunsch: Zinsen standardmaessig per Websuche nachschlagen, Bestaetigung erst im Chat, dann Karte (Owner-Entscheid 'Erst Chat, dann Karte'). Die DB lehnt einen Satz ohne Rhythmus ab (fn_interest_schedule_reason). Musterbank Direkt ist eine Fantasie-Bank: findet die Suche nichts, muss der Agent nach Satz und Rhythmus fragen (ebenfalls PASS). Substanz im Output pruefen, nicht die read_tools-Liste (web_search im Action-Log unzuverlaessig, vgl. tc60). Mock-Tier: Szenario 'Tagesgeldkonto bei der Musterbank Direkt' (nur Text, kein Write)."
+    },
+    {
+        "id":  "tc67",
+        "name":  "Unbekannte Buchung stornieren: Tool meldet 'gibt es nicht' statt still abzubrechen",
+        "task":  "Storniere die Buchung mit der Nummer 999999.",
+        "chat_id":  "test_tc67",
+        "expected_tool":  "tool_void_transaction",
+        "expected_tool_args":  {
+                                   "transaction_id":  "999999"
+                               },
+        "expected_behavior":  "Ruft tool_void_transaction auf; das Tool meldet ok:false, dass es die Buchung nicht gibt (keine Karte). Der Agent sagt das in einfachen Worten, nennt keine internen Nummern als Systembegriff und bietet an, die gemeinte Buchung gemeinsam zu suchen. Kein Fehler-Alarm, kein Abbruch.",
+        "notes":  "Mock-Tier 2026-10-24: Ein Tool-Read ohne Treffer liess den Tool-Workflow still enden ('The workflow did not return a response'). Fix: New-RequiredRowGate (alwaysOutputData + Found?-IF). Der Treiber wertet einen nicht gelaufenen Tool-Workflow als FAIL, deshalb prueft dieser Fall den Gate-Pfad. Mock-Tier: Szenario 'Buchung mit der Nummer 999999'."
+    }
+]

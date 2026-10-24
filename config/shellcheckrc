@@ -1,0 +1,17 @@
+# config/shellcheckrc — repo-wide ShellCheck config, referenced by the `shellcheck` hook in
+# .pre-commit-config.yaml via `--rcfile=config/shellcheckrc`. One reason comment per disabled code
+# (OpenClaw pattern): a suppression is only allowed with a justification on the line above it.
+
+# Most provisioning/lib/*.sh files are SOURCED, not executed: they carry no shebang on purpose
+# (common.sh documents this). Without a shebang ShellCheck can't infer the dialect, so pin it here.
+shell=bash
+
+# Follow `source`/`.` into the other lib files so cross-file definitions are seen instead of flagged
+# as undefined (SC1091). The provisioning libs reference each other heavily.
+external-sources=true
+
+# Resolve sourced files relative to each script's OWN directory. The libs are sourced via
+# `. "$SCRIPT_DIR/lib/<x>.sh"` — without this, ShellCheck can't expand $SCRIPT_DIR, so it neither
+# follows the source (SC1091) nor sees that install.sh's config globals are consumed by the libs
+# (SC2034). SCRIPTDIR makes both resolve correctly = real cross-file analysis, not blanket suppression.
+source-path=SCRIPTDIR

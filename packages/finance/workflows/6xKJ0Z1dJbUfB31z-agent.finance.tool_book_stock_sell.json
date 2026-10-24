@@ -1,0 +1,715 @@
+{
+    "id":  "6xKJ0Z1dJbUfB31z",
+    "name":  "agent.finance.tool_book_stock_sell",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "depot_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "isin"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "symbol"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "shares"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "price_per_share"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "order_fee"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "transaction_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "75f498dd-966f-5907-ae9c-55763c80fb7a",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_find_holding($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_name: $(\u0027Start\u0027).item.json.depot_name, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "61c35d5b-e7fb-50cb-992a-0a252cb3dc18",
+                      "name":  "Find Holding",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1ca5ad92-4c09-529c-bce1-1fd7c89d1f50",
+                                                                                   "leftValue":  "={{ $json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "4d415ad1-0616-5a4c-ad5b-648d7cce4545",
+                      "name":  "Holding found?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "fef35127-a308-5ff3-9b1a-299512e65462",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "aef84e86-81b5-5e20-a8a7-85749ef2a9e0",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Find Holding\u0027).item.json.r.reason }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "03a4f1f6-1308-58a0-9076-1d204cbed70a",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Find Holding\u0027).item.json.r.code }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "eacf75b7-8c36-5a10-acad-0b072276a721",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Find Holding\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "b3dd89af-ef3b-5da1-b61a-d7018c4eb217",
+                      "name":  "Holding not found"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_stock_sell(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ settlement_id: $(\u0027Find Holding\u0027).item.json.r.settlement_account_id, holding_id: $(\u0027Find Holding\u0027).item.json.r.holding_id, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, symbol: $(\u0027Find Holding\u0027).item.json.r.symbol }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "e3c1ed74-fe32-5733-b0a8-1d85494ab5df",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e0932407-19c7-5f4f-8ada-ba21b050e959",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "75647c94-4d5f-5451-988c-a07592dbccf2",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1b93c80d-8600-5d33-9622-c5506dc2bae8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3bb8a3fc-4f2e-5016-95f5-00e7ac37ba85",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "791ad724-ca50-5c4f-acb3-f35788dfb78a",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "aba536c9-0137-568e-95fe-3d7ea9f71b1b",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b9726135-52f1-5862-a753-179be4b0ca12",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "b23a0261-ff4b-5e16-9135-d5970adea8d7",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027sell_tx_id\u0027)::int AS sell_tx_id, (r-\u003e\u003e\u0027settlement_balance\u0027)::numeric AS settlement_balance, (r-\u003e\u003e\u0027proceeds\u0027)::numeric AS proceeds, (r-\u003e\u003e\u0027remaining_shares\u0027)::numeric AS remaining_shares FROM finance.fn_book_stock_sell(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ settlement_id: $(\u0027Find Holding\u0027).item.json.r.settlement_account_id, holding_id: $(\u0027Find Holding\u0027).item.json.r.holding_id, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, symbol: $(\u0027Find Holding\u0027).item.json.r.symbol, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "60954bde-8154-57ce-962c-589e04d4a85d",
+                      "name":  "Create sell (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3d8b3fd0-c23a-52f4-a304-fe89425f497f",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_stock_sell\u0027, lines: [ { label: \u0027finance.label.symbol\u0027, kind: \u0027text\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.symbol) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.depot_name) }, { label: \u0027finance.label.available\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.pieces\u0027), params: { count: ({ kind: \u0027number\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.available_shares), digits: -1 }) } }, { label: \u0027finance.label.sell\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.pieces\u0027), params: { count: ({ kind: \u0027number\u0027, value: ($(\u0027Start\u0027).item.json.shares), digits: -1 }) } }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.price_per_share), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.order_fee), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027finance.label.proceeds_net\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.proceeds), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "d63865e3-6991-53ee-9033-d95fa523abbe",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_info"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "7a6fd13f-5f65-529c-9704-6a01ac912546",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f1413560-2758-59e8-9a81-c7adb8b1ad13",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "5bc55197-fcb3-55cc-8445-bb0ad1295c43",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "98c9462d-ae31-59a5-98b6-4a3e6d127ec8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "09782504-9b0c-59bd-a41a-e74ed068518f",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "009378ee-4105-5e11-afc3-167a1c777168",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the book_stock_sell action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       240
+                                   ],
+                      "id":  "24425fde-aad2-55dd-9c52-03be3a18eb24",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "591036ff-eb32-5ac0-bc1a-a07bfce1315e",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "4a4873b7-1ae2-59c0-83cf-7c8db2218978",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d9d2c18c-0c0b-5849-8f15-2cf3175d8bd2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3c03975b-8ce9-520f-b438-e36bcd2c65fe",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2420,
+                                       240
+                                   ],
+                      "id":  "6701fdb4-8b3d-5088-93a8-fe47c9e78fba",
+                      "name":  "Sell rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8326021f-16a2-5cb2-b48d-4cbfad8713e7",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "12be0ba0-2221-522c-8b6c-71e343424c1b",
+                                                                                     "name":  "sell_tx_id",
+                                                                                     "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.sell_tx_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "16e107b1-42a4-5bb5-9a24-9c8ad5ab5dac",
+                                                                                     "name":  "settlement_balance",
+                                                                                     "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.settlement_balance }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d633c99f-6475-5f58-a6b3-b1fb664dfbb5",
+                                                                                     "name":  "proceeds",
+                                                                                     "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.proceeds }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "52bbfbf3-a0d9-5b43-a265-78ab5baaf4e2",
+                                                                                     "name":  "remaining_shares",
+                                                                                     "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.remaining_shares }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "f1b7c085-3260-5fba-a71d-d2fe2c30657c",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_stock_sell mit denselben Werten, immer zurückgerollt. ok:false (zu viele Stücke, Stückzahl/Kurs nicht positiv) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       660,
+                                       -220
+                                   ],
+                      "id":  "972f48bc-4ae9-5311-b880-eca489dfe810",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**trg_finance_update_holding_shares + trg_finance_balance_update**\n\nfn_book_stock_sell bucht atomar: EINE sell-Transaktion (amount=+Erlöse, shares=-Stücke, order_fee separat). Danach: DB-Trigger reduziert holding.shares via SUM + aktualisiert Saldo des Verrechnungskontos. avg_purchase_price bleibt unverändert (Trigger liest nur buy-Zeilen). Die fn liest den Post-State (settlement_balance/proceeds/remaining_shares) am Ende derselben Transaktion und gibt ihn zurück -\u003e kein separater Read-back-Node.",
+                                         "height":  200,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1980,
+                                       -220
+                                   ],
+                      "id":  "9c805061-6409-561b-afe7-4a491f73c69f",
+                      "name":  "DB-Automatik shares+balance"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nKorrigierbare Fälle (oversell, nicht-positive Stückzahl/Kurs) liefert die fn als {ok:false, reason} -\u003e Sell rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true bucht wirklich. Normalerweise fängt schon der Probelauf diese Fälle vor der Karte ab; hier landet nur, was sich zwischen Karte und Tipp geändert hat.",
+                                         "height":  200,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2420,
+                                       -220
+                                   ],
+                      "id":  "f63a018c-7d38-5283-94e8-cc3b7f400e16",
+                      "name":  "Write ok? (korrigierbare Ablehnung)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Find Holding",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Find Holding":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Holding found?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Holding found?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Dry run",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Holding not found",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Create sell (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Create sell (atomic)":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Write ok?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Sell rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

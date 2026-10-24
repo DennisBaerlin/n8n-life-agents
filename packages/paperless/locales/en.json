@@ -1,0 +1,10 @@
+{
+  "_comment": "Fixed user-facing texts of the paperless package, English (docs/package-contract.md §3.11). Same keys + placeholders as de.json/ko.json (locale_lint).",
+  "paperless.package.name": "Documents",
+  "paperless.package.summary": "Your agents find, read and query the documents in your existing Paperless instance",
+  "paperless.help.documents.title": "Documents",
+  "paperless.help.documents.description": "Find and read documents in your Paperless instance and get questions about them answered (read-only, adults only).",
+  "paperless.help.documents.ex1": "Ask the document AI what notice period my mobile phone contract has.",
+  "paperless.help.documents.ex2": "Read me the document with number 42.",
+  "paperless.help.documents.ex3": "Find my rental contract in the documents."
+}

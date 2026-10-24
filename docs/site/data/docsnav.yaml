@@ -1,0 +1,50 @@
+# Die EINE Quelle der Docs-Navigation (Sidebar-Gruppen + Seitenreihenfolge).
+# Neue Seite = content/docs/<slug>.md anlegen + hier eintragen.
+- group: Start
+  pages:
+    - slug: ueberblick
+      title: Überblick
+    - slug: beispiele
+      title: Beispiele
+- group: Loslegen & Alltag
+  pages:
+    - slug: erste-schritte
+      title: Erste Schritte
+    - slug: chatten-bestaetigen
+      title: Chatten & Bestätigen
+    - slug: monats-check
+      title: Monats-Check
+    - slug: befehle
+      title: Befehle
+- group: Die Agenten
+  pages:
+    - slug: buchhalter
+      title: Buchhalter
+    - slug: finanzberater
+      title: Finanzberater
+    - slug: karriere-coach
+      title: Karriere-Coach
+    - slug: nachlass-berater
+      title: Nachlass & Vorsorge
+    - slug: dokumente
+      title: Dokumente
+    - slug: monitor-guide
+      title: Monitor & Guide
+- group: Technik & Vertrauen
+  pages:
+    - slug: so-funktionierts
+      title: So funktioniert's
+    - slug: datenschutz
+      title: Datenschutz & Sicherheit
+- group: Betrieb & Erweitern
+  pages:
+    - slug: installation
+      title: Installation & Betrieb
+    - slug: update-hilfe
+      title: Wenn ein Update fehlschlägt
+    - slug: pakete
+      title: Pakete & Erweiterbarkeit
+- group: Mitwirken
+  pages:
+    - slug: mitwirken
+      title: Mitwirken

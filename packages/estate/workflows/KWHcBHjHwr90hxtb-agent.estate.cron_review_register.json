@@ -1,0 +1,647 @@
+{
+    "id":  "KWHcBHjHwr90hxtb",
+    "name":  "agent.estate.cron_review_register",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REVIEW_REGISTER__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "46bbc1f7-0d15-5a22-97d4-fabdb0d33ab8",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_package_active(\u0027estate\u0027) AND COALESCE(core.fn_config_get(\u0027estate\u0027,\u0027cron_enable\u0027,\u0027review_register\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "adb76ad7-e9e2-5dda-b380-526bdf63f490",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "8a73cf4c-b1d2-5f43-86e3-2abdd00cfa8b",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "4e6cfad2-8327-5296-a698-d368b900292c",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -440,
+                                       200
+                                   ],
+                      "id":  "2b4ec88c-3e7b-52f1-a6f2-e9dbda23a489",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"core\",\"key\":\"advisor_review\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -550,
+                                       -180
+                                   ],
+                      "id":  "dc8abb1b-44cb-503c-a6f6-14de5fbd3ede",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH ev AS MATERIALIZED (SELECT core.fn_advisor_review_evaluate(\u0027estate\u0027, NULL, \u0027{}\u0027::jsonb) AS r) SELECT ev.r::text AS r, core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027estate.advisor.review_intro\u0027,\u0027core.reminders.btn_off\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027]::text[]), \u0027doc\u0027, ev.r-\u003e\u0027alerts\u0027))::text AS ui FROM ev",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "2c00cb75-7a8c-5ff4-909e-94ee641653c4",
+                      "name":  "Evaluate review",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const r = JSON.parse($json.r || \u0027{}\u0027);\nconst ui = JSON.parse($json.ui || \u0027{}\u0027);\nconst U = uiRender(ui);\nconst send = r \u0026\u0026 r.send === true;\nconst alerts = (r \u0026\u0026 Array.isArray(r.alerts)) ? r.alerts : [];\nconst parts = alerts.map(a =\u003e (a \u0026\u0026 Array.isArray(a.msg)) ? U.msg(a.msg).trim() : (a \u0026\u0026 a.text ? String(a.text).trim() : \u0027\u0027)).filter(Boolean);\nconst language_label = ui.language_label || \u0027en\u0027;\nif (!send || parts.length === 0) { return [{ json: { det_text: \u0027\u0027, report: false, language_label } }]; }\nreturn [{ json: { det_text: U.t(\u0027estate.advisor.review_intro\u0027) + \u0027\\n\\n\u0027 + parts.join(\u0027\\n\\n\u0027), report: true, language_label, btn_off: U.t(\u0027core.reminders.btn_off\u0027) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -220,
+                                       0
+                                   ],
+                      "id":  "13fc6e39-f335-5473-b4ef-abca6f2f6097",
+                      "name":  "Build message"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d494a294-4e5f-5f91-b6c1-1c5f39d8aa5d",
+                                                                                   "leftValue":  "={{ $json.report }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "33b4f239-1d86-5275-bf02-6bd4ca27b0b3",
+                      "name":  "Anything to report?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       180,
+                                       200
+                                   ],
+                      "id":  "78fdfcef-e6c3-5f31-b0ff-b8c9c0643383",
+                      "name":  "Quiet run"
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ \u0027Rewrite the following yearly estate-preparedness reminder as a short, warm, reassuring Telegram message, written in the language \u0027 + $json.language_label + \u0027. Keep German legal terms (e.g. Vorsorgevollmacht, Patientenverfuegung) in German. PLAIN TEXT only (no markdown, no asterisks). Keep EVERY number and every concrete item EXACTLY as given. Maximum 16 lines. Text:\\n\\n\u0027 + $json.det_text }}"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.chainLlm",
+                      "typeVersion":  1.7,
+                      "position":  [
+                                       180,
+                                       0
+                                   ],
+                      "id":  "14ce5631-dc29-5f8c-8569-bf3b69233760",
+                      "name":  "Phrase message",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-haiku-5-5",
+                                                       "cachedResultName":  "Claude Haiku 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "low"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       40,
+                                       400
+                                   ],
+                      "id":  "9028f6b9-485b-5f9c-8248-2cb83c13e517",
+                      "name":  "claude-haiku-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-sonnet-5-5",
+                                                       "cachedResultName":  "Claude Sonnet 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "low"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       216,
+                                       400
+                                   ],
+                      "id":  "52f55576-e01e-5e0b-9cbd-4c6972fa2a01",
+                      "name":  "claude-sonnet-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "mode":  "list",
+                                                       "value":  "claude-opus-5-5",
+                                                       "cachedResultName":  "Claude Opus 5.5"
+                                                   },
+                                         "options":  {
+                                                         "maxTokensToSample":  16000,
+                                                         "thinkingMode":  "adaptive",
+                                                         "effort":  "low"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       392,
+                                       400
+                                   ],
+                      "id":  "c3738358-2ce5-5b95-9449-7870d127be6a",
+                      "name":  "claude-opus-latest",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "numberInputs":  3,
+                                         "rules":  {
+                                                       "rule":  [
+                                                                    {
+                                                                        "modelIndex":  1,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "908f3faf-7c31-5c17-b840-423b954954c6",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.advisor_review }}",
+                                                                                                                  "rightValue":  "claude-haiku-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  2,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "bf55d7f7-5b78-5bf4-b248-3cd60d74ebc6",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.advisor_review }}",
+                                                                                                                  "rightValue":  "claude-sonnet-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    },
+                                                                    {
+                                                                        "modelIndex":  3,
+                                                                        "conditions":  {
+                                                                                           "options":  {
+                                                                                                           "caseSensitive":  true,
+                                                                                                           "leftValue":  "",
+                                                                                                           "typeValidation":  "strict",
+                                                                                                           "version":  2
+                                                                                                       },
+                                                                                           "conditions":  [
+                                                                                                              {
+                                                                                                                  "id":  "23b08dd9-4c14-58f8-8945-4276a59f90eb",
+                                                                                                                  "leftValue":  "={{ $(\u0027Load model config\u0027).first().json.model.advisor_review }}",
+                                                                                                                  "rightValue":  "claude-opus-latest",
+                                                                                                                  "operator":  {
+                                                                                                                                   "type":  "string",
+                                                                                                                                   "operation":  "equals",
+                                                                                                                                   "name":  "filter.operator.equals"
+                                                                                                                               }
+                                                                                                              }
+                                                                                                          ],
+                                                                                           "combinator":  "and"
+                                                                                       }
+                                                                    }
+                                                                ]
+                                                   }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.modelSelector",
+                      "typeVersion":  1,
+                      "position":  [
+                                       180,
+                                       220
+                                   ],
+                      "id":  "33a0e0e8-28b6-5949-8e14-c29fedfe052c",
+                      "name":  "Model Selector"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const llm = ($input.first().json \u0026\u0026 $input.first().json.text) || \u0027\u0027;\nconst det = $(\u0027Build message\u0027).first().json.det_text;\nreturn [{ json: { message: llm.trim() ? llm.trim() : det } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       400,
+                                       0
+                                   ],
+                      "id":  "9ee9fae4-d168-5a7d-9375-5c1e3d52cc5b",
+                      "name":  "Choose text"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.message).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build message\u0027).first().json.btn_off }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_off:review_register"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       620,
+                                       0
+                                   ],
+                      "id":  "a35ff668-43a1-5a95-9b1a-0f33d70b00e5",
+                      "name":  "Send review",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**agent.estate.cron_review_register — monatlicher Jahres-Review (always-on, Latch-selbst-still)**\n\nSchedule (schedule.review_register, Default monatlich 1./10:05) -\u003e Cron enabled? (fn_package_active(estate) AND cron_enable.review_register; Default true always-on; der Owner schaltet per [Erinnerung abschalten] = cron_off:review_register an der Karte oder in /reminders, Roter Faden Paket B) -\u003e Load model config (model.advisor_review bei JEDEM Lauf; VOR dem Latch-Write) -\u003e Evaluate review (core.fn_advisor_review_evaluate(estate, NULL, {}) -\u003e Engine dispatcht estate.fn_advisor_review + LATCHT je Alert gegen core.notification_state source=advisor:estate; send=true NUR bei NEUEM Breach) -\u003e Build message (bei send=true die alert.msg-Struktur, gerendert in Owner-Sprache über den geteilten Renderer; sonst Quiet run) -\u003e Anything to report? -\u003e Phrase (model.advisor_review, warm; onError -\u003e deterministischer Text) -\u003e Choose text -\u003e Send (Nudge mit [Erinnerung abschalten] = cron_off:review_register, Roter Faden Paket B). BEGRÜNDETE ABWEICHUNG (Opus-M4): estate hat kein Publish -\u003e die geteilten Advisor-Crons (default-OFF, publish-getriggert) liefen für estate nie -\u003e eigener dünner Cron. Cred estate: Haupt-RW (Latch-Write, Präzedenz cron.advisor_common.ps1).",
+                                         "height":  360,
+                                         "width":  780,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -360
+                                   ],
+                      "id":  "2174f1be-9029-5955-b157-03575c2fcbc6",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_advisor_review (Registry-Dispatch + Latch, off-canvas)**\n\nestate.fn_advisor_review meldet: (A) Register-Staleness je Erwachsenem (person_records.last_reviewed_at \u003e advisor.estate_review_days=365; fn_confirm_review re-armt), (B) fehlende Vorsorge-Dokumente je Erwachsenem (v_directive_gaps, essential+recommended), (C) finance-Nachlass-Feld-Gaps [Singleton, GUARDED via estate.fn_gap_report doppel-guard -\u003e finance absent = kein Alert, kein Crash). Jeder Alert trägt ein deutsches text-Feld -\u003e der Cron kennt keine estate-Felder, joint nur text; das LLM formuliert um. household -\u003e estate_overview hat KEINE context_scopes-Zeile -\u003e agent.fn_context_persons leer -\u003e person_id NULL (byte-gleich advisor:estate). RAISE-FREI (eine Exception kippt sonst auch den finance-/career-Lauf des geteilten Drift-Crons).",
+                                         "height":  360,
+                                         "width":  780,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -480,
+                                       -360
+                                   ],
+                      "id":  "727a25a0-f084-5b1c-a403-fdf5ca41d381",
+                      "name":  "Doc Engine"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Evaluate review",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Evaluate review":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Build message",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Build message":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Anything to report?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Anything to report?":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Phrase message",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Quiet run",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Choose text":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send review",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Phrase message":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Choose text",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "claude-haiku-latest":  {
+                                                    "ai_languageModel":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Model Selector",
+                                                                                     "type":  "ai_languageModel"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                },
+                        "claude-sonnet-latest":  {
+                                                     "ai_languageModel":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  1,
+                                                                                      "node":  "Model Selector",
+                                                                                      "type":  "ai_languageModel"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                 },
+                        "claude-opus-latest":  {
+                                                   "ai_languageModel":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  2,
+                                                                                    "node":  "Model Selector",
+                                                                                    "type":  "ai_languageModel"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                               },
+                        "Model Selector":  {
+                                               "ai_languageModel":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Phrase message",
+                                                                                "type":  "ai_languageModel"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

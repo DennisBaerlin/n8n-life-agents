@@ -1,0 +1,97 @@
+# CI — the unavoidable second enforcement point (the local prek gate is the first). Runs the
+# SAME commit-stage hooks as the developer's machine via the SAME runner OS (Windows → `powershell`
+# resolves; our domain linters are PowerShell). Live/LAN hooks (db_test/infra_test) are pre-push
+# stage and excluded here — no VM is reachable from CI. Pinned prek + SHA-pinned actions (zizmor).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: linting only needs to read the tree.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  prek:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false   # linting only reads the tree
+
+      - name: Install prek (pinned)
+        shell: pwsh
+        run: |
+          $ver = 'v0.5.6'
+          $url = "https://github.com/j178/prek/releases/download/$ver/prek-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\prek.zip"
+          Expand-Archive "$env:RUNNER_TEMP\prek.zip" -DestinationPath "$env:RUNNER_TEMP\prek" -Force
+          "$env:RUNNER_TEMP\prek" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # The `squawk` hook is language: system on a prebuilt binary (prek can't fetch a Rust binary —
+      # j178/prek#681). Unlike dotenv-linter (local-only) we DO gate migrations in CI, so put the
+      # pinned squawk.exe on PATH here. Single bare .exe asset — no archive to expand.
+      - name: Install squawk (pinned)
+        shell: pwsh
+        run: |
+          $ver = 'v2.70.0'
+          $url = "https://github.com/sbdchd/squawk/releases/download/$ver/squawk-windows-x64.exe"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\squawk" | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\squawk\squawk.exe"
+          "$env:RUNNER_TEMP\squawk" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Stub .env (build.ps1 -VerifyCatalog guard; gitignored, never committed)
+        shell: pwsh
+        run: |
+          "OWNER_CHAT_ID=0`nTEST_HARNESS_CRED_ID=ci-stub`n" | Out-File -FilePath .env -Encoding utf8 -NoNewline
+
+      # The ps-lint hook is a `language: system` hook that invokes `powershell` (Windows PowerShell
+      # 5.1) and imports PSScriptAnalyzer. The runner image preinstalls PSScriptAnalyzer, but does not
+      # document that it is visible to the 5.1 host (vs pwsh 7 only). Guard it deterministically in the
+      # SAME 5.1 host the hook uses: install only if the module isn't already importable there.
+      - name: Ensure PSScriptAnalyzer for the ps-lint hook (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+          }
+
+      - name: prek run (commit-stage hooks)
+        shell: pwsh
+        env:
+          # Two hooks are skipped here, each with a dedicated alternative:
+          #  - dotenv-linter: local-only style hook (prebuilt binary on the dev PATH; prek can't pull
+          #    a prebuilt Rust binary — issue j178/prek#681). Substantive .env invariants live in
+          #    doc_lint, which DOES run above.
+          #  - gitleaks: the prek hook scans the STAGED diff (`--staged`), which is empty on a fresh
+          #    CI checkout. The dedicated `gitleaks` job below scans the full history + tree instead.
+          SKIP: dotenv-linter,gitleaks
+        run: prek run --all-files --hook-stage pre-commit --show-diff-on-failure
+
+  # Secret scan — the unavoidable CI net beside the local prek hook. Runs over the FULL git history
+  # (fetch-depth: 0), not just the tree, so a secret added-then-removed within a PR is still caught.
+  # Pinned prebuilt binary (no third-party action to trust); ubuntu is fine + fast for a pure scan.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the secret scan)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false   # read-only scan
+
+      - name: Run gitleaks (pinned binary, full history)
+        run: |
+          ver=8.30.1
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz"
+          curl -fsSL "$url" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git . --redact --no-banner --config config/.gitleaks.toml

@@ -1,0 +1,5 @@
+# Claude Code kopiert diese gitignorten Dateien in jeden Worktree, den es anlegt (--worktree, Subagent-Isolation,
+# parallele Sessions; https://code.claude.com/docs/en/worktrees.md). .gitignore-Syntax; nur gitignorte Treffer.
+# Hugo (.local/bin) bewusst NICHT: build_site.ps1 nutzt im Worktree die Binary des Haupt-Checkouts.
+.env
+.local/privacy_denylist.txt

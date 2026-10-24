@@ -1,0 +1,698 @@
+{
+    "id":  "oKi2U6NFXkCONRQQ",
+    "name":  "agent.tool_publish_plan",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "plan_md"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "plan_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "change_summary"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "context_description"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "1b67e2e8-6852-5379-ae98-d4b1c1d3a2ff",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH r AS (\n  SELECT COALESCE((SELECT a.plan_context FROM core.advisors a WHERE a.domain = ($1::jsonb)-\u003e\u003e\u0027domain\u0027),\n                  (($1::jsonb)-\u003e\u003e\u0027domain\u0027) || \u0027_planning\u0027) AS ctx,\n         ($1::jsonb)-\u003e\u003e\u0027domain\u0027 AS dom, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 AS cid\n), s AS (\n  SELECT r.ctx, r.dom, r.cid,\n         COALESCE((SELECT cs.scope FROM core.context_scopes cs WHERE cs.context_name = r.ctx),\u0027household\u0027) AS scope\n  FROM r\n), p AS (\n  SELECT s.ctx, s.dom, s.scope,\n         CASE WHEN s.scope = \u0027per_user\u0027 AND s.cid ~ \u0027^[0-9]+$\u0027\n              THEN agent.fn_resolve_sender(s.cid::bigint) -\u003e\u003e \u0027person_id\u0027 ELSE NULL END AS pid\n  FROM s\n)\nSELECT p.ctx AS context_name, p.scope AS scope, d.version AS draft_version,\n       (SELECT count(*)::int FROM jsonb_object_keys(d.interview_state)) AS section_count, a.version AS active_version\nFROM p\nLEFT JOIN agent.advisor_plans d ON d.domain = p.dom AND d.person_id IS NOT DISTINCT FROM p.pid AND d.status = \u0027draft\u0027\nLEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTINCT FROM p.pid AND a.status = \u0027active\u0027;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "db208ae0-15a6-5684-bbdb-cc10254bd334",
+                      "name":  "Read plan state",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3122f257-4094-5a21-8400-0d14ec4c7a3d",
+                                                                                   "leftValue":  "={{ $json.draft_version != null }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "5e13bfee-7222-5b74-a150-28dfc0687a0a",
+                      "name":  "Draft exists?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e0d3c9a4-1440-5d98-aa18-8f36283c1541",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "12d55f39-ca23-531e-be52-86bdaa7f054e",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=No draft plan exists for domain \u0027{{ $(\u0027Start\u0027).item.json.domain }}\u0027. Save at least one section via the tool_save_plan_section tool before publishing.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -200
+                                   ],
+                      "id":  "af10dd56-21d5-5110-97d2-a4364826912f",
+                      "name":  "No draft"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b731dcc8-c0eb-502e-8440-1111c92f1c5a",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027core.hitl.publish_plan\u0027, lines: [ { label: \u0027core.label.version\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Read plan state\u0027).item.json.active_version != null ? \u0027core.tpl.plan_version_replaces\u0027 : \u0027core.tpl.plan_version_first\u0027)), params: { active: ($(\u0027Read plan state\u0027).item.json.active_version), draft: ($(\u0027Read plan state\u0027).item.json.draft_version) } }, { label: \u0027core.label.sections\u0027, kind: \u0027text\u0027, value: ($(\u0027Read plan state\u0027).item.json.section_count) }, { label: \u0027core.label.changes\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.change_summary) }, { label: \u0027core.label.context_doc\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Read plan state\u0027).item.json.scope === \u0027per_user\u0027 ? \u0027core.tpl.plan_doc_personal\u0027 : \u0027core.tpl.plan_doc_shared\u0027)), params: { name: ($(\u0027Read plan state\u0027).item.json.context_name) } } ].filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "1d719e2b-9c9d-5dc2-80d8-5d0d9ae54a02",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_only"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "44b7b243-a53c-5582-887e-fdfbf4959bc2",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "04b6f095-7567-5b2c-b005-d786479e7f7f",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "f1ebb102-282b-5e1b-b64b-2f38d5cdba26",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "f5251f5f-9aa9-5ed7-90b1-27ebd13d0d09",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1b5fccdf-615e-5f2b-ad35-fa644cc0da5f",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "096aa65d-05f3-536a-9969-08d52d7e2f7e",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the publish_plan action. Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "c09eb56a-d174-57a3-a655-b876d528a450",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027plan_id\u0027)::int AS plan_id, (r-\u003e\u003e\u0027version\u0027)::int AS version, (r-\u003e\u003e\u0027superseded_plan_id\u0027)::int AS superseded_plan_id, r-\u003e\u003e\u0027context_name\u0027 AS context_name, (r-\u003e\u003e\u0027section_count\u0027)::int AS section_count FROM agent.fn_advisor_publish_plan($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, plan_md: $(\u0027Start\u0027).item.json.plan_md, plan_name: $(\u0027Start\u0027).item.json.plan_name, context_description: $(\u0027Start\u0027).item.json.context_description, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "213d7970-65b2-5e42-986b-007d421c526e",
+                      "name":  "Publish plan (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c9d5cd46-f920-5d5e-9c1d-3425efdcf463",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "5d92e328-a327-5095-b13c-38e4af6c5adc",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "035b7b7b-345b-56f4-9497-b0c2113b0427",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ded6aa17-9c87-5bbc-8015-1c46cb7a8fa9",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Publish plan (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       200
+                                   ],
+                      "id":  "c784d441-03e6-52e9-8fb1-e0d7558446a5",
+                      "name":  "Publish rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT COALESCE((SELECT value FROM core.config WHERE category=\u0027cron_enable\u0027 AND key=\u0027drift_check\u0027),\u0027false\u0027) AS drift_on, COALESCE((SELECT value FROM core.config WHERE category=\u0027cron_enable\u0027 AND key=\u0027plan_review\u0027),\u0027false\u0027) AS review_on, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027core.offer.monitoring\u0027,\u0027core.offer.btn_drift\u0027,\u0027core.offer.btn_review\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "b93cd2c5-bd93-58c0-a8ab-a84a0157c9ac",
+                      "name":  "Read monitor state",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "50538c1b-3315-523f-8431-c12d919cf2d9",
+                                                                                   "leftValue":  "={{ $(\u0027Read monitor state\u0027).item.json.drift_on !== \u0027true\u0027 || $(\u0027Read monitor state\u0027).item.json.review_on !== \u0027true\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2200,
+                                       0
+                                   ],
+                      "id":  "048936db-3ad0-529d-9eae-237409b9d8d2",
+                      "name":  "Monitor off?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ (String((($(\u0027Read monitor state\u0027).item.json.t) || {})[\u0027core.offer.monitoring\u0027] || \u0027core.offer.monitoring\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Read monitor state\u0027).item.json.t) || {})[\u0027core.offer.btn_drift\u0027] || \u0027core.offer.btn_drift\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_on:drift_check"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Read monitor state\u0027).item.json.t) || {})[\u0027core.offer.btn_review\u0027] || \u0027core.offer.btn_review\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_on:plan_review"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2420,
+                                       -160
+                                   ],
+                      "id":  "31b687d7-2151-58f2-af8d-0c9f66951f84",
+                      "name":  "Offer monitoring",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "4e518641-fa45-5ff8-8373-534752dd9bf0",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "370f81ff-33d3-597e-afb7-7667748e8d58",
+                                                                                     "name":  "plan_id",
+                                                                                     "value":  "={{ $(\u0027Publish plan (atomic)\u0027).item.json.plan_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "43edbdd9-c235-526a-9d28-15c17618db4d",
+                                                                                     "name":  "version",
+                                                                                     "value":  "={{ $(\u0027Publish plan (atomic)\u0027).item.json.version }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cb09f887-7c5a-524a-ac97-279486df14ee",
+                                                                                     "name":  "superseded_plan_id",
+                                                                                     "value":  "={{ $(\u0027Publish plan (atomic)\u0027).item.json.superseded_plan_id || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1ab2c7ee-f016-56d2-a91a-55387482522a",
+                                                                                     "name":  "context_name",
+                                                                                     "value":  "={{ $(\u0027Publish plan (atomic)\u0027).item.json.context_name }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7bd676f1-1996-5bd1-9232-82695fd702ae",
+                                                                                     "name":  "section_count",
+                                                                                     "value":  "={{ $(\u0027Publish plan (atomic)\u0027).item.json.section_count }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       0
+                                   ],
+                      "id":  "d3d1ecd1-b042-5601-a654-27d213fe65fc",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**HITL + agent.fn_advisor_publish_plan (atomar, 3 Schritte)**\n\nCross-agent (domain = fixer Binding-Input). fn_advisor_publish_plan in EINER Transaktion: (1) bisheriger active-Plan -\u003e superseded (Versions-Audit, nie gelöscht), (2) Draft -\u003e active + plan_md persistiert, (3) Domänen-Plan-Doc upserted (Context-Name aus core.advisors.plan_context der Domäne; content = neues plan_md + der UNVERÄNDERTE gespeicherte \"## Gelernt\"-Block [system-verwaltet, core.fn_split_learned_block; ein im plan_md mitgeschickter wird verworfen, auch im Versions-Audit]; lazy, agent_name=NULL, Spalte managed_by=agent -\u003e der Seeder fasst es nie an; löschgeschützt via core.protected_contexts). P0c PERSON-SCOPE: Plan-Schlüssel (domain, person_id); household (finance) -\u003e person_id NULL, Doc am Basis-Namen; per_user (career) -\u003e person_id = Sender (own_user_only) aus chat_id, Doc suffigiert \u003cbase\u003e__\u003cpid\u003e. Read plan state (read-only) ist domänenneutral + person-skopiert (Vorschau = der Write). Ein aktiver Plan pro (Domain, Person) = Partial-UNIQUE NULLS NOT DISTINCT (DB-Gesetz). Multi-Person-Fächerung = P2.",
+                                         "height":  320,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -340
+                                   ],
+                      "id":  "901bdfb3-1312-5392-a9ee-10ec17f1b46b",
+                      "name":  "Doc Publish Plan"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Owner-Notify nach Publish (bewusste tool-Seitenkanal-Ausnahme)**\n\nNach erfolgreichem Publish bietet das Tool die Plan-Wächter-Crons zur Aktivierung an — aber NUR wenn mindestens einer aus ist (Read monitor state liest drift_check + plan_review -\u003e Monitor off? = drift_on!=true ODER review_on!=true -\u003e Offer monitoring; kein Spam wenn beide schon an). ZWEI getrennte Knöpfe (Owner-Entscheid, Phase 0): \"Abweichungs-Wächter an\" (cron_on:drift_check) + \"Quartals-Bericht an\" (cron_on:plan_review), unabhängig schaltbar. Beide laufen in den Orchestrator-Callback -\u003e core.fn_set_cron_enable (core.config cron_enable.\u003ckey\u003e=true). Cron-Toggle-Modell (Owner, gelockt): SETUP=aktivieren (cron_on, hier am Publish), LAUFZEIT=abschalten (cron_off am Nudge), RE-AKTIVIEREN per /reminders (Roter Faden Paket B). Lint scripts/cron_toggle_lint.ps1 erzwingt je Cron beide Knöpfe. BEWUSSTE enge Ausnahme zu \"tool = keine Seitenkanal-I/O\": owner-facing Notify (kein Domänen-I/O). Return liest die Post-State-Felder explizit aus Publish plan (atomic).",
+                                         "height":  360,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1960,
+                                       -360
+                                   ],
+                      "id":  "b2f6857b-dd45-5b25-99fa-60f3e7e6613a",
+                      "name":  "Doc Monitor-Angebot (WS-3 Phase A / Phase 0)"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read plan state",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read plan state":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Draft exists?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Draft exists?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Build Approval Summary",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "No draft",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Publish plan (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Publish plan (atomic)":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Write ok?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Read monitor state",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Publish rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Read monitor state":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Monitor off?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Monitor off?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Offer monitoring",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Return",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Offer monitoring":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Return",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

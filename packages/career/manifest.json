@@ -1,0 +1,152 @@
+{
+  "name": "career",
+  "version": "0.1.0",
+  "description": "Career domain: job-change copilot (profile, planning, job matching, skill-gap, market signals, finance runway bridge). A living career advisor (agent.career_advisor) that keeps a CV-style profile + a career plan + learned job preferences, bookmarks forwarded jobs, runs a weekday Bundesagentur job scan with 👍/👎 feedback learning (WS-2), computes the skill gap per target role (WS-3) and surfaces market signals — a structured posting-count demand trend (Jobsuche) plus on-demand salary and employer-health research via web_search (WS-4) — and computes a finance-runway check for the planned move (\"can I afford the job change?\", cross-package read from finance, WS-5).",
+  "core_api": "0.4.0",
+  "requires": [],
+  "schema": "career",
+  "schemas": ["career"],
+  "provides": {
+    "_agents_comment": "provides.agents = OBJEKTE {name, router_description, order, fallback_for?} (Schema-Doku im core-Manifest). order=4 = globale Routing-Reihenfolge (Sortierschlüssel über alle Pakete). router_description = die Englisch (Schicht 1) Orchestrator-Tool-Beschreibung des Career-Coach - die EINE Adresse seines Routing-Wissens inkl. der beanspruchten Grenzen (Jobwechsel-Leistbarkeit) und der angenommenen Anhang-Dokumentarten (Lebenslauf/Zeugnis).",
+    "agents": [
+      { "name": "career_advisor", "router_description": "Career coach (advisor): career strategy, the planned job change (IT project management -> Scrum Master / software development), the CV-style career profile (current role, skills, experience), the career plan (target roles, target industries, transition timeline) AND the affordability / runway of a JOB CHANGE (\"kann ich mir den Jobwechsel leisten?\", \"reicht das Geld, wenn ich kündige / weniger verdiene?\", Probezeit-Runway — the coach reads the runway straight from the career plan). Route here for \"Jobwechsel\", \"Karriere\", \"soll ich mich umorientieren?\", \"Bewerbung/Skills/Weiterbildung\", target-role/timeline questions, career advice/planning, and job-change affordability. Attachments: a CV / resume / Lebenslauf / Arbeitszeugnis as photo or PDF - the coach extracts the career profile from it (an attachment sent during a career conversation is a CV). NOT for GENERAL money/affordability of a purchase (\"kann ich mir das Auto leisten?\") -> that is agent.finance_advisor. NOT for bookings -> agent.finance.", "order": 4 }
+    ],
+    "onboarding": {
+      "_comment": "P1 Generisches Paket-Onboarding (docs/package-contract.md §3.2): deklariert NUR den Agenten, der das Onboarding dieses Pakets erfasst (nicht ableitbar — career hat genau career_advisor, finance hätte finance vs finance_advisor). Die Sektionen kommen aus der KONVENTION packages/career/onboarding/sections.json (vom Host-Seeder _seed_onboarding_sections genutzt) -> KEIN sections_file-Feld (arch-challenge D3: uniform-by-construction Monorepo, 'ein Fakt, eine Adresse'; contract_lint backstop'd onboarding<->sections.json). build.ps1 generiert daraus den Orchestrator-Onboarding-Dispatch-Arm (Parität $AgentRoutingList): onboarding:career:<key> -> agent.career_advisor (Self-Onboarding-Task). agent = bare Name; der Build prefixt agent.<agent>.",
+      "agent": "career_advisor"
+    },
+    "tools": ["extract_cv", "record_job_match", "set_onboarding_section"],
+    "crons": ["score_jobs", "refresh_market_signals"],
+    "routes": ["career"],
+    "config": ["model", "schedule", "cron_enable", "advisor", "career", "feature"],
+    "models": []
+  },
+  "consumes": {
+    "services": [
+      "core:human_approval", "core:load_config", "core:load_context",
+      "core:web_search", "core:expert_panel",
+      "core:save_plan_section", "core:publish_plan", "core:set_context_facts", "core:set_own_context_facts",
+      "core:fetch_telegram_file", "core:onboarding_progress",
+      "paperless:search_documents", "paperless:get_document", "paperless:ask_documents"
+    ],
+    "reads": ["core.fn_core_api_version()", "core.fn_advisor_read_plan(text,text)", "finance.fn_liquidity_snapshot()"]
+  },
+  "config": {
+    "_comment": "Per-Paket-Config (WS4a, docs/package-contract.md §3.6): das Career-Paket deklariert seine Config im eigenen Manifest. Host-Seeder (_seed_package_config) lädt sie paket-skopiert (package='career') in core.config; schedule.* beim Deploy eingesetzt (__CFG_SCHEDULE_*__), sonst runtime via core.sub_load_config (Agent-Modelle) bzw. core.fn_config_get (model.cv_extract/job_scorer über 'Load model config', advisor.*/career.*/cron_enable.*). Jeder Eintrag {value, description, summary} (summary = deutscher Owner-Einzeiler für lifeagents config list). WS-2: eigener Opt-in-Cron cron.score_jobs (schedule.score_jobs Cron-Expr + cron_enable.score_jobs=false Toggle, cron_labels-Block unten) PLUS die geerbten Core-Advisor-Crons (drift_check/plan_review via core.advisors).",
+    "model": {
+      "career_advisor": { "value": "claude-opus-latest", "description": "LLM for the Career-Advisor agent (profile interview, advice, plan synthesis). Opus by owner decision (consistent with finance_advisor: only the advisor agents use Opus; low request volume, quality over cost; a higher tier than the Haiku router). Swap = change value to any model_key in agent.ai_models; a NEW model first needs a row in packages/core/seed/ai_models.json + selector regeneration (build script). Runtime-switchable: lifeagents config set model career_advisor <key> (no rebuild).", "summary": "KI-Modell für den Karriere-Berater (Gespräch, Beratung, Karriereplan)." },
+      "cv_extract": { "value": "claude-sonnet-latest", "description": "Vision model for agent.career.tool_extract_cv (photo/PDF of a CV / resume / Lebenslauf -> raw career_profile fields, read-only). Claude Messages API via New-AnthropicMessagesNode (image/document blocks). Default claude-sonnet-latest (effort low). PRIVACY: a CV is sensitive personal data -> paid Anthropic API only (no training on customer content); NEVER a free-tier key. Distinct key from finance model.vision_extract (UNIQUE(category,key) forbids sharing; per-package vision tuning). Runtime (read each run via Load model config, any Claude chat model): lifeagents config set model cv_extract <key>, no rebuild.", "summary": "KI-Modell, das Fotos/PDFs von Lebensläufen ausliest." },
+      "job_scorer": { "value": "claude-sonnet-latest", "description": "Per-posting job-match scorer (1..4) for the weekday job scan (cron.score_jobs; ONE batched call per person). Claude Messages API via New-AnthropicMessagesNode with Structured Output {scores:[{i,score,reasoning}]}. Default claude-sonnet-latest (effort low). PRIVACY: career_profile/career_preferences (PII) are injected into the scoring prompt -> paid Anthropic API only (no training on customer content); NEVER a free-tier key. Runtime (read each run via Load model config, any Claude chat model): lifeagents config set model job_scorer <key>, no rebuild.", "summary": "KI-Modell, das Stellenangebote nach Passgenauigkeit bewertet." }
+    },
+    "schedule": {
+      "score_jobs": { "value": "15 10 * * 1-5", "type": "cron", "description": "Cron expression for the weekday job-matching scan (cron.score_jobs), 10:15. Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately).", "summary": "Zeitplan des Stellen-Scans (Cron; „15 10 * * 1-5“ = werktags 10:15 Uhr)" },
+      "refresh_market_signals": { "value": "0 6 * * 1", "type": "cron", "description": "Cron expression for the weekly posting-count refresh (cron.refresh_market_signals): the Bundesagentur Jobsuche maxErgebnisse (open-posting count) for the primary target role + location -> the demand trend. Weekly is plenty (the trend needs >= 2 weekly samples before it shows). Filled into the scheduleTrigger at deploy time (placeholder __CFG_SCHEDULE_<KEY>__, deploy_workflows.sh); change at runtime: lifeagents config set schedule <key> '<cron>' (redeploys the package workflows, effective immediately). (Salary is NOT fetched here in v1 - the Entgeltatlas blocks automated access; salary is on-demand web_search, structured band via Destatis GENESIS = BACKLOG.)", "summary": "Zeitplan der Stellenmarkt-Zählung (Cron; „0 6 * * 1“ = montags 6:00 Uhr)" }
+    },
+    "cron_enable": {
+      "score_jobs": { "value": "true", "type": "boolean", "description": "Console emergency switch for cron.score_jobs for EVERYBODY (Roter Faden Paket B: score_jobs is a PERSON reminder, cron_labels.person below). Each person opts in/out of their own job cards with rem:on|off:score_jobs (offer after tool_record_job_match, switch-off button on every card, /reminders) -> agent.reminder_prefs; the cron fans out only to persons for whom core.fn_reminder_allowed(score_jobs, person) is true (default off = opt-in per person). career:V006 moved the former household value into every person's preference. Disable for all: lifeagents config set cron_enable score_jobs false (no rebuild).", "summary": "Notschalter des Stellen-Scans für alle (true/false); jede Person schaltet ihre Vorschläge selbst." },
+      "refresh_market_signals": { "value": "true", "type": "boolean", "description": "F9 enable-flag for cron.refresh_market_signals (weekly posting-count refresh). ALWAYS-ON (default true -> runs weekly once career is active; console-toggle only, NO chat button + NO cron_labels block -> Muster finance.cron_refresh_market_prices, deterministic keyless market-data plumbing, no LLM/no PII/no cost). The cron's F9 node reads it (core.fn_config_get); turn off at runtime via console lifeagents config set cron_enable refresh_market_signals false. The trend surfaces in the rendered plan (career.fn_market_trend); no push alert.", "summary": "Schaltet die wöchentliche Stellenmarkt-Zählung (Nachfrage-Trend) ein oder aus (true/false)." }
+    },
+    "advisor": {
+      "career_plan_stale_days": { "value": "365", "type": "integer", "minimum": 1, "description": "Plan-staleness threshold (days) for the Core-Advisor-Engine drift check on the career domain. The career plan counts as stale (info-level alert) when now - career_planning facts._meta.last_confirmed_at exceeds this. Read at RUNTIME by career.fn_advisor_review (COALESCE default 365); change = edit here + re-seed (provision.sh / substrate -Reset), no rebuild. Career-owned key, separate from the finance advisor.plan_stale_days (per-domain tuning).", "summary": "Nach so vielen Tagen erinnert der Berater, deinen Karriereplan zu überprüfen." }
+    },
+    "career": {
+      "job_score_threshold": { "value": "3", "type": "integer", "minimum": 1, "maximum": 4, "description": "Minimum job-match score (1..4) to surface a hit (default 3 = balanced; owner UX-triage). Read at RUNTIME by cron.score_jobs (core.fn_config_get) -> tune without rebuild via lifeagents config set career job_score_threshold <n>.", "summary": "Ab dieser Passgenauigkeit (1–4) wird dir ein Stellenangebot gemeldet." },
+      "job_max_per_run": { "value": "7", "type": "integer", "minimum": 1, "description": "Max number of match cards cron.score_jobs sends per run ACROSS ALL SOURCES (highest scores first). No silent truncation: ALL scored postings are still recorded in career.job_matches (dedup prevents re-scoring) -> over-cap matches stay visible via career.v_job_matches / the advisor on request. Read at RUNTIME (core.fn_config_get); guards the one-message-per-job format against flooding on a high-match day.", "summary": "Höchstens so viele Stellen-Treffer schickt der Scan pro Lauf (weitere bleiben abrufbar)." },
+      "job_source_bundesagentur": { "value": "true", "type": "boolean", "description": "WS-2 Multi-Source: enable the Bundesagentur source in cron.score_jobs (keyless, free, default ON). Read at RUNTIME in the Normalize step (core.fn_config_get); a disabled source's postings are ignored. Console-only toggle: lifeagents config set career job_source_bundesagentur false (per-source chat button is BACKLOG). Quota-level skip-the-call is deferred; all fetches run, disabled results are dropped.", "summary": "Sucht Stellen bei der Bundesagentur für Arbeit (true/false)." },
+      "job_source_adzuna": { "value": "true", "type": "boolean", "description": "WS-2 Multi-Source: enable the Adzuna source (licensed DE feed, surfaces StepStone content reliably + broad market; board=NULL by design, Adzuna discloses no originating board). Needs the 'Adzuna Jobs API' credential (ADZUNA_APP_ID/ADZUNA_APP_KEY) -> without it the fetch 401s and is skipped graceful. Runtime toggle: lifeagents config set career job_source_adzuna false.", "summary": "Sucht zusätzlich bei Adzuna, inkl. StepStone-Anzeigen (true/false; braucht Zugangsdaten)." },
+      "job_source_jsearch": { "value": "true", "type": "boolean", "description": "WS-2 Multi-Source: enable the JSearch source (Google-for-Jobs aggregator, surfaces LinkedIn strongly; board=job_publisher). Needs the 'JSearch RapidAPI' credential (JSEARCH_API_KEY) -> without it skipped graceful. Free BASIC tier ~200 req/month (>=1 call/person/weekday stays within it). Runtime toggle: lifeagents config set career job_source_jsearch false.", "summary": "Sucht zusätzlich bei JSearch, inkl. LinkedIn-Stellen (true/false; braucht Zugangsdaten)." }
+    },
+    "feature": {
+      "career_onboarding_gate": { "value": "true", "type": "boolean", "description": "P2b-1: mandatory PER-PERSON career-onboarding gate at the career_advisor entry (after Load Config, before the LLM). When 'true' (default ON = verpflichtend out-of-the-box, owner decision) AND the asking person's own career onboarding is incomplete, the gate appends a '## Career onboarding required' section to the system prompt: the advisor itself leads the person through the open career sections and gives no career advice until the profile stands (no redirect - the advisor IS the career onboarding agent, a redirect would lock the menu task out). Read at RUNTIME by the gate node (core.config category=feature key=career_onboarding_gate); turn off per household via console: lifeagents config set feature career_onboarding_gate false. Own key (NOT finance's feature.onboarding_gate -> UNIQUE(category,key)); the career gate reads fn_onboarding_status('career', chat_id) (person-scoped) and sits ABOVE the shared Core-first gate (which already blocks the household-level core onboarding).", "summary": "Karriere-Beratung erst nach dem Karriere-Einstieg (/onboarding) der Person (true/false)." }
+    }
+  },
+  "context_validators": {
+    "_comment": "Generische Validator-Registry (WS-B1 / D12, docs/package-contract.md §3.3): bindet die paket-besessenen Sidecar-Context-Namen an die career-fn, die ihre metadata.facts-Struktur prüft. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): seed_data.sh upsertet die Zeile in core.context_validators; der Core-Trigger trg_core_contexts_validate_facts_fn dispatcht generisch (kein hartkodierter career-Name im Core). Zugleich das Registry-Gate von agent.fn_set_context_facts (nur registrierte facts-Contexts schreibbar). validate_fn MUSS ins eigene Schema (career.*) zeigen.",
+    "career_profile": "career.fn_validate_career_profile",
+    "career_planning": "career.fn_validate_career_planning",
+    "career_preferences": "career.fn_validate_career_preferences"
+  },
+  "context_scopes": {
+    "_comment": "Generische Scope-/Permission-Registry (P0a, docs/package-contract.md §3.3): deklariert je facts-Context, ob er haushaltsweit (household) oder pro Person (per_user) lebt und welche write_permission (owner_only/adults_only/own_user_only) gilt. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): seed_data.sh upsertet die Zeile in core.context_scopes; agent.fn_check_write_permission setzt sie durch (Identität aus fn_resolve_sender, nie LLM). Jeder context_validators-Key MUSS hier eine Zeile haben (contract_lint Check 10). ALLE DREI Career-Contexts sind PER_USER/own_user_only (career pro Person, physischer Speicher '<base>__<person_id>' in agent.core_contexts). P0b: career_profile + career_preferences (Schreiber agent.fn_set_context_facts). P0c: career_planning AUCH per_user — sein Schreiber ist die GETEILTE advisor_plans-Maschinerie (fn_advisor_save_section/_publish_plan, jetzt (domain, person_id)-keyed); fn_fetch_context/die fns suffigieren, fn_advisor_read_plan reicht die Person durch. finance/financial_planning bleibt household (Registry-gesteuert).",
+    "career_profile": { "scope": "per_user", "write_permission": "own_user_only" },
+    "career_planning": { "scope": "per_user", "write_permission": "own_user_only" },
+    "career_preferences": { "scope": "per_user", "write_permission": "own_user_only" }
+  },
+  "context_renderers": {
+    "_comment": "Generische Render-Registry (WS1a, docs/package-contract.md §3.3): bindet die facts-tragenden Career-Contexts an die career-fn, die ihren autoritativen Fakten-Header baut (render-at-fetch, Ableitungen via SQL). DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): seed_data.sh upsertet die Zeile in core.context_renderers; die generische Engine core.fn_fetch_context dispatcht generisch + wrappt Banner/Stempel/Prosa. render_fn MUSS ins eigene Schema (career.*) zeigen, UNIFORME Signatur fn(text)->text.",
+    "career_profile": "career.fn_render_career_profile",
+    "career_planning": "career.fn_render_career_planning",
+    "career_preferences": "career.fn_render_career_preferences"
+  },
+  "advisors": {
+    "_comment": "Generische Advisor-Registry (WS2, Core-Advisor-Engine, docs/package-contract.md §3.3): bindet die career-DOMAIN an ihren Soll-Plan-Context (career_planning) + die paket-besessene Review-fn, die Staleness/Digest rechnet (Skill-Gap-Numerik erst WS-3). DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_advisors): der Host upsertet die Zeile own-schema-scoped in core.advisors; der generische Core-Wrapper core.fn_advisor_review_evaluate(domain) dispatcht über die Tabelle (kein hartkodierter career-Name im Core). VERSCHACHTELT (3 Werte je domain): {domain:{plan_context,review_fn,advisor_agent}}. review_fn MUSS ins eigene Schema (career.*) zeigen und darf NIE RAISEn (der Drift-Cron wertet alle Advisor in EINER CTE aus); advisor_agent = das Orchestrator-Router-Ziel der Domäne (Phase 0 WS-0c #1 — der Interview-Pin pinnt dorthin). package='career' -> fn_pkg_purge_data räumt die Zeile beim Uninstall.",
+    "career": {
+      "plan_context": "career_planning",
+      "review_fn": "career.fn_advisor_review",
+      "advisor_agent": "agent.career_advisor"
+    }
+  },
+  "protected_contexts": [
+    "career_profile",
+    "career_planning",
+    "career_preferences",
+    "career_advisor_instructions"
+  ],
+  "callback_handlers": {
+    "_comment": "Generische Callback-Registry (Phase 0 WS-0c CB, docs/package-contract.md §8): bindet einen Callback-Prefix an die career-Handler-fn über das nested {handler_fn, member_permeable}-Schema. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_callback_handlers): der Host upsertet die Zeile in core.callback_handlers; der Orchestrator dispatcht 👍/👎-Taps an einer Job-Treffer-Karte (callback_data job:up:<id> / job:down:<id>) über die generische core.fn_dispatch_callback hierher — KEIN Orchestrator-Edit, KEIN neuer Switch-Arm (additiv auf der toten extra-Ausgabe; die 9 Core-Prefixes bleiben direkt-verdrahtet). member_permeable=true: ein aufgelöstes Mitglied darf 👍/👎 an SEINER EIGENEN Karte tappen — die FEINE Autorisierung (Per-Item-Eigentum: UPDATE ... WHERE person_id=sender) macht die Handler-fn; der Dispatcher enforced member_permeable fail-closed. handler_fn MUSS ins eigene Schema (career.*) zeigen, Signatur fn(jsonb)->jsonb (toast?,message?), NIE RAISE. package='career' -> fn_pkg_purge_data räumt die Zeile beim Uninstall.",
+    "job": { "handler_fn": "career.fn_handle_job_feedback", "member_permeable": true }
+  },
+  "cron_labels": {
+    "_comment": "Chat-Toggle-Registry der opt-in Crons (Phase 0 WS-0c #2/#3, docs/package-contract.md §8): MITGLIEDSCHAFT = chat-togglability (core.fn_set_cron_enable akzeptiert nur hier gelistete Keys). Die Toast-/Meldungstexte je Richtung stehen im Textkatalog (career.cron.<key>.on_toast|off_toast|on_message|off_message, §3.11). DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_cron_labels). cron_toggle_lint erzwingt: jeder Opt-in-cron_enable-Key (value=false) steht genau hier + hat einen erreichbaren cron_on:<key>+cron_off:<key>-Knopf im gebauten Graph; locale_lint erzwingt die vier Texte.",
+    "list": [],
+    "person": { "score_jobs": { "default_enabled": false } }
+  },
+  "credentials": {
+    "_comment": "Generischer Paket-Secrets-Block (Install-UX-Phase, docs/package-contract.md §3.8): deklariert die n8n-Credentials, die dieses Paket aus Fremd-API-Keys braucht (WS-2 Multi-Source Job-Quellen). DEKLARATION (Paket) vs. AUSFÜHRUNG (Host): der Stage-4-Wizard in pkg_install_one/pkg_cmd_reconfigure (Fragen vorab via collect_package_inputs) fragt die env-Keys env-override-first ab (optional -> Enter=skip, seen-persistiert als KEY=-Zeile in /etc/lifeagents/career.env; NIE auf --unattended), inject_credentials.sh::_inject_manifest_credentials assembliert die data-Form GENERISCH via _cred_assemble_data (Typ-Quirks wie allowedDomains/{json:...|tojson} leben EINMAL in bash, NIE hier) und upsertet id-stabil; deploy_workflows löst die placeholder per NAME auf, pkg_teardown löscht die names beim Uninstall (Symmetrie §6). required=credential-Ebene (Atomarität: ALLE env-Keys vorhanden -> staged, sonst graceful skip auf Bundesagentur-only). validator = geschlossenes Enum none|url|email|live_check:<name> (Name-Bindung, nie Code). prompt = DEUTSCH (Owner-facing Terminal, Präzedenz cron_labels — bewusste Abweichung von der Englisch-Regel der Manifest-Descriptions). Ersetzt die frühere Host-Sonderlocke (inject_credentials Stufen 8/9 + _INSTALL_ENV_KEYS; contract_lint Naht-Guard blockt Rückfälle).",
+    "adzuna": {
+      "placeholder": "__CRED_ADZUNA__",
+      "name": "Adzuna Jobs API",
+      "type": "httpCustomAuth",
+      "required": false,
+      "env": {
+        "ADZUNA_APP_ID":  { "field": "app_id",  "validator": "none", "secret": false, "prompt": "Adzuna App-ID (optional, Enter = überspringen): ", "help": "Optional: eine zusätzliche Quelle für Stellenangebote (Adzuna, enthält auch StepStone-Anzeigen). Ohne sie sucht der Karriere-Assistent nur bei der Bundesagentur für Arbeit.\nKostenlos: developer.adzuna.com → registrieren → „App ID“ und „App Key“ kopieren. Beide gehören zusammen: der Key wird gleich danach gefragt — lässt du die App-ID leer, entfällt er." },
+        "ADZUNA_APP_KEY": { "field": "app_key", "validator": "none", "secret": true,  "prompt": "Adzuna App-Key (Enter = überspringen): " }
+      }
+    },
+    "jsearch": {
+      "placeholder": "__CRED_JSEARCH__",
+      "name": "JSearch RapidAPI",
+      "type": "httpHeaderAuth",
+      "required": false,
+      "env": {
+        "JSEARCH_API_KEY": { "field": "x-rapidapi-key", "validator": "none", "secret": true, "prompt": "JSearch-Schlüssel (optional, Enter = überspringen): ", "help": "Optional: eine weitere Quelle für Stellenangebote (JSearch, enthält auch LinkedIn-Stellen).\nKostenloser Tarif: rapidapi.com → nach „JSearch“ suchen → „Subscribe“ (Basic, kostenlos) → den „X-RapidAPI-Key“ kopieren." }
+      }
+    }
+  },
+  "read_surface": {
+    "_comment": "Paket-Lese-Vertrag (Owner-Lock 2026-06-18, docs/package-contract.md §4.1): das Aufsichts-Lesefenster, das dieses Paket dem privilegierten Core-Host (Leserolle core_ro) bei der Provisionierung öffnet — core.fn_provision_package_roles('career') grantet core_ro UNBEDINGT SELECT auf Schema career (System-Invariante, kein Opt-in; verifiziert in tests/db/career/test_career_isolation.sql B1). host_read_role = core_ro WIE finance (Parität) — NICHT career_ro: das ist die ENGE Paket-Isolationsrolle (liest nur career; agent/core/finance verweigert), das Host-Aufsichtsfenster ist core_ro. Deklarativ — der GRANT ist host-kontrolliert (Deklaration vs. Ausführung); die SELECT-Knoten-Beschreibungen der Core-Agenten werden hieraus erst in Phase 4/5 build-time zusammengesetzt. preferred_views enthält seit WS-2 career.v_job_matches (Recent-Matches-Overview; WS-1 war noch leer).",
+    "host_read_role": "core_ro",
+    "preferred_views": ["career.v_job_matches"],
+    "tables_readable": true
+  },
+  "backup": {
+    "_comment": "Paket-Backup-Oberfläche (Phase 4b, docs/package-contract.md): schema_dump=true sichert das GANZE Paket-Schema career (heute career.onboarding_state) via pg_dump. Die PII-Contexts career_profile/career_planning leben in der GETEILTEN Host-Tabelle agent.core_contexts (managed_by='agent') und werden vom CORE-Backup-Filter (agent.core_contexts WHERE managed_by='agent') miterfasst (M1) — NICHT hier.",
+    "schema_dump": true,
+    "exclude_tables": []
+  },
+  "catalog": {
+    "_comment": "Per-Fragment-Katalog (WS-B7, docs/package-contract.md §3.5): dieses Paket besitzt die STRUKTUR seiner /help-Kategorien + Tail-Sektionen; die Texte stehen im Textkatalog (career.help.<id>.*, §3.11). build.ps1 (-CatalogOnly/voll) rendert je Sprache das Fragment (seed/capabilities_catalog/<lang>.fragment.md, GENERATED) und composet es nach `ord` (200 = nach finance[100], vor dem Core-Host-Chrome[900]). job_search rendert, weil tool_record_job_match sie als `Category` trägt; die Tail-Sektion trägt die Berater-Capability (agent-derived, kein Tool). categories[].id MUSS dem `Category` der Tool-_manifeste entsprechen (sonst harter -VerifyCatalog-FAIL).",
+    "ord": 200,
+    "categories": [
+      { "id": "job_search", "ord": 10 }
+    ],
+    "tail": [
+      { "id": "advice", "ord": 200 }
+    ]
+  },
+  "migrations": "db",
+  "approval_matrix": {
+    "_comment": "Maker-Checker-Stufe je Gate-Aufrufer dieses Pakets (WS-5b): Workflow-Name -> {tier, reason}. build.ps1 injiziert den tier in jeden Gate-Call-Node (fail-closed: Gate-Aufrufer ohne Eintrag = Build-Fehler), approval_lint prüft die gebauten JSONs. Stufen, Verb-Präfix-Strenge + Besitz-Regel -> docs/package-contract.md §3.10.",
+    "agent.career.tool_record_job_match": { "tier": "owner_info", "reason": "record_: weitergeleitete Stelle vormerken (idempotenter Tracking-Eintrag, UPSERT auf (source, external_id), kein Buchen). Verb-Taxonomie arch-challenge WS-2." }
+  }
+}

@@ -1,0 +1,1148 @@
+{
+    "id":  "LqstOsRNyRtED737",
+    "name":  "agent.finance.tool_commit_import",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "batch_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "13c97dda-f0be-5e09-849a-7dd478383f28",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT s.row_no, s.payload-\u003e\u003e\u0027isin\u0027 AS isin, s.payload-\u003e\u003e\u0027symbol\u0027 AS symbol, s.payload-\u003e\u003e\u0027price_per_share\u0027 AS price, COALESCE(NULLIF(s.payload-\u003e\u003e\u0027quote_currency\u0027,\u0027\u0027), finance.fn_import_depot_currency(s.batch_id, s.payload-\u003e\u003e\u0027depot\u0027)) AS ccy FROM finance.import_staging s WHERE s.batch_id = (($1::jsonb)-\u003e\u003e\u0027batch_id\u0027)::uuid AND s.entity_type = \u0027stock_buy\u0027 AND s.status \u003c\u003e \u0027committed\u0027 AND NULLIF(s.payload-\u003e\u003e\u0027isin\u0027,\u0027\u0027) IS NOT NULL AND NULLIF(s.payload-\u003e\u003e\u0027provider_symbol\u0027,\u0027\u0027) IS NULL ORDER BY s.row_no;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ batch_id: $(\u0027Start\u0027).first().json.batch_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       -420
+                                   ],
+                      "id":  "003906bc-229f-5903-adbc-fb9aaa773b40",
+                      "name":  "Load positions",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       440,
+                                       -420
+                                   ],
+                      "id":  "655f5461-b4d1-5670-83e6-4b22562c5258",
+                      "name":  "Each position"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "SfcrWDA4cwgCsa8T",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/SfcrWDA4cwgCsa8T",
+                                                            "cachedResultName":  "agent.finance.sub_resolve_yahoo_symbol"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "isin":  "={{ $(\u0027Each position\u0027).item.json.isin || \u0027\u0027 }}",
+                                                                              "raw_symbol":  "={{ $(\u0027Each position\u0027).item.json.symbol || \u0027\u0027 }}",
+                                                                              "price_currency":  "={{ $(\u0027Each position\u0027).item.json.ccy || \u0027\u0027 }}",
+                                                                              "price_per_share":  "={{ $(\u0027Each position\u0027).item.json.price || \u0027\u0027 }}",
+                                                                              "provider_symbol":  "={{ \u0027\u0027 }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       660,
+                                       -540
+                                   ],
+                      "id":  "b188da9b-b751-5844-844c-83e66e1f3ad9",
+                      "name":  "Resolve Yahoo symbol"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7e64f9e4-bd38-508b-ae73-a8153829ae8e",
+                                                                                   "leftValue":  "={{ ($json.verified === true || ($json.foreign_listing === true \u0026\u0026 $json.plausible === true)) \u0026\u0026 !!$(\u0027Each position\u0027).item.json.row_no }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       -540
+                                   ],
+                      "id":  "d29a769f-e1b5-559c-921a-b2153bf80c85",
+                      "name":  "Symbol verified?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (finance.fn_import_update_row($1::jsonb)-\u003e\u003e\u0027ok\u0027)::boolean AS ok;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ batch_id: $(\u0027Start\u0027).first().json.batch_id, row_no: $(\u0027Each position\u0027).item.json.row_no, payload_merge: ({ provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol, provider_currency: $(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing ? $(\u0027Resolve Yahoo symbol\u0027).item.json.currency : null }) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       -620
+                                   ],
+                      "id":  "53c0d35b-1fe5-533c-8b3b-ee4ba76642a3",
+                      "name":  "Store symbol",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (SELECT COUNT(*) FROM finance.import_staging s WHERE s.batch_id = (($1::jsonb)-\u003e\u003e\u0027batch_id\u0027)::uuid AND s.status = \u0027invalid\u0027)::int AS invalid_count, (SELECT COUNT(*) FROM finance.import_staging s WHERE s.batch_id = (($1::jsonb)-\u003e\u003e\u0027batch_id\u0027)::uuid AND s.status = \u0027valid\u0027)::int AS valid_count, (SELECT COUNT(*) FROM finance.import_staging s WHERE s.batch_id = (($1::jsonb)-\u003e\u003e\u0027batch_id\u0027)::uuid AND s.status = \u0027committed\u0027)::int AS committed_count, finance.fn_import_card_rows((($1::jsonb)-\u003e\u003e\u0027batch_id\u0027)::uuid) AS rows;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ batch_id: $(\u0027Start\u0027).first().json.batch_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "c00c3f93-5f80-5b07-aa62-7af3b30d8090",
+                      "name":  "Load batch summary",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d50648f0-c202-5e88-a118-e481482c98ec",
+                                                                                   "leftValue":  "={{ $json.invalid_count === 0 \u0026\u0026 $json.committed_count === 0 \u0026\u0026 $json.valid_count \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "e323d8c0-a92d-5e60-92a7-7cd4de2248ab",
+                      "name":  "Batch ready?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "71803069-4e3a-57b1-84bd-4db81f487e39",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "01942456-7de8-578d-b4e9-c1baa8054f50",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "54ba0f81-b856-5dbe-a866-d57083350bfb",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Load batch summary\u0027).item.json.committed_count \u003e 0 ? \u0027This batch is already committed.\u0027 : ($(\u0027Load batch summary\u0027).item.json.valid_count === 0 ? \u0027Nothing to commit — stage rows first.\u0027 : $(\u0027Load batch summary\u0027).item.json.invalid_count + \u0027 row(s) are still invalid — fix them with tool_update_staging_row first (the user corrects in chat, e.g. row 7: balance 5230).\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "cc7895bf-1853-5f33-b90e-e8fea028bf16",
+                      "name":  "Batch not ready"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027error_summary\u0027 AS error_summary, COALESCE(r-\u003e\u0027errors\u0027, \u0027[]\u0027::jsonb) AS errors FROM finance.fn_import_bundle($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ batch_id: $(\u0027Start\u0027).first().json.batch_id, dry_run: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       660,
+                                       -120
+                                   ],
+                      "id":  "b5a7063a-8ac0-59b8-b984-18454da51c41",
+                      "name":  "Dry run import",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "94f0c982-becf-5c86-b204-40812ff47f50",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       -120
+                                   ],
+                      "id":  "3f7ac091-64f4-5223-a0ae-1913b0925905",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7dd4c4cd-5ae9-5efd-8745-624f70cc0934",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "52549563-b9ed-5306-9a97-f10fdad0871c",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1f317b3e-bad3-5713-aae2-62ee9faa0c94",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run import\u0027).first().json.reason + ($(\u0027Dry run import\u0027).first().json.error_summary ? \u0027 — \u0027 + $(\u0027Dry run import\u0027).first().json.error_summary : \u0027\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "eec8435c-a4a1-5614-8bea-f8aafd70937c",
+                                                                                     "name":  "errors",
+                                                                                     "value":  "={{ $(\u0027Dry run import\u0027).first().json.errors || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c66754f8-8cc7-52fd-8560-b4452634b613",
+                                                                                     "name":  "error_summary",
+                                                                                     "value":  "={{ $(\u0027Dry run import\u0027).first().json.error_summary || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       -240
+                                   ],
+                      "id":  "2f7205b3-8a24-5c65-8a0f-250149744d24",
+                      "name":  "Dry run failed"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Probelauf: Karte nur, wenn der Write klappen wird**\n\nImport-Härtung 2026-10-22: fn_import_bundle(dry_run:true) läuft denselben Write-Loop über dieselben fn_create_*/fn_book_* und rollt IMMER zurück (Staging-Status bleibt). Fehler (unbekannter Typ, Zins auf Depot, doppelte Position, zu langer Wert …) -\u003e Dry run failed: KEINE Karte, card_sent:false, errors[row_no] + error_summary an den Agenten -\u003e tool_update_staging_row -\u003e erneut tool_commit_import. Keine zweite Regel-Liste neben den Write-fns, die driften könnte. Zwischen Karte und Tipp kann sich der Bestand noch ändern -\u003e der echte Commit prüft erneut (Import rolled back).",
+                                         "height":  320,
+                                         "width":  360,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       660,
+                                       -420
+                                   ],
+                      "id":  "e01aec50-e2b6-5474-8726-72d97967eccc",
+                      "name":  "Probelauf vor der Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0a630267-8b25-519c-90c5-ebb7abad603c",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.commit_import\u0027, lines: [ { label: \u0027finance.label.entries\u0027, kind: \u0027text\u0027, value: ($(\u0027Load batch summary\u0027).item.json.rows.length) }, { kind: \u0027note\u0027, value: \u0027finance.note.import_all_or_nothing\u0027 } ].concat((() =\u003e { const L = { account: (S, X) =\u003e [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: (S.name) }, { label: \u0027core.label.type\u0027, kind: \u0027enum\u0027, value: (S.account_type), enum: \u0027finance.enum.account_type\u0027 }, { label: \u0027finance.label.bank\u0027, kind: \u0027text\u0027, value: (S.bank) }, { label: \u0027finance.label.iban_number\u0027, kind: \u0027text\u0027, value: (S.account_number) }, { label: \u0027finance.label.owner_person\u0027, kind: \u0027tpl\u0027, value: ((X.person ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: (X.person) } }, ((![\u0027stocks_depot\u0027,\u0027crypto_depot\u0027].includes(S.account_type)) ? { label: \u0027finance.label.balance\u0027, kind: \u0027money\u0027, value: ((S.opening_balance || 0)), currency: (X.ccy) } : null), ((([\u0027stocks_depot\u0027,\u0027crypto_depot\u0027].includes(S.account_type) || !!S.settlement_account_name)) ? { label: \u0027finance.label.settlement_account\u0027, kind: \u0027tpl\u0027, value: ((!S.settlement_account_name ? null : (X.settlement_ref === \u0027db\u0027 ? \u0027finance.tpl.account_existing\u0027 : (X.settlement_ref === \u0027batch\u0027 ? \u0027finance.tpl.account_created_with\u0027 : \u0027finance.tpl.plain\u0027)))), params: { value: (S.settlement_account_name) } } : null), (((![\u0027stocks_depot\u0027,\u0027crypto_depot\u0027].includes(S.account_type) || ((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate))) ? { label: \u0027finance.label.interest\u0027, kind: \u0027tpl\u0027, value: ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate) ? \u0027finance.tpl.percent_pa\u0027 : \u0027finance.value.none\u0027)), params: { value: (S.interest_rate) } } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate)) ? { label: \u0027finance.label.credit_rhythm\u0027, kind: \u0027tpl\u0027, value: (((Number(S.interest_credit_interval || 1) === 1 || (String(S.interest_credit_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 [3, 6, 12].includes(Number(S.interest_credit_interval || 1)))) ? \u0027finance.tpl.plain\u0027 : \u0027finance.tpl.every_unit\u0027)), params: { interval: (Number(S.interest_credit_interval || 1)), unit: ({ kind: \u0027enum\u0027, value: (String(S.interest_credit_unit || \u0027\u0027)), enum: \u0027finance.enum.schedule_unit\u0027 }), value: ({ kind: \u0027enum\u0027, value: ((Number(S.interest_credit_interval || 1) === 1 ? String(S.interest_credit_unit || \u0027\u0027) : (String(S.interest_credit_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(S.interest_credit_interval || 1) === 3 ? \u0027quarter\u0027 : (String(S.interest_credit_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(S.interest_credit_interval || 1) === 6 ? \u0027half_year\u0027 : (String(S.interest_credit_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(S.interest_credit_interval || 1) === 12 ? \u0027year\u0027 : String(S.interest_credit_unit || \u0027\u0027)))))), enum: \u0027finance.enum.credit_rhythm\u0027 }) } } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate)) ? { label: \u0027finance.label.credit_day\u0027, kind: \u0027tpl\u0027, value: ((String(S.interest_credit_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.tpl.credit_end\u0027 : (String(S.interest_credit_day_of_month ?? \u0027\u0027) !== \u0027\u0027 ? \u0027finance.tpl.credit_on_day\u0027 : (String(S.interest_credit_unit || \u0027\u0027) === \u0027year\u0027 ? \u0027finance.tpl.credit_anniversary\u0027 : (String(S.interest_credit_unit || \u0027\u0027) === \u0027month\u0027 ? \u0027finance.tpl.credit_start_day\u0027 : \u0027finance.tpl.credit_continuous\u0027))))), params: { day: (String(S.interest_credit_day_of_month ?? \u0027\u0027)), value: ({ kind: \u0027enum\u0027, value: ((String(S.interest_credit_unit || \u0027\u0027) === \u0027year\u0027 ? \u0027year\u0027 : (String(S.interest_credit_unit || \u0027\u0027) !== \u0027month\u0027 ? \u0027period\u0027 : ({ 1: \u0027month\u0027, 3: \u0027quarter\u0027, 6: \u0027half_year\u0027, 12: \u0027year\u0027 })[Number(S.interest_credit_interval || 1)] || \u0027period\u0027))), enum: \u0027finance.enum.credit_end\u0027 }) } } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate)) ? { label: \u0027finance.label.credit_day_next_month\u0027, kind: \u0027tpl\u0027, value: ((String(S.interest_posting_day_of_month ?? \u0027\u0027) !== \u0027\u0027 ? \u0027finance.tpl.credit_on_day\u0027 : null)), params: { day: (String(S.interest_posting_day_of_month ?? \u0027\u0027)), value: ({ kind: \u0027enum\u0027, value: (\u0027period\u0027), enum: \u0027finance.enum.credit_end\u0027 }) } } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate)) ? { label: \u0027finance.label.first_credit\u0027, kind: \u0027date\u0027, value: (X.interest.first_credit_date) } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate)) ? { label: \u0027finance.label.interest_method\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.interest_method\u0027), params: { method: ({ kind: \u0027enum\u0027, value: (X.interest.conv), enum: \u0027finance.enum.day_count\u0027 }), reason: ({ kind: \u0027enum\u0027, value: (X.interest.conv_reason), enum: \u0027finance.enum.interest_reason\u0027 }) } } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate)) ? { label: \u0027finance.label.auto_post\u0027, kind: \u0027key\u0027, value: ((X.interest.auto_post ? \u0027finance.value.auto_post_yes\u0027 : \u0027finance.value.auto_post_no\u0027)) } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.interest_rate)) ? { label: \u0027finance.label.interest_valid_from\u0027, kind: \u0027date\u0027, value: (X.interest.valid_from), is_default: !!(!S.interest_valid_from) } : null), (((S.account_type === \u0027fixed_deposit\u0027 || !!S.fixed_deposit_maturity_date || (S.fixed_deposit_auto_renew !== undefined \u0026\u0026 S.fixed_deposit_auto_renew !== null \u0026\u0026 S.fixed_deposit_auto_renew !== \u0027\u0027))) ? { label: \u0027finance.label.maturity\u0027, kind: \u0027date\u0027, value: (S.fixed_deposit_maturity_date) } : null), (((S.account_type === \u0027fixed_deposit\u0027 || !!S.fixed_deposit_maturity_date || (S.fixed_deposit_auto_renew !== undefined \u0026\u0026 S.fixed_deposit_auto_renew !== null \u0026\u0026 S.fixed_deposit_auto_renew !== \u0027\u0027))) ? { label: \u0027finance.label.auto_renew\u0027, kind: \u0027bool\u0027, value: (S.fixed_deposit_auto_renew) } : null), { label: \u0027core.label.currency\u0027, kind: \u0027text\u0027, value: (X.ccy), is_default: !!(!S.currency) } ], stock_buy: (S, X) =\u003e [ { label: \u0027finance.label.security\u0027, kind: \u0027tpl\u0027, value: ((S.isin \u0026\u0026 X.symbol !== S.isin ? \u0027finance.tpl.symbol_isin\u0027 : \u0027finance.tpl.plain\u0027)), params: { isin: (S.isin), symbol: (X.symbol), value: (X.symbol) } }, { label: \u0027finance.label.designation\u0027, kind: \u0027text\u0027, value: ((S.name || X.symbol)) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: (S.depot_name) }, { label: \u0027finance.label.settlement_account\u0027, kind: \u0027tpl\u0027, value: ((!X.settlement ? null : (X.settlement_ref === \u0027db\u0027 ? \u0027finance.tpl.account_existing\u0027 : (X.settlement_ref === \u0027batch\u0027 ? \u0027finance.tpl.account_created_with\u0027 : \u0027finance.tpl.plain\u0027)))), params: { value: (X.settlement) } }, { label: \u0027finance.label.pieces\u0027, kind: \u0027number\u0027, value: (S.shares), digits: -1 }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: (S.price_per_share), currency: (X.ccy) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: ((S.order_fee || 0)), currency: (X.ccy) }, ((S.asset_class) ? { label: \u0027finance.label.asset_class\u0027, kind: \u0027text\u0027, value: (S.asset_class) } : null), ((S.provider_symbol) ? { label: \u0027finance.label.quote_symbol\u0027, kind: \u0027text\u0027, value: (S.provider_symbol) } : null), ((S.provider_currency) ? { kind: \u0027note\u0027, value: \u0027finance.note.quote_symbol_foreign\u0027, params: { currency: (S.provider_currency) } } : null), ((S.depot_number) ? { label: \u0027finance.label.depot_number\u0027, kind: \u0027text\u0027, value: (S.depot_number) } : null), ((!!X.depot_number_to_store) ? { kind: \u0027note\u0027, value: \u0027finance.note.depot_number_stored\u0027, params: { depot: (S.depot_name), number: (X.depot_number_to_store) } } : null), { label: \u0027finance.label.booking\u0027, kind: \u0027key\u0027, value: (\u0027finance.value.position_takeover\u0027) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: (X.transaction_date) } ], insurance: (S, X) =\u003e [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: (S.name) }, { label: \u0027finance.label.company\u0027, kind: \u0027text\u0027, value: (S.insurance_company) }, { label: \u0027finance.label.policy_number\u0027, kind: \u0027text\u0027, value: (S.policy_number) }, { label: \u0027finance.label.policyholder_person\u0027, kind: \u0027tpl\u0027, value: ((X.person ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: (X.person) } }, { label: \u0027finance.label.annual_contribution\u0027, kind: \u0027money\u0027, value: (S.annual_premium), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.payment_mode\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.every_unit\u0027), params: { interval: ((S.schedule_interval || \u00271\u0027)), unit: ({ kind: \u0027enum\u0027, value: ((S.schedule_unit || \u0027year\u0027)), enum: \u0027finance.enum.schedule_unit\u0027 }) } }, { label: \u0027finance.label.rate_per_debit\u0027, kind: \u0027money\u0027, value: (X.period_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((S.schedule_day_of_month == \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (S.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : \u0027finance.value.relative_to_start\u0027))), params: { day: (S.schedule_day_of_month) } }, { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: (S.debit_account_name) }, { label: \u0027finance.label.valid_from_contract\u0027, kind: \u0027date\u0027, value: ((S.valid_from || S.first_payment_date)) }, { label: \u0027finance.label.first_debit\u0027, kind: \u0027date\u0027, value: (S.first_payment_date) }, { label: \u0027finance.label.insurance_type\u0027, kind: \u0027enum\u0027, value: (S.insurance_type), enum: \u0027finance.enum.insurance_type\u0027 }, { label: \u0027finance.label.coverage_amount\u0027, kind: \u0027money\u0027, value: (S.coverage_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.beneficiary\u0027, kind: \u0027text\u0027, value: (S.beneficiary) }, { label: \u0027finance.label.claim_deadline\u0027, kind: \u0027tpl\u0027, value: ((S.claim_deadline_hours ? \u0027finance.tpl.hours\u0027 : null)), params: { value: (S.claim_deadline_hours) } } ], pension: (S, X) =\u003e [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: (S.name) }, { label: \u0027finance.label.kind\u0027, kind: \u0027enum\u0027, value: (S.pension_type), enum: \u0027finance.enum.pension_type\u0027 }, { label: \u0027finance.label.provider\u0027, kind: \u0027text\u0027, value: (S.provider) }, { label: \u0027finance.label.contract_number\u0027, kind: \u0027text\u0027, value: (S.contract_number) }, { label: \u0027finance.label.owner_person\u0027, kind: \u0027tpl\u0027, value: ((X.person ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: (X.person) } }, { label: \u0027finance.label.current_value\u0027, kind: \u0027tpl\u0027, value: ((S.current_value ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.unknown\u0027)), params: { value: ({ kind: \u0027money\u0027, value: (S.current_value), currency: (\u0027EUR\u0027) }) } }, { label: \u0027finance.label.valuation_date\u0027, kind: \u0027date\u0027, value: (S.value_updated_at) }, { label: \u0027finance.label.guaranteed_monthly_pension\u0027, kind: \u0027money\u0027, value: (S.guaranteed_monthly_pension), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.retirement_start\u0027, kind: \u0027date\u0027, value: (S.retirement_start_date) }, { label: \u0027finance.label.monthly_contribution\u0027, kind: \u0027tpl\u0027, value: ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.contribution_amount) ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.none_parens\u0027)), params: { value: ({ kind: \u0027money\u0027, value: (S.contribution_amount), currency: (\u0027EUR\u0027) }) } }, ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.contribution_amount)) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: (S.debit_account_name) } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.contribution_amount)) ? { label: \u0027finance.label.first_debit\u0027, kind: \u0027date\u0027, value: (S.first_payment_date) } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.contribution_amount)) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((S.schedule_day_of_month == \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (S.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : \u0027finance.value.relative_to_start\u0027))), params: { day: (S.schedule_day_of_month) } } : null), { label: \u0027finance.label.notes\u0027, kind: \u0027text\u0027, value: (S.notes) } ], pension_statement: (S, X) =\u003e [ { label: \u0027finance.label.pension\u0027, kind: \u0027text\u0027, value: (S.pension) }, { label: \u0027finance.label.statement_date\u0027, kind: \u0027date\u0027, value: (S.statement_date) }, { label: \u0027finance.label.reached_claim\u0027, kind: \u0027money\u0027, value: (S.reached_claim), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.projection\u0027, kind: \u0027money\u0027, value: (S.projection), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.em_monthly\u0027, kind: \u0027money\u0027, value: (S.em_monthly), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.is_nominal\u0027, kind: \u0027bool\u0027, value: (X.is_nominal), is_default: !!((S.is_nominal === undefined || S.is_nominal === null || S.is_nominal === \u0027\u0027)) }, { label: \u0027finance.label.notes\u0027, kind: \u0027text\u0027, value: (S.notes) } ], recurring_payment: (S, X) =\u003e [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: (S.name) }, { label: \u0027finance.label.account\u0027, kind: \u0027text\u0027, value: (S.account_name) }, { label: \u0027finance.label.direction\u0027, kind: \u0027enum\u0027, value: ((S.direction === \u0027expense\u0027 ? \u0027outflow\u0027 : \u0027inflow\u0027)), enum: \u0027finance.enum.direction\u0027 }, { label: \u0027core.label.amount\u0027, kind: \u0027money\u0027, value: (S.amount), currency: (X.ccy) }, { label: \u0027finance.label.cycle\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.every_unit\u0027), params: { interval: ((S.schedule_interval || \u00271\u0027)), unit: ({ kind: \u0027enum\u0027, value: (S.schedule_unit), enum: \u0027finance.enum.schedule_unit\u0027 }) } }, ((S.direction === \u0027expense\u0027) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((S.schedule_day_of_month == \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (S.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : \u0027finance.value.relative_to_start\u0027))), params: { day: (S.schedule_day_of_month) } } : null), ((S.direction !== \u0027expense\u0027) ? { label: \u0027finance.label.credit_day\u0027, kind: \u0027tpl\u0027, value: ((S.schedule_day_of_month == \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (S.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : \u0027finance.value.relative_to_start\u0027))), params: { day: (S.schedule_day_of_month) } } : null), { label: \u0027finance.label.first_payment\u0027, kind: \u0027date\u0027, value: (S.first_payment_date) }, { label: \u0027finance.label.valid_from\u0027, kind: \u0027date\u0027, value: ((S.valid_from || S.first_payment_date)), is_default: !!(!S.valid_from) }, { label: \u0027finance.label.valid_to\u0027, kind: \u0027tpl\u0027, value: ((S.valid_to ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.unlimited\u0027)), params: { value: ({ kind: \u0027date\u0027, value: (S.valid_to) }) } }, { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: (S.notes) } ], real_estate: (S, X) =\u003e [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: (S.name) }, { label: \u0027finance.label.current_value\u0027, kind: \u0027money\u0027, value: ((S.current_value || null)), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.valuation_date\u0027, kind: \u0027date\u0027, value: (S.value_updated_at) }, { label: \u0027finance.label.owner_person\u0027, kind: \u0027tpl\u0027, value: ((X.person ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: (X.person) } }, { label: \u0027core.label.status\u0027, kind: \u0027enum\u0027, value: ((S.status || \u0027active\u0027)), enum: \u0027finance.enum.status\u0027, is_default: !!(!S.status) }, { label: \u0027finance.label.notes\u0027, kind: \u0027text\u0027, value: (S.notes) } ], savings_goal: (S, X) =\u003e [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: (S.goal_name) }, { label: \u0027finance.label.goal_type\u0027, kind: \u0027text\u0027, value: (S.goal_type) }, { label: \u0027finance.label.target_amount\u0027, kind: \u0027money\u0027, value: (S.target_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.target_date\u0027, kind: \u0027date\u0027, value: ((X.schedule || {}).target_date) }, { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.rate_computed\u0027), params: { months: ((X.schedule || {}).months), value: ({ kind: \u0027money\u0027, value: ((X.schedule || {}).monthly_rate), currency: (\u0027EUR\u0027) }) } }, { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: (S.account_name) }, { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.reserve_pot\u0027), params: { name: (S.reserve_account_name) } }, { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((S.schedule_day_of_month ? \u0027finance.tpl.day_ordinal\u0027 : \u0027finance.value.relative_to_start\u0027)), params: { day: (S.schedule_day_of_month) } }, { label: \u0027finance.label.first_booking\u0027, kind: \u0027date\u0027, value: (S.first_payment_date) }, { label: \u0027finance.label.beneficiary_person\u0027, kind: \u0027tpl\u0027, value: ((X.person ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: (X.person) } }, { label: \u0027finance.label.priority\u0027, kind: \u0027tpl\u0027, value: ((S.priority ? \u0027finance.tpl.priority_hint\u0027 : null)), params: { value: (S.priority) } }, { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: (S.notes) } ], loan: (S, X) =\u003e [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: (S.name) }, { label: \u0027finance.label.lender\u0027, kind: \u0027text\u0027, value: (S.lender) }, { label: \u0027finance.label.borrower_person\u0027, kind: \u0027tpl\u0027, value: ((X.person ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: (X.person) } }, { label: \u0027finance.label.loan_amount_original\u0027, kind: \u0027money\u0027, value: (S.original_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.remaining_debt_current\u0027, kind: \u0027tpl\u0027, value: ((S.current_balance ? \u0027finance.tpl.amount_running_loan\u0027 : \u0027finance.tpl.plain\u0027)), params: { value: ({ kind: \u0027money\u0027, value: ((S.current_balance || S.original_amount)), currency: (\u0027EUR\u0027) }) } }, { label: \u0027finance.label.disbursement_date\u0027, kind: \u0027date\u0027, value: (S.disbursement_date) }, { label: \u0027finance.label.interest_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.percent_pa\u0027), params: { value: (S.interest_rate) } }, { label: \u0027finance.label.principal_rate\u0027, kind: \u0027tpl\u0027, value: ((S.principal_rate ? \u0027finance.tpl.percent_pa\u0027 : \u0027finance.value.suspended\u0027)), params: { value: (S.principal_rate) } }, { label: \u0027finance.label.fixed_until\u0027, kind: \u0027date\u0027, value: (S.interest_rate_fixed_until) }, { label: \u0027finance.label.monthly_instalment\u0027, kind: \u0027tpl\u0027, value: ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.monthly_annuity) ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.no_instalment\u0027)), params: { value: ({ kind: \u0027money\u0027, value: (S.monthly_annuity), currency: (\u0027EUR\u0027) }) } }, ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.monthly_annuity)) ? { label: \u0027finance.label.first_instalment\u0027, kind: \u0027date\u0027, value: (S.first_payment_date) } : null), ((((v) =\u003e v !== undefined \u0026\u0026 v !== null \u0026\u0026 v !== \u0027\u0027 \u0026\u0026 Number(String(v).replace(\u0027,\u0027, \u0027.\u0027)) !== 0)(S.monthly_annuity)) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((S.schedule_day_of_month == \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (S.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : null))), params: { day: (S.schedule_day_of_month) } } : null), { label: \u0027finance.label.debit_account_instalment\u0027, kind: \u0027text\u0027, value: (S.debit_account_name) }, { label: \u0027finance.label.disbursed_to_own\u0027, kind: \u0027tpl\u0027, value: ((S.disbursement_account_name ? \u0027finance.tpl.disbursed_to_account\u0027 : \u0027finance.value.disbursed_no\u0027)), params: { account: (S.disbursement_account_name) } }, { label: \u0027finance.label.real_estate\u0027, kind: \u0027text\u0027, value: (S.real_estate) } ] }; const AL = { account: { settlement_account: \u0027settlement_account_name\u0027 }, stock_buy: { depot: \u0027depot_name\u0027 }, insurance: { debit_account: \u0027debit_account_name\u0027 }, pension: { debit_account: \u0027debit_account_name\u0027 }, pension_statement: {  }, recurring_payment: { account: \u0027account_name\u0027 }, real_estate: {  }, savings_goal: { account: \u0027account_name\u0027, name: \u0027goal_name\u0027, reserve_account: \u0027reserve_account_name\u0027 }, loan: { debit_account: \u0027debit_account_name\u0027, disbursement_account: \u0027disbursement_account_name\u0027 } }; const H = { account: \u0027finance.label.account\u0027, stock_buy: \u0027finance.label.holding_position\u0027, insurance: \u0027finance.label.insurance\u0027, pension: \u0027finance.label.pension\u0027, pension_statement: \u0027finance.label.pension_statement\u0027, recurring_payment: \u0027finance.label.recurring_payment\u0027, real_estate: \u0027finance.label.real_estate\u0027, savings_goal: \u0027finance.label.savings_goal\u0027, loan: \u0027finance.label.loan\u0027 }; const out = []; for (const r of ($(\u0027Load batch summary\u0027).item.json.rows || [])) { const S = Object.assign({}, r.p || {}); const al = AL[r.entity_type] || {}; for (const k of Object.keys(al)) { if (S[k] !== undefined) S[al[k]] = S[k]; } out.push({ kind: \u0027heading\u0027, label: (H[r.entity_type] || \u0027core.label.type\u0027), value: r.name });for (const l of (L[r.entity_type] ? L[r.entity_type](S, r.x || {}) : [])) { if (l) out.push(l); } } return out; })()).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "bd1d21a3-5f2a-5c89-9c69-dc36d2e027c8",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).first().json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "c9fff5af-5051-5f80-a610-d6bcd330737e",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d6c2cd4b-ec27-5bba-b890-82ecd160815e",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "542d5269-74c4-56c5-8c14-d5c901fd6ad3",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b9b3d7a7-d961-5ebc-9023-9df06e2cddb1",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ed174b18-9dc5-5a65-ae96-9aaedb52f37b",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4f0d58c8-2218-5143-97f0-a8141057ff70",
+                                                                                     "name":  "message",
+                                                                                     "value":  "The user cancelled the commit_import action (the staged import stays; it can be corrected and committed again). Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "47892e85-d45a-5cdf-b335-c1b2bf9898ea",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027error_summary\u0027 AS error_summary, (r-\u003e\u003e\u0027committed\u0027)::int AS committed, r-\u003e\u0027created\u0027 AS created, COALESCE(r-\u003e\u0027positions\u0027, \u0027[]\u0027::jsonb) AS positions FROM finance.fn_import_bundle($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ batch_id: $(\u0027Start\u0027).first().json.batch_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "845219e2-295c-5a5d-81f0-ea81da412708",
+                      "name":  "Import bundle (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b90e65ce-1246-5933-8238-2943ca5af294",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "7375ac2d-a5a6-50f9-9955-983e41be5107",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "91190578-0b3d-5706-87f4-5049630dc37d",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b889f939-9936-5c9c-87be-1df1ac3c8b54",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Import bundle (atomic)\u0027).item.json.reason + \u0027 — \u0027 + $(\u0027Import bundle (atomic)\u0027).item.json.error_summary }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       200
+                                   ],
+                      "id":  "8ce6f9b7-0862-5a9f-86b7-6f5e24ee7a0f",
+                      "name":  "Import rolled back"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d2a26930-b932-5e12-a7c7-a955202459bf",
+                                                                                   "leftValue":  "={{ ($(\u0027Import bundle (atomic)\u0027).first().json.created || []).some(c =\u003e c.entity_type === \u0027account\u0027 \u0026\u0026 c.currency \u0026\u0026 c.currency !== \u0027EUR\u0027) || ($(\u0027Import bundle (atomic)\u0027).first().json.positions || []).some(p =\u003e p.quote_currency \u0026\u0026 p.quote_currency !== \u0027EUR\u0027) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2640,
+                                       -120
+                                   ],
+                      "id":  "56808ebd-4a50-530d-bcf4-fe819f95207e",
+                      "name":  "FX refresh needed?",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "OhOudXoO9SuOxnIP",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/OhOudXoO9SuOxnIP",
+                                                            "cachedResultName":  "agent.finance.cron_refresh_fx_rates"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).first().json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2860,
+                                       -240
+                                   ],
+                      "id":  "7f982aaf-775f-5603-b8f9-c56bd4e83068",
+                      "name":  "Refresh FX rates"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "504f8e9c-4f73-5891-a2f4-5eda31ddf5c4",
+                                                                                   "leftValue":  "={{ ($(\u0027Import bundle (atomic)\u0027).first().json.positions || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       -120
+                                   ],
+                      "id":  "f67e387d-587e-5cc1-93ca-4fd4c0fdee20",
+                      "name":  "Positions imported?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "V8FSoH9jFdqjAx2g",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/V8FSoH9jFdqjAx2g",
+                                                            "cachedResultName":  "agent.finance.cron_refresh_market_prices"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).first().json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1980,
+                                       -240
+                                   ],
+                      "id":  "c1b92028-7b67-5a56-b9b4-7682e11be4e6",
+                      "name":  "Refresh market prices"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH ids AS (SELECT (x-\u003e\u003e\u0027holding_id\u0027)::int AS id FROM jsonb_array_elements(COALESCE(($1::jsonb)-\u003e\u0027positions\u0027, \u0027[]\u0027::jsonb)) x) SELECT COALESCE(jsonb_agg(jsonb_build_object(\u0027holding_id\u0027, h.id, \u0027name\u0027, h.name, \u0027isin\u0027, h.isin, \u0027symbol\u0027, h.symbol)) FILTER (WHERE NOT EXISTS (SELECT 1 FROM finance.market_prices mp WHERE mp.symbol = h.symbol)), \u0027[]\u0027::jsonb) AS positions_without_price, COALESCE(jsonb_agg(jsonb_build_object(\u0027holding_id\u0027, h.id, \u0027name\u0027, h.name)) FILTER (WHERE h.asset_class IS NULL), \u0027[]\u0027::jsonb) AS positions_without_asset_class FROM finance.depot_holdings h JOIN ids ON ids.id = h.id;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ positions: $(\u0027Import bundle (atomic)\u0027).first().json.positions || [] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       3080,
+                                       -120
+                                   ],
+                      "id":  "60dccbac-a14e-575a-9f5b-c0cc471dc565",
+                      "name":  "Check positions",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "2909b99c-a7a9-52c6-8ae3-c3471c28eb48",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d12a2d2f-632e-5669-ac12-0a2abb02c769",
+                                                                                     "name":  "committed",
+                                                                                     "value":  "={{ $(\u0027Import bundle (atomic)\u0027).first().json.committed }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e71d5047-6ab8-5469-a505-026eee7ff5f8",
+                                                                                     "name":  "created",
+                                                                                     "value":  "={{ $(\u0027Import bundle (atomic)\u0027).first().json.created }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5127d353-ff70-5df4-a711-a9c8a0dbc00e",
+                                                                                     "name":  "positions_without_price",
+                                                                                     "value":  "={{ $(\u0027Check positions\u0027).first().json.positions_without_price || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c801fee2-8bfe-5672-88c8-c02c12409424",
+                                                                                     "name":  "positions_without_asset_class",
+                                                                                     "value":  "={{ $(\u0027Check positions\u0027).first().json.positions_without_asset_class || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       3300,
+                                       0
+                                   ],
+                      "id":  "22e31a50-f7a8-5e08-9d1a-24c6a7bb98e0",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Loop über BESTEHENDE fn_* in EINER Transaktion**\n\nfn_import_bundle: (1) Guards (Batch existiert, alle Rows valid, nicht committed), (2) atomarer Block: Reihenfolge account -\u003e real_estate -\u003e loan -\u003e Rest -\u003e pension_statement; je Row Namen-\u003eID-Auflösung (In-Batch-Konten zuerst, sonst fn_resolve_account) und Aufruf der bestehenden fn_create_*/fn_book_* (keine Duplikation der Validierung); Personen-Felder je Zeile per fn_import_resolve_persons (wie die Einzel-Tools); account delegiert opening_balance an fn_create_account (Eröffnungsbuchung category=other, kein Reconcile-Stempel); stock_buy = Bestandsübernahme (existing_position, Verrechnungskonto unverändert). (3) JEDES {ok:false}/jede Exception -\u003e gesammelt -\u003e Rollback per Flag (kein SQLERRM-Stringmatch) -\u003e {ok:false, errors[row_no], error_summary} als DATEN (kein Owner-Alert); Staging bleibt intakt -\u003e korrigieren + erneut tool_commit_import (Probelauf, dann Karte). Erfolg: Rows -\u003e committed; Trigger pflegen Salden/shares/avg.",
+                                         "height":  260,
+                                         "width":  620,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1320,
+                                       -300
+                                   ],
+                      "id":  "7b212dfd-ce13-546d-842f-659477f93936",
+                      "name":  "fn_import_bundle: der atomare Commit"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Batch-Approval statt 40 Einzel-Gates**\n\nReview-Konsens: Einzel-Approvals je Entität trainieren Approval-Fatigue (Sicherheitsloch). Onboarding-Writes in leere Namespaces sind billig reversibel (delete-Tools existieren) -\u003e EIN Sammel-Gate je Batch (Präzedenz tool_reconcile_accounts_batch). Operative Writes (Transfer/Sell/Void) behalten Einzel-Gates. Invalid-Rows blocken das Gate (erst korrigieren). Die Karte zeigt je Zeile ALLE Felder ihrer Art wie die Einzel-Karte (geteilte Felddefinition hitl_lines.ps1, abgeleitete Werte aus fn_import_card_rows); importierbar sind nur diese Felder (fn_import_allowed_keys). Zu lang für eine Nachricht -\u003e das Gate teilt in Teil n/N, die Knöpfe hängen an der letzten.",
+                                         "height":  240,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       -200
+                                   ],
+                      "id":  "c7eb6ec6-ff2f-5ba4-85c9-571da7446baa",
+                      "name":  "EIN Gate für den ganzen Batch"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Depot-Positionen: Kurs-Symbol vor der Karte, Lücken nach dem Write melden**\n\nMonats-Check WP-G (Owner 2026-10-22: ETF \"P500\" ohne Kurs, \"Anlageklasse: —\"). VOR der Karte: Load positions -\u003e je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -\u003e ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. SPCX/USD; provider_currency kommt mit, die Karte sagt \"wird in € umgerechnet\", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -\u003e leer. NACH dem Write: Refresh market prices (Sub) -\u003e FX refresh needed? (Fremdwährungs-Konto oder -Kurs -\u003e FX-Sofort-Fetch, erst NACH den Kursen) -\u003e Check positions liefert positions_without_price / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -\u003e tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.",
+                                         "height":  360,
+                                         "width":  640,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -760
+                                   ],
+                      "id":  "bb4576a5-08e6-5454-b5f1-4769d19983a8",
+                      "name":  "Kurs-Symbol und Anlageklasse"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load positions",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load positions":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Each position",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Each position":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Load batch summary",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Resolve Yahoo symbol",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Resolve Yahoo symbol":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Symbol verified?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Symbol verified?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Store symbol",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Each position",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Store symbol":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Each position",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Load batch summary":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Batch ready?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Batch ready?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Dry run import",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Batch not ready",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Dry run import":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Dry run ok?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run failed",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Import bundle (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Import bundle (atomic)":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Write ok?",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Positions imported?",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Import rolled back",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Positions imported?":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Refresh market prices",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "FX refresh needed?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Refresh market prices":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "FX refresh needed?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "FX refresh needed?":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Refresh FX rates",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ],
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Check positions",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Refresh FX rates":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Check positions",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Check positions":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Return",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

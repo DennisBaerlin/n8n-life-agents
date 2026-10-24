@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beispiele · n8n-life-agents</title>
+<link rel="stylesheet" href="../css/site.css">
+
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="../index.html">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <circle cx="13" cy="13" r="12" fill="#E2E0FF"/>
+        <path d="M 2.5 13 A 10.5 10.5 0 0 1 23.5 13 Z" fill="#9896FF"/>
+        <circle cx="13" cy="16.5" r="3.4" fill="#211D1D"/>
+      </svg>
+      n8n-life-agents
+    </a>
+    <span class="nav-links">
+      <a class="ghost" href="../index.html#agenten">Agenten</a>
+      <a class="ghost" href="../index.html#sicherheit">Sicherheit</a>
+      <a class="ghost" href="../index.html#faq">FAQ</a>
+      <a class="btn btn-soft" href="../docs/ueberblick.html">Docs</a>
+    </span>
+  </div>
+</nav>
+
+
+<div class="docs-wrap">
+  <aside class="docs-sidebar">
+    
+
+
+
+  <div class="group">
+    <div class="group-title">Start</div>
+    <ul>
+      
+        <li><a href="../docs/ueberblick.html">Überblick</a></li>
+      
+        <li><a href="../docs/beispiele.html" class="active">Beispiele</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Loslegen &amp; Alltag</div>
+    <ul>
+      
+        <li><a href="../docs/erste-schritte.html">Erste Schritte</a></li>
+      
+        <li><a href="../docs/chatten-bestaetigen.html">Chatten &amp; Bestätigen</a></li>
+      
+        <li><a href="../docs/monats-check.html">Monats-Check</a></li>
+      
+        <li><a href="../docs/befehle.html">Befehle</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Die Agenten</div>
+    <ul>
+      
+        <li><a href="../docs/buchhalter.html">Buchhalter</a></li>
+      
+        <li><a href="../docs/finanzberater.html">Finanzberater</a></li>
+      
+        <li><a href="../docs/karriere-coach.html">Karriere-Coach</a></li>
+      
+        <li><a href="../docs/nachlass-berater.html">Nachlass &amp; Vorsorge</a></li>
+      
+        <li><a href="../docs/dokumente.html">Dokumente</a></li>
+      
+        <li><a href="../docs/monitor-guide.html">Monitor &amp; Guide</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Technik &amp; Vertrauen</div>
+    <ul>
+      
+        <li><a href="../docs/so-funktionierts.html">So funktioniert&#39;s</a></li>
+      
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Betrieb &amp; Erweitern</div>
+    <ul>
+      
+        <li><a href="../docs/installation.html">Installation &amp; Betrieb</a></li>
+      
+        <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
+      
+        <li><a href="../docs/pakete.html">Pakete &amp; Erweiterbarkeit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Mitwirken</div>
+    <ul>
+      
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      
+    </ul>
+  </div>
+
+
+  </aside>
+  <details class="docs-mobile-nav">
+    <summary>📚 Docs-Navigation</summary>
+    
+
+
+
+  <div class="group">
+    <div class="group-title">Start</div>
+    <ul>
+      
+        <li><a href="../docs/ueberblick.html">Überblick</a></li>
+      
+        <li><a href="../docs/beispiele.html" class="active">Beispiele</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Loslegen &amp; Alltag</div>
+    <ul>
+      
+        <li><a href="../docs/erste-schritte.html">Erste Schritte</a></li>
+      
+        <li><a href="../docs/chatten-bestaetigen.html">Chatten &amp; Bestätigen</a></li>
+      
+        <li><a href="../docs/monats-check.html">Monats-Check</a></li>
+      
+        <li><a href="../docs/befehle.html">Befehle</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Die Agenten</div>
+    <ul>
+      
+        <li><a href="../docs/buchhalter.html">Buchhalter</a></li>
+      
+        <li><a href="../docs/finanzberater.html">Finanzberater</a></li>
+      
+        <li><a href="../docs/karriere-coach.html">Karriere-Coach</a></li>
+      
+        <li><a href="../docs/nachlass-berater.html">Nachlass &amp; Vorsorge</a></li>
+      
+        <li><a href="../docs/dokumente.html">Dokumente</a></li>
+      
+        <li><a href="../docs/monitor-guide.html">Monitor &amp; Guide</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Technik &amp; Vertrauen</div>
+    <ul>
+      
+        <li><a href="../docs/so-funktionierts.html">So funktioniert&#39;s</a></li>
+      
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Betrieb &amp; Erweitern</div>
+    <ul>
+      
+        <li><a href="../docs/installation.html">Installation &amp; Betrieb</a></li>
+      
+        <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
+      
+        <li><a href="../docs/pakete.html">Pakete &amp; Erweiterbarkeit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Mitwirken</div>
+    <ul>
+      
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      
+    </ul>
+  </div>
+
+
+  </details>
+  <article class="docs-content">
+    <h1>Beispiele</h1>
+    <p>Die beste Art, das System zu verstehen, ist es in Aktion zu sehen. Hier sind elf typische Unterhaltungen mit dem Bot — alle Namen, Beträge und Treffer sind erfunden. Wie das Bestätigen per Knopf genau funktioniert, erklärt <a href="chatten-bestaetigen.html">Chatten &amp; Bestätigen</a>; die einzelnen Fähigkeiten im Detail stehen bei <a href="buchhalter.html">Buchhalter</a>, <a href="finanzberater.html">Finanzberater</a>, <a href="monitor-guide.html">Monitor &amp; Guide</a>, <a href="karriere-coach.html">Karriere-Coach</a> und <a href="nachlass-berater.html">Nachlass &amp; Vorsorge</a>.</p>
+<h2 id="eine-ausgabe-buchen">Eine Ausgabe buchen</h2>
+<p>Eine kurze Nachricht reicht — der Buchhalter (<code>agent.finance</code>) löst Konto und Betrag auf und legt dir die fertige Buchung zur Prüfung vor, bevor irgendetwas gespeichert wird.</p>
+<pre tabindex="0"><code>Erika: Habe eben 45 Euro für Lebensmittel bei Rewe bezahlt
+
+Bot: Ausgabe buchen – bitte prüfen:
+     • Konto: Girokonto
+     • Betrag: -45,00 €
+     • Kategorie: Sonstiges
+     • Datum: 02.07.2026
+     [✅ Bestätigen]  [❌ Abbrechen]
+
+Erika: [tippt ✅ Bestätigen]
+
+Bot: Gebucht: -45,00 € auf Girokonto.
+     Neuer Saldo: 1.205,00 €.
+</code></pre><h2 id="depotauszug-fotografieren--sammel-import">Depotauszug fotografieren → Sammel-Import</h2>
+<p>Statt jedes Konto einzeln zu diktieren, kann Erika ein Foto oder PDF schicken, etwa einen Depotauszug, eine Police oder eine Renteninformation (einen Kontoauszug gleicht der <a href="monats-check.html">Monats-Check</a> ab, siehe unten). Der Buchhalter liest die Werte per Bilderkennung heraus (Vision) und schickt sofort <strong>eine</strong> Bestätigungs-Karte für das ganze Paket. Darauf steht jeder Eintrag mit allen Feldern, genau wie beim einzelnen Anlegen.</p>
+<pre tabindex="0"><code>Erika: [sendet Foto &#34;Depotauszug_Oktober.pdf&#34;]
+
+Bot: Import – bitte prüfen:
+
+     • Einträge: 2
+
+     Depot-Position: VWCE
+     • Wertpapier: VWCE (ISIN IE00BK5BQT80)
+     • Bezeichnung: Vanguard FTSE All-World
+     • Depot: Trade Republic Depot
+     • Verrechnungskonto: Trade Republic Cashkonto
+     • Stück: 42
+     • Kurs: 98,10 €
+     • Order-Gebühr: 0,00 €
+     • Anlageklasse: —
+     • Buchung: Bestandsübernahme (keine Abbuchung, Verrechnungskonto unverändert)
+     • Datum: 22.10.2026
+
+     Depot-Position: …
+
+     Alles-oder-nichts: bei Fehlern wird NICHTS gebucht.
+     [✅ Bestätigen]  [❌ Abbrechen]
+
+Erika: [tippt ❌ Abbrechen] Bei VWCE sind es 44 Stück, nicht 42
+
+Bot: Korrigiert. Import – bitte prüfen: … (neue Karte mit 44 Stück)
+
+Erika: [tippt ✅ Bestätigen]
+
+Bot: 2 Depot-Positionen übernommen.
+</code></pre><p>Bei sehr vielen Einträgen passt die Karte nicht in eine Telegram-Nachricht. Dann kommt sie in mehreren Teilen („Teil 1/3 …“), die Knöpfe hängen am letzten Teil.</p>
+<p><strong>Vermögensübersicht ohne Kürzel und Einstand.</strong> Manche Übersichten (z. B. von Trade Republic) drucken je Position nur die ISIN und den heutigen Kurs. Das reicht: Die ISIN ist dann die Kennung, und den Kurs holt sich das System selbst. Nur den Einstand (was du bezahlt hast) kann das Dokument nicht liefern. Dann fragt der Bot einmal für alle Positionen nach:</p>
+<pre tabindex="0"><code>Bot: Bei beiden Positionen fehlt der Einstand: Space Exploration Techs (1,343429 Stück)
+     und S&amp;P 500 (Dist) (42,731759 Stück). Wie hoch war jeweils dein Einstand, je Stück oder gesamt?
+
+Erika: SpaceX 150 € gesamt, S&amp;P 55,10 je Stück
+</code></pre><p>Danach kommt die Karte. Das Depot ordnet der Bot über die gedruckte Depotnummer bzw. den Depot-Inhaber zu, nicht über den Namen. Kennt ein Depot seine Nummer noch nicht, speichert der Import sie mit, und die Karte sagt das ausdrücklich. Steht dort ein falsches Depot, tippe „Abbrechen“.</p>
+<p><strong>Kurs nur in Fremdwährung.</strong> Findet die Kurssuche für eine ISIN keine Euro-Notierung (etwa eine Aktie, die nur an der Nasdaq in US-Dollar gehandelt wird), nimmt sie die Fremdwährungs-Notierung, sofern der Kurs zu deinem Einstand passt. Die Karte sagt es dazu („der Kurs kommt in USD und wird für die Übersicht in € umgerechnet“). Deine Position bleibt in Euro, der Wechselkurs wird sofort mit abgeholt.</p>
+<p><strong>Cash-Stand der Übersicht.</strong> Druckt die Übersicht auch das Guthaben des Verrechnungskontos („Cash … zum 23.10.“), wird es nicht als neues Konto angelegt. Nach der Import-Karte kommt eine zweite Karte, die den Saldo dieses Kontos zum gedruckten Datum abgleicht:</p>
+<pre tabindex="0"><code>Bot: Kontoabgleich buchen – bitte prüfen:
+     • Konto: Cashkonto Mia
+     • Saldo laut System: 3.104,97 €
+     • Bestätigter Saldo: 3.054,97 €
+     • Differenz: −50,00 € (Korrekturbuchung wird angelegt)
+     • Datum: 23.10.2026
+     [✅ Bestätigen]  [❌ Abbrechen]
+</code></pre><p>Würde der Abgleich offene Sparplan- oder Dauerauftrags-Ausführungen bis zu diesem Datum als erledigt markieren, steht die Anzahl als Hinweis auf der Karte. Ist das Konto im selben Import neu, gehört der Stand als Eröffnungssaldo in die Konto-Zeile.</p>
+<h2 id="monats-check-kontoauszug-statt-einzelbuchungen">Monats-Check: Kontoauszug statt Einzelbuchungen</h2>
+<p>Einmal im Monat erinnert der Bot an den Kontoauszug. Erika schickt das PDF aus dem Online-Banking; der Buchhalter erkennt das Konto an der IBAN, hakt die geplanten Zahlungen ab und bucht den Rest als eine Summe. Einzelumsätze werden nicht gespeichert.</p>
+<pre tabindex="0"><code>Bot: Monats-Check für Oktober: Ich brauche den Kontoauszug für
+     • Girokonto (bestätigt bis 30.09.2026)
+     So geht&#39;s: Online-Banking → Postfach → Kontoauszug als PDF → hier schicken.
+
+Erika: [sendet &#34;Kontoauszug_Oktober.pdf&#34;]
+
+Bot: Monats-Check Girokonto – bitte prüfen:
+     • Zeitraum: 01.10.–31.10.2026
+     • Anfang: 1.250,00 € · Ende: 1.410,00 €
+     Abgehakt: Gehalt +2.800,00 € · Miete -950,00 € · Strom -92,00 € (Plan 85,00 €)
+     Nicht im Auszug: Fitnessstudio -29,00 € (wird übersprungen)
+     Alltagsausgaben: -1.598,00 €
+     [✅ Übernehmen]  [❌ Abbrechen]
+
+Erika: [tippt ✅ Übernehmen]
+
+Bot: Übernommen, Girokonto steht auf 1.410,00 €. Bis zum Gehalt am 01.12.
+     reicht es: tiefster Stand etwa 310 € am 30.11.
+     Fitnessstudio kam diesen Monat nicht – gekündigt?
+</code></pre><h2 id="frage-an-den-finanzberater-allokations-drift">Frage an den Finanzberater: Allokations-Drift</h2>
+<p>Der Finanzberater (<code>agent.finance_advisor</code>) bucht nichts selbst — er liest den echten Depot-Stand aus der Datenbank und vergleicht ihn mit dem hinterlegten Plan (Ziel-Aufteilung, &ldquo;target allocation&rdquo;).</p>
+<pre tabindex="0"><code>Max: Wie sieht meine Aktienquote gerade im Vergleich zum Plan aus?
+
+Bot: Dein Plan sieht 60 % Aktien-ETF vor (Korridor 55–65 %).
+     Aktuell liegt der Anteil bei 68 % — außerhalb des Korridors,
+     weil die Kurse zuletzt gestiegen sind.
+     Empfehlung: einen Teil in Festgeld oder Anleihen umschichten,
+     um wieder in den Zielkorridor zu kommen. Ich buche das nicht
+     selbst — sag Bescheid, dann übernimmt der Buchhalter das.
+</code></pre><h2 id="sparziel-tempo-prüfen">Sparziel-Tempo prüfen</h2>
+<p>Ob ein Sparziel im Plan liegt, rechnet die Datenbank aus (erwarteter Fortschritt vs. tatsächlicher, &ldquo;pace drift&rdquo;) — der Finanzberater liest das Ergebnis nur vor.</p>
+<pre tabindex="0"><code>Erika: Schaffe ich mein Sparziel &#34;Weltreise&#34; bis Ende 2027 noch?
+
+Bot: Ziel: 6.000,00 € bis 31.12.2027. Aktueller Stand: 2.100,00 €.
+     Nach Zeitplan solltest du bei 2.600,00 € stehen — du liegst
+     also leicht zurück. Bei gleichbleibender Sparrate wäre das
+     Ziel erst im März 2028 erreicht.
+     Um wieder im Plan zu sein, müsstest du die monatliche Rate
+     um rund 35,00 € erhöhen. Sag Bescheid, dann passt der
+     Buchhalter die Rate an.
+</code></pre><h2 id="einen-monitor-trigger-anlegen--und-einen-alarm-erleben">Einen Monitor-Trigger anlegen — und einen Alarm erleben</h2>
+<p>Der Monitor (<code>agent.monitor</code>) überwacht einen einzelnen Wert und meldet sich, sobald eine Schwelle erreicht ist. Anlegen läuft im Dialog (Werte/Einheit klären, dann Bestätigung mit Live-Wert); ausgelöst wird später automatisch.</p>
+<pre tabindex="0"><code>Max: Sag mir Bescheid, wenn der Goldpreis unter 1.900 Euro
+     pro Feinunze fällt
+
+Bot: Verstanden: Goldpreis in Euro pro Feinunze, Alarm bei
+     Unterschreiten von 1.900,00 €, Prüfung einmal täglich.
+     Trigger anlegen – bitte prüfen:
+     • Bezeichnung: Goldpreis-Alarm
+     • Aktueller Wert: 1.978,40 €
+     • Schwelle: 1.900,00 € (unterschritten)
+     [✅ Bestätigen]  [❌ Abbrechen]
+
+Max: [tippt ✅ Bestätigen]
+
+Bot: Trigger &#34;Goldpreis-Alarm&#34; ist scharf. Nächste Prüfung: morgen.
+
+— einige Wochen später —
+
+Bot: 🔔 Goldpreis-Alarm ausgelöst: 1.892,50 € (Schwelle 1.900,00 €
+     unterschritten).
+
+Max: Lohnt sich jetzt ein Kauf?
+
+Bot: (der Finanzberater übernimmt) Dein Plan sieht 5 % Rohstoffe vor,
+     aktuell hältst du 3 % — ein Kauf würde die Lücke schließen.
+     Nenn mir einen Betrag, dann rechne ich ihn für dich durch.
+</code></pre><p>Beachte den nahtlosen Wechsel: Die Nachfrage geht automatisch an den <a href="finanzberater.html">Finanzberater</a> — du musst niemanden „anrufen&quot;, der Verteiler erkennt, dass jetzt Beratung gefragt ist.</p>
+<h2 id="onboarding-starten">Onboarding starten</h2>
+<p>Nach der Einrichtung führt der Guide (<code>agent.guide</code>) Schritt für Schritt durch die Grunddaten — Details zu allen Befehlen stehen bei <a href="befehle.html">Befehle</a>.</p>
+<pre tabindex="0"><code>Erika: /onboarding
+
+Bot: Dein Onboarding - 0 von 9 erledigt
+     ◻ Haushalt &amp; Personen
+     ◻ Finanzen (0/5)
+     ◻ Karriere (0/3)
+     👉 Als Naechstes: Haushalt &amp; Personen
+     [👉 Weiter: Haushalt &amp; Personen]
+     [👉 Haushalt &amp; Personen] [Finanzen (0/5)] [Karriere (0/3)]
+
+Erika: [tippt &#34;Weiter&#34;]
+
+Bot: Los geht&#39;s mit den Haushalts-Basisdaten. Wie heißt du?
+
+Erika: Erika
+
+Bot: Wann bist du geboren?
+
+Erika: 12.03.1985
+
+Bot: Danke! Als Nächstes: dein monatliches Netto-Einkommen?
+</code></pre><h2 id="job-match-karte-mit-feedback">Job-Match-Karte mit Feedback</h2>
+<p>Der werktägliche Stellen-Scan des Karriere-Coachs (<code>agent.career_advisor</code>) schickt passende Treffer als Karte mit 👍/👎 — ein Daumen-runter mit Begründung schärft künftige Treffer.</p>
+<pre tabindex="0"><code>Bot: 🎯 Neuer Treffer (4/4 Punkte): Scrum Master (m/w/d)
+     bei Beispiel GmbH, Hamburg
+     [👍]  [👎]
+
+Max: [tippt 👎]
+
+Bot: Magst du kurz sagen, warum sie nicht passt?
+
+Max: Zu viel Reisetätigkeit
+
+Bot: Verstanden, ich merke mir: möglichst reisearme Stellen.
+     Das fließt in die nächsten Treffer mit ein.
+</code></pre><h2 id="vorsorge-register-lücken-sehen-und-schließen">Vorsorge-Register: Lücken sehen und schließen</h2>
+<p>Der Nachlass-Berater (<code>agent.estate_advisor</code>) führt das Notfall-Register des Haushalts. Er stützt sich immer auf das, was schon erfasst ist, benennt offene Lücken von selbst (nur bei Erwachsenen) und speichert erst nach deiner Bestätigung — niemals Passwörter, nur den Fundort.</p>
+<pre tabindex="0"><code>Erika: Welche Vorsorge-Dokumente fehlen uns eigentlich noch?
+
+Bot: Stand deines Notfall-Registers:
+     ✅ Patientenverfügung (Erika, notariell, im Ordner „Vorsorge&#34;)
+     ⬜ Vorsorgevollmacht — noch offen
+     ⬜ Testament — noch offen
+     Am wichtigsten wäre die Vorsorgevollmacht: Ohne sie darf im
+     Ernstfall nicht automatisch dein Partner für dich entscheiden —
+     dann bestellt das Gericht einen Betreuer.
+
+Erika: Stimmt. Trag schon mal ein: Mein Testament liegt notariell
+       vor, im Zentralen Testamentsregister eingetragen, im Ordner
+       „Vorsorge&#34; im Arbeitszimmer.
+
+Bot: Vorsorge-Dokument eintragen – bitte prüfen:
+     • Typ: Testament
+     • Form: notariell
+     • Register: Zentrales Testamentsregister (ZTR)
+     • Fundort: Ordner „Vorsorge&#34;, Arbeitszimmer
+     [✅ Bestätigen]  [❌ Abbrechen]
+
+Erika: [tippt ✅ Bestätigen]
+
+Bot: Eingetragen. Offen bleibt jetzt noch die Vorsorgevollmacht —
+     sag Bescheid, wenn du sie hast.
+</code></pre><h2 id="im-ernstfall-begleitet-werden">Im Ernstfall begleitet werden</h2>
+<p>Stirbt ein Mensch im Haushalt oder wird er handlungsunfähig, wechselt der Nachlass-Berater in den Ereignisfall-Modus: erst Mitgefühl, dann <strong>eine</strong> nächste Aufgabe — mit Fristen, die die Datenbank taggenau berechnet (nie das Sprachmodell). Direkt erreichbar ist er dafür auch über den Befehl <code>/notfall</code>.</p>
+<pre tabindex="0"><code>Erika: Mein Mann ist heute gestorben.
+
+Bot: Das tut mir sehr leid, Erika. Lass es uns gemeinsam angehen —
+     einen Schritt nach dem anderen, du musst dir nichts merken.
+     Der erste und wichtigste Schritt: die ärztliche
+     Todesbescheinigung (den Totenschein) ausstellen lassen — ohne
+     sie geht es nicht weiter. Habt ihr schon einen Arzt gerufen?
+
+Erika: Ja, der Hausarzt war da.
+
+Bot: Gut. Dann als Nächstes — und das ist zeitkritisch: Eure
+     Unfallversicherung hat laut Register eine Meldefrist von
+     48 Stunden. Den Kontakt habe ich hinterlegt. Soll ich dir die
+     nötigen Angaben heraussuchen?
+     (Die Sterbefallanzeige beim Standesamt ist bis zum 3. Werktag
+     fällig — die übernimmt meist der Bestatter. Darum kümmern wir
+     uns gleich danach.)
+</code></pre><h2 id="sprachnachricht-statt-tippen">Sprachnachricht statt Tippen</h2>
+<p>Sprachnachrichten werden zuerst automatisch in Text umgewandelt (Transkription) und dann wie eine normale Nachricht behandelt.</p>
+<pre tabindex="0"><code>Erika: [sendet Sprachnachricht, 4 Sekunden]
+
+Bot: 🎙 &#34;Ich hab grad 12 Euro für den Bus bezahlt&#34;
+     Ausgabe buchen – bitte prüfen:
+     • Konto: Girokonto
+     • Betrag: -12,00 €
+     • Kategorie: Sonstiges
+     • Datum: 02.07.2026
+     [✅ Bestätigen]  [❌ Abbrechen]
+</code></pre>
+  </article>
+</div>
+
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <span class="wordmark">
+        <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+          <circle cx="13" cy="13" r="12" fill="#E2E0FF"/>
+          <path d="M 2.5 13 A 10.5 10.5 0 0 1 23.5 13 Z" fill="#9896FF"/>
+          <circle cx="13" cy="16.5" r="3.4" fill="#211D1D"/>
+        </svg>
+        n8n-life-agents
+      </span>
+      <p class="tagline">Persönlicher Multi-Agent-Assistent auf eigener Infrastruktur — ein Telegram-Bot, sieben Spezialisten.</p>
+    </div>
+    <div>
+      <h4>Erkunden</h4>
+      <ul>
+        <li><a href="../docs/ueberblick.html">Docs</a></li>
+        <li><a href="../docs/beispiele.html">Beispiele</a></li>
+        <li><a href="../docs/installation.html">Installation</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Projekt</h4>
+      <ul>
+        <li><a href="https://github.com/DennisBaerlin/n8n-life-agents">GitHub</a></li>
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="legal">
+    <span>Persönliches Open-Source-Projekt · MIT-Lizenz · kein offizielles n8n-Projekt · keine Finanz-, Steuer- oder Rechtsberatung.</span>
+    <span>n8n 2.44.4 · PostgreSQL 17 · Reverse Proxy (Caddy empfohlen)</span>
+  </div>
+</footer>
+
+</body>
+</html>

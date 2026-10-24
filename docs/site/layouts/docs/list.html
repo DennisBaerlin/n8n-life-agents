@@ -1,0 +1,15 @@
+{{ define "main" }}
+<div class="docs-wrap">
+  <aside class="docs-sidebar">
+    {{ partial "docs-sidebar.html" . }}
+  </aside>
+  <details class="docs-mobile-nav">
+    <summary>📚 Docs-Navigation</summary>
+    {{ partial "docs-sidebar.html" . }}
+  </details>
+  <article class="docs-content">
+    <h1>{{ .Title }}</h1>
+    {{ .Content }}
+  </article>
+</div>
+{{ end }}

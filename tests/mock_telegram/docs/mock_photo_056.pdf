@@ -1,0 +1,42 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 980 >>
+stream
+BT /F1 18 Tf 50 790 Td (Trade Republic Bank GmbH) Tj ET
+BT /F1 13 Tf 50 765 Td (Kontoauszug  -  Cash-Konto) Tj ET
+BT /F1 11 Tf 50 740 Td (Kontoinhaberin: Lisa Mustermann) Tj ET
+BT /F1 11 Tf 50 724 Td (IBAN: DE72 1001 2345 0000 0005 62    BIC: TRBKDEBBXXX) Tj ET
+BT /F1 11 Tf 50 708 Td (Zeitraum: 01.01.2000 bis 31.01.2000) Tj ET
+BT /F1 11 Tf 50 680 Td (Anfangssaldo am 01.01.2000                                         100,00 EUR) Tj ET
+BT /F1 11 Tf 50 650 Td (Datum      Vorgang                                                  Betrag EUR) Tj ET
+BT /F1 11 Tf 50 632 Td (03.01.2000 Eingehende Ueberweisung Erika Mustermann                   100,00) Tj ET
+BT /F1 11 Tf 50 614 Td (04.01.2000 Sparplan Vanguard FTSE All-World UCITS ETF                 -50,00) Tj ET
+BT /F1 11 Tf 50 584 Td (Endsaldo am 31.01.2000                                             150,00 EUR) Tj ET
+BT /F1 9 Tf 50 540 Td (Testdokument fuer automatisierte Tests. Bitte pruefen Sie diesen Kontoauszug.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000338 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1369
+%%EOF

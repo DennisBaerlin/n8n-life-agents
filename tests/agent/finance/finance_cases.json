@@ -805,5 +805,14 @@
                                },
         "expected_behavior":  "Ruft tool_void_transaction auf; das Tool meldet ok:false, dass es die Buchung nicht gibt (keine Karte). Der Agent sagt das in einfachen Worten, nennt keine internen Nummern als Systembegriff und bietet an, die gemeinte Buchung gemeinsam zu suchen. Kein Fehler-Alarm, kein Abbruch.",
         "notes":  "Mock-Tier 2026-10-24: Ein Tool-Read ohne Treffer liess den Tool-Workflow still enden ('The workflow did not return a response'). Fix: New-RequiredRowGate (alwaysOutputData + Found?-IF). Der Treiber wertet einen nicht gelaufenen Tool-Workflow als FAIL, deshalb prueft dieser Fall den Gate-Pfad. Mock-Tier: Szenario 'Buchung mit der Nummer 999999'."
+    },
+    {
+        "id":  "tc70",
+        "name":  "Sparplan ohne erste Ausfuehrung: fragt NUR nach dem Datum, keine Vorab-Liste, kein abgeleiteter Beguenstigter",
+        "task":  "Im Trade Republic Depot gibt es einen Sparplan auf iShares Core MSCI EM IMI (ISIN IE00BKM4GZ66, Symbol EIMI), 25 Euro woechentlich.",
+        "chat_id":  "test_tc70",
+        "expected_tool":  null,
+        "expected_behavior":  "Ruft in diesem Turn kein Write-Tool auf, weil die erste Ausfuehrung fehlt. Fragt in einer kurzen Frage genau nach dem Datum der naechsten/ersten Ausfuehrung. Listet NICHT vorab die Werte auf, die gespeichert werden sollen (keine Aufzaehlung von Depot, Wertpapier, Betrag, Name), und nennt keinen Beguenstigten bzw. Besitzer - den leitet das System aus dem Depot ab und zeigt ihn auf der Bestaetigungskarte.",
+        "notes":  "Live-Befund 2026-10-24: vor der Datums-Rueckfrage listete der Buchhalter eine eigene Vorschau mit 'Beguenstigte: <Vorname>' (verkuerzt, abgeleitet; die Karte haette den vollen Namen aus fn_create_savings_plan gezeigt). Regel global_instructions 'Asking before a write'. Mock-Tier: kein Szenario noetig (kein Match -> Text, kein Tool)."
     }
 ]

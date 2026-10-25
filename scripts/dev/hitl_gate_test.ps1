@@ -488,8 +488,14 @@ $cases += $factCases
 Write-Host ""
 Write-Host "  [hitlF3] Neue Person ohne Sprache -> Sprach-Picker-Karte an den Owner"
 Clear-MockTelegramRequests -Container $Container
-$probePid = 'hitl_lang_probe'
-$persons = (ConvertTo-Json -Compress -InputObject @(@{ person_id = $probePid; first_name = 'Sora'; last_name = 'Probe'; birth_date = '2015-01-01'; role = 'child' }))
+# WP3: eine NEUE Person traegt keine person_id (die vergibt die DB auf dem Chat-Pfad, agent.fn_person_slug) -> die
+# vergebene id wird nach dem Write aus family gelesen. Ein Rest aus einem abgebrochenen Lauf wird vorher entfernt
+# (sonst faende der Name-Treffer ihn und es entstuende keine neue Person, also kein Picker).
+$probeSql = "SELECT pp->>'person_id' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp WHERE c.name = 'family' AND pp->>'first_name' = 'Sora' AND pp->>'last_name' = 'Probe' LIMIT 1;"
+$leftPid = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $probeSql)).Output | Select-Object -First 1)".Trim()
+if ($leftPid) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$leftPid'));") | Out-Null }
+$probePid = ''
+$persons = (ConvertTo-Json -Compress -InputObject @(@{ first_name = 'Sora'; last_name = 'Probe'; birth_date = '2015-01-01'; role = 'child' }))
 $payload = (@{ chat_id = '999000111'; context_name = 'family'; persons = $persons; scope = 'household' } | ConvertTo-Json -Compress)
 $f3ok = $false
 try {
@@ -511,6 +517,7 @@ else {
             $_.method -eq 'sendMessage' -and ([string]$_.body.text).Contains('In welcher Sprache soll Sora') } | Select-Object -Last 1
         if (-not $card) { Start-Sleep -Milliseconds 700 }
     }
+    $probePid = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $probeSql)).Output | Select-Object -First 1)".Trim()
     if (-not $card) { Write-Host "    [FAIL] Keine Sprach-Picker-Karte an den Owner abgefangen." -ForegroundColor Red }
     else {
         $kb = $card.body.reply_markup; if ($kb -is [string]) { $kb = $kb | ConvertFrom-Json }
@@ -525,7 +532,7 @@ else {
 }
 # jsonb_build_object statt JSON-Literal: PS 5.1 entfernt eingebettete " aus nativen Argumenten -> das Literal kam als
 # {person_id:...} an, das Aufraeumen scheiterte still und der naechste Lauf fand die Person schon vor (kein Picker).
-Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$probePid'));") | Out-Null
+if ($probePid) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$probePid'));") | Out-Null }
 if ($f3ok) { $passed++; Write-Host "    [PASS] Picker-Karte mit Knoepfen je Sprache (lang:<person>:<code>) beim Owner (Person wieder entfernt)" -ForegroundColor Green }
 else { $failed++ }
 $cases += [pscustomobject]@{ id = 'hitlF3' }

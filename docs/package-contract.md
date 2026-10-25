@@ -116,7 +116,7 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   `core.fn_provision_package_roles`. Status is `text + CHECK ('unknown'|'completed'|'skipped')` — **not** a
   shared cross-schema ENUM (avoids the restricted-role type-USAGE trap; Crunchy "Enums vs CHECK").
 - **Each package owns only data:** a state table of the **homogeneous shape** `<schema>.onboarding_state`
-  (`section_key`/`ord`/`label`/`status`/`skipped_at`/`updated_at`/`status_changed_at`) in its own schema, seeded from its
+  (`section_key`/`ord`/`label`/`status`/`updated_at`/`status_changed_at`) in its own schema, seeded from its
   `sections.json`. The host maps the package key → `<pkg>.onboarding_state` by **convention** (derivable →
   no registry, "one fact one address"); the package key is a build-time constant, never `$fromAI`. Core's
   own onboarding table is the host-exception `agent.guide_onboarding_state` (key `'core'`, holds `household`).

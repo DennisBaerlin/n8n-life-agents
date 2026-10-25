@@ -480,7 +480,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Smart-Close-Guard: tx_count entscheidet**\n\nfn zählt Transaktionen (recurring_payment_id = insurance.rp_id). tx_count=0: Hard-DELETE finance.insurances dann finance.recurring_payments (FK-Reihenfolge!); action=deleted. tx_count\u003e0: Soft-Close — insurance.status=cancelled + valid_to=heute; RP.status=paused + valid_to=heute; action=closed. RAISE EXCEPTION bei nicht gefunden/mehrdeutig.",
+                                         "content":  "## DB-Automatik\n**Smart-Close-Guard: tx_count entscheidet**\n\nfn zählt Transaktionen über die ganze Beitrags-Kette (fn_recurring_lineage; nach einer Beitragsänderung mehrere Glieder). tx_count=0: Hard-DELETE finance.insurances, dann die ganze Kette in einem Statement (FK-Reihenfolge!); action=deleted. tx_count\u003e0: Soft-Close — insurance.status=cancelled, alle laufenden Glieder enden heute (fn_end_recurring_chain: paused + valid_to); das Vertragsende steht nur an der Kette (WP2); action=closed. Nicht gefunden/mehrdeutig -\u003e {ok:false} mit Kandidaten.",
                                          "height":  240,
                                          "width":  480,
                                          "color":  4

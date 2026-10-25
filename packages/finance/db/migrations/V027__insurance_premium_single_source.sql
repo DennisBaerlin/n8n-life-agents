@@ -10,8 +10,8 @@
 --       praemie) bis auf 0,01 (aeltere Tool-Staende rechneten in n8n und konnten um einen Cent abweichen -- dann gilt
 --       die gebuchte rp). Ein groesserer Unterschied bricht ab; nichts wird still geaendert.
 --   (2) Vertragsende nur an der Police (rp ohne Ende) -> in die rp uebernehmen (Fakt bleibt erhalten); sonst gilt die rp.
---   (3) Police OHNE Raten-rp: kein Abbruch -- der Jahresbeitrag wandert in notes (die Police bleibt als beitragsfrei
---       im Register; einen Cashflow hatte sie ohne rp nie).
+--   (3) Police OHNE Raten-rp (Altbestand/Direkt-Anlage): kein Abbruch -- Jahresbeitrag und Vertragsende wandern in notes,
+--       ein schon abgelaufener Vertrag wird 'expired' (einen Cashflow hatte sie ohne rp nie; das Ende bleibt sichtbar).
 --   (4) active_insurances CASCADE droppen (R__finance_views legt sie neu an), GENERATED-Spalte zuerst, dann die Kopien.
 --   fn_insurance_period_amount liegt im Init (V laeuft vor allen R__-fns). FRISCHE DB: Alt-Spalten nie vorhanden ->
 --   Spalten-Guard + EXECUTE, DROP COLUMN IF EXISTS (schedule_day_of_month war nur Geruest fuer V012/V024). Re-run-sicher.
@@ -52,12 +52,15 @@ BEGIN
              WHERE i.recurring_payment_id = rp.id AND i.valid_to IS NOT NULL AND rp.valid_to IS NULL
         $q$;
 
-        -- (3) Police ohne rp -> Jahresbeitrag in die Notiz
+        -- (3) Police ohne rp -> Jahresbeitrag + Vertragsende in die Notiz, abgelaufen -> expired
         EXECUTE $q$
             UPDATE finance.insurances
-               SET notes = concat_ws(E'\n', notes,
-                               'Jahresbeitrag laut Erfassung: ' || to_char(annual_premium, 'FM999999990.00') || ' (ohne Beitrags-Zeile)')
-             WHERE recurring_payment_id IS NULL AND annual_premium IS NOT NULL
+               SET notes  = concat_ws(E'\n', notes,
+                                'Jahresbeitrag laut Erfassung: ' || to_char(annual_premium, 'FM999999990.00') || ' (ohne Beitrags-Zeile)',
+                                'Vertragsende (exklusiv): ' || to_char(valid_to, 'YYYY-MM-DD')),
+                   status = CASE WHEN valid_to <= CURRENT_DATE AND status = 'active' THEN 'expired'::finance.insurance_status
+                                 ELSE status END
+             WHERE recurring_payment_id IS NULL AND (annual_premium IS NOT NULL OR valid_to IS NOT NULL)
         $q$;
     END IF;
 END $$;

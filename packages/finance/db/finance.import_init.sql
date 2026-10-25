@@ -18,7 +18,7 @@
 --                      transaction_date (def heute), depot_number/depot_holder (gedruckt -> fn_import_resolve_depot)
 --                      -> Bestandsuebernahme (existing_position): Verrechnungskonto-Saldo bleibt
 --   insurance:         name*, premium_amount (je Abbuchung, + schedule_unit Pflicht) ODER annual_premium (def year),
---                      mit Beitrag: debit_account* (Name, EUR) + first_payment_date*; ohne Beitrag = beitragsfrei,
+--                      debit_account* (Name, EUR), first_payment_date*,
 --                      insurance_company, policy_number, policyholder_person, interval/day_of_month, valid_from
 --   pension:           name*, pension_type*, provider, current_value, contract_number, owner_person,
 --                      contribution_amount (je Abbuchung, + debit_account Pflicht), schedule_unit (def month)/interval,

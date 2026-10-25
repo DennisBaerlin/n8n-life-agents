@@ -295,4 +295,17 @@ BEGIN
     RAISE EXCEPTION 'FAIL loan [ohne Betrag, ohne Rate]: ok:false erwartet, got %', v_res; END IF;
   RAISE NOTICE 'PASS loan [ohne Betrag -> faellige Rate 600 (60/540) gebucht; ohne Raten-Kette ok:false]';
 END $$;
+-- Review WP2: ohne Betrag, aber mit explizitem (altem) Faelligkeitstermin ausserhalb des 90-Tage-Fensters -> dessen Rate
+DO $$
+DECLARE v_res JSONB; v_giro INT; v_loan INT; v_lacc INT; v_due DATE := (date_trunc('month', CURRENT_DATE) - interval '5 months')::date;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_blp_old_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_blp_old__','lender','B','original_amount',12000,
+    'disbursement_date',(v_due - 30)::text,'interest_rate',6,'monthly_annuity',600,'first_payment_date',v_due::text,'debit_account_id',v_giro));
+  v_loan := (v_res->>'loan_id')::int; v_lacc := (v_res->>'loan_account_id')::int;
+  v_res := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id',v_loan,'due_date',v_due::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'payment_amount')::numeric IS DISTINCT FROM 600 THEN
+    RAISE EXCEPTION 'FAIL loan [ohne Betrag, alter Termin]: got %', v_res; END IF;
+  RAISE NOTICE 'PASS loan [ohne Betrag + expliziter alter Termin -> dessen Rate 600]';
+END $$;
 ROLLBACK;

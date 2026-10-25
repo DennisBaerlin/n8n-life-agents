@@ -140,7 +140,7 @@ function Build-CreateSavingsGoal {
 
     $stickyCompute = Build-Sticky 'Rate/Zieldatum: DB rechnet (nicht das LLM)' @(660, -240) `
         'fn_savings_rate_schedule (read-only) + Root-CLAUDE.md *Das LLM rechnet NICHT*' `
-        'Der Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}. Dieser read-only Aufruf leitet die fehlende Größe deterministisch ab (Ziel-getrieben: Rate=Ziel/Monate; Raten-getrieben: Zieldatum=first+ceil(Ziel/Rate)). Derselbe Helper läuft autoritativ in der Write-fn -> der Preview zeigt exakt den Schreibwert. fehlt beides / Datum vor first_payment -> {ok:false} -> Schedule rejected.' 220 520
+        'Der Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}. Dieser read-only Aufruf leitet die fehlende Größe deterministisch ab (Ziel-getrieben: Rate=Ziel/Monate; Raten-getrieben: Zieldatum=first+ceil(Ziel/Rate)). Derselbe Helper läuft autoritativ in der Write-fn -> der Preview zeigt exakt den Schreibwert. Ohne first_payment_date liefert er den nächsten Termin des Abbuchungstags ab heute (WP2); genau dieses Datum zeigt die Karte und bekommt der Write. fehlt beides / Datum vor first_payment -> {ok:false} -> Schedule rejected.' 220 520
 
     $stickyFn = Build-Sticky 'fn_create_savings_goal: 4 Schritte + Über-Spar-Fold' @(2420, -240) `
         'fn_create_savings_goal (atomar)' `

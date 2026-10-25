@@ -261,7 +261,6 @@
   "finance.label.balance_projected_fixed_until": "Remaining debt at end of fixed rate (projected, without extra repayments)",
   "finance.label.balance_projected_term_end": "Remaining debt at end of term (projected, same rate, without extra repayments)",
   "finance.label.effective_from": "Effective from",
-  "finance.value.no_premium": "none (premium-free)",
   "finance.label.fixed_until": "Interest rate fixed until",
   "finance.label.monthly_instalment": "Monthly instalment",
   "finance.label.first_rate_split": "Split of the first instalment",

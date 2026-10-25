@@ -181,18 +181,16 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.policy_number'        "$S.policy_number" -OmitEmpty)
                 (& $own 'finance.label.policyholder_person' (& $need 'Person'))
                 # WP2: Beitrag je Abbuchung (genannt oder aus dem Jahresbeitrag) und Jahreswert kommen aus fn_insurance_fields
-                # (Einzel-Tool: Vorschau-Knoten, Import: fn_import_card_rows) -- die Karte rechnet nichts. Ohne Beitrag =
-                # beitragsfreie Police: die Beitragszeilen entfallen.
-                (New-HitlLine 'finance.label.rate_per_debit'       "($(& $need 'PeriodAmount') ? 'finance.tpl.plain' : 'finance.value.no_premium')" -Kind tpl -Params @{
-                    value = (New-HitlValue -Kind money -Value (& $need 'PeriodAmount') -EurByModel) })
-                (New-HitlLine 'finance.label.payment_mode'         "'finance.tpl.every_unit'" -Kind tpl -If (& $need 'PeriodAmount') -Params @{
+                # (Einzel-Tool: Vorschau-Knoten, Import: fn_import_card_rows) -- die Karte rechnet nichts.
+                (New-HitlLine 'finance.label.rate_per_debit'       (& $need 'PeriodAmount') -Kind money -EurByModel)
+                (New-HitlLine 'finance.label.payment_mode'         "'finance.tpl.every_unit'" -Kind tpl -Params @{
                     interval = "($S.schedule_interval || '1')"
                     unit     = (New-HitlValue -Kind enum -Value "($S.schedule_unit || 'year')" -Enum 'finance.enum.schedule_unit') })
-                (New-HitlLine 'finance.label.annual_contribution'  (& $need 'Annual') -Kind money -EurByModel -If (& $need 'PeriodAmount'))
-                (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If (& $need 'PeriodAmount'))
-                (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name" -If (& $need 'PeriodAmount'))
-                (New-HitlLine 'finance.label.valid_from_contract'  "($S.valid_from || $S.first_payment_date)" -Kind date -OmitEmpty)
-                (New-HitlLine 'finance.label.first_debit'          "$S.first_payment_date" -Kind date -If (& $need 'PeriodAmount'))
+                (New-HitlLine 'finance.label.annual_contribution'  (& $need 'Annual') -Kind money -EurByModel)
+                (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
+                (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name")
+                (New-HitlLine 'finance.label.valid_from_contract'  "($S.valid_from || $S.first_payment_date)" -Kind date)
+                (New-HitlLine 'finance.label.first_debit'          "$S.first_payment_date" -Kind date)
                 (New-HitlLine 'finance.label.insurance_type'       "$S.insurance_type" -Kind enum -Enum 'finance.enum.insurance_type' -OmitEmpty)
                 (New-HitlLine 'finance.label.coverage_amount'      "$S.coverage_amount" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.beneficiary'          "$S.beneficiary" -OmitEmpty)

@@ -6,7 +6,7 @@
 --     premium_amount = Betrag JE ABBUCHUNG (die Wahrheit, landet roh an der rp; Rhythmus schedule_unit dann PFLICHT, sonst
 --       wuerde "30 monatlich" ohne Einheit still zu 30 im Jahr) ODER
 --     annual_premium = Jahresbeitrag (Rhythmus-Default jaehrlich; den Betrag je Abbuchung rechnet fn_insurance_period_amount).
---     Beide genannt -> sie muessen zusammenpassen, sonst {ok:false}. Den Jahreswert leitet fn_annual_equivalent ab (kann bei
+--     Beide genannt -> sie muessen bis auf 0,01 zusammenpassen (Rundung), sonst {ok:false}; der Betrag je Abbuchung gilt. Den Jahreswert leitet fn_annual_equivalent ab (kann bei
 --     nicht-jaehrlichem Rhythmus um Cent vom genannten Jahresbeitrag abweichen: die Abbuchung ist die Wahrheit).
 --   Geldbetraege wie fn_create_account: JSON-Zahl bleibt Zahl, Text laeuft durch fn_parse_de_numeric (Tausenderpunkt:
 --   "50.000" -> 50000). Meldefrist claim_deadline_hours: positive ganze Stundenzahl, Muster-Pruefung VOR dem Cast
@@ -57,8 +57,12 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'The premium must be a positive number, got ' || COALESCE(v_per, v_annual) || '.');
     END IF;
+    IF v_interval < 1 THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'The payment interval must be at least 1, got ' || v_interval || '.');
+    END IF;
+    -- Doppelangabe: bis 0,01 Abweichung = Rundung des Versicherers (wie finance:V027), sonst unstimmig
     IF v_per IS NOT NULL AND v_annual IS NOT NULL
-       AND v_per <> finance.fn_insurance_period_amount(v_annual, v_interval, v_unit) THEN
+       AND abs(v_per - finance.fn_insurance_period_amount(v_annual, v_interval, v_unit)) > 0.01 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'The amount per debit ' || v_per || ' does not match the annual premium ' || v_annual
                    || ' (' || finance.fn_insurance_period_amount(v_annual, v_interval, v_unit) || ' per debit) - '

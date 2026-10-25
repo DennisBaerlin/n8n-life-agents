@@ -261,7 +261,6 @@
   "finance.label.balance_projected_fixed_until": "고정금리 종료 시 잔액 (예상, 추가 상환 제외)",
   "finance.label.balance_projected_term_end": "만기 시 잔액 (예상, 동일 금리, 추가 상환 제외)",
   "finance.label.effective_from": "적용 시작일",
-  "finance.value.no_premium": "없음 (납입 면제)",
   "finance.label.fixed_until": "금리 고정 기한",
   "finance.label.monthly_instalment": "월 상환금",
   "finance.label.first_rate_split": "첫 상환금 구성",

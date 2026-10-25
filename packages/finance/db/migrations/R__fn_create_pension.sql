@@ -24,7 +24,7 @@ DECLARE
     v_debit      INT      := NULLIF(p->>'debit_account_id','')::int;
     v_dom        SMALLINT := NULLIF(p->>'schedule_day_of_month','')::smallint;
     v_first      DATE     := NULLIF(p->>'first_payment_date','')::date;
-    v_interval   SMALLINT := COALESCE(NULLIF(p->>'schedule_interval','')::smallint, 1);
+    v_interval   SMALLINT;
     v_unit       finance.schedule_unit;
     v_pension_id INT;
     v_rp_id      INT;
@@ -36,6 +36,13 @@ BEGIN
     END IF;
     v_type := (p->>'pension_type')::finance.pension_type;
     v_unit := COALESCE(NULLIF(p->>'schedule_unit','')::finance.schedule_unit, 'month');
+    -- Rhythmus-Intervall: ganze Zahl >= 1 (Text wie 'quarterly' -> {ok:false} statt Cast-Fehler mit Owner-Alarm)
+    IF (CASE WHEN COALESCE(NULLIF(btrim(p->>'schedule_interval'), ''), '1') ~ '^[0-9]{1,3}$'
+             THEN COALESCE(NULLIF(btrim(p->>'schedule_interval'), ''), '1')::int < 1 ELSE true END) THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'The payment interval (schedule_interval) must be a whole number of at least 1, got "' || (p->>'schedule_interval') || '".');
+    END IF;
+    v_interval := COALESCE(NULLIF(btrim(p->>'schedule_interval'), ''), '1')::smallint;
     -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));

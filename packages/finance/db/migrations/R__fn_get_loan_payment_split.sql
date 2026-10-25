@@ -53,7 +53,8 @@ BEGIN
                 'reason', 'This loan has no regular rate - ask the user for the payment amount.');
         END IF;
         SELECT o.recurring_payment_id, abs(r.amount) INTO v_def_rp, v_payment
-        FROM finance.fn_recurring_due_open(v_date + 14) o
+        FROM finance.fn_recurring_due_open(COALESCE(v_due, (v_date - interval '1 month')::date),
+                                           COALESCE(v_due, v_date + 14)) o
         JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
         WHERE o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_loan.recurring_payment_id))
           AND (v_due IS NULL OR o.due_date = v_due)

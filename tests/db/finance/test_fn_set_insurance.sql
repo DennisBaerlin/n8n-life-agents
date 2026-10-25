@@ -158,4 +158,18 @@ BEGIN
 
 END $$;
 
+-- Review WP2: Altbestand ohne Beitrags-Kette -- Vertragsende/Beitrag haben keinen Speicherort -> ok:false statt still
+-- verworfen; Status-Kuendigung bleibt moeglich.
+DO $$
+DECLARE v_id INT; v_res JSONB;
+BEGIN
+  INSERT INTO finance.insurances (name, valid_from) VALUES ('__test_set_ins_alt__', '2020-01-01') RETURNING id INTO v_id;
+  v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'valid_to', '2026-12-31'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL set_insurance [alt valid_to]: %', v_res; END IF;
+  v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'status', 'cancelled'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT status::text FROM finance.insurances WHERE id = v_id) IS DISTINCT FROM 'cancelled' THEN
+    RAISE EXCEPTION 'FAIL set_insurance [alt status]: %', v_res; END IF;
+  RAISE NOTICE 'PASS set_insurance [Altbestand ohne Kette: Vertragsende ok:false, Kuendigung per Status ok]';
+END $$;
 ROLLBACK;

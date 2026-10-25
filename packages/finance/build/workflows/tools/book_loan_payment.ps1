@@ -109,7 +109,7 @@ function Build-BookLoanPayment {
 
     $stickyPreview = Build-Sticky 'Vorschau = Buchung' @(880, -260) `
         'fn_get_loan_payment_split (eine Formel)' `
-        'Die Karte zeigt Restschuld, Tilgung, Zins und Buchungsdatum aus fn_get_loan_payment_split -- derselben fn, die fn_book_loan_payment intern ruft. Der Graph rechnet nichts selbst (früher JS mit der negativen Restschuld -> Karte zeigte Zins -600 / Tilgung 1.600, gebucht wurden 600 / 400). Über-/Unterzahlung kommt schon hier als ok=false zurück -> Payment not possible reicht reason an den Agenten, bevor der Owner eine Karte sieht.' 240 460
+        'Die Karte zeigt Restschuld, Tilgung, Zins und Buchungsdatum aus fn_get_loan_payment_split -- derselben fn, die fn_book_loan_payment intern ruft. Der Graph rechnet nichts selbst (früher JS mit der negativen Restschuld -> Karte zeigte Zins -600 / Tilgung 1.600, gebucht wurden 600 / 400). Über-/Unterzahlung kommt schon hier als ok=false zurück -> Payment not possible reicht reason an den Agenten, bevor der Owner eine Karte sieht. Ohne genannten Betrag liefert die fn die fällige Rate (payment_amount, bei der letzten Rate den Ablösebetrag); genau dieser Betrag geht in Probelauf und Write (WP2).' 240 460
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(3080, -220) `
         'fn-Rückgabe {ok:false, reason}' `

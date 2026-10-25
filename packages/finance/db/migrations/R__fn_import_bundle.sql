@@ -181,14 +181,9 @@ BEGIN
                     'entity_type', 'loan', 'id', (v_r->>'loan_id')::int);
 
             ELSIF v_row.entity_type = 'insurance' THEN
-                -- beitragsfreie Police (WP2) hat kein Abbuchungskonto
-                v_ref_id := NULL;
-                v_err    := NULL;
-                IF NULLIF(v_payload->>'debit_account','') IS NOT NULL THEN
-                    v_res    := finance.fn_import_resolve_account(v_payload->>'debit_account', v_acct_map);
-                    v_ref_id := NULLIF(v_res->>'id','')::int;
-                    v_err    := v_res->>'error';
-                END IF;
+                v_res    := finance.fn_import_resolve_account(v_payload->>'debit_account', v_acct_map);
+                v_ref_id := NULLIF(v_res->>'id','')::int;
+                v_err    := v_res->>'error';
                 IF v_err IS NOT NULL THEN
                     v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_err);
                     CONTINUE;

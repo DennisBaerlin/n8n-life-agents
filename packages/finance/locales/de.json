@@ -261,7 +261,6 @@
   "finance.label.balance_projected_fixed_until": "Restschuld Ende Zinsbindung (voraussichtlich, ohne Sondertilgung)",
   "finance.label.balance_projected_term_end": "Restschuld Laufzeitende (voraussichtlich, bei gleichem Zins, ohne Sondertilgung)",
   "finance.label.effective_from": "Gilt ab",
-  "finance.value.no_premium": "keiner (beitragsfrei)",
   "finance.label.fixed_until": "Zinsbindung bis",
   "finance.label.monthly_instalment": "Monatsrate",
   "finance.label.first_rate_split": "Aufteilung 1. Rate",

@@ -898,7 +898,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_savings_rate_schedule (read-only) + Root-CLAUDE.md *Das LLM rechnet NICHT***\n\nDer Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}. Dieser read-only Aufruf leitet die fehlende Größe deterministisch ab (Ziel-getrieben: Rate=Ziel/Monate; Raten-getrieben: Zieldatum=first+ceil(Ziel/Rate)). Derselbe Helper läuft autoritativ in der Write-fn -\u003e der Preview zeigt exakt den Schreibwert. fehlt beides / Datum vor first_payment -\u003e {ok:false} -\u003e Schedule rejected.",
+                                         "content":  "## DB-Automatik\n**fn_savings_rate_schedule (read-only) + Root-CLAUDE.md *Das LLM rechnet NICHT***\n\nDer Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}. Dieser read-only Aufruf leitet die fehlende Größe deterministisch ab (Ziel-getrieben: Rate=Ziel/Monate; Raten-getrieben: Zieldatum=first+ceil(Ziel/Rate)). Derselbe Helper läuft autoritativ in der Write-fn -\u003e der Preview zeigt exakt den Schreibwert. Ohne first_payment_date liefert er den nächsten Termin des Abbuchungstags ab heute (WP2); genau dieses Datum zeigt die Karte und bekommt der Write. fehlt beides / Datum vor first_payment -\u003e {ok:false} -\u003e Schedule rejected.",
                                          "height":  220,
                                          "width":  520,
                                          "color":  4

@@ -671,7 +671,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_get_loan_payment_split (eine Formel)**\n\nDie Karte zeigt Restschuld, Tilgung, Zins und Buchungsdatum aus fn_get_loan_payment_split -- derselben fn, die fn_book_loan_payment intern ruft. Der Graph rechnet nichts selbst (früher JS mit der negativen Restschuld -\u003e Karte zeigte Zins -600 / Tilgung 1.600, gebucht wurden 600 / 400). Über-/Unterzahlung kommt schon hier als ok=false zurück -\u003e Payment not possible reicht reason an den Agenten, bevor der Owner eine Karte sieht.",
+                                         "content":  "## DB-Automatik\n**fn_get_loan_payment_split (eine Formel)**\n\nDie Karte zeigt Restschuld, Tilgung, Zins und Buchungsdatum aus fn_get_loan_payment_split -- derselben fn, die fn_book_loan_payment intern ruft. Der Graph rechnet nichts selbst (früher JS mit der negativen Restschuld -\u003e Karte zeigte Zins -600 / Tilgung 1.600, gebucht wurden 600 / 400). Über-/Unterzahlung kommt schon hier als ok=false zurück -\u003e Payment not possible reicht reason an den Agenten, bevor der Owner eine Karte sieht. Ohne genannten Betrag liefert die fn die fällige Rate (payment_amount, bei der letzten Rate den Ablösebetrag); genau dieser Betrag geht in Probelauf und Write (WP2).",
                                          "height":  240,
                                          "width":  460,
                                          "color":  4

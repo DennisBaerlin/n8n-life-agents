@@ -77,9 +77,10 @@ BEGIN
             'reason', 'A new payment rhythm usually changes the amount per debit - ask the user for the new amount per debit '
                    || '(premium_amount) or the annual premium.');
     END IF;
-    IF v_head IS NULL AND (v_per IS NOT NULL OR v_dom IS NOT NULL) THEN
+    IF v_head IS NULL AND (v_per IS NOT NULL OR v_dom IS NOT NULL OR v_valid_to IS NOT NULL) THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'This policy has no premium debit recorded - a premium can only be changed on a policy that has one.');
+            'reason', 'This policy has no premium debit recorded (old entry) - premium, debit day and contract end cannot be stored; '
+                   || 'set status cancelled/expired to end it, or close it and record it again with its premium.');
     END IF;
 
     -- Korrigierbar: Kuendigungs-/Enddatum darf nicht vor dem Vertragsbeginn liegen.

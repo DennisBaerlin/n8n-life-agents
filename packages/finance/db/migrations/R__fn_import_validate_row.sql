@@ -192,21 +192,21 @@ BEGIN
         END IF;
 
     ELSIF p_type = 'insurance' THEN
-        -- Spiegel fn_create_insurance (WP2): Beitrag je Abbuchung (+ Rhythmus) ODER Jahresbeitrag -- dieselbe Pruef-fn;
-        -- ohne Beitrag = beitragsfreie Police (dann kein Konto/keine erste Abbuchung noetig).
+        -- Spiegel fn_create_insurance (WP2): Beitrag je Abbuchung (+ Rhythmus) ODER Jahresbeitrag -- dieselbe Pruef-fn.
         v_fields := finance.fn_insurance_fields(p);
         IF (v_fields->>'ok')::boolean IS DISTINCT FROM true THEN RETURN v_fields->>'reason'; END IF;
-        IF v_fields->>'premium_amount' IS NOT NULL THEN
-            IF NULLIF(p->>'first_payment_date','') IS NULL THEN RETURN 'first_payment_date is required'; END IF;
-            v_ref := NULLIF(trim(COALESCE(p->>'debit_account','')), '');
-            IF v_ref IS NULL THEN RETURN 'debit_account (account name) is required'; END IF;
-            IF finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
-                RETURN format('debit_account "%s" not found (neither existing nor in this batch)', v_ref);
-            END IF;
-            -- Spiegel fn_create_insurance: Praemien sind EUR nach Modell
-            IF finance.fn_import_ref_currency(p_batch_id, v_ref) IS DISTINCT FROM 'EUR' THEN
-                RETURN format('insurance premiums are kept in EUR - debit_account "%s" is in %s; use a EUR account', v_ref, finance.fn_import_ref_currency(p_batch_id, v_ref));
-            END IF;
+        IF v_fields->>'premium_amount' IS NULL THEN
+            RETURN 'the premium is required: premium_amount (per debit, with schedule_unit) or annual_premium';
+        END IF;
+        IF NULLIF(p->>'first_payment_date','') IS NULL THEN RETURN 'first_payment_date is required'; END IF;
+        v_ref := NULLIF(trim(COALESCE(p->>'debit_account','')), '');
+        IF v_ref IS NULL THEN RETURN 'debit_account (account name) is required'; END IF;
+        IF finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
+            RETURN format('debit_account "%s" not found (neither existing nor in this batch)', v_ref);
+        END IF;
+        -- Spiegel fn_create_insurance: Praemien sind EUR nach Modell
+        IF finance.fn_import_ref_currency(p_batch_id, v_ref) IS DISTINCT FROM 'EUR' THEN
+            RETURN format('insurance premiums are kept in EUR - debit_account "%s" is in %s; use a EUR account', v_ref, finance.fn_import_ref_currency(p_batch_id, v_ref));
         END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_insurance(v_name, FALSE);
         IF v_hits > 0 THEN RETURN format('insurance "%s" already exists', v_name); END IF;
@@ -217,6 +217,16 @@ BEGIN
             RETURN format('pension_type "%s" invalid (statutory|occupational|riester|ruerup|private)', p->>'pension_type');
         END;
         IF p->>'pension_type' IS NULL THEN RETURN 'pension_type is required'; END IF;
+        -- WP2: Beitrags-Rhythmus roh (Spiegel fn_create_pension, Default monatlich)
+        IF NULLIF(p->>'schedule_unit','') IS NOT NULL THEN
+            BEGIN PERFORM (p->>'schedule_unit')::finance.schedule_unit;
+            EXCEPTION WHEN OTHERS THEN
+                RETURN format('schedule_unit "%s" invalid (day|week|month|year; empty = month)', p->>'schedule_unit');
+            END;
+        END IF;
+        IF NULLIF(p->>'schedule_interval','') IS NOT NULL AND (p->>'schedule_interval')::int < 1 THEN
+            RETURN 'schedule_interval must be at least 1';
+        END IF;
         IF NULLIF(p->>'contribution_amount','') IS NOT NULL AND (p->>'contribution_amount')::numeric > 0 THEN
             v_ref := NULLIF(trim(COALESCE(p->>'debit_account','')), '');
             IF v_ref IS NULL THEN RETURN 'contribution_amount set — debit_account (name) is required'; END IF;
@@ -257,7 +267,7 @@ BEGIN
     ELSIF p_type = 'savings_goal' THEN
         v_num := NULLIF(p->>'target_amount','')::numeric;
         IF v_num IS NULL OR v_num <= 0 THEN RETURN 'target_amount must be a positive number'; END IF;
-        IF NULLIF(p->>'first_payment_date','') IS NULL THEN RETURN 'first_payment_date is required'; END IF;
+        -- WP2: first_payment_date optional (fn_savings_rate_schedule: naechster Abbuchungstag ab heute)
         IF (NULLIF(p->>'target_date','') IS NULL) = (NULLIF(p->>'monthly_savings_rate','') IS NULL) THEN
             RETURN 'provide EXACTLY ONE of target_date or monthly_savings_rate (the DB derives the other)';
         END IF;

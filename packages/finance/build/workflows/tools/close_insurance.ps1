@@ -62,7 +62,7 @@ function Build-CloseInsurance {
 
     $stickyFn = Build-Sticky 'fn_close_insurance: Hard-DELETE vs. Soft-Close' @(1760, -260) `
         'Smart-Close-Guard: tx_count entscheidet' `
-        'fn zählt Transaktionen (recurring_payment_id = insurance.rp_id). tx_count=0: Hard-DELETE finance.insurances dann finance.recurring_payments (FK-Reihenfolge!); action=deleted. tx_count>0: Soft-Close — insurance.status=cancelled + valid_to=heute; RP.status=paused + valid_to=heute; action=closed. RAISE EXCEPTION bei nicht gefunden/mehrdeutig.' 240 480
+        'fn zählt Transaktionen über die ganze Beitrags-Kette (fn_recurring_lineage; nach einer Beitragsänderung mehrere Glieder). tx_count=0: Hard-DELETE finance.insurances, dann die ganze Kette in einem Statement (FK-Reihenfolge!); action=deleted. tx_count>0: Soft-Close — insurance.status=cancelled, alle laufenden Glieder enden heute (fn_end_recurring_chain: paused + valid_to); das Vertragsende steht nur an der Kette (WP2); action=closed. Nicht gefunden/mehrdeutig -> {ok:false} mit Kandidaten.' 240 480
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `

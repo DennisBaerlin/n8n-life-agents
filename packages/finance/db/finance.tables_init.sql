@@ -1278,8 +1278,8 @@ END $$;
 -- EINE QUELLE (WP2 "Finanzen schlank", finance:V027): Beitrag je Abbuchung, Rhythmus, Abbuchungstag, Vertragsende
 -- und Abbuchungskonto stehen NUR an der Raten-Kette (recurring_payment_id -> Kopf); active_insurances liest das heute
 -- gueltige Glied und leitet Jahres-/Monatswert ab (fn_annual_equivalent, rp.monthly_equivalent). Die frueheren Kopien
--- annual_premium / monthly_equivalent / schedule_* / valid_to / account_id entfielen. Ohne Raten-Kette = beitragsfreie
--- Police (z. B. fuers Nachlass-Register). valid_from = Vertragsbeginn (eigener Fakt: rp.valid_from klemmt auf den
+-- annual_premium / monthly_equivalent / schedule_* / valid_to / account_id entfielen. fn_create_insurance verlangt einen
+-- Beitrag; ohne Raten-Kette gibt es nur Altbestand/Direkt-Anlagen. valid_from = Vertragsbeginn (eigener Fakt: rp.valid_from klemmt auf den
 -- Konto-Stichtag); status = Vertragszustand (cancelled/expired sind kein Zahlungszustand).
 -- ============================================================
 
@@ -1294,7 +1294,7 @@ CREATE TABLE IF NOT EXISTS finance.insurances (
     schedule_day_of_month smallint,
     valid_from            date NOT NULL,                 -- Vertragsbeginn
     status                finance.insurance_status NOT NULL DEFAULT 'active',
-    recurring_payment_id  int REFERENCES finance.recurring_payments(id),   -- Kopf der Beitrags-Kette; NULL = beitragsfrei
+    recurring_payment_id  int REFERENCES finance.recurring_payments(id),   -- Kopf der Beitrags-Kette (NULL nur Altbestand)
     -- WS-0b (estate): Nachlass-relevante Policen-Attribute (additiv nullable, Init-only, KEIN V).
     -- insurance_type = grobe Policen-Klasse (geschlossene Liste, s. CHECK; life/accident tragen Todesfall-
     --   Meldefristen); beneficiary = benannter Bezugsberechtigter (schlaegt das Testament, Bezugsrecht-Falle);

@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_create_insurance.sql
 -- Testet fn_create_insurance: recurring_payment anlegen + insurance verknüpfen, atomar; WP2: Beitrag je Abbuchung roh,
--- Jahres-/Monatswert abgeleitet (keine Kopie an der Police), beitragsfreie Police
+-- Jahres-/Monatswert abgeleitet (keine Kopie an der Police), Beitrag Pflicht, Rundungs-Toleranz
 BEGIN;
 
 DO $$
@@ -232,13 +232,18 @@ BEGIN
   IF (finance.fn_create_insurance(jsonb_build_object('name','__test_ins_both__','premium_amount',10,'annual_premium',120,
         'schedule_unit','month','first_payment_date','2026-01-01','debit_account_id',v_acct_id))->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL fn_create_insurance [konsistent]'; END IF;
-  -- beitragsfreie Police (Nachlass-Register): ohne Beitrag, Konto und erste Abbuchung -> ok, keine Beitrags-Zeile
+  -- Rundung des Versicherers: 1000 im Jahr monatlich = 83,33 rechnerisch, 83,34 genannt -> innerhalb 0,01 ok (Abbuchung gilt)
+  SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_round__','premium_amount',83.34,'annual_premium',1000,
+    'schedule_unit','month','first_payment_date','2026-01-01','debit_account_id',v_acct_id)) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT amount FROM finance.recurring_payments WHERE id = (v_result->>'recurring_payment_id')::int) IS DISTINCT FROM -83.34 THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [Rundung]: got %', v_result; END IF;
+  -- ohne Beitrag -> ok:false (der Beitrag ist Pflicht)
   SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_free__','insurance_type','life',
-    'beneficiary','Kinder')) INTO v_result;
-  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result->>'recurring_payment_id' IS NOT NULL
-     OR (SELECT annual_premium FROM finance.active_insurances WHERE id = (v_result->>'insurance_id')::int) IS NOT NULL THEN
-    RAISE EXCEPTION 'FAIL fn_create_insurance [beitragsfrei]: got %', v_result; END IF;
-  RAISE NOTICE 'PASS fn_create_insurance [WP2: 30 monatlich roh -> 360/30 abgeleitet; ohne Rhythmus/unstimmig ok:false; beitragsfrei ok]';
+    'first_payment_date','2026-01-01','debit_account_id',v_acct_id)) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR EXISTS (SELECT 1 FROM finance.insurances WHERE name = '__test_ins_free__') THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [ohne Beitrag]: ok:false erwartet, got %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_create_insurance [WP2: 30 monatlich roh -> 360/30 abgeleitet; ohne Rhythmus/unstimmig/ohne Beitrag ok:false; Rundung 0,01 ok]';
 
 END $$;
 

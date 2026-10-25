@@ -5,7 +5,7 @@
 --   (1) Kopie passt -> Beitrag je Abbuchung unveraendert; abgeleiteter Jahreswert in active_insurances (nach R__) folgt
 --   (2) Rundungs-Cent (alter n8n-Rechenweg) -> kein Abbruch, die gebuchte rp gilt
 --   (3) Vertragsende nur an der Police -> in die rp uebernommen
---   (4) Police ohne rp -> Jahresbeitrag in notes, Police bleibt (beitragsfrei)
+--   (4) Police ohne rp (Altbestand) -> Jahresbeitrag + Vertragsende in notes, abgelaufen -> expired
 -- Abbruch bei echter Abweichung (Pre-flight RAISE): per Code-Review + Upgrade-Probe abgenommen (db_test wertet ERROR als FAIL).
 BEGIN;
 
@@ -27,13 +27,13 @@ BEGIN
           'first_payment_date','2026-01-01','debit_account_id',v_giro))->>'insurance_id')::int;
   v_b := (finance.fn_create_insurance(jsonb_build_object('name','__v027_b__','premium_amount',8.34,'schedule_unit','month',
           'first_payment_date','2026-01-01','debit_account_id',v_giro))->>'insurance_id')::int;
-  v_c := (finance.fn_create_insurance(jsonb_build_object('name','__v027_c__','insurance_type','life'))->>'insurance_id')::int;
+  INSERT INTO finance.insurances (name, valid_from, insurance_type) VALUES ('__v027_c__', '2020-01-01', 'life') RETURNING id INTO v_c;
   v_d := (finance.fn_create_insurance(jsonb_build_object('name','__v027_d__','premium_amount',50,'schedule_unit','year',
           'first_payment_date','2026-03-01','debit_account_id',v_giro))->>'insurance_id')::int;
   -- Altbestand: Kopien wie v0.15.0
   UPDATE finance.insurances i SET annual_premium = 120, schedule_unit = 'month', account_id = v_giro WHERE i.id = v_a;
   UPDATE finance.insurances i SET annual_premium = 100, schedule_unit = 'month', account_id = v_giro WHERE i.id = v_b;  -- 8,33 vs 8,34
-  UPDATE finance.insurances i SET annual_premium = 50, schedule_unit = 'year' WHERE i.id = v_c;
+  UPDATE finance.insurances i SET annual_premium = 50, schedule_unit = 'year', valid_to = '2025-01-01' WHERE i.id = v_c;
   UPDATE finance.insurances i SET annual_premium = 50, schedule_unit = 'year', account_id = v_giro, valid_to = '2030-03-01' WHERE i.id = v_d;
 END $$;
 
@@ -54,9 +54,10 @@ BEGIN
   IF (SELECT rp.valid_to FROM finance.insurances i JOIN finance.recurring_payments rp ON rp.id = i.recurring_payment_id
       WHERE i.name = '__v027_d__') IS DISTINCT FROM DATE '2030-03-01' THEN
     RAISE EXCEPTION 'FAIL [V027 (3)]: Vertragsende nicht in die rp uebernommen'; END IF;
-  IF (SELECT notes FROM finance.insurances WHERE name = '__v027_c__') NOT LIKE '%Jahresbeitrag laut Erfassung: 50.00%' THEN
-    RAISE EXCEPTION 'FAIL [V027 (4)]: Jahresbeitrag ohne rp nicht in notes'; END IF;
-  RAISE NOTICE 'PASS finance:V027 (Kopien weg, Beitrag unveraendert, Cent-Toleranz, Vertragsende -> rp, beitragsfrei -> Notiz, 2 Laeufe)';
+  IF (SELECT notes FROM finance.insurances WHERE name = '__v027_c__') NOT LIKE '%Jahresbeitrag laut Erfassung: 50.00%Vertragsende (exklusiv): 2025-01-01%'
+     OR (SELECT status::text FROM finance.insurances WHERE name = '__v027_c__') IS DISTINCT FROM 'expired' THEN
+    RAISE EXCEPTION 'FAIL [V027 (4)]: Jahresbeitrag/Vertragsende ohne rp nicht in notes oder nicht expired'; END IF;
+  RAISE NOTICE 'PASS finance:V027 (Kopien weg, Beitrag unveraendert, Cent-Toleranz, Vertragsende -> rp, ohne rp -> Notiz + expired, 2 Laeufe)';
 END $$;
 
 ROLLBACK;

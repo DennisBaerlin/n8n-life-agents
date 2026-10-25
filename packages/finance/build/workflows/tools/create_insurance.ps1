@@ -26,8 +26,7 @@ function Build-CreateInsurance {
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'debit_account_name');" `
         ([ordered]@{ debit_account_name = '$(''Start'').item.json.debit_account_name' })
 
-    # WP2: beitragsfreie Police (ohne Beitrag) hat kein Abbuchungskonto -> ohne Namen weiter (die fn prueft den Rest)
-    $ifAcc = Build-If 'Debit unique?' @(440, 0) "={{ `$json.hit_count === 1 || !`$('Start').item.json.debit_account_name }}" 'true' 'equals' 'boolean'
+    $ifAcc = Build-If 'Debit unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
 
     $errAcc = Build-ToolError 'Debit ambiguous' @(660, 200) `
         "=Debit account '{{ `$('Start').item.json.debit_account_name }}' resolves to {{ `$('Resolve Debit Account').item.json.hit_count }} matches. Ask the user which exact account to use."
@@ -112,7 +111,7 @@ function Build-CreateInsurance {
 
     $stickyGenerated = Build-Sticky 'DB-Automatik Beitrag' @(2420, -260) `
         'Eine Quelle: Beitrags-Zeile (WP2)' `
-        'Beitrag je Abbuchung, Rhythmus, Tag und Konto stehen nur an der Beitrags-Zeile (recurring_payment); den Jahreswert leitet fn_annual_equivalent ab, den Monatswert die GENERATED-Spalte monthly_equivalent (read-only). Die Versicherung erscheint über das recurring_payment automatisch im Cashflow. Ohne Beitrag = beitragsfreie Police ohne Beitrags-Zeile. Schreibt finance.fn_create_insurance atomar (recurring_payment + insurance + FK in einer Transaktion). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden mitgeschrieben und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) für Gap-Analyse + Todesfall-Checkliste gelesen.' 220 460
+        'Beitrag je Abbuchung, Rhythmus, Tag und Konto stehen nur an der Beitrags-Zeile (recurring_payment); den Jahreswert leitet fn_annual_equivalent ab, den Monatswert die GENERATED-Spalte monthly_equivalent (read-only). Die Versicherung erscheint über das recurring_payment automatisch im Cashflow. Schreibt finance.fn_create_insurance atomar (recurring_payment + insurance + FK in einer Transaktion). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden mitgeschrieben und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) für Gap-Analyse + Todesfall-Checkliste gelesen.' 220 460
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -220) `
         'fn-Rückgabe {ok:false, reason}' `

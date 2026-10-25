@@ -11,16 +11,14 @@
 --   EINE QUELLE (WP2 "Finanzen schlank", finance:V027): Beitrag, Rhythmus, Tag, Vertragsende und Konto stehen nur an der
 --   Beitrags-Kette; die Police traegt keine Kopie. Rohwerte liest + prueft fn_insurance_fields (dieselbe fn speist die
 --   Karten-Vorschau); den Jahres-/Monatswert leitet active_insurances ab -- das LLM rechnet nie um.
---   OHNE BEITRAG (keiner genannt): beitragsfreie Police ohne Beitrags-Kette (z. B. fuers Nachlass-Register); dann sind
---   Abbuchungskonto und erste Abbuchung nicht noetig.
 --   first_payment_date = echtes erstes Abbuchungsdatum (Anker fuer den Faelligkeits-Scheduler; traegt bei
---   jaehrlich/quartalsweise den Monat+Tag). PFLICHT mit Beitrag (Owner-Entscheid 2026-10-23, wie Import und Kredit);
---   valid_from faellt auf first_payment_date (ohne Beitrag: heute) zurueck, nicht umgekehrt.
+--   jaehrlich/quartalsweise den Monat+Tag). PFLICHT (Owner-Entscheid 2026-10-23, wie Import und Kredit);
+--   valid_from faellt auf first_payment_date zurueck, nicht umgekehrt.
 --   Beitrag/Versicherungssumme sind EUR nach Modell -> ein Abbuchungskonto in Fremdwaehrung wird abgelehnt (sonst liefe
 --   eine EUR-Rate still als Fremdwaehrungs-Betrag).
 --   RUECKGABE: {ok:true, insurance_id, recurring_payment_id, premium_amount, annual_premium, monthly_equivalent (positiv,
 --   aus der Beitrags-Zeile), card_lines} | {ok:false, reason} (Buchungstag, Rhythmus/insurance_type unbekannt, Beitrag <= 0
---   oder unstimmig, Betrag unlesbar, Beitrag ohne Rhythmus, Versicherungssumme < 0, Meldefrist keine positive ganze Zahl,
+--   fehlt oder unstimmig, Betrag unlesbar, Beitrag ohne Rhythmus, Versicherungssumme < 0, Meldefrist keine positive ganze Zahl,
 --   erste Abbuchung fehlt, Konto nicht EUR oder nicht buchbar [Depot/Kredit]) OHNE Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_insurance(p jsonb)
@@ -54,36 +52,39 @@ BEGIN
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
-    v_from := COALESCE(NULLIF(p->>'valid_from', '')::date, v_first, core.fn_today());
+    v_from := COALESCE(NULLIF(p->>'valid_from', '')::date, v_first);
 
-    IF v_per IS NOT NULL THEN
-        IF v_first IS NULL THEN
-            RETURN jsonb_build_object('ok', false,
-                'reason', 'The date of the first debit (first_payment_date) is required - ask the user when the premium is first debited (the policy start alone is not enough).');
-        END IF;
-        SELECT currency INTO v_acct_ccy FROM finance.accounts WHERE id = v_acct;
-        IF v_acct_ccy IS NOT NULL AND v_acct_ccy <> 'EUR' THEN
-            RETURN jsonb_build_object('ok', false,
-                'reason', 'Insurance premiums are kept in EUR, but the debit account is in ' || v_acct_ccy
-                       || '. Choose a EUR account for the debit.');
-        END IF;
-        -- Belastungskonto muss buchbar sein (Depot/Kredit tragen kein Geld; die Faelligkeit bliebe sonst ewig offen).
-        v_reason := finance.fn_bookable_account_reason(v_acct);
-        IF v_reason IS NOT NULL THEN
-            RETURN jsonb_build_object('ok', false, 'reason', v_reason);
-        END IF;
-
-        -- Beitrags-Kette via gemeinsamen Helper (Teil 0: eine Quelle fuer den Insert); Betrag je Abbuchung roh.
-        v_rp_id := finance.fn_add_recurring_payment(
-            v_acct, -v_per, left('Versicherung ' || (p->>'name'), 100),
-            v_interval, v_unit, v_dom, v_first, finance.fn_recurring_valid_from(v_acct, v_from), NULL, NULL, NULL);
+    -- Korrigierbar: ein Beitrag ist Pflicht (je Abbuchung oder als Jahresbeitrag).
+    IF v_per IS NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'The premium is required - the amount per debit (premium_amount with schedule_unit) or the annual premium.');
     END IF;
+    IF v_first IS NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'The date of the first debit (first_payment_date) is required - ask the user when the premium is first debited (the policy start alone is not enough).');
+    END IF;
+    SELECT currency INTO v_acct_ccy FROM finance.accounts WHERE id = v_acct;
+    IF v_acct_ccy IS NOT NULL AND v_acct_ccy <> 'EUR' THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'Insurance premiums are kept in EUR, but the debit account is in ' || v_acct_ccy
+                   || '. Choose a EUR account for the debit.');
+    END IF;
+    -- Belastungskonto muss buchbar sein (Depot/Kredit tragen kein Geld; die Faelligkeit bliebe sonst ewig offen).
+    v_reason := finance.fn_bookable_account_reason(v_acct);
+    IF v_reason IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', v_reason);
+    END IF;
+
+    -- Beitrags-Kette via gemeinsamen Helper (Teil 0: eine Quelle fuer den Insert); Betrag je Abbuchung roh.
+    v_rp_id := finance.fn_add_recurring_payment(
+        v_acct, -v_per, left('Versicherung ' || (p->>'name'), 100),
+        v_interval, v_unit, v_dom, v_first, finance.fn_recurring_valid_from(v_acct, v_from), NULL, NULL, NULL);
 
     -- Karten-Hinweis (hohe Schwelle): aktive Versicherung bei derselben Gesellschaft mit gleichem Jahresbeitrag
     SELECT i.name INTO v_sim FROM finance.active_insurances i
      WHERE NULLIF(btrim(p->>'insurance_company'), '') IS NOT NULL
        AND lower(btrim(i.insurance_company)) = lower(btrim(p->>'insurance_company'))
-       AND i.annual_premium IS NOT DISTINCT FROM v_annual
+       AND i.annual_premium = v_annual
      ORDER BY i.id LIMIT 1;
 
     INSERT INTO finance.insurances

@@ -534,8 +534,11 @@ foreach ($cf in ($docFiles | Where-Object { $_.Name -eq 'CLAUDE.md' })) {
     } elseif ($isRoot -and $cfLines -gt 150) {
         Write-Host "  [Hinweis] Root-CLAUDE.md = $cfLines Zeilen (> 150; Anthropic-Optimum ~150) -- bei Wachstum verschlanken." -ForegroundColor Yellow
     }
-    if ($cf.Length -gt ($cfMaxKb * 1KB)) {
-        Fail $cfRel ("{0:N1} KB (> {1} KB): Zweck + Regeln + Zeiger bleiben, Mechanik/Fallgeschichten nach docs/reference/<bereich>.md -- kurze Zeilen." -f ($cf.Length / 1KB), $cfMaxKb)
+    # Groesse wie committet (LF): ein Windows-Checkout mit core.autocrlf=true haengt je Zeile ein CR an und liesse die
+    # Datei je nach Worktree ueber die Grenze springen (2026-10-25: 16 375 B im Repo, 16 446 B im CRLF-Worktree).
+    $cfSize = [System.Text.Encoding]::UTF8.GetByteCount(([System.IO.File]::ReadAllText($cf.FullName, (New-Object System.Text.UTF8Encoding($false))) -replace "`r", ''))
+    if ($cfSize -gt ($cfMaxKb * 1KB)) {
+        Fail $cfRel ("{0:N1} KB (> {1} KB): Zweck + Regeln + Zeiger bleiben, Mechanik/Fallgeschichten nach docs/reference/<bereich>.md -- kurze Zeilen." -f ($cfSize / 1KB), $cfMaxKb)
     }
 }
 

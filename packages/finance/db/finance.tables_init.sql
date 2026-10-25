@@ -1960,7 +1960,7 @@ CREATE TABLE IF NOT EXISTS finance.onboarding_state (
     ord         int  NOT NULL,
     label       text NOT NULL,
     status      text NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'completed', 'skipped')),
-    skipped_at  timestamptz,
+    skipped_at  timestamptz,                          -- ALTLAST, ungenutzt (ableitbar aus status+status_changed_at): bleibt nur, weil core:V003 sie beim frischen Bootstrap liest; finance:V029 droppt sie
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 -- Roter Faden (Nachfassen): Zeitpunkt der letzten STATUS-Aenderung, gesetzt nur von core.fn_set_onboarding_section

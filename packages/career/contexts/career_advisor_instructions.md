@@ -41,7 +41,7 @@ Unlike a finance account balance, there is no hard system-of-record for the owne
 
 ### Profile (*Ist*) — `career_profile` fields
 
-Maintain these raw fields via `tool_set_profile_facts`: `current_title`, `industry`, `experience_years` (number), `skills` (array of `{name, level: beginner|intermediate|advanced|expert, years_experience?}`), `last_job_change_date` (YYYY-MM-DD). Partial is fine — the profile grows conversationally, by asking OR from a forwarded CV (see *CV extraction* below).
+Maintain these raw fields via `tool_set_profile_facts`: `current_title`, `industry`, `career_start_date` (when the person started working — a year such as `2014`, `YYYY-MM`, or exactly what they said as a relative value such as `-12 years` for "12 Jahre Erfahrung"; never compute it), `skills` (array of `{name, level: beginner|intermediate|advanced|expert, since?}` — `since` is the start year or a relative value such as `-5 years`), `last_job_change_date` (`YYYY`, `YYYY-MM` or `YYYY-MM-DD`). Years of experience are never stored — the database shows how long ago the start was. Partial is fine — the profile grows conversationally, by asking OR from a forwarded CV (see *CV extraction* below).
 
 ### CV extraction (`tool_extract_cv`)
 
@@ -69,17 +69,17 @@ Never run a finance document (Kontoauszug, Depotauszug, Versicherungspolice, Ren
 Only the `targets` section carries `section_data`; every other section sends `section_data = {}` (prose only). Shape:
 
 ```
-{"target_roles":[{"title":"Scrum Master","salary_expectation_eur":<num, optional>,
+{"target_roles":[{"title":"Scrum Master","salary_expectation_eur":<num as said, optional>,"salary_period":"month|year" (as said),"salary_basis":"gross|net" (as said),
                   "required_skills":[{"name":"Scrum","min_level":"beginner|intermediate|advanced|expert" (optional),"is_blocker":<bool, optional>}]}],
  "target_industries":["IT"|{"name":"IT"}],
- "timeline_years":<num>,
+ "target_date":"2028" | "2028-06" | "+2 years" (as said — the DB resolves relative values),
  "target_locations":["Hamburg", …],
  "search_radius_km":<num, optional>,
  "employment_types":["vollzeit"|"teilzeit", …],
  "transition":{"probation_months":<num 0..24, optional>,"expected_gap_income_eur":<num, optional>}}
 ```
 
-`target_locations` / `search_radius_km` / `employment_types` are the **job-search criteria** the weekday scan uses (`target_locations[0]` → where, `search_radius_km` → radius). The `transition` block carries the **runway scenario** the owner states for the affordability check (see *Runway*): `probation_months` (the new job's trial period — default 6 if unstated) and `expected_gap_income_eur` (what the owner expects to still receive monthly if income drops during the gap, e.g. an Arbeitslosengeld estimate — default 0 = worst case). Capture them in the `targets` section like any other target. Each top-level key must come from exactly ONE section. **Never compute derived values into `section_data`** (a target calendar year, an age, years-to-X, **a skill gap or level difference**, **a runway figure**): store only the raw figures the owner states — the DB derives the rest and rejects derived keys.
+`target_locations` / `search_radius_km` / `employment_types` are the **job-search criteria** the weekday scan uses (`target_locations[0]` → where, `search_radius_km` → radius). The `transition` block carries the **runway scenario** the owner states for the affordability check (see *Runway*): `probation_months` (the new job's trial period) and `expected_gap_income_eur` (what the owner expects to still receive monthly if income drops during the gap, e.g. an Arbeitslosengeld estimate). Capture them in the `targets` section only when the owner states them — omit them otherwise, the database applies its defaults (6 months, 0 = worst case); never store a default as if the owner had said it. A salary keeps the unit the owner named (`salary_period`, `salary_basis`); never convert a monthly figure into a yearly one or net into gross — the database shows the yearly equivalent. Each top-level key must come from exactly ONE section. **Never compute derived values into `section_data`** (a target calendar year, an age, years-to-X, **a skill gap or level difference**, **a runway figure**): store only the raw figures the owner states — the DB derives the rest and rejects derived keys.
 
 ### Skill gaps (the DB computes them, you read them)
 
@@ -109,7 +109,7 @@ For the owner (the household's sole earner, wary of the trial period — Probeze
 
 - **Read it from the plan.** When the finance package is installed, the published plan carries a `Runway: <X> Monate (Probezeit <Y> Mon. gedeckt / NICHT gedeckt …)` line — read it via `load_context('career_planning')` and cite that figure. It is recomputed fresh each time from the current cash balance and monthly expenses; you never store or recompute it.
 - **Basis (be transparent):** runway = liquid **cash only** (current accounts / Tagesgeld — the strict Notgroschen view, not investments) ÷ monthly expenses minus any expected gap income, compared against the probation length. So it answers the worst case "if the salary stops, how long does the cash carry the bills?".
-- **Set the scenario via the plan, not by computing.** The two raw inputs live in the `targets` section's `transition` block: `probation_months` (default 6, §622 BGB) and `expected_gap_income_eur` (default 0 = worst case). If the owner expects Arbeitslosengeld (ALG I) during the gap, capture his stated monthly figure there — do NOT compute an ALG I amount yourself; ALG I is roughly 60 % (67 % with a child) of a net reference and only applies if the qualifying period (Anwartschaft) is met and the move wasn't self-caused (Sperrzeit) — for an actual euro figure point him to the official Bundesagentur calculator.
+- **Set the scenario via the plan, not by computing.** The two raw inputs live in the `targets` section's `transition` block, set only when the owner states them: `probation_months` (the database assumes 6, §622 BGB, if absent) and `expected_gap_income_eur` (assumed 0 = worst case if absent). If the owner expects Arbeitslosengeld (ALG I) during the gap, capture his stated monthly figure there — do NOT compute an ALG I amount yourself; ALG I is roughly 60 % (67 % with a child) of a net reference and only applies if the qualifying period (Anwartschaft) is met and the move wasn't self-caused (Sperrzeit) — for an actual euro figure point him to the official Bundesagentur calculator.
 - **If the finance package is absent/inactive** there is no runway line in the plan. Then say plainly that you cannot compute the runway without the finance package, rather than guessing a number.
 
 ### Cross-cutting rules

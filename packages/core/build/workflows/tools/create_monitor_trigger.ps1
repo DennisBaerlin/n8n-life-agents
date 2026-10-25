@@ -56,8 +56,10 @@ function Build-CreateMonitorTrigger {
     }
 
     $probe = Build-Pg 'Probe (validate)' @(1260, 0) `
-        "=SELECT (r->>'ok')::boolean AS probe_ok, (r->>'value')::numeric AS probe_value, r->>'unit' AS probe_unit, r->>'as_of' AS probe_as_of, r->>'source_url' AS probe_source, r->>'reason' AS probe_reason, r->'display' AS probe_display, r::text AS probe_json FROM agent.fn_monitor_probe(`$1::jsonb) AS r;" `
+        "=SELECT (r->>'ok')::boolean AND d.err IS NULL AS probe_ok, (r->>'value')::numeric AS probe_value, r->>'unit' AS probe_unit, r->>'as_of' AS probe_as_of, r->>'source_url' AS probe_source, COALESCE(d.err, r->>'reason') AS probe_reason, r->'display' AS probe_display, r::text AS probe_json, d.due::text AS due_resolved FROM agent.fn_monitor_probe(`$1::jsonb) AS r, LATERAL (SELECT x.due, CASE WHEN (`$1::jsonb)->>'trigger_type' = 'date' AND x.due IS NULL THEN 'due_date must be YYYY-MM-DD or relative to today (e.g. +6 months, in 3 weeks)' WHEN x.due < core.fn_today() THEN 'due_date ' || x.due || ' is in the past' END AS err FROM (SELECT CASE WHEN (`$1::jsonb)->>'trigger_type' = 'date' THEN core.fn_resolve_date(NULLIF((`$1::jsonb)->>'due_date', '')) END AS due) x) d;" `
         ([ordered]@{
+            trigger_type       = '$(''Start'').item.json.trigger_type'
+            due_date           = '$(''Start'').item.json.due_date'
             acquisition_method = '$(''Start'').item.json.acquisition_method'
             acquisition_sql    = '$(''Start'').item.json.acquisition_sql'
             acquisition_params = $paramsExpr
@@ -68,7 +70,7 @@ function Build-CreateMonitorTrigger {
         })
     $ifProbeOk = Build-If 'Probe ok?' @(1440, 0) '={{ $json.probe_ok }}' 'true' 'equals' 'boolean'
     $errProbe = Build-ToolError 'Probe failed' @(1620, -200) `
-        "={{ 'Test acquisition failed BEFORE approval - nothing was created. Reason: ' + (`$('Probe (validate)').item.json.probe_reason || 'unknown') + '. Fix the acquisition (prompt/sql/acquisition_params, unit, bounds) together with the user and retry.' }}"
+        "={{ 'The check BEFORE approval failed - nothing was created. Reason: ' + (`$('Probe (validate)').item.json.probe_reason || 'unknown') + '. Fix it together with the user (acquisition prompt/sql/acquisition_params, unit, bounds or due_date) and retry.' }}"
 
     # Strukturiertes Summary (Textkatalog; zu viel Logik fuer Einzel-Zeilen -> -LinesExpr). Methoden-Bezeichnung =
     # <pkg>.monitor_method.<methode> ($MonitorMethodPkgJson {methode: paket}, Core-Builtins unter core.*), fehlt sie ->
@@ -93,8 +95,8 @@ function Build-CreateMonitorTrigger {
     params: { pct: s.drawdown_pct } });
   if (s.trigger_type === 'date') L.push(Number(s.warn_days_before) > 0
     ? { label: 'core.label.due', kind: 'tpl', value: 'core.tpl.monitor_due_warn',
-        params: { date: { kind: 'date', value: s.due_date }, days: s.warn_days_before } }
-    : { label: 'core.label.due', kind: 'date', value: s.due_date });
+        params: { date: { kind: 'date', value: p.due_resolved }, days: s.warn_days_before } }
+    : { label: 'core.label.due', kind: 'date', value: p.due_resolved });
   L.push({ label: 'core.label.check_interval', kind: 'tpl', value: 'core.tpl.monitor_every', params: { interval: s.check_interval } });
   L.push({ label: 'core.label.source', kind: 'key', value: methodKey, fallback: m });
   if (m === 'web_search') L.push({ label: 'core.label.prompt_start', kind: 'text', value: '"' + cut(s.acquisition_prompt) + '"' });
@@ -140,7 +142,7 @@ function Build-CreateMonitorTrigger {
             comparator         = '$(''Start'').item.json.comparator'
             threshold_value    = '$(''Start'').item.json.threshold_value'
             drawdown_pct       = '$(''Start'').item.json.drawdown_pct'
-            due_date           = '$(''Start'').item.json.due_date'
+            due_date           = '($(''Probe (validate)'').item.json.due_resolved || $(''Start'').item.json.due_date)'
             warn_days_before   = '$(''Start'').item.json.warn_days_before'
             expected_unit      = '$(''Start'').item.json.expected_unit'
             min_plausible      = '$(''Start'').item.json.min_plausible'
@@ -165,7 +167,7 @@ function Build-CreateMonitorTrigger {
 
     $stickyOverview = Build-Sticky 'Doc Create Trigger' @(120, -460) `
         'Probe vor Gate + agent.fn_create_monitor_trigger (atomar)' `
-        'Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> HITL-Summary MIT Test-Abruf-Wert -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 560
+        'Fälligkeit (date-Trigger): Probe (validate) löst due_date per core.fn_resolve_date EINMAL auf (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -> ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> HITL-Summary MIT Test-Abruf-Wert -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 560
 
     $stickyBranch = Build-Sticky 'Doc Probe-Branch' @(880, -340) `
         'Exklusive Branches statt Merge' `

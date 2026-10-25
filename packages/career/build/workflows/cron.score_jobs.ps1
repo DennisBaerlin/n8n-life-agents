@@ -48,8 +48,10 @@ function Build-CronScoreJobs {
   -- agent.fn_ui_texts_for; Empfaenger = die Person hinter ihrer chat_id, Kette Person -> Owner -> en)
   agent.fn_ui_texts_for(jsonb_build_object('chat_id', agent.fn_person_chat_id(p.person_id)))->>'language_label' AS language_label,
   (SELECT metadata->'facts' FROM agent.core_contexts WHERE name = 'career_planning__'    || p.person_id) AS planning,
-  (SELECT metadata->'facts' FROM agent.core_contexts WHERE name = 'career_profile__'      || p.person_id) AS profile,
-  (SELECT metadata->'facts' FROM agent.core_contexts WHERE name = 'career_preferences__'  || p.person_id) AS preferences,
+  -- WP3: Profil + Praeferenzen GERENDERT (Berufsstart "vor ~N Jahren", Gehalt mit Einheit + Jahreswert): der Scorer
+  -- rechnet keine Spannen und keine Monats-/Jahresgehaelter selbst um (das LLM rechnet nicht).
+  career.fn_render_career_profile('career_profile__' || p.person_id) AS profile,
+  career.fn_render_career_preferences('career_preferences__' || p.person_id) AS preferences,
   COALESCE(NULLIF(core.fn_config_get('career','career','job_score_threshold'),''),'3')::int AS threshold,
   COALESCE(NULLIF(core.fn_config_get('career','career','job_max_per_run'),''),'7')::int      AS max_per_run,
   jsonb_build_object(
@@ -62,6 +64,9 @@ function Build-CronScoreJobs {
      FROM (SELECT source, array_agg(external_id) AS ids
            FROM career.job_matches
            WHERE external_id IS NOT NULL AND person_id = p.person_id
+             -- WP3: unbewertete (Scorer-Ausfall) der letzten 7 Tage gelten nicht als bekannt -> der naechste Lauf bewertet
+             -- sie neu (begrenzt, kein Dauer-Retry); weitergeleitete haben bewusst keinen Score
+             AND NOT (score IS NULL AND source <> 'forwarded' AND created_at > now() - interval '7 days')
            GROUP BY source) s),
     '{}'::jsonb) AS known
 FROM agent.fn_context_persons('career_planning') p
@@ -111,7 +116,7 @@ const jsP = ['query=' + enc(jsQuery), 'country=de', 'language=de', 'page=1', 'nu
 const jsearch_url = 'https://jsearch.p.rapidapi.com/search?' + jsP.join('&');
 
 return [{ json: { ba_url, adzuna_url, jsearch_url,
-  profile: $json.profile || {}, preferences: $json.preferences || {}, planning: plan,
+  profile: $json.profile || '', preferences: $json.preferences || '', planning: plan,
   threshold: $json.threshold, max_per_run: $json.max_per_run,
   known: $json.known || {}, sources_enabled: $json.sources_enabled || {},
   person_id: $json.person_id, chat_id: $json.chat_id } }];
@@ -245,7 +250,7 @@ if (enabled.jsearch !== false) {
 
 const indexed = postings.map((p, i) => Object.assign({ i }, p));
 return [{ json: { postings: indexed,
-  profile: bq.profile || {}, preferences: bq.preferences || {}, planning: bq.planning || {},
+  profile: bq.profile || '', preferences: bq.preferences || '', planning: bq.planning || {},
   threshold: bq.threshold, max_per_run: bq.max_per_run, person_id: bq.person_id, chat_id: bq.chat_id } }];
 '@
     $normalize = [ordered]@{
@@ -280,12 +285,13 @@ return [{ json: { postings: indexed,
         required = @('scores')
         additionalProperties = $false
     }
-    $contentJs = "'Candidate profile: ' + JSON.stringify(`$json.profile || {}) + '\nTarget roles, industries and locations (planning): ' + JSON.stringify(`$json.planning || {}) + '\nLearned preferences (likes/dislikes from feedback): ' + JSON.stringify(`$json.preferences || {}) + '\nJob postings to score (each has an index i): ' + JSON.stringify(`$json.postings) + '\nCandidate language for the reasoning sentences: ' + (`$('Loop persons').first().json.language_label || 'en') + '\nScore each posting now.'"
+    $contentJs = "'Candidate profile:\n' + (`$json.profile || 'not captured') + '\nTarget roles, industries and locations (planning): ' + JSON.stringify(`$json.planning || {}) + '\nLearned preferences (likes/dislikes from feedback):\n' + (`$json.preferences || 'none') + '\nJob postings to score (each has an index i): ' + JSON.stringify(`$json.postings) + '\nCandidate language for the reasoning sentences: ' + (`$('Loop persons').first().json.language_label || 'en') + '\nScore each posting now.'"
     $score = New-AnthropicMessagesNode -Name 'Score postings' -Position @(420, 0) -ConfigModelKey 'job_scorer' -System $sysText `
         -ContentJs $contentJs -Effort low -JsonSchema $scoreSchema -TimeoutMs 120000
 
     # --- Scores zuruecksortieren (per Index i): ALLE gescort + recorded, surface = Top max_per_run >= Schwelle
-    #     GLOBAL ueber ALLE Quellen + genau 1 Serendipity (hoechstes unter Schwelle). Fehlt ein Score -> Default 1.
+    #     GLOBAL ueber ALLE Quellen + genau 1 Serendipity (hoechstes BEWERTETES unter Schwelle). Fehlt ein Score oder ist
+#     er ungueltig -> null ("nicht bewertet", WP3; frueher 1 = falsche Zahl): gespeichert, nie gesendet, neu bewertet.
     #     source/board/external_id/person_id/chat_id auf JEDES Posting-Item faedeln (Record liest sie aus $json;
     #     Send liest chat_id/board via $('Apply scores').item — der Record-Postgres-Node ersetzt $json durch sein Ergebnis).
     $applyJs = (Get-AnthropicResultJs) + @'
@@ -305,11 +311,11 @@ for (const s of (Array.isArray(scores) ? scores : [])) { if (s && s.i != null) b
 const scored = postings.map(p => {
   const s = byIdx[String(p.i)] || {};
   const sc = Number(s.score);
-  return Object.assign({}, p, { score: (sc >= 1 && sc <= 4) ? Math.round(sc) : 1, score_reasoning: (s.reasoning ? String(s.reasoning) : null) });
+  return Object.assign({}, p, { score: (sc >= 1 && sc <= 4) ? Math.round(sc) : null, score_reasoning: (s.reasoning ? String(s.reasoning) : null) });
 });
-const above = scored.filter(p => p.score >= threshold).sort((a, b) => b.score - a.score);
+const above = scored.filter(p => p.score !== null && p.score >= threshold).sort((a, b) => b.score - a.score);
 const surfaceSet = new Set(above.slice(0, maxPerRun).map(p => p.i));
-const below = scored.filter(p => p.score < threshold).sort((a, b) => b.score - a.score);
+const below = scored.filter(p => p.score !== null && p.score < threshold).sort((a, b) => b.score - a.score);
 const serenIdx = below.length ? below[0].i : null;
 return scored.map(p => ({ json: {
   source: p.source, board: p.board,
@@ -378,7 +384,7 @@ return scored.map(p => ({ json: {
 
     $stCap = Build-Sticky 'Cap = Karten-Drossel GLOBAL (kein Datenverlust)' @(640, -300) `
         'Apply scores: ALLE gescort + recorded; surface drosselt nur die Sends (Top max_per_run + 1 Serendipity über ALLE Quellen)' `
-        'Der Scorer echot den ephemeren Per-Run-Index i (nicht external_id -> keine Cross-Quellen-Kollision im Mapping). Es werden ALLE neuen Postings via career.fn_record_job_match recorded (Dedup verhindert künftiges Re-Scoring; UPSERT-Key (source, external_id, person_id)). surface=true nur für die Top max_per_run (>= Schwelle) GLOBAL über alle Quellen + GENAU 1 Serendipity (höchstes UNTER der Schwelle). Überzählige >= Schwelle sind RECORDED (kein stiller Verlust) -> der Advisor zeigt sie via read_job_matches (career.fn_read_job_matches). Fehlt ein Score -> Default 1. source/board/external_id/person_id/chat_id werden durch die Kette gefädelt, weil der Record-Postgres-Node das Item ersetzt.' 340 620
+        'Score null = nicht bewertet (Scorer-Ausfall oder ungültiger Wert; bei forwarded immer null): gespeichert, nie gesendet (Schwelle/Serendipity nur über bewertete), und 7 Tage lang nicht im known-Set -> der nächste Scan bewertet neu. Der Scorer echot den ephemeren Per-Run-Index i (nicht external_id -> keine Cross-Quellen-Kollision im Mapping). Es werden ALLE neuen Postings via career.fn_record_job_match recorded (Dedup verhindert künftiges Re-Scoring; UPSERT-Key (source, external_id, person_id)). surface=true nur für die Top max_per_run (>= Schwelle) GLOBAL über alle Quellen + GENAU 1 Serendipity (höchstes UNTER der Schwelle). Überzählige >= Schwelle sind RECORDED (kein stiller Verlust) -> der Advisor zeigt sie via read_job_matches (career.fn_read_job_matches). Fehlt ein Score -> Default 1. source/board/external_id/person_id/chat_id werden durch die Kette gefädelt, weil der Record-Postgres-Node das Item ersetzt.' 340 620
 
     $stCard = Build-Sticky 'Treffer-Karte (Feedback-Loop, per-Person)' @(1300, -300) `
         'Send card = Sub agent.career.sub_send_job_card je Treffer an die EIGENE chat_id (Texte in der Sprache der Person)' `

@@ -552,7 +552,7 @@
     "_comment": "Textkatalog Phase A (gc08/gc09): neue Person ohne Sprache (die Knopf-Karte folgt), Freitext-Fakt woertlich.",
     "match": "Meine Schwiegermutter Mi-ran Kim",
     "calls": [
-      { "tool": "tool_set_household_facts", "args": { "persons": "[{\"person_id\":\"miran\",\"first_name\":\"Mi-ran\",\"last_name\":\"Kim\",\"birth_date\":\"1958-02-03\",\"role\":\"partner\"}]" } }
+      { "tool": "tool_set_household_facts", "args": { "persons": "[{\"first_name\":\"Mi-ran\",\"last_name\":\"Kim\",\"birth_date\":\"1958-02-03\",\"role\":\"partner\"}]" } }
     ],
     "final": "Haushalt gespeichert."
   },
@@ -622,14 +622,14 @@
     "_comment": "CAREER-ADVISOR (Anthropic/Opus, WS-1). Lauf: mock_route_test.ps1 -TargetWorkflow agent.career_advisor -WebhookPath career-test -CasesFile tests\\agent\\career\\career_cases.json (Default tool_* erkennt alle career-Tools; -WriteTools nur zur Verengung). Voraussetzung: Core-Onboarding aufgeloest (Core-first-Gate VOR dem LLM; KEIN feature.onboarding_gate fuer career). Pflicht-$fromAI: tool_set_profile_facts{facts}; tool_save_plan_section{section_key,section_content}; tool_extract_cv{file_id} (WS-1b, read-only CV-Vision). cc03/cc04 sind NULL-Cases -> kein Szenario. tool_publish_plan ist nur zur Erkennung (kein Case erwartet es) -> kein Szenario.",
     "match": "aktueller Titel ist Senior IT-Projektmanager",
     "calls": [
-      { "tool": "tool_set_profile_facts", "args": { "facts": "{\"current_title\":\"Senior IT-Projektmanager\",\"industry\":\"Energiewirtschaft\",\"experience_years\":12}" } }
+      { "tool": "tool_set_profile_facts", "args": { "facts": "{\"current_title\":\"Senior IT-Projektmanager\",\"industry\":\"Energiewirtschaft\",\"career_start_date\":\"-12 years\"}" } }
     ],
     "final": "Karriere-Profil aktualisiert."
   },
   {
     "match": "Speichere die Ziel-Sektion jetzt in den Karriereplan",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "section_key": "targets", "section_content": "Zielrolle Scrum Master, Zielbranche IT, Umstieg in 2 Jahren, Zielort Hamburg, Suchradius 50 km, Vollzeit.", "section_data": "{\"target_roles\":[{\"title\":\"Scrum Master\"}],\"target_industries\":[\"IT\"],\"timeline_years\":2,\"target_locations\":[\"Hamburg\"],\"search_radius_km\":50}" } }
+      { "tool": "tool_save_plan_section", "args": { "section_key": "targets", "section_content": "Zielrolle Scrum Master, Zielbranche IT, Umstieg in 2 Jahren, Zielort Hamburg, Suchradius 50 km, Vollzeit.", "section_data": "{\"target_roles\":[{\"title\":\"Scrum Master\"}],\"target_industries\":[\"IT\"],\"target_date\":\"+2 years\",\"target_locations\":[\"Hamburg\"],\"search_radius_km\":50}" } }
     ],
     "final": "Ziel-Sektion gespeichert."
   },
@@ -800,6 +800,14 @@
       { "tool": "tool_create_case", "args": { "subject_person": "Lena", "case_type": "death", "event_date": "2026-10-15", "bundesland": "bayern", "employed": "true", "has_will": "true" } }
     ],
     "final": "Todesfall angelegt, hier die ersten Schritte."
+  },
+  {
+    "_comment": "WP3 estate (es18): relatives Todesdatum roh (event_date yesterday) - die DB rechnet. Match auf 'Oeffne bitte sofort den Todesfall'.",
+    "match": "Oeffne bitte sofort den Todesfall",
+    "calls": [
+      { "tool": "tool_create_case", "args": { "subject_person": "Lena", "case_type": "death", "event_date": "yesterday", "bundesland": "hessen", "employed": "true" } }
+    ],
+    "final": "Todesfall angelegt, hier der erste Schritt."
   },
   {
     "_comment": "WS-5 estate (es16): export_emergency_binder (gegateter Read-Egress, owner_info Break-Glass). KEINE Pflicht-$fromAI (mask_sensitive optional -> args leer). Match auf 'Notfallmappe als Dokument'.",

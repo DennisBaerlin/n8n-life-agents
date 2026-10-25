@@ -45,9 +45,9 @@ function Build-EstateCreateStoragePlace {
         (New-HitlLine 'estate.label.kind'        "$S.kind" -Kind enum -Enum 'estate.enum.storage_kind')
         (New-HitlLine 'core.label.person'        "$RP.full_name" -If "$RP.full_name")
         (New-HitlLine 'core.label.person'        "'estate.value.household'" -Kind key -If "!$RP.full_name")
-        (New-HitlLine 'estate.label.location'    "$S.location")
-        (New-HitlLine 'estate.label.access_hint' "$S.access_hint")
-        (New-HitlLine 'estate.label.notes'       "$S.notes")
+        (New-HitlLine 'estate.label.location'    "$S.location" -OmitEmpty)
+        (New-HitlLine 'estate.label.access_hint' "$S.access_hint" -OmitEmpty)
+        (New-HitlLine 'estate.label.notes'       "$S.notes" -OmitEmpty)
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

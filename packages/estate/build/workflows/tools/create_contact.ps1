@@ -46,13 +46,13 @@ function Build-EstateCreateContact {
     $summary = New-HitlSummary -Pos @(1320, 0) -Title 'estate.hitl.create_contact' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'estate.label.role'         "$S.role" -Kind enum -Enum 'estate.enum.contact_role')
         (New-HitlLine 'core.label.name'           "$S.name")
-        (New-HitlLine 'estate.label.organization' "$S.organization")
+        (New-HitlLine 'estate.label.organization' "$S.organization" -OmitEmpty)
         (New-HitlLine 'estate.label.for_person'   "$RP.full_name" -If "$RP.full_name")
         (New-HitlLine 'estate.label.for_person'   "'estate.value.household'" -Kind key -If "!$RP.full_name")
-        (New-HitlLine 'estate.label.phone'        "$S.phone")
-        (New-HitlLine 'estate.label.email'        "$S.email")
-        (New-HitlLine 'estate.label.address'      "$S.address")
-        (New-HitlLine 'estate.label.notes'        "$S.notes")
+        (New-HitlLine 'estate.label.phone'        "$S.phone" -OmitEmpty)
+        (New-HitlLine 'estate.label.email'        "$S.email" -OmitEmpty)
+        (New-HitlLine 'estate.label.address'      "$S.address" -OmitEmpty)
+        (New-HitlLine 'estate.label.notes'        "$S.notes" -OmitEmpty)
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

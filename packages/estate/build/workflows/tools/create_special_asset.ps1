@@ -44,7 +44,7 @@ function Build-EstateCreateSpecialAsset {
         (New-HitlLine 'core.label.description' "$S.description")
         (New-HitlLine 'core.label.person'      "$RP.full_name" -If "$RP.full_name")
         (New-HitlLine 'core.label.person'      "'estate.value.household'" -Kind key -If "!$RP.full_name")
-        (New-HitlLine 'estate.label.notes'     "$S.notes")
+        (New-HitlLine 'estate.label.notes'     "$S.notes" -OmitEmpty)
         (New-HitlNote -Key 'estate.note.special_asset_legal')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `

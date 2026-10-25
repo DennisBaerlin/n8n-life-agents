@@ -2081,7 +2081,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_set_funeral_preferences",
-                                         "description":  "Record or update the funeral preferences of ONE household member. Partial update. has_prepaid_contract only changes when you explicitly pass true or false (otherwise it stays unknown).",
+                                         "description":  "Record or update the funeral preferences of ONE household member. Partial update. has_prepaid_contract only changes when you explicitly pass true or false (otherwise it stays unknown); a named provider already means there is a prepaid contract - do not ask, the database sets it.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "YPlQ5QKka19P0vz2",
@@ -2094,7 +2094,7 @@
                                                                 "value":  {
                                                                               "person":  "={{ $fromAI(\u0027person\u0027, \u0027Household member whose wishes these are\u0027, \u0027string\u0027) }}",
                                                                               "burial_type":  "={{ $fromAI(\u0027burial_type\u0027, \u0027erdbestattung, feuerbestattung, seebestattung, baumbestattung or sonstige\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "has_prepaid_contract":  "={{ $fromAI(\u0027has_prepaid_contract\u0027, \u0027true or false (a Bestattungsvorsorgevertrag)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "has_prepaid_contract":  "={{ $fromAI(\u0027has_prepaid_contract\u0027, \u0027true or false (a Bestattungsvorsorgevertrag); empty if the user only named the provider\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "prepaid_contract_provider":  "={{ $fromAI(\u0027prepaid_contract_provider\u0027, \u0027Provider of the prepaid contract\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "wishes":  "={{ $fromAI(\u0027wishes\u0027, \u0027Free-text wishes\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.estate_advisor\u0027).item.json.chat_id }}"
@@ -2499,7 +2499,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_create_case",
-                                         "description":  "Open a guided EVENT case (a household member has DIED or become INCAPACITATED) and instantiate the deadline checklist. Use ONLY in event mode, after acknowledging the loss and gathering the facts. The DATABASE computes all legal deadlines - never invent dates. subject_person is the AFFECTED member (must be a household member and NOT you the sender). bundesland (German state) is required unless configured; if you do not have it, ask. Set the intake booleans you have clarified (tenant/employed/pension_relevant/has_will; no_poa for incapacity; abroad_or_work_accident) - they decide which tasks apply. Shows a short confirmation (task counts per phase), then instantiates.",
+                                         "description":  "Open a guided EVENT case (a household member has DIED or become INCAPACITATED) and instantiate the deadline checklist. Use ONLY in event mode, after acknowledging the loss and gathering the facts. The DATABASE computes all legal deadlines - never invent dates. subject_person is the AFFECTED member (must be a household member and NOT you the sender). bundesland (German state) is required unless configured; if you do not have it, ask. The database DERIVES the intake facts from the register (will, Vorsorgevollmacht, employer, pension number, landlord) - pass an intake value ONLY if the user stated it (true or false); leave it empty otherwise, never ask for what the register already shows. The result lists unknown_flags: ask about those ONCE, together, then correct with tool_set_case. Shows a short confirmation (task counts per phase, what applies), then instantiates.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "UKFpdCjOZwfTJL6x",
@@ -2512,15 +2512,15 @@
                                                                 "value":  {
                                                                               "subject_person":  "={{ $fromAI(\u0027subject_person\u0027, \u0027The affected household member (the deceased or incapacitated person; a first name is fine). NOT you.\u0027, \u0027string\u0027) }}",
                                                                               "case_type":  "={{ $fromAI(\u0027case_type\u0027, \u0027death (a member died) or incapacity (Vorsorgefall/Pflegefall - a member cannot act for themselves)\u0027, \u0027string\u0027) }}",
-                                                                              "event_date":  "={{ $fromAI(\u0027event_date\u0027, \u0027Date of death or onset of incapacity (YYYY-MM-DD), not in the future\u0027, \u0027string\u0027) }}",
-                                                                              "knowledge_date":  "={{ $fromAI(\u0027knowledge_date\u0027, \u0027Date the household learned of it (YYYY-MM-DD); leave empty if same as event_date\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "event_date":  "={{ $fromAI(\u0027event_date\u0027, \u0027Date of death or onset of incapacity: YYYY-MM-DD, or relative to today as the user said it (yesterday, -3 days, last friday) - never compute the date yourself\u0027, \u0027string\u0027) }}",
+                                                                              "knowledge_date":  "={{ $fromAI(\u0027knowledge_date\u0027, \u0027Date the household learned of it: YYYY-MM-DD or relative (yesterday, -2 days); leave empty if same as event_date\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "bundesland":  "={{ $fromAI(\u0027bundesland\u0027, \u0027German state slug for deadline/holiday calculation: bayern, nordrhein_westfalen, berlin, hessen, sachsen, ... Leave empty ONLY if it is configured.\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "tenant":  "={{ $fromAI(\u0027tenant\u0027, \u0027true if the affected person rented a home (tenancy tasks)\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "employed":  "={{ $fromAI(\u0027employed\u0027, \u0027true if the affected person was employed\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "pension_relevant":  "={{ $fromAI(\u0027pension_relevant\u0027, \u0027true if a statutory pension is involved (survivor pension / Sterbevierteljahr)\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "has_will":  "={{ $fromAI(\u0027has_will\u0027, \u0027true if a will (Testament) exists\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "no_poa":  "={{ $fromAI(\u0027no_poa\u0027, \u0027incapacity only: true if there is NO Vorsorgevollmacht (a Betreuung must be arranged)\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "abroad_or_work_accident":  "={{ $fromAI(\u0027abroad_or_work_accident\u0027, \u0027true if death abroad or a work accident (consulate / Berufsgenossenschaft)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "tenant":  "={{ $fromAI(\u0027tenant\u0027, \u0027true or false only if the user said whether the affected person rented a home; empty = derive from the register\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "employed":  "={{ $fromAI(\u0027employed\u0027, \u0027true or false only if the user said whether the affected person was employed; empty = derive from the register\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "pension_relevant":  "={{ $fromAI(\u0027pension_relevant\u0027, \u0027true or false only if the user said whether a statutory pension is involved; empty = derive from the register\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "has_will":  "={{ $fromAI(\u0027has_will\u0027, \u0027true or false only if the user said whether a will (Testament) exists; empty = derive from the register\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "no_poa":  "={{ $fromAI(\u0027no_poa\u0027, \u0027incapacity only: true if the user said there is NO Vorsorgevollmacht, false if there is one; empty = derive from the register\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "abroad_or_work_accident":  "={{ $fromAI(\u0027abroad_or_work_accident\u0027, \u0027true or false: death abroad or a work accident (consulate / Berufsgenossenschaft); empty if not mentioned\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.estate_advisor\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -2664,7 +2664,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_set_case",
-                                         "description":  "Correct or extend an OPEN event case: change the knowledge date or the German state, or ADD intake facts you learned later (e.g. the person was also a tenant). The database recomputes deadlines and pulls in newly-applicable tasks; existing progress is kept. Only true booleans are added (this never removes a fact). Identify the case by case_id (find it via a SELECT on estate.cases).",
+                                         "description":  "Correct or extend an OPEN event case: change the knowledge date or the German state, or correct intake facts (true = applies, false = does not apply, register = forget the earlier statement and use the register again). The database recomputes deadlines and re-checks the checklist; steps the user finished or marked as not applicable stay as they are. The result case_status tells you if the case is now complete. Identify the case by case_id (find it via a SELECT on estate.cases).",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "RSmaDzykyn4i0xyU",
@@ -2676,14 +2676,14 @@
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
                                                                               "case_id":  "={{ $fromAI(\u0027case_id\u0027, \u0027The id of the open case (from estate.cases)\u0027, \u0027string\u0027) }}",
-                                                                              "knowledge_date":  "={{ $fromAI(\u0027knowledge_date\u0027, \u0027New knowledge date (YYYY-MM-DD); empty to leave unchanged\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "knowledge_date":  "={{ $fromAI(\u0027knowledge_date\u0027, \u0027New knowledge date: YYYY-MM-DD or relative (yesterday, -2 days); empty to leave unchanged\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "bundesland":  "={{ $fromAI(\u0027bundesland\u0027, \u0027New German state slug; empty to leave unchanged\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "tenant":  "={{ $fromAI(\u0027tenant\u0027, \u0027true to add: the affected person rented a home\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "employed":  "={{ $fromAI(\u0027employed\u0027, \u0027true to add: the affected person was employed\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "pension_relevant":  "={{ $fromAI(\u0027pension_relevant\u0027, \u0027true to add: statutory pension involved\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "has_will":  "={{ $fromAI(\u0027has_will\u0027, \u0027true to add: a will exists\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "no_poa":  "={{ $fromAI(\u0027no_poa\u0027, \u0027true to add (incapacity): no Vorsorgevollmacht\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "abroad_or_work_accident":  "={{ $fromAI(\u0027abroad_or_work_accident\u0027, \u0027true to add: death abroad or work accident\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "tenant":  "={{ $fromAI(\u0027tenant\u0027, \u0027true / false / register (forget the statement); empty = unchanged. The affected person rented a home\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "employed":  "={{ $fromAI(\u0027employed\u0027, \u0027true / false / register; empty = unchanged. The affected person was employed\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "pension_relevant":  "={{ $fromAI(\u0027pension_relevant\u0027, \u0027true / false / register; empty = unchanged. A statutory pension is involved\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "has_will":  "={{ $fromAI(\u0027has_will\u0027, \u0027true / false / register; empty = unchanged. A will exists\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "no_poa":  "={{ $fromAI(\u0027no_poa\u0027, \u0027true / false / register; empty = unchanged. Incapacity: there is NO Vorsorgevollmacht\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "abroad_or_work_accident":  "={{ $fromAI(\u0027abroad_or_work_accident\u0027, \u0027true / false / register; empty = unchanged. Death abroad or work accident\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.estate_advisor\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -2943,7 +2943,7 @@
                                                                               "title":  "={{ $fromAI(\u0027title\u0027, \u0027Short task title (German, shown to the user)\u0027, \u0027string\u0027) }}",
                                                                               "phase":  "={{ $fromAI(\u0027phase\u0027, \u0027immediate, first_week, first_month or later (default first_week)\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "detail":  "={{ $fromAI(\u0027detail\u0027, \u0027Optional detail/explanation\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "due_date":  "={{ $fromAI(\u0027due_date\u0027, \u0027Optional due date (YYYY-MM-DD)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "due_date":  "={{ $fromAI(\u0027due_date\u0027, \u0027Optional due date: YYYY-MM-DD or relative as the user said it (in 3 days, next friday) - never compute the date yourself\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.estate_advisor\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [

@@ -301,11 +301,11 @@ function Build-AgentEstateAdvisor {
         ) $null @(-336, 720) -StartNode $START_NODE
 
     $nToolSetFuneralPreferences = New-AdvisorToolNode 'tool_set_funeral_preferences' 'agent.estate.tool_set_funeral_preferences' `
-        'Record or update the funeral preferences of ONE household member. Partial update. has_prepaid_contract only changes when you explicitly pass true or false (otherwise it stays unknown).' `
+        'Record or update the funeral preferences of ONE household member. Partial update. has_prepaid_contract only changes when you explicitly pass true or false (otherwise it stays unknown); a named provider already means there is a prepaid contract - do not ask, the database sets it.' `
         @(
             ,@('person', 'Household member whose wishes these are', 'string')
             ,@('burial_type', 'erdbestattung, feuerbestattung, seebestattung, baumbestattung or sonstige', 'string', '')
-            ,@('has_prepaid_contract', 'true or false (a Bestattungsvorsorgevertrag)', 'string', '')
+            ,@('has_prepaid_contract', 'true or false (a Bestattungsvorsorgevertrag); empty if the user only named the provider', 'string', '')
             ,@('prepaid_contract_provider', 'Provider of the prepaid contract', 'string', '')
             ,@('wishes', 'Free-text wishes', 'string', '')
         ) $null @(-176, 720) -StartNode $START_NODE
@@ -346,36 +346,36 @@ function Build-AgentEstateAdvisor {
 
     # =====================================================================================
     # WS-3 EREIGNISFALL-TOOLS (Todesfall/Vorsorgefall). Nur im EVENT-Modus. Die Fristen rechnet die DB.
-    # Vor create_case IMMER die Sonderfaelle erfragen (die Intake-Booleans steuern, welche Tasks entstehen).
+    # WP3: die Intake-Merkmale leitet die DB aus dem Register ab; erfragt wird nur, was sie nicht weiss (unknown_flags).
     # =====================================================================================
     $nToolCreateCase = New-AdvisorToolNode 'tool_create_case' 'agent.estate.tool_create_case' `
-        'Open a guided EVENT case (a household member has DIED or become INCAPACITATED) and instantiate the deadline checklist. Use ONLY in event mode, after acknowledging the loss and gathering the facts. The DATABASE computes all legal deadlines - never invent dates. subject_person is the AFFECTED member (must be a household member and NOT you the sender). bundesland (German state) is required unless configured; if you do not have it, ask. Set the intake booleans you have clarified (tenant/employed/pension_relevant/has_will; no_poa for incapacity; abroad_or_work_accident) - they decide which tasks apply. Shows a short confirmation (task counts per phase), then instantiates.' `
+        'Open a guided EVENT case (a household member has DIED or become INCAPACITATED) and instantiate the deadline checklist. Use ONLY in event mode, after acknowledging the loss and gathering the facts. The DATABASE computes all legal deadlines - never invent dates. subject_person is the AFFECTED member (must be a household member and NOT you the sender). bundesland (German state) is required unless configured; if you do not have it, ask. The database DERIVES the intake facts from the register (will, Vorsorgevollmacht, employer, pension number, landlord) - pass an intake value ONLY if the user stated it (true or false); leave it empty otherwise, never ask for what the register already shows. The result lists unknown_flags: ask about those ONCE, together, then correct with tool_set_case. Shows a short confirmation (task counts per phase, what applies), then instantiates.' `
         @(
             ,@('subject_person', 'The affected household member (the deceased or incapacitated person; a first name is fine). NOT you.', 'string')
             ,@('case_type', 'death (a member died) or incapacity (Vorsorgefall/Pflegefall - a member cannot act for themselves)', 'string')
-            ,@('event_date', 'Date of death or onset of incapacity (YYYY-MM-DD), not in the future', 'string')
-            ,@('knowledge_date', 'Date the household learned of it (YYYY-MM-DD); leave empty if same as event_date', 'string', '')
+            ,@('event_date', 'Date of death or onset of incapacity: YYYY-MM-DD, or relative to today as the user said it (yesterday, -3 days, last friday) - never compute the date yourself', 'string')
+            ,@('knowledge_date', 'Date the household learned of it: YYYY-MM-DD or relative (yesterday, -2 days); leave empty if same as event_date', 'string', '')
             ,@('bundesland', 'German state slug for deadline/holiday calculation: bayern, nordrhein_westfalen, berlin, hessen, sachsen, ... Leave empty ONLY if it is configured.', 'string', '')
-            ,@('tenant', 'true if the affected person rented a home (tenancy tasks)', 'string', '')
-            ,@('employed', 'true if the affected person was employed', 'string', '')
-            ,@('pension_relevant', 'true if a statutory pension is involved (survivor pension / Sterbevierteljahr)', 'string', '')
-            ,@('has_will', 'true if a will (Testament) exists', 'string', '')
-            ,@('no_poa', 'incapacity only: true if there is NO Vorsorgevollmacht (a Betreuung must be arranged)', 'string', '')
-            ,@('abroad_or_work_accident', 'true if death abroad or a work accident (consulate / Berufsgenossenschaft)', 'string', '')
+            ,@('tenant', 'true or false only if the user said whether the affected person rented a home; empty = derive from the register', 'string', '')
+            ,@('employed', 'true or false only if the user said whether the affected person was employed; empty = derive from the register', 'string', '')
+            ,@('pension_relevant', 'true or false only if the user said whether a statutory pension is involved; empty = derive from the register', 'string', '')
+            ,@('has_will', 'true or false only if the user said whether a will (Testament) exists; empty = derive from the register', 'string', '')
+            ,@('no_poa', 'incapacity only: true if the user said there is NO Vorsorgevollmacht, false if there is one; empty = derive from the register', 'string', '')
+            ,@('abroad_or_work_accident', 'true or false: death abroad or a work accident (consulate / Berufsgenossenschaft); empty if not mentioned', 'string', '')
         ) $null @(-336, 880) -StartNode $START_NODE
 
     $nToolSetCase = New-AdvisorToolNode 'tool_set_case' 'agent.estate.tool_set_case' `
-        'Correct or extend an OPEN event case: change the knowledge date or the German state, or ADD intake facts you learned later (e.g. the person was also a tenant). The database recomputes deadlines and pulls in newly-applicable tasks; existing progress is kept. Only true booleans are added (this never removes a fact). Identify the case by case_id (find it via a SELECT on estate.cases).' `
+        'Correct or extend an OPEN event case: change the knowledge date or the German state, or correct intake facts (true = applies, false = does not apply, register = forget the earlier statement and use the register again). The database recomputes deadlines and re-checks the checklist; steps the user finished or marked as not applicable stay as they are. The result case_status tells you if the case is now complete. Identify the case by case_id (find it via a SELECT on estate.cases).' `
         @(
             ,@('case_id', 'The id of the open case (from estate.cases)', 'string')
-            ,@('knowledge_date', 'New knowledge date (YYYY-MM-DD); empty to leave unchanged', 'string', '')
+            ,@('knowledge_date', 'New knowledge date: YYYY-MM-DD or relative (yesterday, -2 days); empty to leave unchanged', 'string', '')
             ,@('bundesland', 'New German state slug; empty to leave unchanged', 'string', '')
-            ,@('tenant', 'true to add: the affected person rented a home', 'string', '')
-            ,@('employed', 'true to add: the affected person was employed', 'string', '')
-            ,@('pension_relevant', 'true to add: statutory pension involved', 'string', '')
-            ,@('has_will', 'true to add: a will exists', 'string', '')
-            ,@('no_poa', 'true to add (incapacity): no Vorsorgevollmacht', 'string', '')
-            ,@('abroad_or_work_accident', 'true to add: death abroad or work accident', 'string', '')
+            ,@('tenant', 'true / false / register (forget the statement); empty = unchanged. The affected person rented a home', 'string', '')
+            ,@('employed', 'true / false / register; empty = unchanged. The affected person was employed', 'string', '')
+            ,@('pension_relevant', 'true / false / register; empty = unchanged. A statutory pension is involved', 'string', '')
+            ,@('has_will', 'true / false / register; empty = unchanged. A will exists', 'string', '')
+            ,@('no_poa', 'true / false / register; empty = unchanged. Incapacity: there is NO Vorsorgevollmacht', 'string', '')
+            ,@('abroad_or_work_accident', 'true / false / register; empty = unchanged. Death abroad or work accident', 'string', '')
         ) $null @(-176, 880) -StartNode $START_NODE
 
     $nToolCancelCase = New-AdvisorToolNode 'tool_cancel_case' 'agent.estate.tool_cancel_case' `
@@ -398,7 +398,7 @@ function Build-AgentEstateAdvisor {
             ,@('title', 'Short task title (German, shown to the user)', 'string')
             ,@('phase', 'immediate, first_week, first_month or later (default first_week)', 'string', '')
             ,@('detail', 'Optional detail/explanation', 'string', '')
-            ,@('due_date', 'Optional due date (YYYY-MM-DD)', 'string', '')
+            ,@('due_date', 'Optional due date: YYYY-MM-DD or relative as the user said it (in 3 days, next friday) - never compute the date yourself', 'string', '')
         ) $null @(304, 880) -StartNode $START_NODE
 
     # =====================================================================================

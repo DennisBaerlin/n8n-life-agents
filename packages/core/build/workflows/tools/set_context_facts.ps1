@@ -34,9 +34,7 @@ function New-ContextFactsToolGraph {
   const S = $('Start').item.json;
   const pre = __CTX_PREFIX__;
   const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
-  const facts = parse(S.facts, {});
-  const persons = parse(S.persons, Array.isArray(facts.persons) ? facts.persons : []);
-  const hh = parse(S.household, (facts.household && typeof facts.household === 'object') ? facts.household : {});
+  __FACTS_SOURCE__
   const ORDER = ['role', 'birth_date', 'employment_status', 'citizenships', 'language', 'persona'];
   const SKIP = ['person_id', 'first_name', 'last_name', 'as_of', '_meta'];
   const human = k => (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, ' ');
@@ -81,6 +79,15 @@ function New-ContextFactsToolGraph {
     # -Own: KEIN 'family'-Default (der Weg schreibt nie family) -> fehlt context_name, zeigt die Vorschau ehrlich '?'
     # (Titel-fallback = roher Kontextname, Labels = label_fallback).
     if ($Own) { $ctxPrefix = $ctxPrefix.Replace("context_name || 'family'", "context_name || '?'") }
+    # Fakten-Quelle der Karte: Haushalts-Weg = das von der DB aufgeloeste Objekt (Resolve dates: relative Daten wie
+    # "-3 days" -> Datum, Karte = Speicher); -Own (Stufe self, approval_lint (e): genau EIN Postgres-Node) liest die
+    # Eingabe roh, dort loest agent.fn_set_context_facts beim Speichern auf (Jahres-/Monats-Genauigkeit, kein Versatz).
+    $factsSource = if ($Own) {
+        "const facts = parse(S.facts, {});`n  const persons = Array.isArray(facts.persons) ? facts.persons : [];`n  const hh = (facts.household && typeof facts.household === 'object') ? facts.household : {};"
+    } else {
+        "const R = parse(`$('Resolve dates').item.json.facts_resolved, {});`n  const facts = (R && typeof R === 'object' && !Array.isArray(R)) ? R : {};`n  const persons = Array.isArray(facts.persons) ? facts.persons : [];`n  const hh = (facts.household && typeof facts.household === 'object') ? facts.household : {};"
+    }
+    $linesExpr = $linesExpr.Replace('__FACTS_SOURCE__', $factsSource)
     $linesExpr = $linesExpr.Replace('__CTX_PREFIX__', $ctxPrefix).Replace('__FACTS_PKG__', $FactsDisplayJson).Trim()
     $summary = New-HitlSummary -Pos @(220, 0) -Title 'core.hitl.set_context_facts' `
         -TitleParams @{ context = "{ kind: 'key', value: $($ctxPrefix.Replace('__FACTS_PKG__', $FactsDisplayJson)) + 'title', fallback: String(`$('Start').item.json.context_name || '?') }" } `
@@ -109,12 +116,25 @@ function New-ContextFactsToolGraph {
     } else {
         [ordered]@{
             context_name = '$(''Start'').item.json.context_name || ''family'''
-            facts        = (Get-GuardedJsonExpr '(o => Object.keys(o).length ? o : undefined)(Object.assign({}, $(''Start'').item.json.facts ? JSON.parse($(''Start'').item.json.facts) : {}, $(''Start'').item.json.persons ? { persons: JSON.parse($(''Start'').item.json.persons) } : {}, $(''Start'').item.json.household ? { household: JSON.parse($(''Start'').item.json.household) } : {}))')
+            # das in "Resolve dates" EINMAL aufgeloeste Objekt (Karte = Speicher); fehlt es -> undefined -> {ok:false}
+            facts        = '(x => x ? JSON.parse(x) : undefined)($(''Resolve dates'').item.json.facts_resolved)'
             content      = '$(''Start'').item.json.content || '''''
             scope        = '$(''Start'').item.json.scope || undefined'   # FEST aus der Bindung (household|per_user), nie $fromAI
             chat_id      = '$(''Start'').item.json.chat_id'   # Identitaet fuer den Permission-Backstop (NIE LLM)
         }
     }
+    # Haushalts-Weg: relative Daten ("-3 days", "last monday") VOR der Karte von der DB aufloesen lassen
+    # (core.fn_resolve_fact_dates, Genauigkeit folgt der Angabe) — die Karte zeigt und der Write schreibt dasselbe.
+    # Eingabe = dasselbe zusammengesetzte facts-Objekt wie frueher direkt im Write (kaputtes JSON -> Sentinel -> fn {ok:false}).
+    $resolve = Build-Pg 'Resolve dates' @(0, 160) `
+        "=SELECT core.fn_resolve_fact_dates((`$1::jsonb)->'facts')::text AS facts_resolved;" `
+        ([ordered]@{
+            facts = (Get-GuardedJsonExpr '(o => Object.keys(o).length ? o : undefined)(Object.assign({}, $(''Start'').item.json.facts ? JSON.parse($(''Start'').item.json.facts) : {}, $(''Start'').item.json.persons ? { persons: JSON.parse($(''Start'').item.json.persons) } : {}, $(''Start'').item.json.household ? { household: JSON.parse($(''Start'').item.json.household) } : {}))')
+        })
+    $stickyResolve = Build-Sticky 'Doc Relative Daten' @(-40, 320) `
+        'Resolve dates — die DB rechnet relative Angaben' `
+        'core.fn_resolve_fact_dates löst Werte unter *_date/since auf, die keine absoluten Daten sind ("-3 days", "last monday", "-5 years"). Genauigkeit folgt der Angabe: Jahre -> YYYY, Monate -> YYYY-MM, sonst der Tag (aus "mein Sohn ist 5" wird kein erfundener Geburtstag; der Validator verlangt dort einen Tag und lehnt ab). Karte und Write nutzen dasselbe aufgelöste Objekt, die fn löst zusätzlich auf (idempotent).' 300 300
+
     $write = Build-Pg 'Set context facts (atomic)' @(880, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'context_name' AS context_name, (r->>'created')::boolean AS created, (r->>'persons_count')::int AS persons_count, r->>'last_confirmed_at' AS last_confirmed_at, COALESCE(r->'language_missing', '[]'::jsonb) AS language_missing FROM $fnName(`$1::jsonb) AS r;" `
         $payload
@@ -188,7 +208,9 @@ function New-ContextFactsToolGraph {
         $nodes = @($trig, $summary, $gate, $ifApproved, $retCancelled, $write, $ifOk, $err, $ret, $stickyOverview, $stickyHitl)
         $conns['Write ok?'] = @{ main = @( @( E 'Return' ), @( E 'Write failed' ) ) }
     } else {
-        $nodes = @($trig, $summary, $gate, $ifApproved, $retCancelled, $write, $ifOk, $err, $ifLang, $pickItems, $sendPicker, $ret, $stickyOverview, $stickyHitl, $stickyLang)
+        $nodes = @($trig, $resolve, $summary, $gate, $ifApproved, $retCancelled, $write, $ifOk, $err, $ifLang, $pickItems, $sendPicker, $ret, $stickyOverview, $stickyHitl, $stickyLang, $stickyResolve)
+        $conns['Start']         = @{ main = @( ,@( E 'Resolve dates' ) ) }
+        $conns['Resolve dates'] = @{ main = @( ,@( E 'Build Approval Summary' ) ) }
         $conns['Write ok?'] = @{ main = @(
             @( E 'Language missing?' ),
             @( E 'Write failed' )

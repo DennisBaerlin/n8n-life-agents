@@ -26,10 +26,12 @@ function Build-SetMonitorTrigger {
 
     # Resolve + aktuelle Trigger-Config (fuer Probe-Entscheidung + Validierungs-Defaults)
     $resolve = Build-Pg 'Resolve trigger' @(360, 0) `
-        "=SELECT r.id, r.hit_count, r.candidates::text AS candidates, t.trigger_type, t.acquisition_method, t.acquisition_spec::text AS spec, t.expected_unit AS cur_unit, t.min_plausible AS cur_min, t.max_plausible AS cur_max, t.max_jump_pct AS cur_jump, t.last_value AS cur_last, t.status AS cur_status FROM agent.fn_resolve_monitor_trigger((`$1::jsonb)->>'label', (`$1::jsonb)->>'domain', false) AS r LEFT JOIN agent.monitor_triggers t ON t.id = r.id;" `
+        "=SELECT r.id, r.hit_count, r.candidates::text AS candidates, t.trigger_type, t.acquisition_method, t.acquisition_spec::text AS spec, t.expected_unit AS cur_unit, t.min_plausible AS cur_min, t.max_plausible AS cur_max, t.max_jump_pct AS cur_jump, t.last_value AS cur_last, t.status AS cur_status, core.fn_resolve_date(NULLIF((`$1::jsonb)->>'due_date', ''))::text AS due_resolved FROM agent.fn_resolve_monitor_trigger((`$1::jsonb)->>'label', (`$1::jsonb)->>'domain', false) AS r LEFT JOIN agent.monitor_triggers t ON t.id = r.id;" `
         ([ordered]@{
-            label  = '$(''Start'').item.json.label'
-            domain = '$(''Resolve domain'').item.json.domain'
+            label    = '$(''Start'').item.json.label'
+            domain   = '$(''Resolve domain'').item.json.domain'
+            # WP3: relatives Datum ("+6 months") EINMAL hier aufloesen -> Karte und Write zeigen/schreiben dasselbe Datum
+            due_date = '$(''Start'').item.json.due_date'
         })
     $ifFound = Build-If 'Found?' @(540, 0) '={{ $json.hit_count }}' '1' 'equals' 'number'
     $errFound = Build-ToolError 'Not found' @(720, -200) `
@@ -97,7 +99,7 @@ function Build-SetMonitorTrigger {
   add(s.comparator, { label: 'core.label.comparison', kind: 'text', value: (s.comparator === 'lte' ? '<=' : '>=') });
   add(s.threshold_value, { label: 'core.label.new_threshold', kind: 'text', value: s.threshold_value });
   add(s.drawdown_pct, { label: 'core.label.new_drawdown', kind: 'tpl', value: 'core.tpl.percent', params: { pct: s.drawdown_pct } });
-  add(s.due_date, { label: 'core.label.new_due', kind: 'date', value: s.due_date });
+  add(s.due_date, { label: 'core.label.new_due', kind: 'date', value: $('Resolve trigger').item.json.due_resolved || s.due_date });
   add(s.warn_days_before, { label: 'core.label.warn_before', kind: 'tpl', value: 'core.tpl.days', params: { days: s.warn_days_before } });
   add(s.check_interval, { label: 'core.label.new_check_interval', kind: 'tpl', value: 'core.tpl.monitor_every', params: { interval: s.check_interval } });
   add(s.expected_unit, { label: 'core.label.unit', kind: 'text', value: s.expected_unit });
@@ -142,7 +144,7 @@ function Build-SetMonitorTrigger {
             comparator         = '$(''Start'').item.json.comparator'
             threshold_value    = '$(''Start'').item.json.threshold_value'
             drawdown_pct       = '$(''Start'').item.json.drawdown_pct'
-            due_date           = '$(''Start'').item.json.due_date'
+            due_date           = '($(''Resolve trigger'').item.json.due_resolved || $(''Start'').item.json.due_date)'
             warn_days_before   = '$(''Start'').item.json.warn_days_before'
             expected_unit      = '$(''Start'').item.json.expected_unit'
             min_plausible      = '$(''Start'').item.json.min_plausible'
@@ -168,7 +170,7 @@ function Build-SetMonitorTrigger {
 
     $sticky = Build-Sticky 'Doc Set Trigger' @(120, -460) `
         'Re-Probe bei Spec-Änderung + agent.fn_set_monitor_trigger (atomar)' `
-        'Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -> Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). Web-Cadence >= 12h DB-CHECK.' 320 560
+        'Neues due_date: Resolve trigger löst es per core.fn_resolve_date EINMAL auf (relativ wie +6 months erlaubt), Karte und Write nutzen genau dieses Datum; die fn lehnt ein vergangenes ab. Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -> Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). Web-Cadence >= 12h DB-CHECK.' 320 560
 
     $nodes = @($trig, $resolveDomain, $resolve, $ifFound, $errFound, $ifSpec, $ifWeb, $loadModel, $acquire,
                $shape, $probe, $ifProbeOk, $errProbe, $summary, $reqApproval, $ifApproved,

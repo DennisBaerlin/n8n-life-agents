@@ -6,7 +6,7 @@
     "chat_id": "test_cc01",
     "timeout_s": 240,
     "expected_tool": "tool_set_profile_facts",
-    "expected_behavior": "The career advisor must, after a brief confirmation, call tool_set_profile_facts with the RAW profile fields the user stated (current_title 'Senior IT-Projektmanager', industry 'Energiewirtschaft', experience_years 12). It must NOT invent a target year/age or any derived value, and must NOT call save/publish for a profile fact.",
+    "expected_behavior": "The career advisor must, after a brief confirmation, call tool_set_profile_facts with the RAW profile fields the user stated (current_title 'Senior IT-Projektmanager', industry 'Energiewirtschaft', career_start_date as the relative value the user said, e.g. -12 years). It must NOT compute a start year, years of experience, a target year/age or any other derived value, and must NOT call save/publish for a profile fact.",
     "notes": "WS-1 career: das CV-Profil (career_profile) wird vom Career-Advisor per tool_set_profile_facts (Bindung des geteilten agent.tool_set_context_facts) gepflegt (weiches/selbst-berichtetes Ist). Korrektheit der facts-Struktur deckt test_fn_set_context_facts (DB) + e2e (WS-1b)."
   },
   {
@@ -17,7 +17,7 @@
     "timeout_s": 240,
     "expected_tool": "tool_save_plan_section",
     "expected_tool_args": { "section_key": "targets" },
-    "expected_behavior": "The user explicitly confirms the FULL targets section (role Scrum Master, industry IT, timeline 2 years, location Hamburg, radius 50 km, full-time) and pre-empts further questions - the advisor must call tool_save_plan_section with section_key 'targets' and section_data carrying the raw figures (target_roles Scrum Master, target_industries IT, timeline_years 2, target_locations Hamburg). It must NOT store a derived target calendar year and must NOT keep asking before saving. domain is fixed by the binding (career), never asked from the model. Under the test the gate declines; the advisor then reports the save as cancelled/aborted, not as done.",
+    "expected_behavior": "The user explicitly confirms the FULL targets section (role Scrum Master, industry IT, timeline 2 years, location Hamburg, radius 50 km, full-time) and pre-empts further questions - the advisor must call tool_save_plan_section with section_key 'targets' and section_data carrying the raw figures (target_roles Scrum Master, target_industries IT, target_date as said e.g. +2 years, target_locations Hamburg). It must NOT compute a target calendar year itself and must NOT keep asking before saving. domain is fixed by the binding (career), never asked from the model. Under the test the gate declines; the advisor then reports the save as cancelled/aborted, not as done.",
     "notes": "WS-1 career: der Soll-Plan (career_planning) entsteht via save_plan_section/publish_plan domain=career. Nur die targets-Sektion traegt section_data; situation/path sind prosa-only. Playback-first wie ac06/ac08: die Aufgabe ist die EXPLIZITE Bestaetigung einer bereits zusammengefassten Sektion inkl. Zielort (den der WS-2 Job-Scan braucht) + 'keine weitere Rueckfrage noetig' -> der Advisor speichert sofort. Eine nackte Statement-Form ohne Ort liess ihn KORREKT nach Ort/Beschaeftigungsart fragen (playback-first-Vertrag, career_advisor_instructions) - das war der frueher fehlschlagende cc02-Wortlaut, kein Bug."
   },
   {

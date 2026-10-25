@@ -157,8 +157,19 @@
     "timeout_s": 300,
     "expected_tool": "tool_create_case",
     "expected_tool_args": { "case_type": "death", "bundesland": "bayern" },
-    "expected_behavior": "Given complete facts AND an explicit instruction to open the case, the advisor opens the death case via tool_create_case (subject Lena, case_type death, event_date 2026-10-15, bundesland bayern, plus the intake booleans it clarified). It acknowledges the loss empathetically alongside the action. The DATABASE computes every legal deadline - the advisor must NOT invent dates.",
+    "expected_behavior": "Given complete facts AND an explicit instruction to open the case, the advisor opens the death case via tool_create_case (subject Lena, case_type death, event_date 2026-10-15, bundesland bayern, plus intake values only where the user stated them - the register supplies the rest). It acknowledges the loss empathetically alongside the action. The DATABASE computes every legal deadline - the advisor must NOT invent dates.",
     "notes": "WS-3 estate: create_case routing golden (owner_info Break-Glass, new-entity verb). Fakten-komplett + explizite Anweisung -> kein Grief-UX-Konflikt (Anteilnahme begleitet den Tool-Call). Die anderen Fall-Tools (set_/cancel_case, set_/create_case_task) operieren auf BESTEHENDEM Fall-State -> kein Routing-Golden erzwungen (Tier-Wahl-Regel); Abdeckung = test_fn_* (DB) + e2e. Todesdatum bewusst nah am Lauf (2026-10-15): bei einem Jahre zurueckliegenden Datum sind alle Fristen laengst abgelaufen und der Agent klaert das zuerst, statt den Fall anzulegen -> spaetestens nach ~2 Monaten in task + expected_tool_args + scenarios.json (bzw. ee05) nachziehen."
+  },
+  {
+    "id": "es18",
+    "name": "create_case: relatives Todesdatum (gestern) roh an die DB",
+    "task": "Meine Partnerin Lena ist gestern in Hessen gestorben. Sie war angestellt, sonst gibt es keine Sonderfaelle. Oeffne bitte sofort den Todesfall und sag mir den ersten Schritt.",
+    "chat_id": "test_es18",
+    "timeout_s": 300,
+    "expected_tool": "tool_create_case",
+    "expected_tool_args": { "case_type": "death", "bundesland": "hessen" },
+    "expected_behavior": "The advisor opens the death case via tool_create_case and passes the date of death as the user said it (relative, e.g. yesterday or -1 days) - it must NOT compute a calendar date itself. It passes employed only because the user stated it and does not ask for facts the register derives (will, Vorsorgevollmacht, pension, tenancy). It acknowledges the loss briefly.",
+    "notes": "WP3: relative Daten rechnet die DB (core.fn_resolve_date in estate.fn_preview_case), die Preview loest einmal auf und der Write uebernimmt genau dieses Datum. Das relative Datum altert nicht -> kein Nachziehen wie bei es15."
   },
   {
     "id": "es16",

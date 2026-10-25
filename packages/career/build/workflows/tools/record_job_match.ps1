@@ -18,9 +18,9 @@ function Build-RecordJobMatch {
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(420, 0) -Title 'career.hitl.record_job_match' -Lines @(
         (New-HitlLine 'career.label.job_title' "$S.title")
-        (New-HitlLine 'career.label.employer'  "$S.employer")
-        (New-HitlLine 'career.label.location'  "$S.location")
-        (New-HitlLine 'career.label.link'      "$S.url")
+        (New-HitlLine 'career.label.employer'  "$S.employer" -OmitEmpty)
+        (New-HitlLine 'career.label.location'  "$S.location" -OmitEmpty)
+        (New-HitlLine 'career.label.link'      "$S.url" -OmitEmpty)
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(640, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

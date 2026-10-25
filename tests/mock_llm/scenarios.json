@@ -206,7 +206,7 @@
   {
     "match": "neue Haftpflichtversicherung bei der HUK-COBURG",
     "calls": [
-      { "tool": "tool_create_insurance", "args": { "name": "Haftpflichtversicherung HUK-COBURG", "policyholder_person": "Lena Beispiel", "annual_premium": 89, "schedule_unit": "year", "valid_from": "2026-01-01", "first_payment_date": "2026-01-15", "debit_account_name": "DKB Giro", "policy_number": "HUK-9876" } }
+      { "tool": "tool_create_insurance", "args": { "name": "Haftpflichtversicherung HUK-COBURG", "policyholder_person": "Lena Beispiel", "annual_premium": "89", "schedule_unit": "year", "valid_from": "2026-01-01", "first_payment_date": "2026-01-15", "debit_account_name": "DKB Giro", "policy_number": "HUK-9876" } }
     ],
     "final": "Versicherung angelegt."
   },
@@ -277,7 +277,7 @@
     "_comment": "tc58 Versicherung fuer Kind per Vorname.",
     "match": "Lege eine Unfallversicherung 'Kinder-Unfall Lisa'",
     "calls": [
-      { "tool": "tool_create_insurance", "args": { "name": "Kinder-Unfall Lisa", "insurance_company": "Allianz", "annual_premium": 96, "first_payment_date": "2026-12-01", "debit_account_name": "DKB Giro", "policyholder_person": "Lisa" } }
+      { "tool": "tool_create_insurance", "args": { "name": "Kinder-Unfall Lisa", "insurance_company": "Allianz", "annual_premium": "96", "first_payment_date": "2026-12-01", "debit_account_name": "DKB Giro", "policyholder_person": "Lisa" } }
     ],
     "final": "Versicherung angelegt."
   },
@@ -323,7 +323,7 @@
   {
     "match": "monatliche Kreditrate für meinen Baufinanzierungs-Kredit",
     "calls": [
-      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung ING", "payment_amount": 1200, "payment_date": "2026-06-16" } }
+      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung ING", "payment_amount": "1200", "payment_date": "2026-06-16" } }
     ],
     "final": "Kreditrate gebucht."
   },

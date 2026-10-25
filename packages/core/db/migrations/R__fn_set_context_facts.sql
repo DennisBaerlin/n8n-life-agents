@@ -20,6 +20,14 @@
 --     nur die Keys des Patches, nie das Gesamtdokument (gespeicherte JSON-nulls bleiben gueltig).
 --     Abgewiesen ({ok:false}): persons:null / household:null (Massen-Loeschung — Person entfernen ist
 --     fn_remove_household_person), person_id:null/fehlt, ein _meta-Key (System-Stempel), falsche Typen.
+--   CHAT-PFAD (chat_id gesetzt = das LLM-Tool schreibt; WP3 "Slugs und Stempel vergibt die fn"):
+--     * as_of je Person/household stempelt IMMER die fn (ein mitgeschicktes as_of wird ueberschrieben).
+--     * family: person_id darf fehlen. Treffer per Vor- + Nachname (+ Geburtsdatum, falls genannt) auf GENAU eine
+--       Person -> Merge in diese; kein Treffer + vollstaendiger Neu-Datensatz (first/last/birth_date/role) -> neue
+--       Person mit Slug von agent.fn_person_slug; mehrdeutig/unvollstaendig -> {ok:false}. Eine unbekannte
+--       person_id -> {ok:false} (keine vom LLM erfundenen Slugs).
+--     Ohne chat_id (CLI, Pairing, interne Aufrufer) gilt das bisherige Verhalten (as_of nur, wenn es fehlt).
+--   Relative Zeitangaben in *_date / since ("-12 years", "last monday") loest core.fn_resolve_fact_dates auf.
 --
 --   ZWEI ZWEIGE (Scope aus core.context_scopes; fehlt die Zeile -> household/owner_only):
 --     household (inkl. family): Gate core.fn_facts_context_allowed (family ODER registriert ∧ Paket aktiv ∧
@@ -79,6 +87,11 @@ DECLARE
     v_old_content TEXT;
     v_learned    TEXT;
     v_split      RECORD;
+    -- Chat-Pfad = das LLM-Tool schreibt (chat_id gesetzt). Nur dort: as_of stempelt immer die fn, neue family-
+    -- Personen bekommen den Slug von der fn (CLI/Pairing/Tests ohne chat_id bleiben unveraendert).
+    v_chat_path  BOOLEAN := NULLIF(trim(COALESCE(p->>'chat_id', '')), '') IS NOT NULL;
+    v_match      TEXT;
+    v_cnt        INT;
 BEGIN
     IF v_name IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'context_name is required');
@@ -117,7 +130,11 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', 'persons must be an array of partial person objects');
         END IF;
         FOR v_e IN SELECT * FROM jsonb_array_elements(v_in->'persons') LOOP
-            IF jsonb_typeof(v_e) <> 'object' OR jsonb_typeof(v_e->'person_id') IS DISTINCT FROM 'string' THEN
+            -- Ausnahme: family auf dem Chat-Pfad darf person_id WEGLASSEN (neue Person -> Slug von der fn, bekannte
+            -- Person -> Treffer per Name); ein explizites person_id:null bleibt abgelehnt.
+            IF jsonb_typeof(v_e) <> 'object'
+               OR (jsonb_typeof(v_e->'person_id') IS DISTINCT FROM 'string'
+                   AND NOT (v_name = 'family' AND v_chat_path AND NOT (v_e ? 'person_id'))) THEN
                 RETURN jsonb_build_object('ok', false, 'reason', 'each persons entry must be an object with a person_id');
             END IF;
         END LOOP;
@@ -130,6 +147,8 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', 'household must be a JSON object');
         END IF;
     END IF;
+    -- Relative Zeitangaben (*_date / since: "-12 years", "last monday") rechnet die DB, Genauigkeit folgt der Angabe.
+    v_in := core.fn_resolve_fact_dates(v_in);
 
     -- ---- Scope + Permission (registry-getrieben; family fest household/owner_only) ----
     SELECT cs.scope, cs.write_permission INTO v_scope, v_perm
@@ -209,7 +228,37 @@ BEGIN
             IF v_e ? 'language' AND agent.fn_normalize_language(v_e->>'language') IS NOT NULL THEN
                 v_e := v_e || jsonb_build_object('language', agent.fn_normalize_language(v_e->>'language'));
             END IF;
-            IF NOT (v_e ? 'as_of') THEN                   -- ... dann stempeln (as_of:null -> frisch)
+            -- family/Chat-Pfad: die person_id vergibt bzw. findet die fn, nie das LLM.
+            IF NOT (v_e ? 'person_id') THEN
+                SELECT count(*), min(pp->>'person_id') INTO v_cnt, v_match
+                  FROM jsonb_array_elements(v_persons) pp
+                 WHERE lower(trim(pp->>'first_name')) = lower(trim(v_e->>'first_name'))
+                   AND lower(trim(pp->>'last_name'))  = lower(trim(v_e->>'last_name'))
+                   AND (NOT (v_e ? 'birth_date') OR pp->>'birth_date' = v_e->>'birth_date');
+                IF v_cnt = 1 THEN
+                    v_e := v_e || jsonb_build_object('person_id', v_match);       -- bekannte Person (Name [+ Geburtsdatum])
+                ELSIF v_cnt > 1 THEN
+                    RETURN jsonb_build_object('ok', false, 'reason', format(
+                        'several household members are called "%s %s" — pass the person_id of the one you mean',
+                        v_e->>'first_name', v_e->>'last_name'));
+                ELSIF COALESCE(trim(v_e->>'first_name'), '') <> '' AND COALESCE(trim(v_e->>'last_name'), '') <> ''
+                      AND v_e ? 'birth_date' AND v_e ? 'role' THEN
+                    v_e := v_e || jsonb_build_object('person_id', agent.fn_person_slug(v_e->>'first_name',
+                        ARRAY(SELECT pp->>'person_id' FROM jsonb_array_elements(v_persons) pp)));
+                ELSE
+                    RETURN jsonb_build_object('ok', false, 'reason', format(
+                        'household member "%s %s" not found — pass their person_id to update them, or first_name, '
+                        || 'last_name, birth_date and role to add a new member',
+                        COALESCE(v_e->>'first_name', '?'), COALESCE(v_e->>'last_name', '?')));
+                END IF;
+            ELSIF v_name = 'family' AND v_chat_path
+                  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_persons) pp
+                                   WHERE pp->>'person_id' = v_e->>'person_id') THEN
+                RETURN jsonb_build_object('ok', false, 'reason', format(
+                    'unknown person_id "%s" — omit person_id to add a new household member (the system assigns it)',
+                    v_e->>'person_id'));
+            END IF;
+            IF v_chat_path OR NOT (v_e ? 'as_of') THEN    -- ... dann stempeln (Chat-Pfad immer; as_of:null -> frisch)
                 v_e := v_e || jsonb_build_object('as_of', v_today);
             END IF;
             v_nulls := array_remove(v_nulls, 'as_of');    -- der frische Stempel darf nicht wieder fallen
@@ -234,7 +283,7 @@ BEGIN
         SELECT COALESCE(array_agg(k), '{}') INTO v_nulls
         FROM jsonb_each(v_hh) AS x(k, v) WHERE jsonb_typeof(v) = 'null';
         v_hh := v_hh - v_nulls;
-        IF NOT (v_hh ? 'as_of') THEN
+        IF v_chat_path OR NOT (v_hh ? 'as_of') THEN
             v_hh := v_hh || jsonb_build_object('as_of', v_today);
         END IF;
         v_nulls := array_remove(v_nulls, 'as_of');

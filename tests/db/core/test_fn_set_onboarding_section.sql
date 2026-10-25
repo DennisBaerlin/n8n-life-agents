@@ -23,7 +23,7 @@ BEGIN
   ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata, content = excluded.content;
   INSERT INTO finance.onboarding_state (section_key, ord, label) VALUES ('__sos_sec__', 999, 'SOS Fixture')
   ON CONFLICT (section_key) DO NOTHING;
-  UPDATE agent.guide_onboarding_state SET status = 'completed', skipped_at = NULL WHERE section_key = 'household';
+  UPDATE agent.guide_onboarding_state SET status = 'completed' WHERE section_key = 'household';
   UPDATE finance.onboarding_state SET status = 'completed' WHERE section_key = '__sos_sec__';
 
   -- ---------- 1) Mitglied setzt den Haushalt zurueck -> owner_only, kein Write ----------

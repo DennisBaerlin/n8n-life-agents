@@ -16,8 +16,10 @@
 --   ohne acquisition_params bleibt die Spec unberuehrt -> Disable/Re-Arm/Label gehen IMMER, auch wenn das Paket
 --   der Methode gerade fehlt ("always silenceable").
 --   Cadence-Aenderung re-anker next_check_at = now; Web-Rate-Limit (>= 12h) gespiegelt.
+--   due_date: YYYY-MM-DD oder relativ ("+6 months") -> core.fn_resolve_date; ein neu gesendetes Datum in der
+--     Vergangenheit -> {ok:false}.
 --   RUECKGABE (Post-State): {ok:true, trigger_id, status, next_check_at,
---     check_interval, reference_value}.
+--     check_interval, due_date, reference_value}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_monitor_trigger(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -114,12 +116,16 @@ BEGIN
     END IF;
 
     -- due_date (nur date-Typ sinnvoll; sonst ignoriert die Typ-CHECK den Wert ohnehin)
+    -- WP3: relative Angabe ("+6 months") rechnet die DB; Vergangenheits-Check nur fuer ein neu gesendetes Datum.
     IF NULLIF(trim(COALESCE(p->>'due_date', '')), '') IS NOT NULL THEN
-        BEGIN
-            v_due := (p->>'due_date')::date;
-        EXCEPTION WHEN OTHERS THEN
-            RETURN jsonb_build_object('ok', false, 'reason', 'due_date is not a valid date (YYYY-MM-DD)');
-        END;
+        v_due := core.fn_resolve_date(p->>'due_date');
+        IF v_due IS NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason',
+                'due_date must be YYYY-MM-DD or relative to today (e.g. +6 months, in 3 weeks)');
+        END IF;
+        IF v_due < core.fn_today() THEN
+            RETURN jsonb_build_object('ok', false, 'reason', format('due_date %s is in the past', v_due));
+        END IF;
     END IF;
 
     BEGIN
@@ -160,6 +166,7 @@ BEGIN
         'status', v_t.status,
         'next_check_at', v_t.next_check_at::text,
         'check_interval', v_t.check_interval::text,
+        'due_date', v_t.due_date,
         'reference_value', v_t.reference_value);
 END;
 $$;

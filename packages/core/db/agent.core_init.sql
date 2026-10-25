@@ -115,9 +115,10 @@ BEGIN
     -- target_year), Alter (age/alter/current_age), Restzeit (years_to_*), Projektionen (income/projected_
     -- income), Nominalwerte ('nominal' = immer aus real abgeleitet) + derived_/computed_-Prefix +
     -- die DE-Ableitungen regelaltersgrenze/kindergeld + die WS-5 career-Runway (runway/runway_months/covers/
-    -- effective_burn = career.fn_runway render-at-fetch). ERLAUBT (Roh): birth_date, start_age,
-    -- planned_retirement_age, horizon_years, target_income_eur_month, transition.probation_months,
-    -- transition.expected_gap_income_eur.
+    -- effective_burn = career.fn_runway render-at-fetch); WP3 zusaetzlich die Muster *_year, (…_)age(_…),
+    -- years_since_*, is_minor/is_adult. ERLAUBT (Roh): birth_date, start_age, planned_retirement_age,
+    -- age_from/age_to (glidepath), horizon_years, target_income_eur_month, transition.probation_months,
+    -- transition.expected_gap_income_eur. Bestand mit neu gesperrten Keys bereinigt core:V032.
     IF p_facts IS NOT NULL AND jsonb_typeof(p_facts) = 'object' THEN
         WITH RECURSIVE nodes(j) AS (
             SELECT p_facts
@@ -142,13 +143,21 @@ BEGIN
                            -- ROH erlaubt: transition.probation_months / transition.expected_gap_income_eur.
                            'runway','runway_months','covers','effective_burn')
            OR lower(k) ~ '^(derived|computed)_'
-           OR lower(k) ~ '(regelaltersgrenze|kindergeld|years_to_)'
+           OR lower(k) ~ '(regelaltersgrenze|kindergeld|years_to_|years_since_)'
            OR lower(k) ~ 'nominal'
+           -- WP3 Muster statt Einzel-Keys: ein Kalenderjahr (*_year, birth_year), ein Alter (age, child_age,
+           -- age_years) oder ein Minderjaehrig-/Volljaehrig-Flag ist am naechsten Geburtstag/Jahreswechsel still
+           -- falsch. ERLAUBT bleiben GEPLANTE Roh-Alter (start_age, planned_retirement_age, glidepath age_from/age_to).
+           OR lower(k) ~ '_year$'
+           OR (lower(k) ~ '(^|_)age(_|$)'
+               AND lower(k) NOT IN ('start_age', 'planned_retirement_age', 'age_from', 'age_to'))
+           OR lower(k) ~ '^is_(minor|adult)$'
         LIMIT 1;
         IF v_bad_key IS NOT NULL THEN
             RETURN format('key "%s" stores a DERIVED value — derived values (calendar years, ages, '
                 || 'projections, nominal amounts) are computed at render time, never stored '
-                || '(provide the raw fact instead, e.g. birth_date / start_age / target_income_eur_month)', v_bad_key);
+                || '(provide the raw fact instead, e.g. a *_date such as birth_date / career_start_date, '
+                || 'start_age or target_income_eur_month)', v_bad_key);
         END IF;
     END IF;
 

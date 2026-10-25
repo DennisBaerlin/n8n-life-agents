@@ -4,8 +4,9 @@
 --   Schritte, die kein Template abdeckt. Fortschritts-Flag-Klasse (kein Gate); adults_only-DB-Backstop.
 --   Manuelle Tasks (template_key NULL, subject_ref '') sind vom additiven Reconcile (fn_set_case) nie
 --   beruehrt — sie ueberleben Fristen-Recomputes. GUARD: nur OFFENE Faelle. phase Default first_week.
---   Eingabe jsonb: chat_id, case_id, title, phase (optional), detail (optional), due_date (optional).
---   RUECKGABE: {ok:true, case_task_id, case_id} | {ok:false, reason}.
+--   Eingabe jsonb: chat_id, case_id, title, phase (optional), detail (optional), due_date (optional; YYYY-MM-DD oder
+--     relativ, core.fn_resolve_date). status_source='user' (vom Nutzer angelegt).
+--   RUECKGABE: {ok:true, case_task_id, case_id, due_date (aufgeloest)} | {ok:false, reason}.
 --   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_case_task.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_case_task(p jsonb)
@@ -43,16 +44,19 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason',
             'case ' || v_case || ' is not open (status ' || v_cstatus || ') — cannot add tasks.');
     END IF;
-    BEGIN
-        v_due := NULLIF(p->>'due_date', '')::date;
-    EXCEPTION WHEN OTHERS THEN
-        RETURN jsonb_build_object('ok', false, 'reason', 'due_date must be a valid date (YYYY-MM-DD) or empty.');
-    END;
+    -- WP3: relative Faelligkeit ("in 3 days", "next friday") rechnet die DB (kein HITL -> genau ein Aufloesungszeitpunkt).
+    IF NULLIF(trim(COALESCE(p->>'due_date', '')), '') IS NOT NULL THEN
+        v_due := core.fn_resolve_date(p->>'due_date');
+        IF v_due IS NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason',
+                'due_date must be YYYY-MM-DD, relative to today (e.g. in 3 days, next friday) or empty.');
+        END IF;
+    END IF;
 
-    INSERT INTO estate.case_tasks (case_id, template_key, subject_ref, phase, title, detail, due_date, hardness, status)
-    VALUES (v_case, NULL, '', v_phase, v_title, NULLIF(trim(COALESCE(p->>'detail', '')), ''), v_due, 'recommended', 'open')
+    INSERT INTO estate.case_tasks (case_id, template_key, subject_ref, phase, title, detail, due_date, hardness, status, status_source)
+    VALUES (v_case, NULL, '', v_phase, v_title, NULLIF(trim(COALESCE(p->>'detail', '')), ''), v_due, 'recommended', 'open', 'user')
     RETURNING id INTO v_id;
 
-    RETURN jsonb_build_object('ok', true, 'case_task_id', v_id, 'case_id', v_case);
+    RETURN jsonb_build_object('ok', true, 'case_task_id', v_id, 'case_id', v_case, 'due_date', v_due);
 END;
 $$;

@@ -12,7 +12,8 @@
 --   Eingabe jsonb: domain (Pflicht — Phase B: kein 'finance'-Default mehr; ein leeres domain landete vorher
 --     still im Finanzplan), chat_id (Identitaet), section_key (Pflicht, freier Text),
 --     section_content (Pflicht, Markdown-Zusammenfassung der Sektion),
---     section_data (optional; jsonb-Objekt ODER JSON-String — String wird geparst),
+--     section_data (optional; jsonb-Objekt ODER JSON-String — String wird geparst; relative Zeitangaben in
+--       *_date/since loest core.fn_resolve_fact_dates auf, jedes Top-Level-Objekt bekommt as_of = heute von der fn),
 --     plan_name (optional, nur bei Draft-Neuanlage).
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, plan_id, version, status:'draft',
 --     draft_created, sections, section_count} (Post-State: welche Sektionen der Draft
@@ -89,6 +90,17 @@ BEGIN
         ELSE
             v_data := p->'section_data';
         END IF;
+    END IF;
+
+    -- WP3: relative Zeitangaben (*_date / since) rechnet die DB; as_of jedes Top-Level-OBJEKT-Blocks stempelt die fn
+    -- (Provenienz-Stempel: "Stand der Erhebung" = Tag des Sektions-Saves; ein vom LLM mitgeschicktes as_of zaehlt nicht).
+    IF jsonb_typeof(v_data) = 'object' THEN
+        v_data := core.fn_resolve_fact_dates(v_data);
+        SELECT COALESCE(jsonb_object_agg(k, CASE WHEN jsonb_typeof(v) = 'object'
+                                                 THEN v || jsonb_build_object('as_of', to_char(core.fn_today(), 'YYYY-MM-DD'))
+                                                 ELSE v END), '{}'::jsonb)
+          INTO v_data
+          FROM jsonb_each(v_data) AS x(k, v);
     END IF;
 
     -- Draft der (Domain, Person) sperren (genau einer moeglich — Partial-UNIQUE (domain, person_id)) oder anlegen.

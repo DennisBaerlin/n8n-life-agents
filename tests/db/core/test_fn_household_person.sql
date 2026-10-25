@@ -50,7 +50,20 @@ BEGIN
   -- (d) Teil-Skelett (kein birth_date) -> freundliches {ok:false}, kein RAISE
   r := agent.fn_add_household_person('{"first_name":"Ohne","last_name":"Datum","role":"child"}'::jsonb);
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL add [Teil-Skelett ohne birth_date akzeptiert]'; END IF;
-  RAISE NOTICE 'PASS add [Slug-Gen, Kollision _2, Leer-Fallback "person", Teil-Skelett abgelehnt]';
+
+  -- (e) Umlaute/Akzente transliteriert (vorher "Ömer" -> _mer)
+  r := agent.fn_add_household_person('{"first_name":"Ömer","last_name":"Mustermann","birth_date":"2016-04-04","role":"child"}'::jsonb);
+  IF r->>'person_id' IS DISTINCT FROM 'oemer' THEN RAISE EXCEPTION 'FAIL add [Umlaut-Slug: %]', r; END IF;
+  IF agent.fn_person_slug('Noël') IS DISTINCT FROM 'noel' OR agent.fn_person_slug('Karl-Otto') IS DISTINCT FROM 'karl_otto' THEN
+    RAISE EXCEPTION 'FAIL add [Akzent/Bindestrich-Slug: % / %]', agent.fn_person_slug('Noël'), agent.fn_person_slug('Karl-Otto'); END IF;
+  -- (f) Rest einer entfernten Person ('<base>__ben') -> neuer Ben erbt deren Daten nicht, bekommt ben_2
+  INSERT INTO agent.core_contexts (name, description, load_strategy, content, managed_by, package)
+  VALUES ('career_profile__ben', 'leftover', 'lazy', '', 'agent', 'career');
+  IF agent.fn_person_slug('Ben') IS DISTINCT FROM 'ben_2' THEN
+    RAISE EXCEPTION 'FAIL add [Rest-Zeile <base>__ben nicht beachtet: %]', agent.fn_person_slug('Ben'); END IF;
+  IF agent.fn_person_slug('Ben', ARRAY['ben_2']) IS DISTINCT FROM 'ben_3' THEN
+    RAISE EXCEPTION 'FAIL add [p_taken nicht beachtet]'; END IF;
+  RAISE NOTICE 'PASS add [Slug-Gen, Kollision _2, Leer-Fallback "person", Teil-Skelett abgelehnt, Umlaute, Rest-Zeilen]';
 
   -- Sprache fester Texte (CLI-Picker): Code/freie Angabe normiert, nicht unterstuetzt -> {ok:false} ohne Write
   r := agent.fn_add_household_person('{"first_name":"Sora","last_name":"Kim","birth_date":"2018-02-02","role":"child","language":"Korean"}'::jsonb);

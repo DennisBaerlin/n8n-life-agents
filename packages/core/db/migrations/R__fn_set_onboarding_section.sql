@@ -2,7 +2,8 @@
 -- core.fn_set_onboarding_section (WS-B3 DRY-Onboarding O3) — eine Onboarding-Sektion auf Status setzen
 --   p: { package?, section_key, status }  (package default 'core'; status in {completed,skipped,unknown})
 --   - 'core' -> agent.guide_onboarding_state (Host-Sonderfall); sonst <pkg>.onboarding_state.
---   - skipped -> skipped_at = now() (Audit: wann bewusst ausgelassen); sonst skipped_at = NULL.
+--   - Wann eine Sektion uebersprungen wurde, ist ableitbar (status='skipped' + status_changed_at) und wird nicht als
+--     eigene Spalte gespeichert (WP3; core:V032 droppt agent.guide_onboarding_state.skipped_at).
 --   - unbekannte Sektion / ungueltiger Status / unbekanntes Paket -> {ok:false, reason} (kein Write, kein RAISE).
 --   RUECKGABE: {ok:true, section_key, status, complete, area_completed_now, area_all_skipped} | {ok:false, reason}
 --     complete           = Post-State: im Bereich (Paket bzw. Person) ist keine Sektion mehr 'unknown'.
@@ -99,7 +100,7 @@ BEGIN
         INTO v_was_complete;
 
     EXECUTE format(
-        'UPDATE %s SET status = $1, skipped_at = CASE WHEN $1 = ''skipped'' THEN now() ELSE NULL END, '
+        'UPDATE %s SET status = $1, '
         'status_changed_at = CASE WHEN status IS DISTINCT FROM $1 THEN now() ELSE status_changed_at END '
         'WHERE section_key = $2%s',
         v_rel, v_pfilter) USING v_status, v_key;

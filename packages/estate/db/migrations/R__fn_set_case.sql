@@ -3,13 +3,14 @@
 --   Aendert knowledge_date / bundesland / flags eines offenen Falls und ZIEHT DIE FRISTEN NACH:
 --     * Recompute aller offenen Task-Fristen (bundesland -> Werktage/Feiertage; knowledge_date ->
 --       kenntnis-verankerte Fristen wie § 1944/§ 30).
---     * ADDITIVER Task-Reconcile: neu zutreffende Templates (flags/derived jetzt true) kippen von
---       'not_applicable' auf 'open'; fan_out zieht neu registrierte Sonderfall-Stubs nach. NICHTS wird
---       auto-n.a. gesetzt (dokumentierte Grenze) — beides leistet fn_instantiate_case_tasks (ON CONFLICT).
---   flags werden GEMERGT (bestehende || neue), knowledge_date/bundesland partiell (COALESCE = nicht
---   gesendet bleibt unveraendert). adults_only-DB-Backstop. Nur OFFENE Faelle. Eingabe jsonb: chat_id,
---   case_id, knowledge_date (optional), bundesland (optional), flags (optional jsonb).
---   RUECKGABE: {ok:true, case_id, phase_counts, total_open} | {ok:false, reason}.
+--     * Task-Reconcile (fn_instantiate_case_tasks): neu zutreffende Templates kippen von n.a. auf open, nicht mehr
+--       zutreffende von open auf n.a. — nur vom SYSTEM gesetzte Status; Nutzer-Status (done, "trifft nicht zu")
+--       bleiben. fan_out zieht neu registrierte Sonderfall-Stubs nach.
+--   flags werden GEMERGT (bestehende || neue; ein null-Wert loescht die Aussage -> wieder Register-Ableitung),
+--   knowledge_date (YYYY-MM-DD oder relativ, core.fn_resolve_date)/bundesland partiell (nicht gesendet bleibt
+--   unveraendert). adults_only-DB-Backstop. Nur OFFENE Faelle. Eingabe jsonb: chat_id, case_id, knowledge_date,
+--   bundesland, flags (alle optional).
+--   RUECKGABE: {ok:true, case_id, phase_counts, total_open, case_status, effective?{knowledge_date}} | {ok:false, reason}.
 --   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_case.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_case(p jsonb)
@@ -42,11 +43,18 @@ BEGIN
             'case ' || v_id || ' is not open (status ' || v_status || ') — cannot change it.');
     END IF;
 
-    BEGIN
-        v_new_know := NULLIF(p->>'knowledge_date', '')::date;
-    EXCEPTION WHEN OTHERS THEN
-        RETURN jsonb_build_object('ok', false, 'reason', 'knowledge_date must be a valid date (YYYY-MM-DD).');
-    END;
+    -- WP3: relative Angabe ("yesterday", "-3 days") rechnet die DB; der Probelauf meldet das Ergebnis als effective,
+    -- New-FnWriteGate reicht es an den echten Write (Karte = Speicher, auch beim Tipp nach Mitternacht).
+    IF NULLIF(trim(COALESCE(p->>'knowledge_date', '')), '') IS NOT NULL THEN
+        v_new_know := core.fn_resolve_date(p->>'knowledge_date');
+        IF v_new_know IS NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason',
+                'knowledge_date must be YYYY-MM-DD or relative to today (e.g. yesterday, -3 days).');
+        END IF;
+        IF v_new_know > core.fn_today() THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'knowledge_date cannot be in the future.');
+        END IF;
+    END IF;
     IF v_new_know IS NOT NULL AND v_new_know < v_event THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'knowledge_date cannot be before event_date.');
     END IF;
@@ -65,7 +73,9 @@ BEGIN
     UPDATE estate.cases SET
         knowledge_date = COALESCE(v_new_know, knowledge_date),
         bundesland     = COALESCE(v_new_bl, bundesland),
-        flags          = CASE WHEN jsonb_typeof(v_new_flags) = 'object' THEN flags || v_new_flags ELSE flags END
+        -- true/false = Aussage des Nutzers (schlaegt das Register); null = Aussage vergessen -> wieder das Register.
+        flags          = CASE WHEN jsonb_typeof(v_new_flags) = 'object' THEN jsonb_strip_nulls(flags || v_new_flags)
+                              ELSE flags END
       WHERE id = v_id;
 
     PERFORM estate.fn_instantiate_case_tasks(v_id);
@@ -75,6 +85,11 @@ BEGIN
       FROM (SELECT phase, count(*) AS cnt FROM estate.case_tasks
              WHERE case_id = v_id AND status = 'open' GROUP BY phase) s;
 
-    RETURN jsonb_build_object('ok', true, 'case_id', v_id, 'phase_counts', v_counts, 'total_open', v_total);
+    SELECT status INTO v_status FROM estate.cases WHERE id = v_id;   -- nach dem Auto-Complete-Trigger
+
+    RETURN jsonb_strip_nulls(jsonb_build_object('ok', true, 'case_id', v_id, 'phase_counts', v_counts, 'total_open', v_total,
+        'case_status', v_status,
+        'effective', CASE WHEN v_new_know IS NOT NULL
+                          THEN jsonb_build_object('knowledge_date', to_char(v_new_know, 'YYYY-MM-DD')) END));
 END;
 $$;

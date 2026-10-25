@@ -15,10 +15,11 @@
 --   Eingabe jsonb: domain (default 'general'), label, trigger_type, acquisition_method
 --     (default none), acquisition_prompt | acquisition_sql | acquisition_params (Paket-Methode, Objekt),
 --     comparator, threshold_value, drawdown_pct, reference_value (expliziter Seed),
---     due_date, warn_days_before, expected_unit, min_plausible, max_plausible,
+--     due_date (YYYY-MM-DD oder relativ "+6 months" -> core.fn_resolve_date; Vergangenheit -> {ok:false}),
+--     warn_days_before, expected_unit, min_plausible, max_plausible,
 --     max_jump_pct, check_interval (Text, z. B. '1 day'), action_note, probe_observation.
 --   RUECKGABE (Post-State): {ok:true, trigger_id, status:'armed', next_check_at,
---     check_interval (normalisiert — DB-berechnet), armed_count (Domain)}.
+--     check_interval (normalisiert — DB-berechnet), due_date (aufgeloest, nur date-Trigger), armed_count (Domain)}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_create_monitor_trigger(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -134,13 +135,14 @@ BEGIN
         END IF;
         v_due := NULL; v_cmp := NULL; v_thr := NULL;
     ELSIF v_type = 'date' THEN
-        BEGIN
-            v_due := (p->>'due_date')::date;
-        EXCEPTION WHEN OTHERS THEN
-            v_due := NULL;
-        END;
+        -- WP3: relative Angabe ("+6 months", "in 3 weeks") rechnet die DB, das LLM uebersetzt nur.
+        v_due := core.fn_resolve_date(p->>'due_date');
         IF v_due IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'reason', 'date triggers require a valid due_date (YYYY-MM-DD)');
+            RETURN jsonb_build_object('ok', false, 'reason',
+                'date triggers require a due_date as YYYY-MM-DD or relative to today (e.g. +6 months, in 3 weeks)');
+        END IF;
+        IF v_due < core.fn_today() THEN
+            RETURN jsonb_build_object('ok', false, 'reason', format('due_date %s is in the past', v_due));
         END IF;
         IF v_method <> 'none' THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'date triggers are acquisition-free (acquisition_method must be none)');
@@ -218,6 +220,7 @@ BEGIN
         'status', 'armed',
         'next_check_at', v_next::text,
         'check_interval', v_norm_int,
+        'due_date', v_due,
         'armed_count', v_armed);
 END;
 $$;

@@ -256,7 +256,10 @@ CREATE TABLE IF NOT EXISTS estate.funeral_preferences (
     prepaid_contract_provider text,
     wishes                    text,
     created_at                timestamptz NOT NULL DEFAULT now(),
-    updated_at                timestamptz NOT NULL DEFAULT now()
+    updated_at                timestamptz NOT NULL DEFAULT now(),
+    -- Ein genannter Anbieter heisst: es GIBT einen Vorsorgevertrag (kein zweiter, widerspruechlicher Fakt; estate:V002).
+    CONSTRAINT funeral_preferences_provider_implies_contract
+        CHECK (prepaid_contract_provider IS NULL OR has_prepaid_contract IS TRUE)
 );
 
 DROP TRIGGER IF EXISTS trg_funeral_preferences_touch ON estate.funeral_preferences;
@@ -298,7 +301,6 @@ CREATE TABLE IF NOT EXISTS estate.onboarding_state (
     ord         int  NOT NULL,
     label       text NOT NULL,
     status      text NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'completed', 'skipped')),
-    skipped_at  timestamptz,
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 -- Roter Faden (Nachfassen): Zeitpunkt der letzten STATUS-Aenderung, gesetzt nur von core.fn_set_onboarding_section
@@ -481,8 +483,15 @@ CREATE TABLE IF NOT EXISTS estate.case_tasks (
     done_at       timestamptz,
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (case_id, template_key, subject_ref)
+    UNIQUE (case_id, template_key, subject_ref),
+    -- done_at gehoert genau zu status='done' (Bestand angeglichen in estate:V002).
+    CONSTRAINT case_tasks_done_at_consistency CHECK ((status = 'done') = (done_at IS NOT NULL))
 );
+-- WP3 Provenienz des Status (Ausnahme (c) der Regel "keine ableitbaren Spalten"): 'system' = vom Soll-Satz gesetzt
+-- (fn_instantiate_case_tasks darf ihn bei geaenderten Merkmalen nachziehen), 'user' = vom Nutzer gesetzt
+-- (fn_set_case_task; ein "trifft nicht zu" oeffnet sich danach nie wieder von selbst).
+ALTER TABLE estate.case_tasks ADD COLUMN IF NOT EXISTS status_source text NOT NULL DEFAULT 'system'
+    CHECK (status_source IN ('system', 'user'));
 
 DROP TRIGGER IF EXISTS trg_case_tasks_touch ON estate.case_tasks;
 CREATE TRIGGER trg_case_tasks_touch BEFORE UPDATE ON estate.case_tasks

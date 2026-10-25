@@ -549,6 +549,23 @@ BEGIN
     RAISE NOTICE 'PASS household message [Grund bleibt in der Meldung]';
   END;
 
+  -- WP3 Denylist-Muster: Kalenderjahr / Alter / Minderjaehrig-Flag / years_since_ gesperrt, geplante Roh-Alter erlaubt
+  DECLARE
+    k text;
+  BEGIN
+    FOREACH k IN ARRAY ARRAY['birth_year', 'retirement_year', 'graduation_year', 'child_age', 'age_years',
+                             'partner_age', 'years_since_change', 'is_minor', 'is_adult'] LOOP
+      IF agent.fn_validate_household_facts(jsonb_build_object('blk', jsonb_build_object(k, 1)), '__x__') IS NULL THEN
+        RAISE EXCEPTION 'FAIL denylist Muster: % nicht gesperrt', k; END IF;
+    END LOOP;
+    FOREACH k IN ARRAY ARRAY['start_age', 'planned_retirement_age', 'age_from', 'age_to', 'horizon_years',
+                             'experience_note', 'page', 'stage', 'years'] LOOP
+      IF agent.fn_validate_household_facts(jsonb_build_object('blk', jsonb_build_object(k, 1)), '__x__') IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL denylist Muster: Roh-Key % faelschlich gesperrt', k; END IF;
+    END LOOP;
+    RAISE NOTICE 'PASS denylist Muster [*_year, age, years_since_, is_minor/adult gesperrt; geplante Alter erlaubt]';
+  END;
+
 END $$;
 
 ROLLBACK;

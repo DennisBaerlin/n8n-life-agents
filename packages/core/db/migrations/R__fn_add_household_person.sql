@@ -1,8 +1,7 @@
 -- ============================================================
 -- fn_add_household_person (WS-5d — Person anlegen, „Geburt")
 --   Owner-CLI (`lifeagents household add`): legt eine NEUE Haushalts-Person in der Autoring-Quelle
---   `family` an. Generiert deterministisch den Slug `person_id` aus dem Vornamen (sanitisiert auf
---   ^[a-z0-9_]+$; leer-sanitisiert -> Fallback 'person'; Kollision gegen die LIVE persons[] -> _2/_3…)
+--   `family` an. Den Slug `person_id` vergibt agent.fn_person_slug (Vorname, Umlaute transliteriert, eindeutig)
 --   und DELEGIERT den eigentlichen Append an fn_set_context_facts (DRY: Validierung [volles Skelett:
 --   first/last/birth_date/role Pflicht] + Projektion + as_of-Stempel laufen dort).
 --
@@ -25,9 +24,7 @@ DECLARE
     v_role  TEXT := NULLIF(trim(p->>'role'), '');
     v_lraw  TEXT := NULLIF(trim(p->>'language'), '');
     v_lang  TEXT := agent.fn_normalize_language(p->>'language');
-    v_base  TEXT;
     v_slug  TEXT;
-    v_n     INT := 1;
     v_set   JSONB;
 BEGIN
     -- Freundliche Vorab-Guards (der Validator faengt sie auch, aber mit praezisem Grund + ohne RAISE).
@@ -45,19 +42,8 @@ BEGIN
             v_lraw, (SELECT string_agg(l.code, '|' ORDER BY l.ord) FROM core.ui_languages l)));
     END IF;
 
-    -- Slug aus dem Vornamen; alles Nicht-[a-z0-9_] -> '_', Raender getrimmt; leer -> Fallback 'person'.
-    v_base := regexp_replace(lower(v_first), '[^a-z0-9_]+', '_', 'g');
-    v_base := NULLIF(btrim(v_base, '_'), '');
-    v_base := COALESCE(v_base, 'person');
-
-    -- Kollision gegen die LIVE family.facts.persons[] -> numerisches Suffix (_2/_3…).
-    v_slug := v_base;
-    WHILE EXISTS (SELECT 1 FROM agent.core_contexts c,
-                       jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) pp
-                  WHERE c.name = 'family' AND pp->>'person_id' = v_slug) LOOP
-        v_n := v_n + 1;
-        v_slug := v_base || '_' || v_n;
-    END LOOP;
+    -- Slug aus dem Vornamen, eindeutig (die eine Adresse: agent.fn_person_slug).
+    v_slug := agent.fn_person_slug(v_first);
 
     -- Delegieren — KEIN chat_id im Payload (s. Header: owner_only-Backstop bewusst umgangen).
     v_set := agent.fn_set_context_facts(jsonb_build_object(

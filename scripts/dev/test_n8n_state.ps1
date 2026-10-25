@@ -638,8 +638,7 @@ END `$clr`$;
 function Set-TestHouseholdOnboarding {
     param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Status)
     if ($Status -notin @('completed', 'unknown', 'skipped')) { throw "Unbekannter onboarding-Wert '$Status' (erwartet completed|unknown|skipped)." }
-    $skip = if ($Status -eq 'skipped') { 'now()' } else { 'NULL' }
-    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "UPDATE agent.guide_onboarding_state SET status = '$Status', skipped_at = $skip;")
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "UPDATE agent.guide_onboarding_state SET status = '$Status', status_changed_at = now();")
     if ($r.Code -ne 0) { throw "Onboarding-Vorbereitung fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
@@ -654,7 +653,7 @@ function Set-TestPackageOnboarding {
     $sql = @"
 DO `$`$ DECLARE s text; BEGIN
   FOR s IN SELECT table_schema FROM information_schema.tables WHERE table_name = 'onboarding_state' AND table_schema <> 'agent' LOOP
-    EXECUTE format('UPDATE %I.onboarding_state SET status = ''completed'', skipped_at = NULL WHERE status <> ''completed''', s);
+    EXECUTE format('UPDATE %I.onboarding_state SET status = ''completed'' WHERE status <> ''completed''', s);
   END LOOP;
 END `$`$;
 "@
@@ -663,9 +662,8 @@ END `$`$;
             if ($p.Name -notmatch '^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$') { throw "Unbekannter package_onboarding-Key '$($p.Name)' (erwartet <pkg>.<section_key>)." }
             $pkg = $Matches[1]; $sec = $Matches[2]; $st = [string]$p.Value
             if ($st -notin @('completed', 'unknown', 'skipped')) { throw "Unbekannter package_onboarding-Wert '$st' (erwartet completed|unknown|skipped)." }
-            $skip = if ($st -eq 'skipped') { 'now()' } else { 'NULL' }
             # Vertippter Bereich darf nicht still 0 Zeilen treffen (sonst prueft der Case einen nie hergestellten Zustand).
-            $sql += "`nDO `$`$ DECLARE n int; BEGIN UPDATE $pkg.onboarding_state SET status = '$st', skipped_at = $skip WHERE section_key = '$sec'; GET DIAGNOSTICS n = ROW_COUNT; IF n = 0 THEN RAISE EXCEPTION 'package_onboarding: Bereich $pkg.$sec existiert nicht'; END IF; END `$`$;"
+            $sql += "`nDO `$`$ DECLARE n int; BEGIN UPDATE $pkg.onboarding_state SET status = '$st', status_changed_at = now() WHERE section_key = '$sec'; GET DIAGNOSTICS n = ROW_COUNT; IF n = 0 THEN RAISE EXCEPTION 'package_onboarding: Bereich $pkg.$sec existiert nicht'; END IF; END `$`$;"
         }
     }
     $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $sql)

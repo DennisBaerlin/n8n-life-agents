@@ -23,7 +23,7 @@ BEGIN
     ON CONFLICT (package) DO UPDATE SET status='active';
 
   -- ---------- (i) finance active + >=1 Sektion unknown -> finance in pending mit open[] ----------
-  UPDATE finance.onboarding_state SET status='unknown', skipped_at=NULL;
+  UPDATE finance.onboarding_state SET status='unknown';
   r := core.fn_onboarding_pending_packages();
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [(i) ok<>true]: %', r; END IF;
   SELECT e INTO v_fin FROM jsonb_array_elements(r->'pending') e WHERE e->>'package'='finance';
@@ -37,8 +37,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [(iii) core in pending]: %', r; END IF;
 
   -- ---------- (ii) alle completed/skipped -> finance NICHT in pending ----------
-  UPDATE finance.onboarding_state SET status='completed', skipped_at=NULL;
-  UPDATE finance.onboarding_state SET status='skipped', skipped_at=now() WHERE section_key='goals';
+  UPDATE finance.onboarding_state SET status='completed';
+  UPDATE finance.onboarding_state SET status='skipped' WHERE section_key='goals';
   r := core.fn_onboarding_pending_packages();
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'pending') e WHERE e->>'package'='finance') THEN
     RAISE EXCEPTION 'FAIL [(ii) finance trotz completed/skipped in pending]: %', r; END IF;

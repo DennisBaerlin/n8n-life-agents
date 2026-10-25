@@ -74,6 +74,18 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set [Rename + Dubletten-Schutz]';
 
+  -- TEST 3b (WP3): due_date relativ rechnet die DB; neu gesendete Vergangenheit -> {ok:false}
+  v := agent.fn_set_monitor_trigger(jsonb_build_object('domain', '__test__', 'label', 'Other Trigger', 'due_date', 'in 3 weeks'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'due_date')::date IS DISTINCT FROM core.fn_today() + 21
+     OR (SELECT due_date FROM agent.monitor_triggers WHERE label = 'Other Trigger') IS DISTINCT FROM core.fn_today() + 21 THEN
+    RAISE EXCEPTION 'FAIL set [due_date relativ]: got %', v;
+  END IF;
+  v := agent.fn_set_monitor_trigger(jsonb_build_object('domain', '__test__', 'label', 'Other Trigger', 'due_date', 'yesterday'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%past%' THEN
+    RAISE EXCEPTION 'FAIL set [due_date Vergangenheit]: got %', v;
+  END IF;
+  RAISE NOTICE 'PASS set [due_date relativ von der DB, Vergangenheit abgelehnt]';
+
   -- TEST 4: not found -> {ok:false} mit Kandidaten-Hinweis
   v := agent.fn_set_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'No Such Trigger', 'threshold_value', 1

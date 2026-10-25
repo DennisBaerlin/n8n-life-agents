@@ -500,6 +500,86 @@ BEGIN
   RAISE NOTICE 'PASS [16c] family ueber per_user-Weg durch Mitglied -> owner_only';
 END $$;
 
+-- ---------- TEST 17 (WP3 Chat-Pfad): Slug + as_of vergibt die fn, relative Daten rechnet die DB ----------
+-- family traegt hier erika (Owner 111), lena (222), tom (Kind, aus TEST 13).
+DO $$
+DECLARE
+  v_result JSONB;
+  v_meta   JSONB;
+  v_n      INT;
+BEGIN
+  -- (a) neue Person OHNE person_id -> Slug von der fn (Umlaut transliteriert)
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
+      'first_name','Jörn','last_name','Mustermann','birth_date','2023-01-02','role','child'))))) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result->'updated_persons' IS DISTINCT FROM '["joern"]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [17a] neue Person ohne id: erwartet Slug joern, got %', v_result; END IF;
+
+  -- (b) bekannte Person ohne id, Treffer per Vor-/Nachname -> Merge (keine Dublette)
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
+      'first_name','Jörn','last_name','MUSTERMANN ','language','de'))))) INTO v_result;
+  SELECT jsonb_array_length(metadata->'facts'->'persons') INTO v_n FROM agent.core_contexts WHERE name = 'family';
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result->'updated_persons' IS DISTINCT FROM '["joern"]'::jsonb
+     OR v_n <> 4 THEN
+    RAISE EXCEPTION 'FAIL [17b] Merge per Name: erwartet joern aktualisiert, 4 Personen, got % / %', v_result, v_n; END IF;
+
+  -- (c) Zwilling: gleicher Name, anderes Geburtsdatum -> neue Person joern_2
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
+      'first_name','Jörn','last_name','Mustermann','birth_date','2024-05-05','role','child'))))) INTO v_result;
+  IF v_result->'updated_persons' IS DISTINCT FROM '["joern_2"]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [17c] Zwilling: erwartet joern_2, got %', v_result; END IF;
+
+  -- (d) jetzt mehrdeutig ohne Geburtsdatum -> {ok:false} (person_id noetig)
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
+      'first_name','Jörn','last_name','Mustermann','language','en'))))) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT ILIKE '%several%' THEN
+    RAISE EXCEPTION 'FAIL [17d] mehrdeutig: erwartet ok=false/several, got %', v_result; END IF;
+
+  -- (e) unbekannte person_id auf dem Chat-Pfad -> {ok:false}, kein Anlegen eines LLM-Slugs
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
+      'person_id','maxi','first_name','Maxi','last_name','Mustermann','birth_date','2022-02-02','role','child'))))) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT ILIKE '%unknown person_id%' THEN
+    RAISE EXCEPTION 'FAIL [17e] unbekannte id: erwartet ok=false, got %', v_result; END IF;
+
+  -- (f) unvollstaendig ohne Treffer -> {ok:false}
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('first_name','Nobody','language','de'))))) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT ILIKE '%not found%' THEN
+    RAISE EXCEPTION 'FAIL [17f] unvollstaendig: erwartet ok=false/not found, got %', v_result; END IF;
+
+  -- (g) as_of vom LLM wird auf dem Chat-Pfad ueberschrieben; ohne chat_id (intern) bleibt es
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','lena','as_of','2020-01-01'))))) INTO v_result;
+  SELECT metadata INTO v_meta FROM agent.core_contexts WHERE name = 'family';
+  IF (SELECT (pp->>'as_of')::date FROM jsonb_array_elements(v_meta->'facts'->'persons') pp WHERE pp->>'person_id'='lena')
+     IS DISTINCT FROM CURRENT_DATE THEN
+    RAISE EXCEPTION 'FAIL [17g] Chat-Pfad as_of: erwartet heute, got %', v_meta->'facts'->'persons'; END IF;
+  PERFORM agent.fn_set_context_facts(jsonb_build_object('context_name','family',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','lena','as_of','2020-01-01')))));
+  SELECT metadata INTO v_meta FROM agent.core_contexts WHERE name = 'family';
+  IF (SELECT pp->>'as_of' FROM jsonb_array_elements(v_meta->'facts'->'persons') pp WHERE pp->>'person_id'='lena')
+     IS DISTINCT FROM '2020-01-01' THEN
+    RAISE EXCEPTION 'FAIL [17g] interner Aufrufer: as_of bewahrt erwartet'; END IF;
+
+  -- (h) relative Daten: "-3 days" -> Tag; "-5 years" als Geburtsdatum -> nur Jahr -> Validator lehnt ab (nachfragen)
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','joern_2','birth_date','-3 days'))))) INTO v_result;
+  SELECT metadata INTO v_meta FROM agent.core_contexts WHERE name = 'family';
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT (pp->>'birth_date')::date FROM jsonb_array_elements(v_meta->'facts'->'persons') pp WHERE pp->>'person_id'='joern_2')
+        IS DISTINCT FROM CURRENT_DATE - 3 THEN
+    RAISE EXCEPTION 'FAIL [17h] relatives Datum: got % / %', v_result, v_meta->'facts'->'persons'; END IF;
+  SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
+    'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','joern_2','birth_date','-5 years'))))) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT ILIKE '%birth_date%' THEN
+    RAISE EXCEPTION 'FAIL [17h] Geburtsdatum aus Alter: erwartet ok=false (nur Jahr), got %', v_result; END IF;
+  RAISE NOTICE 'PASS [17] Chat-Pfad [Slug von der fn, Merge per Name, Zwilling, mehrdeutig/unbekannt/unvollstaendig abgelehnt, as_of-Stempel, relative Daten]';
+END $$;
+
 -- ---------- TEST 15 (E1): die abgeloesten fns existieren nicht mehr ----------
 DO $$
 BEGIN

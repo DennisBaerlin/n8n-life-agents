@@ -6,8 +6,8 @@
 --   ... SELECT ... ON CONFLICT) UND fn_preview_case (Zaehlung je Phase VOR dem Gate).
 --   Condition-Auswertung: NULL=immer; DERIVED (adult_subject = Subjekt keine role='child';
 --   finance_absent = finance-Paket nicht aktiv; minor_children = Haushalt hat eine role='child'); sonst
---   ein case.flags-Schluessel (Agent-Intake: tenant/employed/pension_relevant/has_will/no_poa/
---   abroad_or_work_accident ...). Condition FALSE + KEIN fan_out -> Task als 'not_applicable' SICHTBAR
+--   ein Intake-Merkmal (tenant/employed/pension_relevant/has_will/no_poa/abroad_or_work_accident): WIRKSAM =
+--   estate.fn_case_register_flags (Register-Ableitung) || p_flags (explizite Fall-Angabe schlaegt das Register). Condition FALSE + KEIN fan_out -> Task als 'not_applicable' SICHTBAR
 --   (nicht still weg). fan_out (special_asset-Typ) -> je passendem Sonderfall-Stub (Subjekt ODER
 --   Haushalt) eine 'open'-Task (subject_ref='asset:<id>', Titel um die Beschreibung ergaenzt); 0 Stubs
 --   -> 0 Tasks. Rolle/Minderjaehrige NUR ueber core.fn_household_persons() (DEFINER-Fenster) — NIE
@@ -30,9 +30,13 @@ DECLARE
     v_applicable   BOOLEAN;
     v_anchor       DATE;
     v_due          DATE;
+    v_flags        JSONB;
 BEGIN
     SELECT role INTO v_subject_role FROM core.fn_household_persons() WHERE person_id = p_subject;
     SELECT EXISTS (SELECT 1 FROM core.fn_household_persons() WHERE role = 'child') INTO v_has_minor;
+    -- WP3: wirksame Merkmale = Register-Ableitung (estate.fn_case_register_flags), ueberstimmt von der expliziten
+    -- Fall-Angabe (cases.flags = nur Nutzer-Aussagen). null im Register = unbekannt -> faellt weg (Bedingung false).
+    v_flags := jsonb_strip_nulls(estate.fn_case_register_flags(p_subject)) || COALESCE(p_flags, '{}'::jsonb);
 
     FOR t IN
         SELECT * FROM estate.task_templates
@@ -47,7 +51,7 @@ BEGIN
             WHEN t.condition_key = 'adult_subject'  THEN COALESCE(v_subject_role, 'partner') IS DISTINCT FROM 'child'
             WHEN t.condition_key = 'finance_absent' THEN v_fin_absent
             WHEN t.condition_key = 'minor_children' THEN v_has_minor
-            ELSE COALESCE(p_flags->>t.condition_key = 'true', FALSE)
+            ELSE COALESCE(v_flags->>t.condition_key = 'true', FALSE)
         END;
 
         IF t.fan_out IS NULL THEN

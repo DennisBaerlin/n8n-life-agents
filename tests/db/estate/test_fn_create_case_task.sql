@@ -37,6 +37,14 @@ BEGIN
   v_r := estate.fn_create_case_task(jsonb_build_object('chat_id','111','case_id', v_case, 'title','X','phase','irgendwann'));
   IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%phase must be%' THEN RAISE EXCEPTION 'FAIL [invalid phase]: %', v_r; END IF;
 
+  -- WP3: relative Faelligkeit rechnet die DB; Freitext -> ok:false
+  v_r := estate.fn_create_case_task(jsonb_build_object('chat_id','111','case_id', v_case, 'title','Auto abholen','due_date','in 3 days'));
+  IF (v_r->>'due_date')::date IS DISTINCT FROM core.fn_today() + 3
+     OR (SELECT due_date FROM estate.case_tasks WHERE id = (v_r->>'case_task_id')::bigint) IS DISTINCT FROM core.fn_today() + 3 THEN
+    RAISE EXCEPTION 'FAIL [relative due_date]: %', v_r; END IF;
+  v_r := estate.fn_create_case_task(jsonb_build_object('chat_id','111','case_id', v_case, 'title','X2','due_date','naechste Woche'));
+  IF (v_r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [Freitext due_date akzeptiert]: %', v_r; END IF;
+
   -- nicht offener Fall.
   PERFORM estate.fn_cancel_case(jsonb_build_object('chat_id','111','case_id', v_case));
   v_r := estate.fn_create_case_task(jsonb_build_object('chat_id','111','case_id', v_case, 'title','Zu spaet'));

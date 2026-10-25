@@ -9,7 +9,9 @@
 --   partial-UNIQUE(subject) WHERE open) — die Todesnachricht scheitert nie am Doppelfall.
 --   adults_only-DB-Backstop (im Preview). Eingabe jsonb: chat_id, subject_person_id (Slug, vom Tool
 --   aufgeloest), case_type, event_date, knowledge_date (optional), bundesland (optional), flags (jsonb).
---   RUECKGABE: {ok:true, case_id, case_type, status, superseded_case_id, phase_counts, total_open}
+--   flags = nur Nutzer-Aussagen (true/false, null faellt weg); der Rest kommt live aus dem Register (WP3).
+--   RUECKGABE: {ok:true, case_id, case_type, status, superseded_case_id, phase_counts, total_open, intake_facts,
+--     unknown_flags}
 --     | {ok:false, reason} (das Preview-Verdikt).
 --   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_case.sql
 -- ============================================================
@@ -36,7 +38,8 @@ BEGIN
     INSERT INTO estate.cases (case_type, subject_person_id, event_date, knowledge_date, bundesland, flags)
     VALUES (v_prev->>'case_type', v_prev->>'subject_person_id',
             (v_prev->>'event_date')::date, (v_prev->>'knowledge_date')::date, v_prev->>'bundesland',
-            COALESCE(p->'flags', '{}'::jsonb))
+            -- nur Nutzer-Aussagen (true/false); Unbeantwortetes leitet fn_case_template_rows aus dem Register ab
+            CASE WHEN jsonb_typeof(p->'flags') = 'object' THEN jsonb_strip_nulls(p->'flags') ELSE '{}'::jsonb END)
     RETURNING id INTO v_id;
 
     PERFORM estate.fn_instantiate_case_tasks(v_id);
@@ -53,6 +56,8 @@ BEGIN
         'status', 'open',
         'superseded_case_id', v_super,
         'phase_counts', v_counts,
-        'total_open', v_total);
+        'total_open', v_total,
+        'intake_facts', v_prev->'intake_facts',
+        'unknown_flags', v_prev->'unknown_flags');
 END;
 $$;

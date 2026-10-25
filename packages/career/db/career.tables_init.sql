@@ -38,7 +38,6 @@ CREATE TABLE IF NOT EXISTS career.onboarding_state (
     ord         int  NOT NULL,
     label       text NOT NULL,
     status      text NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'completed', 'skipped')),
-    skipped_at  timestamptz,
     updated_at  timestamptz NOT NULL DEFAULT now(),
     person_id   text NOT NULL,   -- P2b-1: wholly-per-person (Parität job_matches); FK -> agent.persons in V004 (guarded, Cross-Schema)
     PRIMARY KEY (section_key, person_id)

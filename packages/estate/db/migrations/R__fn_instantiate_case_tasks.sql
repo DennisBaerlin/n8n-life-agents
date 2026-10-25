@@ -4,9 +4,11 @@
 --   Logik fuer BEIDE Aufrufer (DRY): fn_create_case (frischer Fall -> alles INSERT) und fn_set_case
 --   (Reconcile nach knowledge/bundesland/flags-Aenderung). Das ON CONFLICT deckt beide:
 --     * due_date wird IMMER neu berechnet (bundesland/knowledge-Aenderung schlaegt auf offene Fristen).
---     * ADDITIVER Reconcile: eine 'not_applicable'-Task, deren Condition jetzt zutrifft, kippt auf
---       'open' (excluded.status). NICHTS wird auto-n.a. (open/done bleiben unveraendert — dokumentierte
---       Grenze: eine wieder-unzutreffende Task bleibt sichtbar offen, statt still zu verschwinden).
+--     * Reconcile in BEIDE Richtungen, aber nur fuer Status, die das SYSTEM gesetzt hat (status_source='system'):
+--       Bedingung jetzt wahr -> n.a. kippt auf open; Bedingung nicht mehr wahr (Merkmal zurueckgenommen, Register
+--       geaendert) -> open kippt auf n.a.; fan_out-Tasks ohne Stub mehr -> n.a. Vom NUTZER gesetzte Status
+--       (status_source='user': done, "trifft nicht zu", wieder offen) fasst der Reconcile nie an. Der Auto-Complete-
+--       Trigger kann den Fall dabei schliessen (letzte offene Task n.a.) -> fn_set_case meldet case_status.
 --     * title/detail = SNAPSHOT (beim ersten Insert eingefroren, nie ueberschrieben — der Katalog darf
 --       sich aendern, die laufende Checkliste bleibt stabil).
 --   Manuelle Tasks (template_key NULL) sind NICHT im Soll-Satz -> vom Reconcile nie beruehrt.
@@ -32,8 +34,19 @@ BEGIN
     FROM estate.fn_case_template_rows(v_type, v_subject, v_flags, v_event, v_know, v_bl) r
     ON CONFLICT (case_id, template_key, subject_ref) DO UPDATE SET
         due_date   = excluded.due_date,
-        status     = CASE WHEN case_tasks.status = 'not_applicable' THEN excluded.status
+        status     = CASE WHEN case_tasks.status_source = 'system' THEN excluded.status
                           ELSE case_tasks.status END,
         updated_at = now();
+
+    -- Vom System offene Template-Tasks, die der Soll-Satz nicht mehr liefert (fan_out-Stub geloescht, Bedingung
+    -- eines fan_out-Templates entfallen) -> n.a.; retired Templates bleiben unberuehrt (Katalog-Pflege, kein Fakt).
+    UPDATE estate.case_tasks ct
+       SET status = 'not_applicable'
+     WHERE ct.case_id = p_case_id
+       AND ct.status_source = 'system' AND ct.status = 'open' AND ct.template_key IS NOT NULL
+       AND EXISTS (SELECT 1 FROM estate.task_templates t WHERE t.template_key = ct.template_key AND NOT t.retired)
+       AND NOT EXISTS (SELECT 1
+                         FROM estate.fn_case_template_rows(v_type, v_subject, v_flags, v_event, v_know, v_bl) r
+                        WHERE r.template_key = ct.template_key AND r.subject_ref = ct.subject_ref);
 END;
 $$;

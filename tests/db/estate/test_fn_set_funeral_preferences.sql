@@ -58,6 +58,29 @@ BEGIN
   IF (v_r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [invalid bool]: %', v_r; END IF;
   RAISE NOTICE 'PASS [Guards: burial_type/bool -> ok:false]';
 
+  -- WP3: Anbieter genannt -> Vorsorgevertrag abgeleitet (true); false leert den Anbieter; beides zugleich -> ok:false
+  v_r := estate.fn_set_funeral_preferences(jsonb_build_object(
+      'chat_id','111', 'person_id','erika', 'has_prepaid_contract','false'));
+  v_r := estate.fn_set_funeral_preferences(jsonb_build_object(
+      'chat_id','111', 'person_id','erika', 'prepaid_contract_provider','Bestattungshaus Muster'));
+  IF (v_r->>'has_prepaid_contract')::boolean IS DISTINCT FROM true
+     OR (SELECT has_prepaid_contract FROM estate.funeral_preferences WHERE person_id='erika') IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [Anbieter -> Vertrag true]: %', v_r; END IF;
+  v_r := estate.fn_set_funeral_preferences(jsonb_build_object(
+      'chat_id','111', 'person_id','erika', 'has_prepaid_contract','false'));
+  IF (SELECT prepaid_contract_provider FROM estate.funeral_preferences WHERE person_id='erika') IS NOT NULL
+     OR (v_r->>'has_prepaid_contract')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL [false leert Anbieter]: %', v_r; END IF;
+  v_r := estate.fn_set_funeral_preferences(jsonb_build_object(
+      'chat_id','111', 'person_id','erika', 'has_prepaid_contract','false', 'prepaid_contract_provider','X'));
+  IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%contradicts%' THEN RAISE EXCEPTION 'FAIL [Widerspruch]: %', v_r; END IF;
+  BEGIN
+    UPDATE estate.funeral_preferences SET prepaid_contract_provider = 'Y' WHERE person_id = 'erika';
+    RAISE EXCEPTION 'FAIL [CHECK Anbieter ohne Vertrag nicht geblockt]';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  RAISE NOTICE 'PASS [Vorsorgevertrag aus Anbieter abgeleitet, false leert, Widerspruch + CHECK]';
+
   -- Unbekannte Person: FK-Backstop RAISE (kein agent.persons-Read; der Tool-Resolve ist der Guard):
   BEGIN
     v_r := estate.fn_set_funeral_preferences(jsonb_build_object(

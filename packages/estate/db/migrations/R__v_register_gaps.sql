@@ -5,8 +5,9 @@
 --     * digital_account:   desired_action NULL (Todesfall-Aktion nicht entschieden)
 --     * digital_account:   SCHLUESSELKONTO ohne access_path (im Ereignisfall gatet das
 --                          E-Mail-Konto alle Resets — ohne Zugangs-Fundort kritisch)
---     * person_record:     Erwachsener ganz OHNE Stammdaten-Zeile
---     * funeral_preferences: Erwachsener ganz OHNE Bestattungswuensche-Zeile
+--     * person_record:     Erwachsener ohne ein einziges Stammdaten-Feld (Zeile fehlt ODER ist leer — WP3: eine
+--                          leere Zeile vom Review-Stempel schliesst die Luecke nicht mehr still)
+--     * funeral_preferences: Erwachsener ohne Bestattungswunsch (Zeile fehlt ODER Art/Vorsorge/Wuensche alle leer)
 --   gap_code (Textkatalog Phase C) = stabiler Code; die Anzeige rendert estate.gap.<code> in der Sprache des Lesers
 --   (fn_render_register_body). gap = englischer Modelltext (Sprachpolitik: der estate_ro-Frei-SQL-Leser ist das LLM).
 --   Personen-Zeilen-Gaps nur fuer Erwachsene (owner|partner — wie v_directive_gaps).
@@ -40,10 +41,14 @@ SELECT 'person_record', NULL::bigint, hp.person_id, hp.full_name,
        'person_record_missing'
 FROM core.fn_household_persons() hp
 WHERE hp.role IN ('owner', 'partner')
-  AND NOT EXISTS (SELECT 1 FROM estate.person_records pr WHERE pr.person_id = hp.person_id)
+  -- nach INHALT, nicht Zeilen-Existenz: fn_confirm_review legt fuer den Review-Stempel auch eine leere Zeile an
+  AND NOT EXISTS (SELECT 1 FROM estate.person_records pr WHERE pr.person_id = hp.person_id
+                    AND coalesce(pr.tax_id, pr.pension_insurance_no, pr.health_insurance_type, pr.health_insurance_name,
+                                 pr.health_insurance_no, pr.employer, pr.certificates_location) IS NOT NULL)
 UNION ALL
 SELECT 'funeral_preferences', NULL::bigint, hp.person_id, hp.full_name,
        'Funeral wishes not recorded (prepaid funeral contract unclear)', 'funeral_missing'
 FROM core.fn_household_persons() hp
 WHERE hp.role IN ('owner', 'partner')
-  AND NOT EXISTS (SELECT 1 FROM estate.funeral_preferences f WHERE f.person_id = hp.person_id);
+  AND NOT EXISTS (SELECT 1 FROM estate.funeral_preferences f WHERE f.person_id = hp.person_id
+                    AND (f.burial_type IS NOT NULL OR f.has_prepaid_contract IS NOT NULL OR f.wishes IS NOT NULL));

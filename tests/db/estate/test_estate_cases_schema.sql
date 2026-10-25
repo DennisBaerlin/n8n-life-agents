@@ -64,7 +64,7 @@ BEGIN
   -- Auto-Complete-Trigger: alle offenen Tasks done -> Fall completed + closed_at.
   INSERT INTO estate.case_tasks (case_id, template_key, subject_ref, phase, title, status)
   VALUES (v_case, NULL, '', 'immediate', 'T1', 'open'), (v_case, NULL, '', 'immediate', 'T2', 'open');
-  UPDATE estate.case_tasks SET status='done' WHERE case_id=v_case AND title='T1';
+  UPDATE estate.case_tasks SET status='done', done_at=now() WHERE case_id=v_case AND title='T1';
   IF (SELECT status FROM estate.cases WHERE id=v_case) <> 'open' THEN
     RAISE EXCEPTION 'FAIL [Fall vorzeitig completed (noch offene Task)]'; END IF;
   UPDATE estate.case_tasks SET status='not_applicable' WHERE case_id=v_case AND title='T2';
@@ -72,11 +72,29 @@ BEGIN
      OR (SELECT closed_at FROM estate.cases WHERE id=v_case) IS NULL THEN
     RAISE EXCEPTION 'FAIL [letzte Task done/n.a. -> Fall nicht completed+closed_at]'; END IF;
   -- Reopen-Zweig (defensiv): eine Task wieder open -> Fall zurueck auf open.
-  UPDATE estate.case_tasks SET status='open' WHERE case_id=v_case AND title='T1';
+  UPDATE estate.case_tasks SET status='open', done_at=NULL WHERE case_id=v_case AND title='T1';
   IF (SELECT status FROM estate.cases WHERE id=v_case) <> 'open'
      OR (SELECT closed_at FROM estate.cases WHERE id=v_case) IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [Task wieder open -> Fall nicht reopened]'; END IF;
   RAISE NOTICE 'PASS [Auto-Complete-Trigger: complete + reopen]';
+
+  -- WP3: done_at gehoert genau zu status='done' (CHECK case_tasks_done_at_consistency)
+  v_ok := false;
+  BEGIN
+    UPDATE estate.case_tasks SET status='done' WHERE case_id=v_case AND title='T2';
+  EXCEPTION WHEN check_violation THEN v_ok := true; END;
+  IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [done ohne done_at nicht geblockt]'; END IF;
+  v_ok := false;
+  BEGIN
+    UPDATE estate.case_tasks SET done_at=now() WHERE case_id=v_case AND title='T1';
+  EXCEPTION WHEN check_violation THEN v_ok := true; END;
+  IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [done_at an offener Task nicht geblockt]'; END IF;
+  v_ok := false;
+  BEGIN
+    UPDATE estate.case_tasks SET status_source='llm' WHERE case_id=v_case AND title='T1';
+  EXCEPTION WHEN check_violation THEN v_ok := true; END;
+  IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [status_source ausserhalb system|user nicht geblockt]'; END IF;
+  RAISE NOTICE 'PASS [CHECK done_at <-> done, status_source-Wertevorrat]';
 END $$;
 
 ROLLBACK;

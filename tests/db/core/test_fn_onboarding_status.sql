@@ -15,8 +15,8 @@ BEGIN
     ('accounts',1,'Konten'),('investments',2,'Depot'),('liabilities',3,'Kredite'),
     ('protection',4,'Versicherungen'),('goals',5,'Ziele')
   ON CONFLICT (section_key) DO NOTHING;
-  UPDATE agent.guide_onboarding_state SET status='unknown', skipped_at=NULL;
-  UPDATE finance.onboarding_state    SET status='unknown', skipped_at=NULL;
+  UPDATE agent.guide_onboarding_state SET status='unknown';
+  UPDATE finance.onboarding_state    SET status='unknown';
 
   -- ---------- 1) core-Default (kein Paket): nur core, household unknown -> complete=false, package=null ----------
   r := core.fn_onboarding_status();
@@ -47,11 +47,9 @@ BEGIN
   r := core.fn_onboarding_status();    -- core-only: household ist completed
   IF NOT (r->>'complete')::boolean THEN RAISE EXCEPTION 'FAIL [core-only nicht complete trotz household completed]: %', r; END IF;
 
-  -- ---------- 5) skipped zaehlt als aufgeloest + setzt skipped_at ----------
+  -- ---------- 5) skipped zaehlt als aufgeloest (der Zeitpunkt ist status_changed_at, keine eigene Spalte) ----------
   r := core.fn_set_onboarding_section('{"package":"finance","section_key":"goals","status":"skipped"}');
   IF NOT (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [skip finance goals: %]', r; END IF;
-  IF (SELECT skipped_at FROM finance.onboarding_state WHERE section_key='goals') IS NULL THEN
-    RAISE EXCEPTION 'FAIL [skipped_at finance nicht gesetzt]'; END IF;
   r := core.fn_onboarding_status('finance');
   IF NOT (r->>'complete')::boolean THEN RAISE EXCEPTION 'FAIL [skipped zaehlt nicht als aufgeloest]: %', r; END IF;
 

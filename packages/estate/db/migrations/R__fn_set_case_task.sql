@@ -45,8 +45,9 @@ BEGIN
     END IF;
 
     UPDATE estate.case_tasks
-       SET status  = v_status,
-           done_at = CASE WHEN v_status = 'done' THEN now() ELSE NULL END
+       SET status        = v_status,
+           done_at       = CASE WHEN v_status = 'done' THEN now() ELSE NULL END,
+           status_source = 'user'   -- WP3: vom Nutzer gesetzt -> der Reconcile fasst die Task nie wieder an
      WHERE id = v_id;
 
     SELECT status INTO v_new_cstat FROM estate.cases WHERE id = v_case;   -- nach dem Auto-Complete-Trigger

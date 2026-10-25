@@ -24,7 +24,7 @@ DECLARE
 BEGIN
   -- ---------- Setup (Superuser): Core-Haushalt + finance(5) + career(3) + Registry ----------
   -- Core-Haushalt: agent.guide_onboarding_state traegt 'household' (agent.guide_init.sql) -> Status setzen.
-  UPDATE agent.guide_onboarding_state SET status='completed', skipped_at=NULL WHERE section_key='household';
+  UPDATE agent.guide_onboarding_state SET status='completed' WHERE section_key='household';
   -- Falls die Baseline-Zeile fehlen sollte (defensiv), anlegen:
   INSERT INTO agent.guide_onboarding_state (section_key, ord, label, status)
     VALUES ('household', 1, 'Haushalt & Personen', 'completed') ON CONFLICT (section_key) DO NOTHING;
@@ -47,13 +47,13 @@ BEGIN
     ('accounts',1,'Konten'),('investments',2,'Depot'),('liabilities',3,'Kredite'),
     ('protection',4,'Versicherungen'),('goals',5,'Ziele')
   ON CONFLICT (section_key) DO NOTHING;
-  UPDATE finance.onboarding_state SET status='unknown', skipped_at=NULL;
+  UPDATE finance.onboarding_state SET status='unknown';
 
   INSERT INTO career.onboarding_state (section_key, ord, label, person_id) VALUES
     ('profile_basics',1,'Aktuelle Rolle & Erfahrung','erika'),('skills_overview',2,'Kompetenzen & Skills','erika'),
     ('goals_targets',3,'Ziel-Rolle & Umstiegs-Timeline','erika')
   ON CONFLICT (section_key, person_id) DO NOTHING;
-  UPDATE career.onboarding_state SET status='unknown', skipped_at=NULL;
+  UPDATE career.onboarding_state SET status='unknown';
 
   INSERT INTO core.package_registry (package, version, status) VALUES ('core','0.1.0','active')
     ON CONFLICT (package) DO UPDATE SET status='active';

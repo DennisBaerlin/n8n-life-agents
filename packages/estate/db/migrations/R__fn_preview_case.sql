@@ -9,7 +9,11 @@
 --     * case_type ∈ {death, incapacity}; subject_person_id Pflicht + muss ein Haushaltsmitglied sein
 --       (core.fn_household_persons, NIE agent.persons direkt, D10).
 --     * subject == Sender selbst -> {ok:false, subject_is_sender} (v1-Grenze; nur numerischer Pfad).
---     * event_date Pflicht, nicht in der Zukunft; knowledge_date >= event_date (Default = event_date).
+--     * event_date Pflicht, nicht in der Zukunft; knowledge_date >= event_date (Default = event_date); beide
+--       YYYY-MM-DD oder relativ (core.fn_resolve_date) — die Rueckgabe traegt die AUFGELOESTEN Daten, die der
+--       Tool-Write danach unveraendert uebernimmt (Karte = Speicher).
+--     * intake_facts / unknown_flags: Intake-Merkmale des Falltyps, wirksam true bzw. unbekannt (Register via
+--       estate.fn_case_register_flags, ueberstimmt von p.flags).
 --     * bundesland FAIL-CLOSED: Parameter -> Config estate.general.bundesland -> sonst
 --       {ok:false, bundesland_required}; unbekannter Slug -> reject. (Der Agent fragt dann nach.)
 --     * offener Fall derselben Person: gleicher Typ -> reject (Idempotenz); death ueber offenem
@@ -35,6 +39,9 @@ DECLARE
     v_super     BIGINT := NULL;
     v_counts    JSONB;
     v_total     INT;
+    v_eff       JSONB;
+    v_known     JSONB;
+    v_unknown   JSONB;
 BEGIN
     v_perm := core.fn_check_write_permission('adults_only', v_chat, NULL);
     IF v_perm IS NOT NULL THEN
@@ -59,22 +66,27 @@ BEGIN
             'reason', 'You cannot open an event case for yourself — the affected person (subject) must be a DIFFERENT household member (this is a v1 limitation).');
     END IF;
 
-    BEGIN
-        v_event := (p->>'event_date')::date;
-    EXCEPTION WHEN OTHERS THEN
-        RETURN jsonb_build_object('ok', false, 'reason', 'event_date must be a valid date (YYYY-MM-DD).');
-    END;
-    IF v_event IS NULL THEN
+    -- WP3: relative Angaben ("yesterday", "-3 days", "last friday") rechnet die DB, das LLM uebersetzt nur.
+    IF NULLIF(trim(COALESCE(p->>'event_date', '')), '') IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'event_date is required.');
     END IF;
-    IF v_event > CURRENT_DATE THEN
+    v_event := core.fn_resolve_date(p->>'event_date');
+    IF v_event IS NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason',
+            'event_date must be YYYY-MM-DD or relative to today (e.g. yesterday, -3 days, last friday).');
+    END IF;
+    IF v_event > core.fn_today() THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'event_date cannot be in the future.');
     END IF;
-    BEGIN
-        v_know := COALESCE(NULLIF(p->>'knowledge_date', '')::date, v_event);
-    EXCEPTION WHEN OTHERS THEN
-        RETURN jsonb_build_object('ok', false, 'reason', 'knowledge_date must be a valid date (YYYY-MM-DD).');
-    END;
+    IF NULLIF(trim(COALESCE(p->>'knowledge_date', '')), '') IS NULL THEN
+        v_know := v_event;
+    ELSE
+        v_know := core.fn_resolve_date(p->>'knowledge_date');
+        IF v_know IS NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason',
+                'knowledge_date must be YYYY-MM-DD or relative to today (e.g. yesterday, -3 days).');
+        END IF;
+    END IF;
     IF v_know < v_event THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'knowledge_date cannot be before event_date.');
     END IF;
@@ -113,6 +125,16 @@ BEGIN
              WHERE status = 'open'
              GROUP BY phase) s;
 
+    -- WP3: Intake-Merkmale dieses Falltyps — wirksam (Register || Angabe) true = intake_facts (Karte), weder Register
+    -- noch Angabe = unknown_flags (genau das fragt der Agent, einmal gesammelt). Derived-Conditions zaehlen nicht.
+    v_eff := jsonb_strip_nulls(estate.fn_case_register_flags(v_subject)) || v_flags;
+    SELECT COALESCE(jsonb_agg(k ORDER BY k) FILTER (WHERE v_eff->>k = 'true'), '[]'::jsonb),
+           COALESCE(jsonb_agg(k ORDER BY k) FILTER (WHERE NOT v_eff ? k), '[]'::jsonb)
+      INTO v_known, v_unknown
+      FROM (SELECT DISTINCT t.condition_key AS k FROM estate.task_templates t
+             WHERE t.case_type = v_type AND NOT t.retired AND t.condition_key IS NOT NULL
+               AND t.condition_key NOT IN ('adult_subject', 'finance_absent', 'minor_children')) s;
+
     RETURN jsonb_build_object(
         'ok', true,
         'case_type', v_type,
@@ -122,6 +144,8 @@ BEGIN
         'bundesland', v_bl,
         'phase_counts', v_counts,
         'total_open', v_total,
+        'intake_facts', v_known,
+        'unknown_flags', v_unknown,
         'supersede_case_id', v_super);
 END;
 $$;

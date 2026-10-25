@@ -58,7 +58,7 @@ BEGIN
   SELECT count(*) INTO v_n FROM estate.v_register_gaps;
   -- 1 (death_action) + 2 (desired_action + Schluesselkonto) + 2 (person_records fehlen) + 2 (funeral fehlt) = 7
   IF v_n <> 7 THEN RAISE EXCEPTION 'FAIL [register gaps]: % statt 7', v_n; END IF;
-  INSERT INTO estate.person_records (person_id) VALUES ('erika');
+  INSERT INTO estate.person_records (person_id, employer) VALUES ('erika', 'Beispiel GmbH');   -- Inhalt schliesst die Luecke (WP3)
   SELECT count(*) INTO v_n FROM estate.v_register_gaps;
   IF v_n <> 6 THEN RAISE EXCEPTION 'FAIL [person_record-Gap nicht aufgeloest]: % statt 6', v_n; END IF;
   RAISE NOTICE 'PASS [Register-Feld-Gaps: death_action/desired_action/Schluesselkonto/Personen-Zeilen]';

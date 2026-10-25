@@ -63,6 +63,27 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS create [date happy]';
 
+  -- TEST 3b (WP3): relative Faelligkeit rechnet die DB; Vergangenheit/Freitext -> {ok:false}
+  v := agent.fn_create_monitor_trigger(jsonb_build_object(
+    'domain', '__test__', 'label', 'Rente pruefen relativ', 'trigger_type', 'date', 'due_date', '+6 months', 'check_interval', '7 days'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true
+     OR (v->>'due_date')::date IS DISTINCT FROM (core.fn_today() + interval '6 months')::date
+     OR (SELECT due_date FROM agent.monitor_triggers WHERE id = (v->>'trigger_id')::int)
+        IS DISTINCT FROM (core.fn_today() + interval '6 months')::date THEN
+    RAISE EXCEPTION 'FAIL create [date relativ +6 months]: got %', v;
+  END IF;
+  v := agent.fn_create_monitor_trigger(jsonb_build_object(
+    'domain', '__test__', 'label', 'Vergangen', 'trigger_type', 'date', 'due_date', '-1 day', 'check_interval', '7 days'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%past%' THEN
+    RAISE EXCEPTION 'FAIL create [date Vergangenheit]: got %', v;
+  END IF;
+  v := agent.fn_create_monitor_trigger(jsonb_build_object(
+    'domain', '__test__', 'label', 'Freitext', 'trigger_type', 'date', 'due_date', 'in sechs Monaten', 'check_interval', '7 days'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%relative%' THEN
+    RAISE EXCEPTION 'FAIL create [date Freitext]: got %', v;
+  END IF;
+  RAISE NOTICE 'PASS create [date relativ von der DB gerechnet, Vergangenheit/Freitext abgelehnt]';
+
   -- TEST 4: recurring_info/sql happy + Shape-Validierung
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Monatlicher Kontostand',

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS agent.guide_onboarding_state (
     ord         int  NOT NULL,                       -- Anzeige-/Interview-Reihenfolge (MVD-Leiter, Plan §4)
     label       text NOT NULL,                       -- nutzerfreundlicher Sektionsname (DE)
     status      text NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'completed', 'skipped')),
-    skipped_at  timestamptz,                          -- gesetzt gdw status='skipped' (Audit: wann bewusst ausgelassen)
+    skipped_at  timestamptz,                          -- ALTLAST, ungenutzt (ableitbar aus status+status_changed_at): bleibt nur, weil core:V003 sie beim frischen Bootstrap liest; core:V032 droppt sie
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 

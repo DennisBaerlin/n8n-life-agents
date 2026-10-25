@@ -199,4 +199,31 @@ BEGIN
 
 END $$;
 
+-- TEST 11 (WP3): as_of stempelt die fn, relative Daten rechnet die DB
+DO $$
+DECLARE
+  v_result JSONB;
+  v_state  JSONB;
+BEGIN
+  SELECT agent.fn_advisor_save_section(jsonb_build_object(
+    'domain', '__test_domain_asof__', 'section_key', 'risk', 'section_content', 'Risk profile confirmed.',
+    'section_data', jsonb_build_object(
+      'risk_profile', jsonb_build_object('risk_tolerance', 'medium', 'as_of', '2001-01-01'),
+      'goal', jsonb_build_object('target_portfolio_basis', 'investment'),
+      'target_date', '+2 years',
+      'target_roles', jsonb_build_array(jsonb_build_object('title', 'Scrum Master'))))) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL save_section as_of: erwartet ok, got %', v_result; END IF;
+  SELECT interview_state->'risk'->'data' INTO v_state FROM agent.advisor_plans
+   WHERE domain = '__test_domain_asof__' AND status = 'draft';
+  IF (v_state->'risk_profile'->>'as_of')::date IS DISTINCT FROM CURRENT_DATE
+     OR (v_state->'goal'->>'as_of')::date IS DISTINCT FROM CURRENT_DATE THEN
+    RAISE EXCEPTION 'FAIL save_section as_of: jeder Objekt-Block traegt heute (LLM-Wert ueberschrieben), got %', v_state; END IF;
+  IF v_state ? 'as_of' OR v_state->'target_roles'->0 ? 'as_of' THEN
+    RAISE EXCEPTION 'FAIL save_section as_of: nur Top-Level-Objekte, keine Skalare/Arrays, got %', v_state; END IF;
+  IF v_state->>'target_date' IS DISTINCT FROM to_char(CURRENT_DATE + interval '2 years', 'YYYY') THEN
+    RAISE EXCEPTION 'FAIL save_section relative Daten: "+2 years" -> Jahr erwartet, got %', v_state->>'target_date'; END IF;
+  RAISE NOTICE 'PASS save_section [as_of je Objekt-Block von der fn, LLM-Wert ueberschrieben, +2 years -> YYYY]';
+END $$;
+
 ROLLBACK;

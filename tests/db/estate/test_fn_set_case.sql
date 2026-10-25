@@ -1,6 +1,6 @@
 -- tests/db/estate/test_fn_set_case.sql
--- WS-3: Fall aendern (knowledge/bundesland/flags) -> Fristen-Recompute + ADDITIVER Reconcile;
---   nichts auto-n.a. (done/open bleiben). adults_only, nur offen.
+-- WS-3: Fall aendern (knowledge/bundesland/flags) -> Fristen-Recompute + Reconcile; WP3: in beide Richtungen,
+--   aber nur fuer System-Status (done und Nutzer-"trifft nicht zu" bleiben). adults_only, nur offen.
 BEGIN;
 
 DO $$
@@ -44,6 +44,44 @@ BEGIN
   IF (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'done' THEN
     RAISE EXCEPTION 'FAIL [done-Task durch Reconcile zurueckgesetzt]'; END IF;
   RAISE NOTICE 'PASS [set_case: Reconcile n.a.->open + Recompute + done bleibt done]';
+
+  -- ---- WP3: Reconcile in beide Richtungen, nur fuer System-Status ----
+  -- Nutzer hakt eine bedingungslose Task als "trifft nicht zu" ab -> bleibt n.a. bei jedem weiteren set_case
+  SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case AND template_key='manage_contracts';
+  PERFORM estate.fn_set_case_task(jsonb_build_object('chat_id','111','case_task_id', v_task, 'status','not_applicable'));
+  IF (SELECT status_source FROM estate.case_tasks WHERE id=v_task) <> 'user' THEN
+    RAISE EXCEPTION 'FAIL [set_case_task setzt status_source=user nicht]'; END IF;
+  -- Merkmal zuruecknehmen: tenant=false -> tenancy open -> n.a.
+  v_r := estate.fn_set_case(jsonb_build_object('chat_id','111','case_id', v_case, 'flags', jsonb_build_object('tenant',false)));
+  IF (SELECT status FROM estate.case_tasks WHERE case_id=v_case AND template_key='tenancy') <> 'not_applicable' THEN
+    RAISE EXCEPTION 'FAIL [Zuruecknehmen: tenancy nicht auf n.a.]'; END IF;
+  IF (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'not_applicable' THEN
+    RAISE EXCEPTION 'FAIL [Nutzer-n.a. durch Reconcile wieder geoeffnet]'; END IF;
+  IF v_r->>'case_status' IS DISTINCT FROM 'open' THEN RAISE EXCEPTION 'FAIL [case_status fehlt: %]', v_r; END IF;
+  -- 'register' (null) vergisst die Aussage -> Register-Ableitung greift (Vermieter-Kontakt -> tenant)
+  INSERT INTO estate.contacts (owner_person_id, role, name) VALUES ('hans', 'landlord', 'Vermieterin Z');
+  v_r := estate.fn_set_case(jsonb_build_object('chat_id','111','case_id', v_case, 'flags', jsonb_build_object('tenant',NULL)));
+  IF (SELECT flags ? 'tenant' FROM estate.cases WHERE id=v_case) THEN
+    RAISE EXCEPTION 'FAIL [null loescht die Aussage nicht]'; END IF;
+  IF (SELECT status FROM estate.case_tasks WHERE case_id=v_case AND template_key='tenancy') <> 'open' THEN
+    RAISE EXCEPTION 'FAIL [nach register: tenancy aus dem Register nicht open]'; END IF;
+  -- relatives Kenntnisdatum: DB rechnet, Probelauf meldet es als effective (New-FnWriteGate -> Write)
+  v_r := estate.fn_set_case(jsonb_build_object('chat_id','111','case_id', v_case, 'knowledge_date','yesterday'));
+  IF v_r->'effective'->>'knowledge_date' IS DISTINCT FROM to_char(core.fn_today() - 1, 'YYYY-MM-DD')
+     OR (SELECT knowledge_date FROM estate.cases WHERE id=v_case) IS DISTINCT FROM core.fn_today() - 1 THEN
+    RAISE EXCEPTION 'FAIL [relatives knowledge_date: %]', v_r; END IF;
+  v_r := estate.fn_set_case(jsonb_build_object('chat_id','111','case_id', v_case, 'knowledge_date','vorgestern'));
+  IF (v_r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [Freitext-Datum akzeptiert]'; END IF;
+  -- fan_out: neuer Fahrzeug-Stub zieht eine Task nach; Stub geloescht -> System-Task n.a.
+  INSERT INTO estate.special_assets (owner_person_id, asset_type, description) VALUES ('hans','vehicle','Kombi grau');
+  PERFORM estate.fn_set_case(jsonb_build_object('chat_id','111','case_id', v_case));
+  IF (SELECT status FROM estate.case_tasks WHERE case_id=v_case AND template_key='vehicle_death') <> 'open' THEN
+    RAISE EXCEPTION 'FAIL [fan_out Stub -> Task open]'; END IF;
+  DELETE FROM estate.special_assets WHERE description = 'Kombi grau';
+  PERFORM estate.fn_set_case(jsonb_build_object('chat_id','111','case_id', v_case));
+  IF (SELECT status FROM estate.case_tasks WHERE case_id=v_case AND template_key='vehicle_death') <> 'not_applicable' THEN
+    RAISE EXCEPTION 'FAIL [fan_out Stub geloescht -> Task n.a.]'; END IF;
+  RAISE NOTICE 'PASS [set_case WP3: Zuruecknehmen, Nutzer-n.a. bleibt, register-Reset, case_status, relatives Datum]';
 
   -- nicht offen -> reject.
   PERFORM estate.fn_cancel_case(jsonb_build_object('chat_id','111','case_id', v_case));

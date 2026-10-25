@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 355 fn-Dateien.
+Umfang: 357 fn-Dateien.
 
 ## finance.fn_account_interest_defaults (READ, STABLE) -- die vorgeschlagenen Zins-Werte eines NEUEN Kontos
 - `finance.fn_account_interest_defaults(p jsonb) -> jsonb`
@@ -1297,10 +1297,20 @@ Umfang: 355 fn-Dateien.
 - jsonb-Keys: --
 - estate.fn_resolve_contact (read-only Resolver, WS-2) Loest einen Schluessel-Kontakt ueber den Namen (exakt) + optional die Rolle auf (Vorbild: finance.fn_resolve_real_estate; Rueckgabe id/hit_count/candidates). Genutzt von tool_set_/delete_contact (Pre-Gate-Resolve) + als Dubletten-Backstop in tool_create_contact. Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_resolve_contact.sql
 
+## core.fn_resolve_date
+- `core.fn_resolve_date(p_text text, p_today date DEFAULT NULL) -> date`
+- jsonb-Keys: --
+- core.fn_resolve_date (DIE EINE ADRESSE FUER "RELATIVE ZEITANGABE -> DATUM") Das LLM rechnet nie (auch keine Datums-Arithmetik, Root-CLAUDE.md): es UEBERSETZT die Nutzer-Angabe ("vor drei Tagen", "in drei Wochen", "letzten Freitag") in eine feste Form, die DB rechnet hier. Akzeptiert (case-insensitiv, getrimmt): * YYYY-MM-DD (ungueltiges Datum wie 2024-02-30 -> NULL, kein RAISE) * today | yesterday | tomorrow * [+-]N <unit> | in N <unit> | N <unit> ago mit <unit> = day(s)|week(s)|month(s)|year(s), N <= 9999 (Vorzeichen zusammen mit "ago" = Doppel-Negation -> NULL; ohne Richtung ("3 days") -> NULL) * next|last <weekday> (englisch) = 1..7 Tage STRIKT danach bzw. davor (gleicher Wochentag = +-7) Sonst NULL — der Aufrufer antwortet {ok:false, reason} mit dem Format-Hinweis. Bewusst keine Freitext-NLP (de/en/ko-Zahlwoerter in SQL waeren fragil). Offsets per make_interval (unabhaengig von IntervalStyle); Monatsende klemmt wie Postgres (31.01. + 1 month = 28.02.). p_today = Bezugstag (NULL/Default = core.fn_today(), Haushalts-Zeitzone); als Parameter fuer deterministische Tests. STABLE, INVOKER, ohne Tabellenzugriff. Paket-Rollen: EXECUTE-Grant in core.fn_provision_package_roles. Tests: tests/db/core/test_fn_resolve_date.sql
+
 ## estate.fn_resolve_digital_account
 - `estate.fn_resolve_digital_account(p_provider text, p_username text DEFAULT NULL) -> TABLE ( id bigint, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
 - estate.fn_resolve_digital_account (read-only Resolver, WS-2) Loest ein digitales Konto ueber den Anbieter-Namen (exakt) + optional den Nutzernamen auf (Vorbild: finance.fn_resolve_real_estate; Rueckgabe id/hit_count/candidates). Zwei Konten beim selben Anbieter (z. B. je Partner ein Google-Konto) disambiguiert der Nutzername. Genutzt von tool_set_/delete_digital_account (Pre-Gate-Resolve) + als Dubletten-Backstop in tool_create_digital_account. Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_resolve_digital_account.sql
+
+## core.fn_resolve_fact_dates
+- `core.fn_resolve_fact_dates(p jsonb, p_today date DEFAULT NULL) -> jsonb`
+- jsonb-Keys: --
+- core.fn_resolve_fact_dates (relative Zeitangaben in einem Fakten-/Plan-jsonb aufloesen) Rekursiv ueber Objekte und Arrays: jeder STRING-Wert unter einem Key, der auf "_date" endet oder "since" heisst und nicht schon absolut ist (YYYY, YYYY-MM, YYYY-MM-DD), laeuft durch core.fn_resolve_date. GENAUIGKEIT FOLGT DER ANGABE: ein Offset in Jahren ergibt YYYY, in Monaten YYYY-MM, alles andere (Tage, Wochen, Wochentag, today) den Tag. So wird aus "mein Sohn ist 5" (birth_date "-5 years") kein erfundener Geburtstag, sondern "2021" — das der family-Validator als Geburtsdatum ablehnt (der Agent fragt nach). Nicht aufloesbare Werte bleiben unveraendert (der Validator lehnt sie dann mit Grund ab); andere Keys, Nicht-Strings und JSON-null bleiben unberuehrt. Keine Paket-Keys im Core: die Regel haengt nur am Suffix. Aufrufer: agent.fn_set_context_facts (facts), agent.fn_advisor_save_section (section_data) und die Tool-Knoten "Resolve dates" VOR der Karte (Karte = Speicher, ein Aufloesungszeitpunkt). Idempotent. STABLE, INVOKER. Tests: tests/db/core/test_fn_resolve_date.sql
 
 ## finance.fn_resolve_holding
 - `finance.fn_resolve_holding(p_depot_id int, p_isin text, -- NULL (or '') for crypto p_symbol text DEFAULT NULL) -> TABLE ( id int, shares numeric, avg_price numeric, found boolean )`

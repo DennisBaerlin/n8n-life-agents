@@ -272,6 +272,10 @@ BEGIN
     IF to_regprocedure('core.fn_today(timestamptz)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_today(timestamptz) TO %I, %I', v_rw, v_ro);
     END IF;
+    -- Relative Zeitangabe -> Datum ("-3 days", "in 3 weeks"): die Paket-Write-fns rechnen sie selbst (LLM rechnet nie).
+    IF to_regprocedure('core.fn_resolve_date(text, date)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_resolve_date(text, date) TO %I, %I', v_rw, v_ro);
+    END IF;
 
     RETURN jsonb_build_object('ok', true, 'package', v_pkg, 'rw_role', v_rw, 'ro_role', v_ro);
 END;

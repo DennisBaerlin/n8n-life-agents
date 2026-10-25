@@ -245,7 +245,7 @@ function Test-RawMoneyDate([string]$Text) {
 
 $ORCH_ID = 'A6iPk9ezRzKzLbTj'
 $vChatCond = @(); $vChatExpr = @(); $vExprProto = @(); $vCodeShape = @(); $vSrcBind = @()
-$vTgAttr = @(); $vTgRetry = @(); $vTgEscape = @(); $vConnRef = @(); $vTgFmt = @(); $vNoSticky = @(); $vTgApprover = @(); $vStaleTap = @(); $vHitlStruct = @(); $vUmlaut = @(); $vTgWaitLimit = @(); $vTgEmptyParse = @()
+$vTgAttr = @(); $vTgRetry = @(); $vTgEscape = @(); $vConnRef = @(); $vConnShape = @(); $vTgFmt = @(); $vNoSticky = @(); $vTgApprover = @(); $vStaleTap = @(); $vHitlStruct = @(); $vUmlaut = @(); $vTgWaitLimit = @(); $vTgEmptyParse = @()
 # Ausnahmen vom Stale-Tap-Guard (10), je mit Grund:
 $staleTapExempt = @(
     # HITL-Gate: je Empfaenger genau EIN Warte-Node pro Execution; die Owner-Stufe des Vier-Augen-Pfads hat andere
@@ -260,21 +260,17 @@ $staleTapExempt = @(
 # (lib/build_helpers.ps1) -> erfuellen das strukturell; dieser Lint ist der Backstop.
 # ESCAPE-ALLOWLIST (bewusst un-escapte dynamische Texte, je mit Grund):
 $tgEscapeAllow = @(
-    # LLM-Antwort-Relay des UI-verwalteten Orchestrators: zentrales Escape wuerde gewollte
-    # Formatierung zerstoeren -> bewusst offen (BACKLOG "Markdown-Entity-Risiko bei LLM-Antworten").
+    # Relay-Ketten (New-TelegramRelayChain, Hauptpfad + Onboarding-/Befehls-Arme unten als Muster): der Text ist
+    # UPSTREAM im Code-Node '<Name> split' HTML-escapt (& < >) und geht mit parse_mode=HTML raus (= echtes Plain,
+    # Plan lively-cooking-map WP1, woertliches Weiterreichen) -> keine Markdown-Entities moeglich.
     'agent.orchestrator.main_route :: Send a text message'
-    # WS-1/WS-2/P1: dieselbe Klasse - die deterministischen onboarding:<package>:<key>-Callback-Arme relayen
-    # den agent.<onboarding_agent>-LLM-Output ($json.output); zentrales Escape wuerde gewollte Formatierung
-    # zerstoeren. 'Relay onboarding cb' (core/household) + 'Relay onboarding <pkg>' (P1 build-time pro Paket
-    # generiert aus $OnboardingDispatchList) -> MUSTER-Allowlist $tgEscapeAllowLike unten, damit ein neues
-    # Onboarding-Paket ohne workflow_lint-Edit andockt. (/onboarding selbst relayed nicht -> core.sub_send_onboarding_menu
-    # sendet das Menue selbst.) Escape passiert UPSTREAM im Format-Message-Code-Node (eigener Check in der
-    # error_notify-Sektion oben: "Code escapt Markdown-Entities").
+    # Escape passiert UPSTREAM im Format-Message-Code-Node (eigener Check in der error_notify-Sektion oben:
+    # "Code escapt Markdown-Entities").
     'core.sub_error_notify :: Send Telegram Alert'
 )
-# MUSTER-Allowlist (P1/WS-5): die build-time pro Paket generierten Relay-Nodes relayen LLM-Output un-escapt
-# -> ein neues Paket dockt an, ohne dass diese Liste editiert werden muss. 'Relay onboarding *' = P1
-# Onboarding-Dispatch-Arme; 'Relay command *' = WS-5 Command-Dispatch-Arme ($CommandDispatchList, /notfall).
+# MUSTER-Allowlist (P1/WS-5): die build-time pro Paket generierten Relay-Ketten (New-TelegramRelayChain, Text im
+# '<Name> split'-Code-Node HTML-escapt, parse_mode=HTML) -> ein neues Paket dockt an, ohne dass diese Liste editiert
+# werden muss. 'Relay onboarding *' = P1 Onboarding-Arme (inkl. cb); 'Relay command *' = WS-5 Command-Arme (/notfall).
 $tgEscapeAllowLike = @(
     'agent.orchestrator.main_route :: Relay onboarding *'
     'agent.orchestrator.main_route :: Relay command *'
@@ -431,6 +427,11 @@ foreach ($wfFile in (Get-AllWfFiles)) {
         foreach ($srcProp in $w.connections.PSObject.Properties) {
             if ($nodeNames -notcontains $srcProp.Name) { $vConnRef += "$($w.name) :: Quelle '$($srcProp.Name)'" }
             foreach ($ctypeProp in $srcProp.Value.PSObject.Properties) {
+                # Form: main = Array von Ausgaengen, jeder Ausgang ein Array (auch leer). Ein Ein-Element-Array, das
+                # PowerShell beim Build zu einem Objekt entpackt, lehnt n8n import:workflow ab ("main[0] Expected array,
+                # received object", 2026-10-25 New-TelegramRelayChain) -> hier gratis statt erst beim Deploy.
+                if ($ctypeProp.Value -isnot [System.Array]) { $vConnShape += "$($w.name) :: '$($srcProp.Name)'.$($ctypeProp.Name) ist kein Array" }
+                else { $oi = 0; foreach ($o in $ctypeProp.Value) { if ($null -ne $o -and $o -isnot [System.Array]) { $vConnShape += "$($w.name) :: '$($srcProp.Name)'.$($ctypeProp.Name)[$oi] ist kein Array" }; $oi++ } }
                 foreach ($outputs in $ctypeProp.Value) {
                     foreach ($c in $outputs) {
                         if ($c -and $c.node -and $nodeNames -notcontains $c.node) {
@@ -443,7 +444,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
     }
 }
 
-foreach ($v in ($vChatCond + $vChatExpr + $vExprProto + $vCodeShape + $vSrcBind + $vTgAttr + $vTgRetry + $vTgEscape + $vConnRef + $vTgFmt + $vNoSticky + $vTgApprover + $vStaleTap + $vHitlStruct + $vUmlaut + $vTgWaitLimit + $vTgEmptyParse | Sort-Object -Unique)) {
+foreach ($v in ($vChatCond + $vChatExpr + $vExprProto + $vCodeShape + $vSrcBind + $vTgAttr + $vTgRetry + $vTgEscape + $vConnRef + $vConnShape + $vTgFmt + $vNoSticky + $vTgApprover + $vStaleTap + $vHitlStruct + $vUmlaut + $vTgWaitLimit + $vTgEmptyParse | Sort-Object -Unique)) {
     Write-Host "    OFFENDER: $v" -ForegroundColor Yellow
 }
 Check 'Stickies: jeder Workflow traegt >= 1 Sticky-Note (Workflows sind die Doku)' { $vNoSticky.Count -eq 0 }
@@ -463,6 +464,7 @@ Check 'Telegram: mehrere Chat-Fragen je Workflow nur mit Doppel-Tipp-Schutz (tap
 Check 'Telegram: sendAndWait-Wartegrenze unter options (top-level limitWaitTime wird ignoriert)' { $vTgWaitLimit.Count -eq 0 }
 Check "Telegram: kein leeres parse_mode (n8n macht daraus 'Markdown'; Plain = HTML + Escape)" { $vTgEmptyParse.Count -eq 0 }
 Check 'Connections: jede Quelle/jedes Ziel referenziert einen Node'     { $vConnRef.Count -eq 0 }
+Check 'Connections: main = Array von Arrays (n8n-Import-Form)'           { $vConnShape.Count -eq 0 }
 
 # (Naht) Paket-Modularitaet (Install-UX-Phase 4): KEIN Core-Workflow traegt eine LITERALE Workflow-ID eines
 # Paket-Workflows (executeWorkflow ODER toolWorkflow). n8n (geprueft 2.21.7 + 2.44.4) aktiviert einen Workflow nur, wenn alle literal

@@ -68,6 +68,11 @@ function Get-ToolCall([object]$RunData) {
 }
 function Get-AgentOutput([object]$RunData) {
     $txt = ''
+    # Woertliches Weiterreichen: die GESENDETE Nachricht baut 'Relay compose' (Teile, HTML-escapt); der Agent selbst
+    # liefert nach einem Spezialisten nur FRAME/NOFRAME. Fuer Judge und verbatim_relay zaehlt der gesendete Text.
+    if ($RunData.PSObject.Properties.Name.Contains('Relay compose')) {
+        try { return [string]$RunData.'Relay compose'[0].data.main[0][0].json.body } catch { return '' }
+    }
     if (-not $RunData.PSObject.Properties.Name.Contains($AgentNode)) { return $txt }
     foreach ($run in $RunData.$AgentNode) { try { if ($run.data.main[0][0].json.output) { $txt = $run.data.main[0][0].json.output } } catch { } }
     return $txt

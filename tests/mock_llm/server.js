@@ -214,6 +214,13 @@ function decide(body) {
   if (k < eligible.length) {
     return { payload: anthropicToolUse(eligible[k], k), why: 'tool-call:' + eligible[k].tool + ' turn=' + k, offered, task, delay };
   }
+  // Woertliches Weiterreichen (Orchestrator-Relay): nach einem Spezialisten-Aufruf antwortet der Router nur mit dem
+  // Signal FRAME/NOFRAME (Prompt-Regel 6) — der Workflow haengt die Spezialisten-Antwort selbst an. Der Router ist der
+  // Request, der Call_*-Tools anbietet; final_router (optional) ersetzt dort das Spezialisten-final, Default NOFRAME.
+  const isRouter = offered.some((t) => /^Call_/.test(t));
+  if (isRouter && eligible.length > 0) {
+    return { payload: anthropicText(scenario.final_router || 'NOFRAME'), why: 'router-signal-after-' + eligible.length + '-calls', offered, task, delay };
+  }
   return { payload: anthropicText(scenario.final), why: 'final-after-' + eligible.length + '-calls', offered, task, delay };
 }
 

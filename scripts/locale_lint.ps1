@@ -174,6 +174,10 @@ Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆
         if ("$($p.code)" -notmatch '^[a-z_]+$') { "Persona-Code '$($p.code)' passt nicht zu ^[a-z_]+$ (CHECK in core.ui_personas)" }
         if ($null -eq $p.ord) { "Persona '$($p.code)': ord fehlt" }
         if (-not ($cat['core'] -and $cat['core']['de'] -and $cat['core']['de'].Contains("core.persona.name.$($p.code)"))) { "Datei packages/core/locales: core.persona.name.$($p.code) fehlt (Knopf-Name im Persona-Picker)" }
+        if ($p.code -ne 'neutral' -and $cat['core'] -and $cat['core']['de'] -and
+            @($cat['core']['de'].Keys | Where-Object { $_ -like "core.persona.frame.$($p.code).*" }).Count -eq 0) {
+            "Datei packages/core/locales: kein core.persona.frame.$($p.code).<n> (fester Rahmensatz im Relay, agent.orchestrator; mindestens einer)"
+        }
     }
     foreach ($d in @($pcodes | Group-Object | Where-Object Count -gt 1)) { "Persona-Code '$($d.Name)' doppelt" }
     $v = Get-ChildItem (Join-Path $RepoRoot 'packages\core\db\migrations') -Filter 'V*__ui_personas*.sql' -ErrorAction SilentlyContinue
@@ -223,7 +227,7 @@ $unused = @()
 foreach ($pkg in $cat.Keys) {
     $de = $cat[$pkg]['de']; if ($null -eq $de) { continue }
     foreach ($k in $de.Keys) {
-        if ($k -match '\.(enum|facts|monitor_method)\.' -or $k -match '^core\.persona\.name\.') { continue }
+        if ($k -match '\.(enum|facts|monitor_method)\.' -or $k -match '^core\.persona\.(name|frame)\.') { continue }
         if (-not $corpusText.Contains("'$k'") -and -not $corpusText.Contains("""$k""")) { $unused += $k }
     }
 }

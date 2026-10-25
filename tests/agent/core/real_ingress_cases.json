@@ -874,5 +874,33 @@
     "expected_node": "Orchestrator agent",
     "expect_system_tail": "persona: butler",
     "notes": "Rahmen-Modell: die Persona erreicht NUR den Orchestrator als Runtime-Flag (fn_resolve_sender -> Resolve sender -> systemMessage). Der Mock-LLM loggt das Ende des System-Prompts (system_tail). Danach wieder neutral."
+  },
+  {
+    "id": "ri62",
+    "name": "Woertliches Weiterreichen: Owner mit Butler fragt den Buchhalter -> fester Katalog-Rahmensatz + Spezialisten-Text woertlich, kein Router-Signal im Chat",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Relay-Test Sparkonto: wie ist der Stand?",
+    "persona_person": "owner",
+    "persona_before": "butler",
+    "expected_node": "Relay compose",
+    "expect_texts": ["Sehr wohl", "Dein Sparkonto steht bei 500,00 EUR."],
+    "forbid_texts": ["FRAME"],
+    "notes": "Plan lively-cooking-map WP1: der Router antwortet nach dem Tool nur FRAME (Mock final_router); Relay compose haengt die Spezialisten-Antwort aus intermediateSteps woertlich an und setzt bei butler einen core.persona.frame.butler.<n>-Satz (alle de-Varianten beginnen mit 'Sehr wohl') davor."
+  },
+  {
+    "id": "ri63",
+    "name": "Woertliches Weiterreichen neutral: kein Rahmensatz, nur der Spezialisten-Text",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Relay-Test Sparkonto neutral bitte",
+    "expected_node": "Relay compose",
+    "expect_texts": ["Dein Sparkonto steht bei 500,00 EUR."],
+    "forbid_texts": ["Sehr wohl", "FRAME"],
+    "notes": "Persona neutral (Setup entfernt den Key): das Signal FRAME wird ignoriert, gesendet wird nur der woertliche Spezialisten-Text."
   }
 ]

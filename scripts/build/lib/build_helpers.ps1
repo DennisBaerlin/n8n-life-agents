@@ -1295,6 +1295,55 @@ function New-TelegramSendWithPlainFallback {
     @{ Primary = $primary; Fallback = $fallback }
 }
 
+# New-TelegramRelayChain — EIN Weg fuer jede Agent-Antwort an den Chat (Orchestrator-Relay, Paket-Befehle, Onboarding-
+# Knoepfe; Owner 2026-10-25 "Zahlen richtig + lesbar"): '<Name> split' (Code) teilt den Text an Absatzgrenzen in Teile
+# <= 3500 Zeichen (vor dem Escapen; Telegram-Limit 4096) und escapt & < > -> '<Name> loop' (splitInBatches, 1 Teil je
+# Runde) -> '<Name>' (Telegram, parse_mode=HTML = echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode
+# macht n8n still zu Markdown) -> zurueck zur Loop. Ein Retry wiederholt so nur den aktuellen Teil (keine Duplikate).
+# -TextJs = JS-Ausdruck im Code-Node-Kontext (nur .first(), kein .item), -FallbackJs = Text, wenn er leer ist.
+# Rueckgabe: @{ Nodes; Conns; Entry = '<Name> split'; Loop = '<Name> loop' } — der Aufrufer verdrahtet zur Entry und
+# den Done-Ausgang (Loop main[0]) zu seinem Folge-Node (AddDone).
+function New-TelegramRelayChain {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$TextJs,
+          [Parameter(Mandatory)][string]$ChatIdExpr, [string]$FallbackJs = "''", [string]$DoneTo)
+    $js = @"
+const body = String(($TextJs) || ($FallbackJs) || '');
+const LIMIT = 3500;
+const chunks = [];
+let cur = '';
+const push = (s) => { if (s.trim()) chunks.push(s); };
+for (const para of body.split('\n\n')) {
+  const add = cur ? cur + '\n\n' + para : para;
+  if (add.length <= LIMIT) { cur = add; continue; }
+  push(cur); cur = '';
+  let rest = para;
+  while (rest.length > LIMIT) {
+    let cut = rest.lastIndexOf('\n', LIMIT);
+    if (cut < LIMIT / 2) cut = rest.lastIndexOf(' ', LIMIT);
+    if (cut < LIMIT / 2) cut = LIMIT;
+    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\s+/, '');
+  }
+  cur = rest;
+}
+push(cur);
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+return chunks.map((c, i) => ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));
+"@
+    $split = [ordered]@{ parameters = [ordered]@{ jsCode = $js }; type = 'n8n-nodes-base.code'; typeVersion = 2
+        position = $Pos; id = (New-Id); name = "$Name split" }
+    $loop = Build-Loop "$Name loop" @(($Pos[0] + 200), $Pos[1])
+    $send = New-TelegramSendNode $Name @(($Pos[0] + 400), ($Pos[1] + 120)) "={{ `$json.text }}" -ChatIdExpr $ChatIdExpr -NoEscape -ParseMode 'HTML'
+    # main[0] = done, main[1] = loop — beide MUESSEN Arrays bleiben (ein Ein-Element-Array entpackt PowerShell sonst
+    # zu einem Objekt -> n8n-Import "connections.<loop>.main[0] Expected array, received object").
+    $doneArr = @(if ($DoneTo) { E $DoneTo })
+    $conns = [ordered]@{
+        "$Name split" = @{ main = @( ,@( E "$Name loop" ) ) }
+        "$Name loop"  = @{ main = @( ,$doneArr ) + @( ,@( E $Name ) ) }
+        $Name         = @{ main = @( ,@( E "$Name loop" ) ) }
+    }
+    @{ Nodes = @($split, $loop, $send); Conns = $conns; Entry = "$Name split"; Loop = "$Name loop" }
+}
+
 # Telegram Send-and-Wait (Buttons; approvalType 'double' = Approve+Disapprove); eigener webhookId je Node.
 # CHAT-BESTAETIGUNG (n8n >= 2.35, Telegram-Node-Parameter chatApproval): die Knoepfe tragen callback_data statt
 # eines Links -> der Tipp laeuft ueber Telegram -> Orchestrator-Trigger -> POST <WEBHOOK_URL-Origin>/webhook-

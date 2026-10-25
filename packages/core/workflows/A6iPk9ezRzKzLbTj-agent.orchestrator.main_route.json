@@ -348,7 +348,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.pairing_ok\u0027,\u0027core.orch.pairing_invalid\u0027,\u0027core.orch.voice_unavailable\u0027,\u0027core.orch.voice_empty\u0027,\u0027core.orch.agent_unavailable\u0027,\u0027core.orch.card_open\u0027,\u0027core.orch.card_waiting\u0027,\u0027core.welcome.member\u0027,\u0027core.welcome.btn_household\u0027,\u0027core.welcome.btn_help\u0027]::text[]) AS t, core.fn_ui_texts(agent.fn_person_lang(agent.fn_owner_person_id())-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.invite_request\u0027,\u0027core.orch.invite_request_unnamed\u0027,\u0027core.orch.btn_confirm\u0027,\u0027core.orch.btn_reject\u0027,\u0027core.orch.unknown_user\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.voice_owner_note\u0027,\u0027core.orch.reason_unknown\u0027,\u0027core.orch.reason_provider_missing\u0027,\u0027core.enum.role.owner\u0027,\u0027core.enum.role.partner\u0027,\u0027core.enum.role.child\u0027]::text[]) AS t_owner FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
+                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.pairing_ok\u0027,\u0027core.orch.pairing_invalid\u0027,\u0027core.orch.voice_unavailable\u0027,\u0027core.orch.voice_empty\u0027,\u0027core.orch.agent_unavailable\u0027,\u0027core.orch.card_open\u0027,\u0027core.orch.card_waiting\u0027,\u0027core.orch.relay_empty\u0027,\u0027core.welcome.member\u0027,\u0027core.welcome.btn_household\u0027,\u0027core.welcome.btn_help\u0027,\u0027core.persona.frame.butler.1\u0027,\u0027core.persona.frame.butler.2\u0027,\u0027core.persona.frame.butler.3\u0027,\u0027core.persona.frame.sage.1\u0027,\u0027core.persona.frame.sage.2\u0027,\u0027core.persona.frame.sage.3\u0027,\u0027core.persona.frame.sportscaster.1\u0027,\u0027core.persona.frame.sportscaster.2\u0027,\u0027core.persona.frame.sportscaster.3\u0027]::text[]) AS t, core.fn_ui_texts(agent.fn_person_lang(agent.fn_owner_person_id())-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.invite_request\u0027,\u0027core.orch.invite_request_unnamed\u0027,\u0027core.orch.btn_confirm\u0027,\u0027core.orch.btn_reject\u0027,\u0027core.orch.unknown_user\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.voice_owner_note\u0027,\u0027core.orch.reason_unknown\u0027,\u0027core.orch.reason_provider_missing\u0027,\u0027core.enum.role.owner\u0027,\u0027core.enum.role.partner\u0027,\u0027core.enum.role.child\u0027]::text[]) AS t_owner FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ uid: (($(\u0027Trigger normalize\u0027).item.json.message.from || {}).id) }) }}"
                                                      }
@@ -509,7 +509,8 @@
                                                            "id":  "__CRED_POSTGRES_WRITE__",
                                                            "name":  "Postgres account"
                                                        }
-                                      }
+                                      },
+                      "executeOnce":  true
                   },
                   {
                       "parameters":  {
@@ -2557,61 +2558,6 @@
                   },
                   {
                       "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "Markdown"
-                                                              },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ $(\u0027Run onboarding cb\u0027).item.json.output }}"
-                                     },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       -180,
-                                       1680
-                                   ],
-                      "id":  "d488e212-0b5f-5b42-a188-0eed2fa1baf0",
-                      "name":  "Relay onboarding cb",
-                      "retryOnFail":  true,
-                      "maxTries":  1,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      },
-                      "onError":  "continueErrorOutput"
-                  },
-                  {
-                      "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "HTML"
-                                                              },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ String($(\u0027Run onboarding cb\u0027).item.json.output).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027) }}"
-                                     },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       40,
-                                       1880
-                                   ],
-                      "id":  "497f8a4a-2fa3-576d-a7ca-6f2b1c629e59",
-                      "name":  "Relay onboarding cb (plain fallback)",
-                      "retryOnFail":  true,
-                      "maxTries":  3,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      }
-                  },
-                  {
-                      "parameters":  {
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "vjyM3vnkavi5b0xU",
@@ -3918,6 +3864,7 @@
                                          "promptType":  "define",
                                          "text":  "={{ $json.chat_message }}",
                                          "options":  {
+                                                         "returnIntermediateSteps":  true,
                                                          "systemMessage":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Runtime flags\\ninterview_advisor: \u0027 + (($(\u0027Interview pin\u0027).item.json.interview_advisor) || \u0027none\u0027) + \u0027\\nonboarding_in_progress: \u0027 + ($(\u0027Onboarding pin\u0027).item.json.onboarding_in_progress === true ? \u0027true\u0027 : \u0027false\u0027) + \u0027\\nCurrent user: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).full_name || \u0027unknown\u0027) + \u0027 (\u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).role || \u0027unknown\u0027) + \u0027)\u0027 + \u0027\\npersona: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).persona || \u0027neutral\u0027) }}"
                                                      }
                                      },
@@ -3954,58 +3901,16 @@
                   },
                   {
                       "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "Markdown"
-                                                              },
-                                         "chatId":  "={{ $(\u0027Trigger normalize\u0027).item.json.message.chat.id }}",
-                                         "text":  "={{ $(\u0027Orchestrator agent\u0027).first().json.output }}"
+                                         "jsCode":  "const a = $(\u0027Orchestrator agent\u0027).first().json || {};\nconst steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];\nconst rs = $(\u0027Resolve sender\u0027).first().json || {};\nconst T = rs.t || {};\nconst persona = String((rs.sender || {}).persona || \u0027neutral\u0027);\nconst raw = String(a.output || \u0027\u0027).trim();\nconst signal = raw.replace(/[^A-Za-z]/g, \u0027\u0027).toUpperCase();\nconst isSignal = signal === \u0027FRAME\u0027 || signal === \u0027NOFRAME\u0027;\nconst textOf = (obs) =\u003e {\n  if (obs === null || obs === undefined) return \u0027\u0027;\n  let v = obs;\n  if (typeof v === \u0027string\u0027) {\n    const s = v.trim();\n    if (!s) return \u0027\u0027;\n    try { v = JSON.parse(s); } catch (e) { return \u0027\u0027; }\n  }\n  // Ein Werkzeug liefert immer JSON (\u0027[{\"output\":\"...\"}]\u0027); ein Nicht-JSON-String ist eine n8n-/Tool-Fehlermeldung\n  // (Stacktrace, Node-Namen) und gehoert nie in den Chat -\u003e verworfen.\n  if (typeof v === \u0027string\u0027) return \u0027\u0027;\n  const arr = Array.isArray(v) ? v : [v];\n  const outs = [];\n  for (const x of arr) {\n    if (typeof x === \u0027string\u0027) { if (x.trim()) outs.push(x.trim()); continue; }\n    if (x \u0026\u0026 typeof x === \u0027object\u0027) {\n      const o = (x.output !== undefined \u0026\u0026 x.output !== null) ? x.output : x.text;\n      if (typeof o === \u0027string\u0027 \u0026\u0026 o.trim()) outs.push(o.trim());\n    }\n  }\n  return outs.join(\u0027\\n\\n\u0027);\n};\nconst byTool = new Map();\nfor (const st of steps) {\n  const tool = String((st \u0026\u0026 st.action \u0026\u0026 st.action.tool) || \u0027\u0027);\n  const txt = textOf(st \u0026\u0026 st.observation);\n  if (!txt) continue;\n  if (byTool.has(tool)) byTool.delete(tool);\n  byTool.set(tool, txt);\n}\nconst parts = Array.from(byTool.values());\nlet body;\nif (parts.length) {\n  body = parts.join(\u0027\\n\\n\u0027);\n  if (signal === \u0027FRAME\u0027 \u0026\u0026 persona !== \u0027neutral\u0027) {\n    const msg = ($(\u0027Trigger normalize\u0027).first().json || {}).message || {};\n    const prefix = \u0027core.persona.frame.\u0027 + persona + \u0027.\u0027;\n    const keys = Object.keys(T).filter(k =\u003e k.indexOf(prefix) === 0 \u0026\u0026 T[k]).sort();\n    if (keys.length) body = T[keys[Number(msg.message_id || 0) % keys.length]] + \u0027\\n\\n\u0027 + body;\n  }\n} else if (!steps.length \u0026\u0026 raw \u0026\u0026 !isSignal) {\n  body = raw;\n} else {\n  // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -\u003e nie Router-Text (der koennte Daten erfinden);\n  // ohne Werkzeug nur ein Signal -\u003e ebenfalls der feste Hinweis.\n  body = T[\u0027core.orch.relay_empty\u0027] || \u0027core.orch.relay_empty\u0027;\n}\nreturn [{ json: { body } }];"
                                      },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
                       "position":  [
-                                       1560,
+                                       1480,
                                        -160
                                    ],
-                      "id":  "9e7db129-b939-59f4-8d40-2d6e79b3fb37",
-                      "name":  "Send a text message",
-                      "retryOnFail":  true,
-                      "maxTries":  1,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      },
-                      "onError":  "continueErrorOutput"
-                  },
-                  {
-                      "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "HTML"
-                                                              },
-                                         "chatId":  "={{ $(\u0027Trigger normalize\u0027).item.json.message.chat.id }}",
-                                         "text":  "={{ String($(\u0027Orchestrator agent\u0027).first().json.output).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027) }}"
-                                     },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       1780,
-                                       40
-                                   ],
-                      "id":  "91cc97c3-7778-5eb8-8d31-ad30027f3b27",
-                      "name":  "Send a text message (plain fallback)",
-                      "retryOnFail":  true,
-                      "maxTries":  3,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      }
+                      "id":  "3e145681-61e7-5aaa-a96e-d3324cf2493e",
+                      "name":  "Relay compose"
                   },
                   {
                       "parameters":  {
@@ -4192,7 +4097,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Private chat? (nur Einzelchats; Gruppe/Kanal endet vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle; ein Knopf-Tipp aus einer Gruppe bekommt per Group button tap? -\u003e Answer group tap nur eine leere Quittung) -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (Haupt-Credential, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors; nur der EIGENE Personen-Draft bzw. — für den Owner — ein Haushalts-Draft, nie der Draft eines anderen Mitglieds) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil, höchstens ein inhaltsfreier Satz um die Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).",
+                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Private chat? (nur Einzelchats; Gruppe/Kanal endet vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle; ein Knopf-Tipp aus einer Gruppe bekommt per Group button tap? -\u003e Answer group tap nur eine leere Quittung) -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (Haupt-Credential, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors; nur der EIGENE Personen-Draft bzw. — für den Owner — ein Haushalts-Draft, nie der Draft eines anderen Mitglieds) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil; nach einem Spezialisten antwortet der Router nur FRAME/NOFRAME, Relay compose setzt dann einen festen Katalog-Rahmensatz vor die WÖRTLICHE Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).",
                                          "height":  320,
                                          "width":  720,
                                          "color":  4
@@ -4288,7 +4193,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (Fix C: kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). Send a text message (WP-2 Markdown-Robustheit): PRIMARY sendet parse_mode=Markdown, LLM-Output bewusst UN-escapt (workflow_lint-Allowlist), onError=continueErrorOutput + maxTries=1 (Retry bei deterministischem Parse-Fehler nutzlos + GH #10763 defekt mit onError); ein Parse-Fehler (ungepaartes _*[` -\u003e HTTP 400 can\\\u0027t parse entities) fällt auf Send a text message (plain fallback) mit parse_mode=HTML + escapten \u0026 \u003c \u003e (echtes Plain, crash-frei; leeres parse_mode macht n8n still zu Markdown, Exec 297; voller retryOnFail) -\u003e ein echter Zustellausfall des Fallbacks bleibt UNGEFANGEN -\u003e errorWorkflow (nicht maskiert). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Send a text message bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
+                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (Fix C: kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). WÖRTLICHES WEITERREICHEN (Live-Befund 2026-10-25: der Router formulierte Spezialisten-Antworten um und verfälschte eine Aussage): der Agent gibt per returnIntermediateSteps die Tool-Ergebnisse mit; Relay compose sendet die Spezialisten-Texte WÖRTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf). Nach einem Tool antwortet der Router nur mit dem Signal FRAME/NOFRAME; bei FRAME und Persona != neutral steht ein FESTER Rahmensatz aus dem Textkatalog davor (core.persona.frame.\u003ccode\u003e.\u003cn\u003e, rotiert) - nie Modelltext neben Zahlen. Ohne Tool geht die Router-Antwort raus; nichts Brauchbares -\u003e core.orch.relay_empty. Teile \u003c= 3500 Zeichen an Absatzgrenzen; Send a text message läuft je Teil in Reihenfolge mit parse_mode=HTML und escaptem Text (= echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode macht n8n still zu Markdown) -\u003e kein Parse-Fehler, kein Fallback-Zweig; ein echter Zustellausfall bleibt UNGEFANGEN -\u003e errorWorkflow. Finish card lock executeOnce (mehrere Teile). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Relay compose (und damit vor dem Senden) bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
                                          "height":  320,
                                          "width":  800,
                                          "color":  4
@@ -5008,31 +4913,31 @@
                   },
                   {
                       "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "Markdown"
-                                                              },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ $(\u0027Run onboarding finance\u0027).item.json.output }}"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
                       "position":  [
                                        -180,
                                        1840
                                    ],
-                      "id":  "b0244b5d-cf6c-50e8-9e77-9dcd908be92a",
-                      "name":  "Relay onboarding finance",
-                      "retryOnFail":  true,
-                      "maxTries":  1,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      },
-                      "onError":  "continueErrorOutput"
+                      "id":  "48786a2c-e812-5dff-bf84-de9589cf6d6c",
+                      "name":  "Relay onboarding finance split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       20,
+                                       1840
+                                   ],
+                      "id":  "35c12273-1300-5ecb-84c1-1ffcaa3f62cf",
+                      "name":  "Relay onboarding finance loop"
                   },
                   {
                       "parameters":  {
@@ -5040,17 +4945,17 @@
                                                                   "appendAttribution":  false,
                                                                   "parse_mode":  "HTML"
                                                               },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ String($(\u0027Run onboarding finance\u0027).item.json.output).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027) }}"
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).first().json.callback_query.message.chat.id) }}",
+                                         "text":  "={{ $json.text }}"
                                      },
                       "type":  "n8n-nodes-base.telegram",
                       "typeVersion":  1.2,
                       "position":  [
-                                       40,
-                                       2040
+                                       220,
+                                       1960
                                    ],
-                      "id":  "7f1a4dd2-427e-57f7-9517-56012049843c",
-                      "name":  "Relay onboarding finance (plain fallback)",
+                      "id":  "b0244b5d-cf6c-50e8-9e77-9dcd908be92a",
+                      "name":  "Relay onboarding finance",
                       "retryOnFail":  true,
                       "maxTries":  3,
                       "waitBetweenTries":  2000,
@@ -5131,31 +5036,31 @@
                   },
                   {
                       "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "Markdown"
-                                                              },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ $(\u0027Run onboarding estate\u0027).item.json.output }}"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding estate\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
                       "position":  [
                                        -180,
                                        2000
                                    ],
-                      "id":  "ed006619-29dc-5e10-a4b5-ffbabbe17940",
-                      "name":  "Relay onboarding estate",
-                      "retryOnFail":  true,
-                      "maxTries":  1,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      },
-                      "onError":  "continueErrorOutput"
+                      "id":  "afcc1ad3-b234-54e7-8f79-49c1568f4f07",
+                      "name":  "Relay onboarding estate split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       20,
+                                       2000
+                                   ],
+                      "id":  "711de8db-5467-5f8c-bd9d-ed4cac32ef86",
+                      "name":  "Relay onboarding estate loop"
                   },
                   {
                       "parameters":  {
@@ -5163,17 +5068,17 @@
                                                                   "appendAttribution":  false,
                                                                   "parse_mode":  "HTML"
                                                               },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ String($(\u0027Run onboarding estate\u0027).item.json.output).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027) }}"
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).first().json.callback_query.message.chat.id) }}",
+                                         "text":  "={{ $json.text }}"
                                      },
                       "type":  "n8n-nodes-base.telegram",
                       "typeVersion":  1.2,
                       "position":  [
-                                       40,
-                                       2200
+                                       220,
+                                       2120
                                    ],
-                      "id":  "56704efa-f183-5db6-81c3-5e7a4b2cbd6b",
-                      "name":  "Relay onboarding estate (plain fallback)",
+                      "id":  "ed006619-29dc-5e10-a4b5-ffbabbe17940",
+                      "name":  "Relay onboarding estate",
                       "retryOnFail":  true,
                       "maxTries":  3,
                       "waitBetweenTries":  2000,
@@ -5254,31 +5159,31 @@
                   },
                   {
                       "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "Markdown"
-                                                              },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ $(\u0027Run onboarding career\u0027).item.json.output }}"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
                       "position":  [
                                        -180,
                                        2160
                                    ],
-                      "id":  "9c321b16-aecb-5e6c-9f23-087ee653c9df",
-                      "name":  "Relay onboarding career",
-                      "retryOnFail":  true,
-                      "maxTries":  1,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      },
-                      "onError":  "continueErrorOutput"
+                      "id":  "78a1f4b2-8f1b-5e0c-852b-497331c76c90",
+                      "name":  "Relay onboarding career split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       20,
+                                       2160
+                                   ],
+                      "id":  "8eee49f6-f828-572b-8c4d-a199f1f1b82b",
+                      "name":  "Relay onboarding career loop"
                   },
                   {
                       "parameters":  {
@@ -5286,17 +5191,17 @@
                                                                   "appendAttribution":  false,
                                                                   "parse_mode":  "HTML"
                                                               },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
-                                         "text":  "={{ String($(\u0027Run onboarding career\u0027).item.json.output).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027) }}"
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).first().json.callback_query.message.chat.id) }}",
+                                         "text":  "={{ $json.text }}"
                                      },
                       "type":  "n8n-nodes-base.telegram",
                       "typeVersion":  1.2,
                       "position":  [
-                                       40,
-                                       2360
+                                       220,
+                                       2280
                                    ],
-                      "id":  "d07aba35-db0d-59d6-b679-aff4fe3d9a2c",
-                      "name":  "Relay onboarding career (plain fallback)",
+                      "id":  "9c321b16-aecb-5e6c-9f23-087ee653c9df",
+                      "name":  "Relay onboarding career",
                       "retryOnFail":  true,
                       "maxTries":  3,
                       "waitBetweenTries":  2000,
@@ -5441,31 +5346,31 @@
                   },
                   {
                       "parameters":  {
-                                         "additionalFields":  {
-                                                                  "appendAttribution":  false,
-                                                                  "parse_mode":  "Markdown"
-                                                              },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.message.chat.id) }}",
-                                         "text":  "={{ $(\u0027Run command notfall\u0027).item.json.output || String((($(\u0027Resolve sender\u0027).item.json.t) || {})[\u0027core.orch.agent_unavailable\u0027] || \u0027core.orch.agent_unavailable\u0027) }}"
+                                         "jsCode":  "const body = String(($(\u0027Run command notfall\u0027).first().json.output) || (String((($(\u0027Resolve sender\u0027).first().json.t) || {})[\u0027core.orch.agent_unavailable\u0027] || \u0027core.orch.agent_unavailable\u0027)) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
-                      "type":  "n8n-nodes-base.telegram",
-                      "typeVersion":  1.2,
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
                       "position":  [
                                        448,
                                        700
                                    ],
-                      "id":  "d7620f90-8eb6-544d-8dab-b8808c54e97b",
-                      "name":  "Relay command notfall",
-                      "retryOnFail":  true,
-                      "maxTries":  1,
-                      "waitBetweenTries":  2000,
-                      "credentials":  {
-                                          "telegramApi":  {
-                                                              "id":  "__CRED_TELEGRAM__",
-                                                              "name":  "Telegram account"
-                                                          }
-                                      },
-                      "onError":  "continueErrorOutput"
+                      "id":  "13d946c2-d235-5c1e-b2f3-9f5972b51c1c",
+                      "name":  "Relay command notfall split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       648,
+                                       700
+                                   ],
+                      "id":  "78ff3fb6-9763-5e9b-b85d-956e37aceea3",
+                      "name":  "Relay command notfall loop"
                   },
                   {
                       "parameters":  {
@@ -5473,17 +5378,17 @@
                                                                   "appendAttribution":  false,
                                                                   "parse_mode":  "HTML"
                                                               },
-                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.message.chat.id) }}",
-                                         "text":  "={{ String($(\u0027Run command notfall\u0027).item.json.output || String((($(\u0027Resolve sender\u0027).item.json.t) || {})[\u0027core.orch.agent_unavailable\u0027] || \u0027core.orch.agent_unavailable\u0027)).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027) }}"
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).first().json.message.chat.id) }}",
+                                         "text":  "={{ $json.text }}"
                                      },
                       "type":  "n8n-nodes-base.telegram",
                       "typeVersion":  1.2,
                       "position":  [
-                                       668,
-                                       900
+                                       848,
+                                       820
                                    ],
-                      "id":  "0911de39-97a7-53a3-9368-4ffb66e8ce2c",
-                      "name":  "Relay command notfall (plain fallback)",
+                      "id":  "d7620f90-8eb6-544d-8dab-b8808c54e97b",
+                      "name":  "Relay command notfall",
                       "retryOnFail":  true,
                       "maxTries":  3,
                       "waitBetweenTries":  2000,
@@ -5669,6 +5574,116 @@
                                    ],
                       "id":  "b186f6f2-9391-5276-86e1-0240079f57ed",
                       "name":  "Model Selector"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Relay compose\u0027).first().json.body) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1660,
+                                       -160
+                                   ],
+                      "id":  "4f5719f1-6e71-5e83-a18f-39d0613c2360",
+                      "name":  "Send a text message split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1860,
+                                       -160
+                                   ],
+                      "id":  "1afe8df7-a452-5572-b487-0f11ca070e0e",
+                      "name":  "Send a text message loop"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ $(\u0027Trigger normalize\u0027).first().json.message.chat.id }}",
+                                         "text":  "={{ $json.text }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2060,
+                                       -40
+                                   ],
+                      "id":  "9e7db129-b939-59f4-8d40-2d6e79b3fb37",
+                      "name":  "Send a text message",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding cb\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -180,
+                                       1680
+                                   ],
+                      "id":  "7aaca32c-4534-595c-83b5-f27b10818085",
+                      "name":  "Relay onboarding cb split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       20,
+                                       1680
+                                   ],
+                      "id":  "2f5709b8-f30b-5f0f-93bf-226c40b671bc",
+                      "name":  "Relay onboarding cb loop"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).first().json.callback_query.message.chat.id) }}",
+                                         "text":  "={{ $json.text }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       1800
+                                   ],
+                      "id":  "d488e212-0b5f-5b42-a188-0eed2fa1baf0",
+                      "name":  "Relay onboarding cb",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
                   }
               ],
     "connections":  {
@@ -6374,41 +6389,12 @@
                                                                   [
                                                                       {
                                                                           "index":  0,
-                                                                          "node":  "Relay onboarding cb",
+                                                                          "node":  "Relay onboarding cb split",
                                                                           "type":  "main"
                                                                       }
                                                                   ]
                                                               ]
                                                  },
-                        "Relay onboarding cb":  {
-                                                    "main":  [
-                                                                 [
-                                                                     {
-                                                                         "index":  0,
-                                                                         "node":  "Finish card lock",
-                                                                         "type":  "main"
-                                                                     }
-                                                                 ],
-                                                                 [
-                                                                     {
-                                                                         "index":  0,
-                                                                         "node":  "Relay onboarding cb (plain fallback)",
-                                                                         "type":  "main"
-                                                                     }
-                                                                 ]
-                                                             ]
-                                                },
-                        "Relay onboarding cb (plain fallback)":  {
-                                                                     "main":  [
-                                                                                  [
-                                                                                      {
-                                                                                          "index":  0,
-                                                                                          "node":  "Finish card lock",
-                                                                                          "type":  "main"
-                                                                                      }
-                                                                                  ]
-                                                                              ]
-                                                                 },
                         "Run confirm pairing":  {
                                                     "main":  [
                                                                  [
@@ -6860,41 +6846,23 @@
                                                                   [
                                                                       {
                                                                           "index":  0,
-                                                                          "node":  "Send a text message",
+                                                                          "node":  "Relay compose",
                                                                           "type":  "main"
                                                                       }
                                                                   ]
                                                               ]
                                                  },
-                        "Send a text message":  {
-                                                    "main":  [
-                                                                 [
-                                                                     {
-                                                                         "index":  0,
-                                                                         "node":  "Finish card lock",
-                                                                         "type":  "main"
-                                                                     }
-                                                                 ],
-                                                                 [
-                                                                     {
-                                                                         "index":  0,
-                                                                         "node":  "Send a text message (plain fallback)",
-                                                                         "type":  "main"
-                                                                     }
-                                                                 ]
-                                                             ]
-                                                },
-                        "Send a text message (plain fallback)":  {
-                                                                     "main":  [
-                                                                                  [
-                                                                                      {
-                                                                                          "index":  0,
-                                                                                          "node":  "Finish card lock",
-                                                                                          "type":  "main"
-                                                                                      }
-                                                                                  ]
-                                                                              ]
-                                                                 },
+                        "Relay compose":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Send a text message split",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
                         "Postgres Chat Memory":  {
                                                      "ai_memory":  [
                                                                        [
@@ -7111,41 +7079,52 @@
                                                                        [
                                                                            {
                                                                                "index":  0,
-                                                                               "node":  "Relay onboarding finance",
+                                                                               "node":  "Relay onboarding finance split",
                                                                                "type":  "main"
                                                                            }
                                                                        ]
                                                                    ]
                                                       },
+                        "Relay onboarding finance split":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Relay onboarding finance loop",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                        "Relay onboarding finance loop":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Finish card lock",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ],
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Relay onboarding finance",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
                         "Relay onboarding finance":  {
                                                          "main":  [
                                                                       [
                                                                           {
                                                                               "index":  0,
-                                                                              "node":  "Finish card lock",
-                                                                              "type":  "main"
-                                                                          }
-                                                                      ],
-                                                                      [
-                                                                          {
-                                                                              "index":  0,
-                                                                              "node":  "Relay onboarding finance (plain fallback)",
+                                                                              "node":  "Relay onboarding finance loop",
                                                                               "type":  "main"
                                                                           }
                                                                       ]
                                                                   ]
                                                      },
-                        "Relay onboarding finance (plain fallback)":  {
-                                                                          "main":  [
-                                                                                       [
-                                                                                           {
-                                                                                               "index":  0,
-                                                                                               "node":  "Finish card lock",
-                                                                                               "type":  "main"
-                                                                                           }
-                                                                                       ]
-                                                                                   ]
-                                                                      },
                         "Run onboarding estate":  {
                                                       "main":  [
                                                                    [
@@ -7162,41 +7141,52 @@
                                                                       [
                                                                           {
                                                                               "index":  0,
-                                                                              "node":  "Relay onboarding estate",
+                                                                              "node":  "Relay onboarding estate split",
                                                                               "type":  "main"
                                                                           }
                                                                       ]
                                                                   ]
                                                      },
+                        "Relay onboarding estate split":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Relay onboarding estate loop",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
+                        "Relay onboarding estate loop":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Finish card lock",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ],
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Relay onboarding estate",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
                         "Relay onboarding estate":  {
                                                         "main":  [
                                                                      [
                                                                          {
                                                                              "index":  0,
-                                                                             "node":  "Finish card lock",
-                                                                             "type":  "main"
-                                                                         }
-                                                                     ],
-                                                                     [
-                                                                         {
-                                                                             "index":  0,
-                                                                             "node":  "Relay onboarding estate (plain fallback)",
+                                                                             "node":  "Relay onboarding estate loop",
                                                                              "type":  "main"
                                                                          }
                                                                      ]
                                                                  ]
                                                     },
-                        "Relay onboarding estate (plain fallback)":  {
-                                                                         "main":  [
-                                                                                      [
-                                                                                          {
-                                                                                              "index":  0,
-                                                                                              "node":  "Finish card lock",
-                                                                                              "type":  "main"
-                                                                                          }
-                                                                                      ]
-                                                                                  ]
-                                                                     },
                         "Run onboarding career":  {
                                                       "main":  [
                                                                    [
@@ -7213,41 +7203,52 @@
                                                                       [
                                                                           {
                                                                               "index":  0,
-                                                                              "node":  "Relay onboarding career",
+                                                                              "node":  "Relay onboarding career split",
                                                                               "type":  "main"
                                                                           }
                                                                       ]
                                                                   ]
                                                      },
+                        "Relay onboarding career split":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Relay onboarding career loop",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
+                        "Relay onboarding career loop":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Finish card lock",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ],
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Relay onboarding career",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
                         "Relay onboarding career":  {
                                                         "main":  [
                                                                      [
                                                                          {
                                                                              "index":  0,
-                                                                             "node":  "Finish card lock",
-                                                                             "type":  "main"
-                                                                         }
-                                                                     ],
-                                                                     [
-                                                                         {
-                                                                             "index":  0,
-                                                                             "node":  "Relay onboarding career (plain fallback)",
+                                                                             "node":  "Relay onboarding career loop",
                                                                              "type":  "main"
                                                                          }
                                                                      ]
                                                                  ]
                                                     },
-                        "Relay onboarding career (plain fallback)":  {
-                                                                         "main":  [
-                                                                                      [
-                                                                                          {
-                                                                                              "index":  0,
-                                                                                              "node":  "Finish card lock",
-                                                                                              "type":  "main"
-                                                                                          }
-                                                                                      ]
-                                                                                  ]
-                                                                     },
                         "Answer onboarding area":  {
                                                        "main":  [
                                                                     [
@@ -7324,41 +7325,132 @@
                                                                  [
                                                                      {
                                                                          "index":  0,
-                                                                         "node":  "Relay command notfall",
+                                                                         "node":  "Relay command notfall split",
                                                                          "type":  "main"
                                                                      }
                                                                  ]
                                                              ]
                                                 },
+                        "Relay command notfall split":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Relay command notfall loop",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Relay command notfall loop":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Finish card lock",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ],
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Relay command notfall",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
                         "Relay command notfall":  {
                                                       "main":  [
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Finish card lock",
-                                                                           "type":  "main"
-                                                                       }
-                                                                   ],
-                                                                   [
-                                                                       {
-                                                                           "index":  0,
-                                                                           "node":  "Relay command notfall (plain fallback)",
+                                                                           "node":  "Relay command notfall loop",
                                                                            "type":  "main"
                                                                        }
                                                                    ]
                                                                ]
                                                   },
-                        "Relay command notfall (plain fallback)":  {
-                                                                       "main":  [
-                                                                                    [
-                                                                                        {
-                                                                                            "index":  0,
-                                                                                            "node":  "Finish card lock",
-                                                                                            "type":  "main"
-                                                                                        }
-                                                                                    ]
-                                                                                ]
-                                                                   }
+                        "Send a text message split":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Send a text message loop",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Send a text message loop":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Finish card lock",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ],
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Send a text message",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Send a text message":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Send a text message loop",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Relay onboarding cb split":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Relay onboarding cb loop",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Relay onboarding cb loop":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Finish card lock",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ],
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Relay onboarding cb",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Relay onboarding cb":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Relay onboarding cb loop",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                }
                     },
     "settings":  {
                      "executionOrder":  "v1",

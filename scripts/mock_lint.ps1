@@ -59,9 +59,11 @@ function Read-Json([string]$RelPath) {
 # --- Cases einlesen + erwarteten Call je Case ableiten -------------------------------------------
 $cases = @()   # @{ Id; Task; Expected (string|$null); File }
 $mockFiles = @()
+$sentTexts = @()   # C2: auch die Nachrichten der Ingress-/node_ran-Faelle (Feld text) treiben Szenarien (z. B. ri62/ri63)
 foreach ($cf in (Get-AgentCaseFile $RepoRoot)) {
     $fileCases = @()
     foreach ($c in $cf.Cases) {
+        if ($c.PSObject.Properties['text'] -and $c.text) { $sentTexts += [string]$c.text }
         if (-not $c.task -or $c.PSObject.Properties['kind']) { continue }
         if (-not ((Test-CaseHasKey $c 'expected_tool') -or (Test-CaseHasKey $c 'expected_route'))) { continue }
         $fileCases += @{ Id = [string]$c.id; Task = [string]$c.task; Expected = (Get-CaseExpected $c); File = $cf.Rel }
@@ -134,6 +136,7 @@ foreach ($s in $scenarios) {
     $m = [string]$s.match
     $hit = $false
     foreach ($c in $cases) { if ($c.Task.ToLower().Contains($m.ToLower())) { $hit = $true; break } }
+    if (-not $hit) { foreach ($t in $sentTexts) { if ($t.ToLower().Contains($m.ToLower())) { $hit = $true; break } } }
     # Treiber-eigenes Szenario (`driver` = Repo-Pfad des Test-Skripts, das den Task selbst schickt, z. B. die
     # "Bot denkt nach"-Faelle in mock_route_test): zaehlt, wenn das Skript den match-Text woertlich enthaelt.
     if (-not $hit -and $s.PSObject.Properties['driver']) {

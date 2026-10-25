@@ -14,7 +14,7 @@ BEGIN
           jsonb_build_object('facts', jsonb_build_object(
             'preferred_aspects', jsonb_build_array('Remote-Anteil','Agile'),
             'disliked_industries', jsonb_build_array('Rüstung'),
-            'salary_floor', 70000,
+            'salary_floor', 4500, 'salary_floor_period', 'month', 'salary_floor_basis', 'gross',
             'remote_preference', 'hybrid',
             'commute_max_km', 40)))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
@@ -23,7 +23,8 @@ BEGIN
   IF v_out IS NULL THEN RAISE EXCEPTION 'FAIL [render]: NULL trotz facts'; END IF;
   IF position('Wichtig: Remote-Anteil' IN v_out) = 0 THEN RAISE EXCEPTION 'FAIL [preferred]: %', v_out; END IF;
   IF position('Branchen meiden: Rüstung' IN v_out) = 0 THEN RAISE EXCEPTION 'FAIL [disliked_ind]: %', v_out; END IF;
-  IF position('Gehaltsuntergrenze: 70000 EUR' IN v_out) = 0 THEN RAISE EXCEPTION 'FAIL [salary]: %', v_out; END IF;
+  IF position('Gehaltsuntergrenze: 4500 € brutto/Monat (≈ 54000 € brutto/Jahr)' IN v_out) = 0 THEN
+    RAISE EXCEPTION 'FAIL [salary mit Einheit + Jahreswert]: %', v_out; END IF;
   IF position('Arbeitsort-Präferenz: hybrid' IN v_out) = 0 THEN RAISE EXCEPTION 'FAIL [remote]: %', v_out; END IF;
   IF position('Max. Pendelweg: 40 km' IN v_out) = 0 THEN RAISE EXCEPTION 'FAIL [commute]: %', v_out; END IF;
   RAISE NOTICE 'PASS [render facts -> Header-Zeilen]';
@@ -36,5 +37,13 @@ BEGIN
   IF position('Arbeitsort-Präferenz:' IN v_out) > 0 THEN
     RAISE EXCEPTION 'FAIL [A7 null-guard]: remote_preference=null rendert leere Zeile: %', v_out; END IF;
   RAISE NOTICE 'PASS [A7: remote_preference=null -> keine Zeile]';
+
+  -- WP3: Bestand ohne Einheit -> offen gezeigt, nie angenommen
+  UPDATE agent.core_contexts SET metadata = jsonb_build_object('facts', jsonb_build_object('salary_floor', 60000))
+   WHERE name = 'career_preferences';
+  v_out := career.fn_render_career_preferences('career_preferences');
+  IF position('Gehaltsuntergrenze: 60000 € (Einheit offen)' IN v_out) = 0 THEN
+    RAISE EXCEPTION 'FAIL [salary ohne Einheit]: %', v_out; END IF;
+  RAISE NOTICE 'PASS [WP3: Gehalt mit Einheit + Jahreswert, Bestand ohne Einheit offen]';
 END $$;
 ROLLBACK;

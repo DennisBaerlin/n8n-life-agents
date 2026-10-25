@@ -20,7 +20,6 @@ RETURNS text LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_role   JSONB;
     v_sal    NUMERIC;
-    v_tl     NUMERIC;
     v_rad    NUMERIC;
     v_rs     JSONB;
     v_seen   TEXT[];
@@ -31,7 +30,7 @@ BEGIN
         RETURN NULL;  -- partial-tolerant: leeres/teilweises Compose erlaubt
     END IF;
 
-    -- target_roles: Array von { title (Pflicht), priority?, salary_expectation_eur? }
+    -- target_roles: Array von { title (Pflicht), priority?, salary_expectation_eur?, salary_period?, salary_basis? }
     IF p_facts ? 'target_roles' AND jsonb_typeof(p_facts->'target_roles') <> 'null' THEN
         IF jsonb_typeof(p_facts->'target_roles') <> 'array' THEN
             RETURN 'career_planning.target_roles must be an array';
@@ -48,6 +47,15 @@ BEGIN
                 IF v_sal < 0 OR v_sal > 10000000 THEN
                     RETURN format('career_planning.target_roles[].salary_expectation_eur %s out of sane range (0..10000000)', v_sal);
                 END IF;
+            END IF;
+            -- WP3: Gehalt mit Einheit (roh, wie gesagt); den Jahreswert rechnet career.fn_salary_annual beim Anzeigen
+            IF v_role ? 'salary_period' AND jsonb_typeof(v_role->'salary_period') <> 'null'
+               AND v_role->>'salary_period' NOT IN ('month', 'year') THEN
+                RETURN format('career_planning.target_roles[].salary_period "%s" invalid (month|year)', v_role->>'salary_period');
+            END IF;
+            IF v_role ? 'salary_basis' AND jsonb_typeof(v_role->'salary_basis') <> 'null'
+               AND v_role->>'salary_basis' NOT IN ('gross', 'net') THEN
+                RETURN format('career_planning.target_roles[].salary_basis "%s" invalid (gross|net)', v_role->>'salary_basis');
             END IF;
 
             -- WS-3: required_skills[] (Soll-Skills je Ziel-Rolle) — partial-tolerant (fehlt -> ok)
@@ -83,15 +91,17 @@ BEGIN
         RETURN 'career_planning.target_industries must be an array';
     END IF;
 
-    -- timeline_years: Roh-Zahl 0..15 (kein gespeichertes Zieljahr — die Denylist sperrt target_year)
-    IF p_facts ? 'timeline_years' AND jsonb_typeof(p_facts->'timeline_years') <> 'null' THEN
-        IF jsonb_typeof(p_facts->'timeline_years') <> 'number' THEN
-            RETURN 'career_planning.timeline_years must be a number';
-        END IF;
-        v_tl := (p_facts->>'timeline_years')::numeric;
-        IF v_tl < 0 OR v_tl > 15 THEN
-            RETURN format('career_planning.timeline_years %s out of range (0..15)', v_tl);
-        END IF;
+    -- WP3: Zieldatum ROH (absolut oder relativ wie gesagt, die DB loest "+2 years" beim Speichern auf), nie eine
+    -- relative Jahreszahl (timeline_years ist naechstes Jahr falsch; career:V007 hat den Bestand umgerechnet).
+    -- KEIN Vergangenheits-Check hier: das Dokument wird bei jedem Publish neu geprueft, ein erreichtes Ziel darf
+    -- spaeteres Publizieren nicht blockieren (der Renderer zeigt "ueberschritten").
+    IF p_facts ? 'timeline_years' THEN
+        RETURN 'career_planning.timeline_years is no longer stored (it is wrong a year later) — pass target_date '
+            || 'instead (e.g. 2028 or 2028-06, or relative as stated: +2 years)';
+    END IF;
+    IF p_facts ? 'target_date' AND jsonb_typeof(p_facts->'target_date') <> 'null'
+       AND career.fn_partial_date(p_facts->>'target_date') IS NULL THEN
+        RETURN format('career_planning.target_date "%s" must be YYYY, YYYY-MM or YYYY-MM-DD', p_facts->>'target_date');
     END IF;
 
     -- WS-2 Suchkriterien (targets-Block; Owner-Entscheid Option A):

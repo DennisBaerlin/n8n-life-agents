@@ -28,7 +28,7 @@ BEGIN
   VALUES ('career_planning','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object(
       'target_roles', jsonb_build_array(jsonb_build_object('title','Scrum Master')),
-      'timeline_years', 2,
+      'target_date', '2028',
       '_meta', jsonb_build_object('last_confirmed_at', to_char(CURRENT_DATE - 400, 'YYYY-MM-DD')))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
@@ -44,6 +44,9 @@ BEGIN
   v_digest := (v_res->'digest'->'lines')::text;
   IF v_digest NOT LIKE '%IT-Projektmanager%' OR v_digest NOT LIKE '%Scrum Master%' THEN
     RAISE EXCEPTION 'FAIL [2] digest soll Rolle+Zielrolle nennen: %', v_digest;
+  END IF;
+  IF v_digest NOT LIKE '%career.advisor.digest_target_date%2028%' THEN
+    RAISE EXCEPTION 'FAIL [2] digest soll das Zieldatum nennen (WP3, statt timeline_years): %', v_digest;
   END IF;
   RAISE NOTICE 'PASS [2] Staleness-Alert (>365d) + Digest aus Plan/Profil';
 
@@ -137,7 +140,7 @@ BEGIN
     jsonb_build_object('facts', jsonb_build_object(
       'target_roles', jsonb_build_array(jsonb_build_object('title','Scrum Master','required_skills',
         jsonb_build_array(jsonb_build_object('name','Scrum','min_level','advanced','is_blocker',true)))),
-      'timeline_years', 2,
+      'target_date', '2028',
       '_meta', jsonb_build_object('last_confirmed_at', to_char(CURRENT_DATE - 10, 'YYYY-MM-DD'))))),
    ('career_profile__erika','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object('current_title','IT-Projektmanager','skills','[]'::jsonb)))
@@ -167,7 +170,7 @@ BEGIN
     jsonb_build_object('facts', jsonb_build_object(
       'target_roles', jsonb_build_array(jsonb_build_object('title','Scrum Master','required_skills',
         jsonb_build_array(jsonb_build_object('name','Scrum','min_level','advanced')))),
-      'timeline_years', 2,
+      'target_date', '2028',
       '_meta', jsonb_build_object('last_confirmed_at', to_char(CURRENT_DATE - 10, 'YYYY-MM-DD'))))),
    ('career_profile__lena','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object('current_title','Agile Coach',

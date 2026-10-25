@@ -1,9 +1,9 @@
 -- ============================================================
 -- career.fn_render_career_planning (WS-1 — Render des career_planning-Sidecars, Header-only)
 --   Liefert NUR den autoritativen Fakten-HEADER des advisor-gepflegten 'career_planning'-Sidecars
---   (Ziel-Rollen, Ziel-Branchen, Umstiegs-Timeline). Vorbild finance.fn_render_plan_facts. Die Engine
+--   (Ziel-Rollen, Ziel-Branchen, Umstiegs-Zieldatum). Vorbild finance.fn_render_plan_facts. Die Engine
 --   core.fn_fetch_context wrappt Banner + Header + _meta + Prosa. UNIFORME Signatur fn(text)->text.
---   ABLEITUNG render-at-fetch, NIE gespeichert: "angepeilter Umstieg ~<Jahr>" aus timeline_years + heute
+--   ABLEITUNG render-at-fetch, NIE gespeichert: "in ~N Jahren" / "Zieldatum vorbei" aus target_date + heute, Jahreswert des Zielgehalts
 --   (kein gespeichertes target_year — die Denylist sperrt es). Die Skill-Luecken-Zeile der
 --   primaeren Ziel-Rolle (WS-3) rendert career.fn_skill_gap render-at-fetch (Soll required_skills[] vs Ist
 --   career_profile.skills[]). WS-4: die Stellen-Nachfrage-Zeile rendert career.fn_market_trend (Posting-Trend,
@@ -21,7 +21,7 @@ DECLARE
     v_inds     TEXT[] := '{}';
     v_role     JSONB;
     v_ind      JSONB;
-    v_tl       NUMERIC;
+    v_target   DATE;
     v_prof     JSONB;
     v_pid      TEXT;   -- P0c: person_id aus dem suffigierten p_name (career_planning__<pid>) abgeleitet
     v_gap      JSONB;
@@ -42,9 +42,11 @@ BEGIN
     -- Ziel-Rollen (max 3, kompakt; optional Zielgehalt)
     IF jsonb_typeof(v_facts->'target_roles') = 'array' THEN
         FOR v_role IN SELECT * FROM jsonb_array_elements(v_facts->'target_roles') LIMIT 3 LOOP
+            -- WP3: Zielgehalt mit Einheit (roh) -> Text + Jahreswert render-at-fetch (career.fn_salary_text)
             v_roles := v_roles || (COALESCE(v_role->>'title','?')
-                || CASE WHEN v_role ? 'salary_expectation_eur'
-                        THEN ' (~' || (v_role->>'salary_expectation_eur') || ' €)' ELSE '' END);
+                || CASE WHEN jsonb_typeof(v_role->'salary_expectation_eur') = 'number'
+                        THEN ' (~' || career.fn_salary_text((v_role->>'salary_expectation_eur')::numeric,
+                                          v_role->>'salary_period', v_role->>'salary_basis') || ')' ELSE '' END);
         END LOOP;
         IF array_length(v_roles, 1) > 0 THEN
             v_lines := v_lines || ('Ziel-Rolle(n): ' || array_to_string(v_roles, ', '));
@@ -62,13 +64,20 @@ BEGIN
         END IF;
     END IF;
 
-    -- Timeline + Ableitung "angepeilter Umstieg ~Jahr" (render-at-fetch)
-    IF v_facts ? 'timeline_years' AND jsonb_typeof(v_facts->'timeline_years') = 'number' THEN
-        v_tl := (v_facts->>'timeline_years')::numeric;
-        v_lines := v_lines || ('Umstiegs-Timeline: ' || (v_facts->>'timeline_years') || ' Jahre'
-            || CASE WHEN v_tl >= 0
-                    THEN ' (angepeilter Umstieg ~' || to_char(CURRENT_DATE + make_interval(years => floor(v_tl)::int), 'YYYY') || ')'
-                    ELSE '' END);
+    -- WP3: Zieldatum roh, Abstand render-at-fetch ("in ~N Jahren" bzw. ueberschritten); nie eine gespeicherte Jahreszahl.
+    v_target := career.fn_partial_date(v_facts->>'target_date');
+    IF v_target IS NOT NULL THEN
+        v_lines := v_lines || ('Angepeilter Umstieg: ' || (v_facts->>'target_date')
+            -- ueberschritten erst nach dem ENDE der genannten Periode ("2026" gilt bis 31.12.2026)
+            || CASE WHEN (CASE length(btrim(v_facts->>'target_date'))
+                               WHEN 4 THEN (v_target + interval '1 year' - interval '1 day')::date
+                               WHEN 7 THEN (v_target + interval '1 month' - interval '1 day')::date
+                               ELSE v_target END) < core.fn_today()
+                    THEN ' (Zieldatum vorbei)'
+                    -- Abstand in Kalenderjahren (passt zur Genauigkeit "2028")
+                    WHEN extract(year FROM v_target) = extract(year FROM core.fn_today()) THEN ' (dieses Jahr)'
+                    WHEN extract(year FROM v_target) = extract(year FROM core.fn_today()) + 1 THEN ' (kommendes Jahr)'
+                    ELSE ' (in ~' || (extract(year FROM v_target) - extract(year FROM core.fn_today()))::int::text || ' Jahren)' END);
     END IF;
 
     -- WS-3: Skill-Luecken-Zeile der PRIMAEREN Ziel-Rolle (target_roles[0]); render-at-fetch, nichts gespeichert.

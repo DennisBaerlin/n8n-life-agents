@@ -144,8 +144,9 @@ BEGIN
             (1, core.fn_ui_tpl('career.advisor.digest_title')),
             (2, CASE WHEN v_role IS NOT NULL THEN core.fn_ui_tpl('career.advisor.digest_role', jsonb_build_object('role', v_role)) END),
             (3, CASE WHEN v_target IS NOT NULL THEN core.fn_ui_tpl('career.advisor.digest_target', jsonb_build_object('role', v_target)) END),
-            (4, CASE WHEN v_plan->>'timeline_years' IS NOT NULL
-                     THEN core.fn_ui_tpl('career.advisor.digest_timeline', jsonb_build_object('years', v_plan->>'timeline_years')) END),
+            -- WP3: Zieldatum roh (YYYY/YYYY-MM/Tag), keine gespeicherte Jahresspanne
+            (4, CASE WHEN career.fn_partial_date(v_plan->>'target_date') IS NOT NULL
+                     THEN core.fn_ui_tpl('career.advisor.digest_target_date', jsonb_build_object('date', v_plan->>'target_date')) END),
             -- WS-3: Skill-Luecken-Aufschluesselung (ungelatcht im Digest) + Ueberskill-Randnotiz
             (5, CASE WHEN COALESCE((v_gap->>'gap_count')::int, 0) > 0
                      THEN core.fn_ui_tpl(CASE WHEN COALESCE((v_gap->>'blocker_gap_count')::int, 0) > 0

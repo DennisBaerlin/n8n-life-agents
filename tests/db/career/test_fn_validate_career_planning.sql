@@ -6,9 +6,9 @@ DECLARE v_err TEXT;
 BEGIN
   -- gueltiger Plan -> NULL
   v_err := career.fn_validate_career_planning(jsonb_build_object(
-    'target_roles', jsonb_build_array(jsonb_build_object('title','Scrum Master','salary_expectation_eur',75000,'priority',1)),
+    'target_roles', jsonb_build_array(jsonb_build_object('title','Scrum Master','salary_expectation_eur',75000,'salary_period','year','salary_basis','gross','priority',1)),
     'target_industries', jsonb_build_array('Tech','Finance'),
-    'timeline_years', 2));
+    'target_date', '2028'));
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [valid]: %', v_err; END IF;
 
   -- partial-tolerant: leer/NULL -> NULL
@@ -25,9 +25,19 @@ BEGIN
        jsonb_build_array(jsonb_build_object('title','X','salary_expectation_eur',99999999)))) IS NULL THEN
     RAISE EXCEPTION 'FAIL [salary range]'; END IF;
 
-  -- timeline_years ausserhalb 0..15
-  IF career.fn_validate_career_planning(jsonb_build_object('timeline_years',20)) IS NULL THEN
-    RAISE EXCEPTION 'FAIL [timeline range]'; END IF;
+  -- WP3: timeline_years abgeloest (Hinweis auf target_date); target_date roh in Teil-Genauigkeit, Vergangenheit erlaubt
+  IF career.fn_validate_career_planning(jsonb_build_object('timeline_years',2)) NOT LIKE '%target_date%' THEN
+    RAISE EXCEPTION 'FAIL [timeline_years abgeloest]'; END IF;
+  IF career.fn_validate_career_planning(jsonb_build_object('target_date','2020-06')) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [vergangenes Zieldatum blockiert den Publish]'; END IF;
+  IF career.fn_validate_career_planning(jsonb_build_object('target_date','+2 years')) IS NULL THEN
+    RAISE EXCEPTION 'FAIL [unaufgeloestes target_date akzeptiert]'; END IF;
+  -- Gehalts-Einheit: Wertevorrat
+  IF career.fn_validate_career_planning(jsonb_build_object('target_roles',
+       jsonb_build_array(jsonb_build_object('title','X','salary_expectation_eur',5000,'salary_period','week')))) IS NULL
+     OR career.fn_validate_career_planning(jsonb_build_object('target_roles',
+       jsonb_build_array(jsonb_build_object('title','X','salary_expectation_eur',5000,'salary_basis','netto')))) IS NULL THEN
+    RAISE EXCEPTION 'FAIL [salary_period/basis Wertevorrat]'; END IF;
 
   -- target_industries kein Array
   IF career.fn_validate_career_planning(jsonb_build_object('target_industries','tech')) IS NULL THEN
@@ -113,6 +123,6 @@ BEGIN
        'career_planning') IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [denylist erlaubt rohe probation_months/expected_gap_income_eur]'; END IF;
 
-  RAISE NOTICE 'PASS test_fn_validate_career_planning [valid/optional/title/salary/timeline/industries/search-criteria/required_skills/transition+denylist]';
+  RAISE NOTICE 'PASS test_fn_validate_career_planning [valid/optional/title/salary(+Einheit)/target_date/industries/search-criteria/required_skills/transition+denylist]';
 END $$;
 ROLLBACK;

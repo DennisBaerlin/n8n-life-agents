@@ -56,7 +56,7 @@
   "career.advisor.digest_title": "Karriere-Beratung",
   "career.advisor.digest_role": "Aktuelle Rolle: {role}",
   "career.advisor.digest_target": "Zielrolle: {role}",
-  "career.advisor.digest_timeline": "Umstiegs-Timeline: {years} Jahre",
+  "career.advisor.digest_target_date": "Angepeilter Umstieg: {date}",
   "career.advisor.digest_gaps": "Skill-Lücken: {n}",
   "career.advisor.digest_gaps_blockers": "Skill-Lücken: {n} (davon {blockers} Pflicht)",
   "career.advisor.digest_overskill": "({n} Skill(s) über Ziel)",

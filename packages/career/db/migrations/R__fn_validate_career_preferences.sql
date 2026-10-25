@@ -38,6 +38,15 @@ BEGIN
             RETURN format('career_preferences.salary_floor %s out of sane range (0..10000000)', p_facts->>'salary_floor');
         END IF;
     END IF;
+    -- WP3: Einheit des Gehalts roh (wie gesagt); den Jahreswert rechnet career.fn_salary_annual beim Anzeigen
+    IF p_facts ? 'salary_floor_period' AND jsonb_typeof(p_facts->'salary_floor_period') <> 'null'
+       AND p_facts->>'salary_floor_period' NOT IN ('month', 'year') THEN
+        RETURN format('career_preferences.salary_floor_period "%s" invalid (month|year)', p_facts->>'salary_floor_period');
+    END IF;
+    IF p_facts ? 'salary_floor_basis' AND jsonb_typeof(p_facts->'salary_floor_basis') <> 'null'
+       AND p_facts->>'salary_floor_basis' NOT IN ('gross', 'net') THEN
+        RETURN format('career_preferences.salary_floor_basis "%s" invalid (gross|net)', p_facts->>'salary_floor_basis');
+    END IF;
 
     -- commute_max_km: Roh-Zahl 0..2000
     IF p_facts ? 'commute_max_km' AND jsonb_typeof(p_facts->'commute_max_km') <> 'null' THEN

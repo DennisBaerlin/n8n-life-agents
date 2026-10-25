@@ -56,7 +56,7 @@
   "career.advisor.digest_title": "Career advice",
   "career.advisor.digest_role": "Current role: {role}",
   "career.advisor.digest_target": "Target role: {role}",
-  "career.advisor.digest_timeline": "Transition timeline: {years} years",
+  "career.advisor.digest_target_date": "Targeted transition: {date}",
   "career.advisor.digest_gaps": "Skill gaps: {n}",
   "career.advisor.digest_gaps_blockers": "Skill gaps: {n} ({blockers} required)",
   "career.advisor.digest_overskill": "({n} skill(s) above target)",

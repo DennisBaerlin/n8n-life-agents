@@ -1,6 +1,6 @@
 -- tests/db/career/test_fn_render_career_planning.sql
 -- career.fn_render_career_planning: Header-only Render des career_planning-Sidecars, Ableitung
--- "angepeilter Umstieg ~Jahr" render-at-fetch. NULL wenn kein facts-Sidecar.
+-- "Angepeilter Umstieg: <Zieldatum> (in ~N Jahren)" render-at-fetch. NULL wenn kein facts-Sidecar.
 BEGIN;
 DO $$
 DECLARE v_hdr TEXT; v_year TEXT;
@@ -12,25 +12,34 @@ BEGIN
   VALUES ('career_planning','t',NULL,'lazy','prose','agent','career',
     jsonb_build_object('facts', jsonb_build_object(
       'target_roles', jsonb_build_array(
-        jsonb_build_object('title','Scrum Master','salary_expectation_eur',75000),
+        jsonb_build_object('title','Scrum Master','salary_expectation_eur',75000,'salary_period','year','salary_basis','gross'),
         jsonb_build_object('title','Software-Entwickler')),
       'target_industries', jsonb_build_array('Tech','Finance'),
-      'timeline_years', 2,
+      'target_date', to_char(CURRENT_DATE + interval '2 years', 'YYYY'),
       '_meta', jsonb_build_object('last_confirmed_at', to_char(CURRENT_DATE,'YYYY-MM-DD')))));
 
   v_hdr := career.fn_render_career_planning('career_planning');
   IF v_hdr IS NULL THEN RAISE EXCEPTION 'FAIL [render NULL trotz facts]'; END IF;
-  IF v_hdr NOT LIKE '%Scrum Master%' OR v_hdr NOT LIKE '%Tech%' OR v_hdr NOT LIKE '%2 Jahre%' THEN
+  IF v_hdr NOT LIKE '%Scrum Master%' OR v_hdr NOT LIKE '%Tech%' OR v_hdr NOT LIKE '%Scrum Master (~75000 € brutto/Jahr)%' THEN
     RAISE EXCEPTION 'FAIL [render content]: %', v_hdr;
   END IF;
-  -- Ableitung: angepeilter Umstieg = heute + 2 Jahre (render-at-fetch, nie gespeichert)
+  -- WP3: Zieldatum roh, Abstand render-at-fetch (nie gespeichert)
   v_year := to_char(CURRENT_DATE + make_interval(years => 2), 'YYYY');
-  IF v_hdr NOT LIKE '%angepeilter Umstieg ~' || v_year || '%' THEN
+  IF v_hdr NOT LIKE '%Angepeilter Umstieg: ' || v_year || ' (in ~2 Jahren)%' THEN
     RAISE EXCEPTION 'FAIL [derived target year %]: %', v_year, v_hdr;
   END IF;
   -- keine required_skills -> KEINE Skill-Luecken-Zeile
   IF v_hdr LIKE '%Skill-Lücken%' THEN RAISE EXCEPTION 'FAIL [no gap line ohne required_skills]: %', v_hdr; END IF;
-  RAISE NOTICE 'PASS [1] no-row NULL + Header + render-at-fetch Umstiegs-Jahr + keine Gap-Zeile';
+  -- ueberschritten erst nach Ende der Periode; dieses Jahr
+  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_date}', to_jsonb(to_char(CURRENT_DATE, 'YYYY')))
+   WHERE name = 'career_planning';
+  IF career.fn_render_career_planning('career_planning') NOT LIKE '%(dieses Jahr)%' THEN
+    RAISE EXCEPTION 'FAIL [Zieljahr = dieses Jahr]: %', career.fn_render_career_planning('career_planning'); END IF;
+  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_date}', to_jsonb(to_char(CURRENT_DATE - interval '1 year', 'YYYY')))
+   WHERE name = 'career_planning';
+  IF career.fn_render_career_planning('career_planning') NOT LIKE '%Zieldatum vorbei%' THEN
+    RAISE EXCEPTION 'FAIL [Zieljahr vorbei]: %', career.fn_render_career_planning('career_planning'); END IF;
+  RAISE NOTICE 'PASS [1] no-row NULL + Header + Zieldatum/Gehalt render-at-fetch + keine Gap-Zeile';
 
   -- ---------- TEST 2 (WS-3 Skill-Luecken-Zeile, primaere Rolle, Blocker zuerst) ----------
   -- Primaere Rolle Scrum Master bekommt required_skills; Profil hat Scrum nur beginner (weak+Pflicht), Python fehlt.
@@ -167,7 +176,7 @@ BEGIN
     jsonb_build_object('facts', jsonb_build_object(
       'target_roles', jsonb_build_array(jsonb_build_object('title','Scrum Master','required_skills',
         jsonb_build_array(jsonb_build_object('name','Scrum','min_level','advanced','is_blocker',true)))),
-      'timeline_years', 2,
+      'target_date', to_char(CURRENT_DATE + interval '2 years', 'YYYY'),
       '_meta', jsonb_build_object('last_confirmed_at', to_char(CURRENT_DATE,'YYYY-MM-DD'))))),
    ('career_profile__erika','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object('skills','[]'::jsonb)))

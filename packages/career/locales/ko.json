@@ -56,7 +56,7 @@
   "career.advisor.digest_title": "커리어 상담",
   "career.advisor.digest_role": "현재 직무: {role}",
   "career.advisor.digest_target": "목표 직무: {role}",
-  "career.advisor.digest_timeline": "전환 일정: {years}년",
+  "career.advisor.digest_target_date": "목표 전환 시점: {date}",
   "career.advisor.digest_gaps": "부족 역량: {n}개",
   "career.advisor.digest_gaps_blockers": "부족 역량: {n}개 (필수 {blockers}개)",
   "career.advisor.digest_overskill": "(목표 이상 역량 {n}개)",

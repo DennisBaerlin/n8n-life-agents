@@ -30,7 +30,9 @@ BEGIN
         v_lines := v_lines || ('Arbeitgeber meiden: ' || (SELECT string_agg(e, ', ') FROM jsonb_array_elements_text(v_facts->'disliked_employers') AS e));
     END IF;
     IF v_facts ? 'salary_floor' AND jsonb_typeof(v_facts->'salary_floor') = 'number' THEN
-        v_lines := v_lines || ('Gehaltsuntergrenze: ' || (v_facts->>'salary_floor') || ' EUR');
+        -- WP3: Einheit roh, Jahreswert render-at-fetch (career.fn_salary_text; fehlende Einheit offen, nie angenommen)
+        v_lines := v_lines || ('Gehaltsuntergrenze: ' || career.fn_salary_text((v_facts->>'salary_floor')::numeric,
+                                   v_facts->>'salary_floor_period', v_facts->>'salary_floor_basis'));
     END IF;
     IF v_facts ? 'remote_preference' AND jsonb_typeof(v_facts->'remote_preference') <> 'null' THEN
         v_lines := v_lines || ('Arbeitsort-Präferenz: ' || (v_facts->>'remote_preference'));

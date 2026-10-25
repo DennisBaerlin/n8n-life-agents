@@ -82,6 +82,8 @@
 #   (24) RELEASE-KEY-SPIEGEL: RELEASE_KEY_B64 in provisioning/install.sh = base64 von provisioning/keys/release-signing.gpg.
 #   (25) PERSONA-STIL-PARITAET: je Persona aus personas.list (ausser neutral) genau ein '### <code>'-Abschnitt in
 #       packages/core/contexts/persona_styles.md und umgekehrt.
+#   (26) LLM-RECHNET-HINWEIS (Warnung): $fromAI-Descriptions mit Rechen-Verben (compute/calculate/convert/...) — das
+#       Modell soll Roh-Werte liefern, die fn rechnet (.claude/rules/sql.md "Keine ableitbaren Spalten").
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -391,9 +393,14 @@ foreach ($id in $workflows.Keys) {
                         $errors.Add("\$fromAI NICHT KANONISCH: $wfName :: $($n.name) Feld '$($p.Name)' -- vermutlich Apostroph in der Description (bricht den \$fromAI-Parser).")
                         continue
                     }
-                    $key = $Matches['key']; $type = $Matches['type']
+                    $key = $Matches['key']; $type = $Matches['type']; $desc = "$($Matches['desc'])"
                     if ($key -ne $p.Name) {
                         $errors.Add("\$fromAI-KEY-MISMATCH: $wfName :: $($n.name) Feld '$($p.Name)' nutzt \$fromAI-Key '$key'.")
+                    }
+                    # (26) LLM-RECHNET-HINWEIS (nur Warnung, Ratchet-Kandidat): eine Description, die das Modell zum Rechnen/
+                    # Umrechnen auffordert, verletzt "Das LLM rechnet nicht" (.claude/rules/sql.md) -> Roh-Wert nehmen, die fn rechnet.
+                    if ($desc -match '(?i)\b(compute|calculate|convert|multiply|annuali[sz]e|work out|sum up|add up)\b') {
+                        $warns.Add("LLM-RECHNET?: $wfName :: $($n.name) Feld '$key' -- Description fordert das Modell zum Rechnen auf ('$($Matches[1])'); Roh-Wert annehmen und in der fn ableiten.")
                     }
                     if ($key -match '_id$' -and $type -eq 'number') {
                         $errors.Add("ID ALS NUMBER: $wfName :: $($n.name) Feld '$key' ist \$fromAI-Typ 'number' -- LLM-quotierte IDs werden vom Schema rejected; IDs immer als 'string' (fn castet).")

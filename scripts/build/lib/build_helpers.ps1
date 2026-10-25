@@ -734,12 +734,27 @@ function New-HitlValue {
 }
 # New-HitlLine — eine Zeile (• Label: Wert). -If = JS-Bedingung (falsy -> Zeile entfaellt), -IsDefault = JS-
 # Bedingung fuer den Zusatz '(Standard)'. Liefert ein JS-Objekt-Literal fuer New-HitlSummary -Lines.
+# -OmitEmpty = optionale Info-Zeile entfaellt, wenn ihr Wert leer ist (null/''/[]; bei tpl: Key null ODER alle
+#   Parameter leer) statt als '—' zu erscheinen (Owner 2026-10-25: leere Zusatzzeilen ueberfordern). Nie fuer
+#   removed/heading (dort IST leer die Aussage) und nie fuer Felder, deren Leer-Bedeutung zaehlt (dafuer eigener
+#   Text wie finance.value.no_instalment).
 function New-HitlLine {
     param([Parameter(Mandatory)][string]$Label, [string]$Value = 'null',
           [ValidateSet('text','money','date','number','enum','bool','language','key','tpl','removed','list','heading')][string]$Kind = 'text',
-          [string]$Currency, [switch]$EurByModel, [string]$Enum, [hashtable]$Params, [string]$If, [string]$IsDefault, [int]$Digits = 0)
+          [string]$Currency, [switch]$EurByModel, [string]$Enum, [hashtable]$Params, [string]$If, [string]$IsDefault, [int]$Digits = 0,
+          [switch]$OmitEmpty)
     $ctx = "New-HitlLine '$Label'"
     Assert-HitlKey $Label $ctx
+    if ($OmitEmpty) {
+        if ($Kind -in @('removed', 'heading')) { throw "${ctx}: -OmitEmpty ist bei kind '$Kind' nicht erlaubt (leer ist dort die Aussage)" }
+        $emp = '((x) => x === null || x === undefined || x === "" || (Array.isArray(x) && x.length === 0))'
+        $filled = if ($Kind -eq 'tpl') {
+            $pv = @(if ($Params) { $Params.Keys | Sort-Object | ForEach-Object { "($($Params[$_]))" } })
+            $keyOk = "!$emp($Value)"
+            if ($pv.Count) { "($keyOk && ![" + ($pv -join ', ') + "].every($emp))" } else { "($keyOk)" }
+        } else { "(!$emp($Value))" }
+        $If = if ($If) { "($If) && $filled" } else { $filled }
+    }
     $o = "{ label: '$Label', kind: '$Kind', value: ($Value)"
     switch ($Kind) {
         'money' {

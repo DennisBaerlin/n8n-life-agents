@@ -106,7 +106,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT r.id, r.hit_count, r.candidates::text AS candidates, t.trigger_type, t.acquisition_method, t.acquisition_spec::text AS spec, t.expected_unit AS cur_unit, t.min_plausible AS cur_min, t.max_plausible AS cur_max, t.max_jump_pct AS cur_jump, t.last_value AS cur_last, t.status AS cur_status, core.fn_resolve_date(NULLIF(($1::jsonb)-\u003e\u003e\u0027due_date\u0027, \u0027\u0027))::text AS due_resolved FROM agent.fn_resolve_monitor_trigger(($1::jsonb)-\u003e\u003e\u0027label\u0027, ($1::jsonb)-\u003e\u003e\u0027domain\u0027, false) AS r LEFT JOIN agent.monitor_triggers t ON t.id = r.id;",
+                                         "query":  "=SELECT r.id, r.hit_count, r.candidates::text AS candidates, t.trigger_type, t.acquisition_method, t.acquisition_spec::text AS spec, t.expected_unit AS cur_unit, t.min_plausible AS cur_min, t.max_plausible AS cur_max, t.max_jump_pct AS cur_jump, t.last_value AS cur_last, t.status AS cur_status, CASE WHEN NULLIF(($1::jsonb)-\u003e\u003e\u0027due_date\u0027, \u0027\u0027) IS NOT NULL THEN agent.fn_resolve_monitor_due(($1::jsonb)-\u003e\u003e\u0027due_date\u0027) END AS due_chk, agent.fn_resolve_monitor_due(NULLIF(($1::jsonb)-\u003e\u003e\u0027due_date\u0027, \u0027\u0027))-\u003e\u003e\u0027due_date\u0027 AS due_resolved FROM agent.fn_resolve_monitor_trigger(($1::jsonb)-\u003e\u003e\u0027label\u0027, ($1::jsonb)-\u003e\u003e\u0027domain\u0027, false) AS r LEFT JOIN agent.monitor_triggers t ON t.id = r.id;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ label: $(\u0027Start\u0027).item.json.label, domain: $(\u0027Resolve domain\u0027).item.json.domain, due_date: $(\u0027Start\u0027).item.json.due_date }) }}"
                                                      }
@@ -190,6 +190,71 @@
                                    ],
                       "id":  "9695b011-f786-52d7-b7f1-1b10e8b45983",
                       "name":  "Not found"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "69547651-6d7b-5eac-b98b-941120e28330",
+                                                                                   "leftValue":  "={{ $(\u0027Resolve trigger\u0027).item.json.due_chk !== null \u0026\u0026 $(\u0027Resolve trigger\u0027).item.json.due_chk.ok === false }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       630,
+                                       0
+                                   ],
+                      "id":  "5eb389d5-6920-5051-a4f7-ed3469c51e0d",
+                      "name":  "Due date invalid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d0f960ad-5223-5ffe-a5f1-5a550250a797",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5e6f2355-b8c8-5af6-b9ac-d8ca23bf4166",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ \u0027Nothing was changed: \u0027 + $(\u0027Resolve trigger\u0027).item.json.due_chk.reason + \u0027. Ask the user for the date again and pass it as said (YYYY-MM-DD or relative like +6 months).\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       720,
+                                       200
+                                   ],
+                      "id":  "c39489ef-68be-5c32-91c3-3e7e02184f95",
+                      "name":  "Due date rejected"
                   },
                   {
                       "parameters":  {
@@ -703,7 +768,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Re-Probe bei Spec-Änderung + agent.fn_set_monitor_trigger (atomar)**\n\nNeues due_date: Resolve trigger löst es per core.fn_resolve_date EINMAL auf (relativ wie +6 months erlaubt), Karte und Write nutzen genau dieses Datum; die fn lehnt ein vergangenes ab. Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -\u003e Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). Web-Cadence \u003e= 12h DB-CHECK.",
+                                         "content":  "## DB-Automatik\n**Re-Probe bei Spec-Änderung + agent.fn_set_monitor_trigger (atomar)**\n\nNeues due_date: Resolve trigger prüft es per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write; relativ wie +6 months erlaubt) — ungültig oder vergangen -\u003e Due date rejected VOR der Karte; Karte und Write nutzen genau dieses Datum. Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -\u003e Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). Web-Cadence \u003e= 12h DB-CHECK.",
                                          "height":  320,
                                          "width":  560,
                                          "color":  4
@@ -757,7 +822,7 @@
                                                     [
                                                         {
                                                             "index":  0,
-                                                            "node":  "Spec changed?",
+                                                            "node":  "Due date invalid?",
                                                             "type":  "main"
                                                         }
                                                     ],
@@ -770,6 +835,24 @@
                                                     ]
                                                 ]
                                    },
+                        "Due date invalid?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Due date rejected",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ],
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Spec changed?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
                         "Spec changed?":  {
                                               "main":  [
                                                            [

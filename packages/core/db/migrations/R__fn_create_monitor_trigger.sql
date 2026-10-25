@@ -44,6 +44,7 @@ DECLARE
     v_dd       NUMERIC := NULLIF(p->>'drawdown_pct', '')::numeric;
     v_ref      NUMERIC := NULLIF(p->>'reference_value', '')::numeric;
     v_due      DATE;
+    v_dchk     JSONB;
     v_warn     INT := COALESCE(NULLIF(p->>'warn_days_before', '')::int, 0);
     v_probe    JSONB := p->'probe_observation';
     v_probe_val NUMERIC;
@@ -136,14 +137,11 @@ BEGIN
         v_due := NULL; v_cmp := NULL; v_thr := NULL;
     ELSIF v_type = 'date' THEN
         -- WP3: relative Angabe ("+6 months", "in 3 weeks") rechnet die DB, das LLM uebersetzt nur.
-        v_due := core.fn_resolve_date(p->>'due_date');
-        IF v_due IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'reason',
-                'date triggers require a due_date as YYYY-MM-DD or relative to today (e.g. +6 months, in 3 weeks)');
+        v_dchk := agent.fn_resolve_monitor_due(p->>'due_date');   -- die eine Regel (auch fuer die Karte im Tool)
+        IF NOT (v_dchk->>'ok')::boolean THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'date triggers: ' || (v_dchk->>'reason'));
         END IF;
-        IF v_due < core.fn_today() THEN
-            RETURN jsonb_build_object('ok', false, 'reason', format('due_date %s is in the past', v_due));
-        END IF;
+        v_due := (v_dchk->>'due_date')::date;
         IF v_method <> 'none' THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'date triggers are acquisition-free (acquisition_method must be none)');
         END IF;

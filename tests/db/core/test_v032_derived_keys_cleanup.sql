@@ -12,6 +12,7 @@ VALUES ('__t_v032_dirty__', 't', NULL, 'lazy', E'## Prosa\n\n## Gelernt\n\n- Not
           'persons', jsonb_build_array(jsonb_build_object('person_id', 'p1', 'child_age', 7, 'start_age', 60)),
           'glidepath', jsonb_build_object('phases', jsonb_build_array(jsonb_build_object('age_from', 50, 'is_minor', FALSE))),
           'retirement_year', 2050,
+          'children', jsonb_build_object('oldest_age', NULL),
           '_meta', jsonb_build_object('last_confirmed_at', '2026-01-01')))),
        ('__t_v032_clean__', 't', NULL, 'lazy', 'sauber', 'agent', 'core',
         jsonb_build_object('facts', jsonb_build_object('start_age', 60, 'horizon_years', 20)));
@@ -31,7 +32,7 @@ BEGIN
   IF (f->'persons'->0->>'start_age')::int IS DISTINCT FROM 60 OR (f#>>'{glidepath,phases,0,age_from}')::int IS DISTINCT FROM 50
      OR f->'_meta'->>'last_confirmed_at' IS DISTINCT FROM '2026-01-01' THEN
     RAISE EXCEPTION 'FAIL [erlaubte Roh-Keys/_meta veraendert: %]', f; END IF;
-  IF c NOT LIKE '%retirement_year = 2050%' OR c NOT LIKE '%persons[0].child_age = 7%'
+  IF c NOT LIKE '%retirement_year = 2050%' OR c NOT LIKE '%children.oldest_age = null%' OR c NOT LIKE '%persons[0].child_age = 7%'
      OR c NOT LIKE '%glidepath.phases[0].is_minor = false%' THEN
     RAISE EXCEPTION 'FAIL [Werte nicht in die Prosa uebernommen: %]', c; END IF;
   IF position('Migriert' IN c) > position('## Gelernt' IN c) OR c NOT LIKE '%- Notiz' THEN

@@ -55,6 +55,8 @@ function New-ContextFactsToolGraph {
     if (k === 'persona') return Object.assign(b, { kind: 'enum', enum: 'core.persona.name', value: v });
     if (typeof v === 'boolean') return Object.assign(b, { kind: 'bool', value: v });
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return Object.assign(b, { kind: 'date', value: v });
+    // Wertevorrats-Codes (z. B. month|year, gross|net) lesbar: Katalog-Key <pkg>.facts.<ctx>.<feld>.<code>, fehlt er -> der Code
+    if (typeof v === 'string' && /^[a-z][a-z_]*$/.test(v)) return Object.assign(b, { kind: 'key', value: pre + k + '.' + v, fallback: v });
     if (Array.isArray(v)) return Object.assign(b, { kind: 'text', value: v.map(one).join(', ') });
     if (v !== undefined && typeof v === 'object') return Object.assign(b, { kind: 'text', value: JSON.stringify(v) });
     return Object.assign(b, { kind: 'text', value: v });
@@ -79,14 +81,10 @@ function New-ContextFactsToolGraph {
     # -Own: KEIN 'family'-Default (der Weg schreibt nie family) -> fehlt context_name, zeigt die Vorschau ehrlich '?'
     # (Titel-fallback = roher Kontextname, Labels = label_fallback).
     if ($Own) { $ctxPrefix = $ctxPrefix.Replace("context_name || 'family'", "context_name || '?'") }
-    # Fakten-Quelle der Karte: Haushalts-Weg = das von der DB aufgeloeste Objekt (Resolve dates: relative Daten wie
-    # "-3 days" -> Datum, Karte = Speicher); -Own (Stufe self, approval_lint (e): genau EIN Postgres-Node) liest die
-    # Eingabe roh, dort loest agent.fn_set_context_facts beim Speichern auf (Jahres-/Monats-Genauigkeit, kein Versatz).
-    $factsSource = if ($Own) {
-        "const facts = parse(S.facts, {});`n  const persons = Array.isArray(facts.persons) ? facts.persons : [];`n  const hh = (facts.household && typeof facts.household === 'object') ? facts.household : {};"
-    } else {
-        "const R = parse(`$('Resolve dates').item.json.facts_resolved, {});`n  const facts = (R && typeof R === 'object' && !Array.isArray(R)) ? R : {};`n  const persons = Array.isArray(facts.persons) ? facts.persons : [];`n  const hh = (facts.household && typeof facts.household === 'object') ? facts.household : {};"
-    }
+    # Fakten-Quelle der Karte = das in "Resolve dates" von der DB aufgeloeste Objekt (relative Daten wie "-3 days" ->
+    # Datum): die Karte zeigt, was der Write schreibt (beide Wege, auch Stufe self — approval_lint (e) laesst genau
+    # diesen Lese-Knoten zu).
+    $factsSource = "const R = parse(`$('Resolve dates').item.json.facts_resolved, {});`n  const facts = (R && typeof R === 'object' && !Array.isArray(R)) ? R : {};`n  const persons = Array.isArray(facts.persons) ? facts.persons : [];`n  const hh = (facts.household && typeof facts.household === 'object') ? facts.household : {};"
     $linesExpr = $linesExpr.Replace('__FACTS_SOURCE__', $factsSource)
     $linesExpr = $linesExpr.Replace('__CTX_PREFIX__', $ctxPrefix).Replace('__FACTS_PKG__', $FactsDisplayJson).Trim()
     $summary = New-HitlSummary -Pos @(220, 0) -Title 'core.hitl.set_context_facts' `
@@ -109,7 +107,7 @@ function New-ContextFactsToolGraph {
     $payload = if ($Own) {
         [ordered]@{
             context_name = '$(''Start'').item.json.context_name'
-            facts        = (Get-GuardedJsonExpr '(o => Object.keys(o).length ? o : undefined)($(''Start'').item.json.facts ? JSON.parse($(''Start'').item.json.facts) : {})')
+            facts        = '(x => x ? JSON.parse(x) : undefined)($(''Resolve dates'').item.json.facts_resolved)'
             content      = '$(''Start'').item.json.content || '''''
             chat_id      = '$(''Start'').item.json.chat_id'   # Identitaet: die fn schreibt NUR den Kontext dieser Person (NIE LLM)
         }
@@ -123,13 +121,14 @@ function New-ContextFactsToolGraph {
             chat_id      = '$(''Start'').item.json.chat_id'   # Identitaet fuer den Permission-Backstop (NIE LLM)
         }
     }
-    # Haushalts-Weg: relative Daten ("-3 days", "last monday") VOR der Karte von der DB aufloesen lassen
+    # Relative Daten ("-3 days", "last monday") VOR der Karte von der DB aufloesen lassen
     # (core.fn_resolve_fact_dates, Genauigkeit folgt der Angabe) — die Karte zeigt und der Write schreibt dasselbe.
     # Eingabe = dasselbe zusammengesetzte facts-Objekt wie frueher direkt im Write (kaputtes JSON -> Sentinel -> fn {ok:false}).
     $resolve = Build-Pg 'Resolve dates' @(0, 160) `
         "=SELECT core.fn_resolve_fact_dates((`$1::jsonb)->'facts')::text AS facts_resolved;" `
         ([ordered]@{
-            facts = (Get-GuardedJsonExpr '(o => Object.keys(o).length ? o : undefined)(Object.assign({}, $(''Start'').item.json.facts ? JSON.parse($(''Start'').item.json.facts) : {}, $(''Start'').item.json.persons ? { persons: JSON.parse($(''Start'').item.json.persons) } : {}, $(''Start'').item.json.household ? { household: JSON.parse($(''Start'').item.json.household) } : {}))')
+            facts = if ($Own) { (Get-GuardedJsonExpr '(o => Object.keys(o).length ? o : undefined)($(''Start'').item.json.facts ? JSON.parse($(''Start'').item.json.facts) : {})') }
+                    else { (Get-GuardedJsonExpr '(o => Object.keys(o).length ? o : undefined)(Object.assign({}, $(''Start'').item.json.facts ? JSON.parse($(''Start'').item.json.facts) : {}, $(''Start'').item.json.persons ? { persons: JSON.parse($(''Start'').item.json.persons) } : {}, $(''Start'').item.json.household ? { household: JSON.parse($(''Start'').item.json.household) } : {}))') }
         })
     $stickyResolve = Build-Sticky 'Doc Relative Daten' @(-40, 320) `
         'Resolve dates — die DB rechnet relative Angaben' `
@@ -193,7 +192,8 @@ function New-ContextFactsToolGraph {
         'fn_set_context_facts liefert language_missing = Personen, die DIESER Write in family neu angelegt hat und die keine Sprache tragen (Handles). Language missing? -> Language picker items (je Person ein Item) -> Send language picker (core.sub_send_language_picker, an den Owner): eine Karte mit je einem Knopf pro unterstützter Sprache; der Tipp setzt die Sprache über agent.fn_set_person_language. Fail-open (onError continue): der Write ist schon gespeichert. Return läuft genau einmal (executeOnce) und liest die Werte aus dem Write-Knoten.' 300 560
 
     $conns = [ordered]@{
-        'Start'                  = @{ main = @( ,@( E 'Build Approval Summary' ) ) }
+        'Start'                  = @{ main = @( ,@( E 'Resolve dates' ) ) }
+        'Resolve dates'          = @{ main = @( ,@( E 'Build Approval Summary' ) ) }
         'Build Approval Summary' = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'       = @{ main = @( ,@( E 'Approved?' ) ) }
         'Approved?'              = @{ main = @(
@@ -205,12 +205,10 @@ function New-ContextFactsToolGraph {
     if ($Own) {
         # -Own legt nie eine family-Person an (language_missing bleibt leer) UND Stufe self darf ausser dem Gate keinen
         # Workflow rufen (approval_lint (e)) -> kein Picker-Zweig, Write ok? geht direkt auf Return.
-        $nodes = @($trig, $summary, $gate, $ifApproved, $retCancelled, $write, $ifOk, $err, $ret, $stickyOverview, $stickyHitl)
+        $nodes = @($trig, $resolve, $summary, $gate, $ifApproved, $retCancelled, $write, $ifOk, $err, $ret, $stickyOverview, $stickyHitl, $stickyResolve)
         $conns['Write ok?'] = @{ main = @( @( E 'Return' ), @( E 'Write failed' ) ) }
     } else {
         $nodes = @($trig, $resolve, $summary, $gate, $ifApproved, $retCancelled, $write, $ifOk, $err, $ifLang, $pickItems, $sendPicker, $ret, $stickyOverview, $stickyHitl, $stickyLang, $stickyResolve)
-        $conns['Start']         = @{ main = @( ,@( E 'Resolve dates' ) ) }
-        $conns['Resolve dates'] = @{ main = @( ,@( E 'Build Approval Summary' ) ) }
         $conns['Write ok?'] = @{ main = @(
             @( E 'Language missing?' ),
             @( E 'Write failed' )

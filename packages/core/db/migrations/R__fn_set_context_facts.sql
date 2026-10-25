@@ -22,10 +22,11 @@
 --     fn_remove_household_person), person_id:null/fehlt, ein _meta-Key (System-Stempel), falsche Typen.
 --   CHAT-PFAD (chat_id gesetzt = das LLM-Tool schreibt; WP3 "Slugs und Stempel vergibt die fn"):
 --     * as_of je Person/household stempelt IMMER die fn (ein mitgeschicktes as_of wird ueberschrieben).
---     * family: person_id darf fehlen. Treffer per Vor- + Nachname (+ Geburtsdatum, falls genannt) auf GENAU eine
---       Person -> Merge in diese; kein Treffer + vollstaendiger Neu-Datensatz (first/last/birth_date/role) -> neue
---       Person mit Slug von agent.fn_person_slug; mehrdeutig/unvollstaendig -> {ok:false}. Eine unbekannte
---       person_id -> {ok:false} (keine vom LLM erfundenen Slugs).
+--     * family: person_id darf fehlen. Treffer per Vor- + Nachname auf GENAU eine Person -> Merge in diese (ein
+--       abweichendes Geburtsdatum -> {ok:false}: Korrektur oder Namensvetter wird nicht geraten, person_id noetig);
+--       kein Treffer + vollstaendiger Neu-Datensatz (first/last/birth_date/role) -> neue Person mit Slug von
+--       agent.fn_person_slug; mehrdeutig/unvollstaendig -> {ok:false}. Eine unbekannte person_id -> {ok:false}
+--       (keine vom LLM erfundenen Slugs).
 --     Ohne chat_id (CLI, Pairing, interne Aufrufer) gilt das bisherige Verhalten (as_of nur, wenn es fehlt).
 --   Relative Zeitangaben in *_date / since ("-12 years", "last monday") loest core.fn_resolve_fact_dates auf.
 --
@@ -233,10 +234,19 @@ BEGIN
                 SELECT count(*), min(pp->>'person_id') INTO v_cnt, v_match
                   FROM jsonb_array_elements(v_persons) pp
                  WHERE lower(trim(pp->>'first_name')) = lower(trim(v_e->>'first_name'))
-                   AND lower(trim(pp->>'last_name'))  = lower(trim(v_e->>'last_name'))
-                   AND (NOT (v_e ? 'birth_date') OR pp->>'birth_date' = v_e->>'birth_date');
+                   AND lower(trim(pp->>'last_name'))  = lower(trim(v_e->>'last_name'));
+                -- Gleicher Name, anderes Geburtsdatum: Korrektur ODER Namensvetter — nicht raten (eine stille Dublette
+                -- oder ein ueberschriebenes Geburtsdatum waeren beide falsch) -> die Person per person_id ansprechen.
+                IF v_cnt = 1 AND v_e ? 'birth_date' AND EXISTS (
+                       SELECT 1 FROM jsonb_array_elements(v_persons) pp
+                        WHERE pp->>'person_id' = v_match AND pp->>'birth_date' IS DISTINCT FROM v_e->>'birth_date') THEN
+                    RETURN jsonb_build_object('ok', false, 'reason', format(
+                        'a household member "%s %s" already exists (person_id %s) with a different birth date — pass '
+                        || 'person_id %s to correct their data; a second person with the same full name can only be '
+                        || 'added via the household CLI', v_e->>'first_name', v_e->>'last_name', v_match, v_match));
+                END IF;
                 IF v_cnt = 1 THEN
-                    v_e := v_e || jsonb_build_object('person_id', v_match);       -- bekannte Person (Name [+ Geburtsdatum])
+                    v_e := v_e || jsonb_build_object('person_id', v_match);       -- bekannte Person (Vor- + Nachname)
                 ELSIF v_cnt > 1 THEN
                     RETURN jsonb_build_object('ok', false, 'reason', format(
                         'several household members are called "%s %s" — pass the person_id of the one you mean',

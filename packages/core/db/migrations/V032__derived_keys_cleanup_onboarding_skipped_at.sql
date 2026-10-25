@@ -47,7 +47,8 @@ BEGIN
            OR (lower(r.key) ~ '(^|_)age(_|$)'
                AND lower(r.key) NOT IN ('start_age', 'planned_retirement_age', 'age_from', 'age_to'))
            OR lower(r.key) ~ '^is_(minor|adult)$' THEN
-            v_rem := v_rem || jsonb_build_array(ltrim(p_path || '.' || r.key, '.') || ' = ' || (r.value #>> '{}'));
+            -- JSON-null -> 'null' (sonst wuerde die ganze Notiz NULL und content NOT NULL bricht)
+            v_rem := v_rem || jsonb_build_array(ltrim(p_path || '.' || r.key, '.') || ' = ' || COALESCE(r.value #>> '{}', 'null'));
         ELSE
             v_sub := pg_temp.wp3_strip_derived(r.value, p_path || '.' || r.key);
             v_out := v_out || jsonb_build_object(r.key, v_sub->'v');

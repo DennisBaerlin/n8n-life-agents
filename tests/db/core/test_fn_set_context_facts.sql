@@ -524,20 +524,20 @@ BEGIN
      OR v_n <> 4 THEN
     RAISE EXCEPTION 'FAIL [17b] Merge per Name: erwartet joern aktualisiert, 4 Personen, got % / %', v_result, v_n; END IF;
 
-  -- (c) Zwilling: gleicher Name, anderes Geburtsdatum -> neue Person joern_2
+  -- (c) gleicher Name, anderes Geburtsdatum: Korrektur oder Namensvetter wird nicht geraten -> ok:false mit der id
   SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
       'first_name','Jörn','last_name','Mustermann','birth_date','2024-05-05','role','child'))))) INTO v_result;
-  IF v_result->'updated_persons' IS DISTINCT FROM '["joern_2"]'::jsonb THEN
-    RAISE EXCEPTION 'FAIL [17c] Zwilling: erwartet joern_2, got %', v_result; END IF;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT ILIKE '%person_id joern%' THEN
+    RAISE EXCEPTION 'FAIL [17c] gleicher Name/anderes Datum: erwartet ok=false mit id, got %', v_result; END IF;
 
-  -- (d) jetzt mehrdeutig ohne Geburtsdatum -> {ok:false} (person_id noetig)
+  -- (d) Namensvetter nur per CLI (ohne chat_id) -> danach ist der Name mehrdeutig -> ok:false (person_id noetig)
+  PERFORM agent.fn_add_household_person('{"first_name":"Jörn","last_name":"Mustermann","birth_date":"2024-05-05","role":"child"}'::jsonb);
   SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
       'first_name','Jörn','last_name','Mustermann','language','en'))))) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT ILIKE '%several%' THEN
     RAISE EXCEPTION 'FAIL [17d] mehrdeutig: erwartet ok=false/several, got %', v_result; END IF;
-
   -- (e) unbekannte person_id auf dem Chat-Pfad -> {ok:false}, kein Anlegen eines LLM-Slugs
   SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
@@ -577,7 +577,7 @@ BEGIN
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','joern_2','birth_date','-5 years'))))) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT ILIKE '%birth_date%' THEN
     RAISE EXCEPTION 'FAIL [17h] Geburtsdatum aus Alter: erwartet ok=false (nur Jahr), got %', v_result; END IF;
-  RAISE NOTICE 'PASS [17] Chat-Pfad [Slug von der fn, Merge per Name, Zwilling, mehrdeutig/unbekannt/unvollstaendig abgelehnt, as_of-Stempel, relative Daten]';
+  RAISE NOTICE 'PASS [17] Chat-Pfad [Slug von der fn, Merge per Name, anderes Geburtsdatum/mehrdeutig/unbekannt/unvollstaendig abgelehnt, as_of-Stempel, relative Daten]';
 END $$;
 
 -- ---------- TEST 15 (E1): die abgeloesten fns existieren nicht mehr ----------

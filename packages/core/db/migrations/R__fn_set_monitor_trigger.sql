@@ -37,6 +37,7 @@ DECLARE
     v_val     JSONB;
     v_rearm   BOOLEAN := false;
     v_due     DATE;
+    v_dchk    JSONB;
     v_avail   JSONB;
 BEGIN
     -- Aufloesung (auch fired/disabled — Lifecycle braucht sie)
@@ -118,14 +119,11 @@ BEGIN
     -- due_date (nur date-Typ sinnvoll; sonst ignoriert die Typ-CHECK den Wert ohnehin)
     -- WP3: relative Angabe ("+6 months") rechnet die DB; Vergangenheits-Check nur fuer ein neu gesendetes Datum.
     IF NULLIF(trim(COALESCE(p->>'due_date', '')), '') IS NOT NULL THEN
-        v_due := core.fn_resolve_date(p->>'due_date');
-        IF v_due IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'reason',
-                'due_date must be YYYY-MM-DD or relative to today (e.g. +6 months, in 3 weeks)');
+        v_dchk := agent.fn_resolve_monitor_due(p->>'due_date');   -- die eine Regel (auch fuer die Karte im Tool)
+        IF NOT (v_dchk->>'ok')::boolean THEN
+            RETURN jsonb_build_object('ok', false, 'reason', v_dchk->>'reason');
         END IF;
-        IF v_due < core.fn_today() THEN
-            RETURN jsonb_build_object('ok', false, 'reason', format('due_date %s is in the past', v_due));
-        END IF;
+        v_due := (v_dchk->>'due_date')::date;
     END IF;
 
     BEGIN

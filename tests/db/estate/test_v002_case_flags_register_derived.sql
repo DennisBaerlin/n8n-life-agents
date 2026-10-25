@@ -25,7 +25,8 @@ SELECT c.id, v.k, '', 'first_week', v.k AS title, v.st, NULL
                ('manage_contracts', 'not_applicable'),   -- bedingungslos n.a. -> Knopf -> user
                ('notify_employer', 'not_applicable'),    -- employed=true, trotzdem n.a. -> user
                ('tenancy', 'not_applicable'),            -- tenant (Default) -> system
-               ('order_death_certs', 'open')) AS v (k, st)
+               ('order_death_certs', 'open'),            -- bedingungslos offen -> system
+               ('deliver_will', 'open')) AS v (k, st)    -- has_will false, trotzdem offen -> per Hand -> user
  WHERE c.subject_person_id = 'hans';
 UPDATE estate.case_tasks SET done_at = now() WHERE template_key = 'order_death_certs';   -- offen MIT done_at
 INSERT INTO estate.funeral_preferences (person_id, has_prepaid_contract, prepaid_contract_provider)
@@ -39,7 +40,7 @@ BEGIN
   IF (SELECT flags FROM estate.cases WHERE subject_person_id = 'hans') IS DISTINCT FROM '{"employed": true}'::jsonb THEN
     RAISE EXCEPTION 'FAIL (1) flags: %', (SELECT flags FROM estate.cases WHERE subject_person_id = 'hans'); END IF;
   IF (SELECT string_agg(template_key || '=' || status_source, ',' ORDER BY template_key) FROM estate.case_tasks)
-     IS DISTINCT FROM 'death_certificate=user,manage_contracts=user,notify_employer=user,order_death_certs=system,tenancy=system' THEN
+     IS DISTINCT FROM 'death_certificate=user,deliver_will=user,manage_contracts=user,notify_employer=user,order_death_certs=system,tenancy=system' THEN
     RAISE EXCEPTION 'FAIL (2) status_source: %',
       (SELECT string_agg(template_key || '=' || status_source, ',' ORDER BY template_key) FROM estate.case_tasks); END IF;
   IF EXISTS (SELECT 1 FROM estate.case_tasks WHERE (status = 'done') <> (done_at IS NOT NULL)) THEN

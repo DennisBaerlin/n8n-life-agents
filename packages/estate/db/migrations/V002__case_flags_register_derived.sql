@@ -10,6 +10,7 @@
 --         * done                                   -> 'user' (nur fn_set_case_task setzt done)
 --         * not_applicable ohne Bedingung          -> 'user' (der Soll-Satz setzt sie nie n.a. -> per Knopf)
 --         * not_applicable, Merkmal steht auf true  -> 'user' (der Soll-Satz haette sie geoeffnet)
+--         * open, Intake-Merkmal NICHT true         -> 'user' (per Hand wieder geoeffnet)
 --         * alles andere                           -> 'system'
 --   (3) case_tasks: done_at gehoert genau zu status='done' (Backfill, dann CHECK, wie im Init-CREATE).
 --   (4) funeral_preferences: ein Anbieter heisst "Vorsorgevertrag vorhanden" (Backfill -> true, auch bei einem
@@ -39,7 +40,16 @@ UPDATE estate.case_tasks AS ct
                  OR EXISTS (SELECT 1 FROM estate.task_templates AS t
                              INNER JOIN estate.cases AS c2 ON c2.id = ct.case_id
                              WHERE t.template_key = ct.template_key
-                               AND c2.flags ->> t.condition_key = 'true'))));
+                               AND c2.flags ->> t.condition_key = 'true')))
+        -- offen trotz nicht gesetztem Intake-Merkmal: der alte Soll-Satz legte sie n.a. an und oeffnete sie nur bei
+        -- einem true-Merkmal (das nie zurueckgenommen wurde) -> der Nutzer hat sie per Hand wieder geoeffnet
+        OR (ct.status = 'open'
+            AND EXISTS (SELECT 1 FROM estate.task_templates AS t
+                         INNER JOIN estate.cases AS c3 ON c3.id = ct.case_id
+                         WHERE t.template_key = ct.template_key
+                           AND t.condition_key IN ('tenant', 'employed', 'pension_relevant', 'has_will', 'no_poa',
+                                                   'abroad_or_work_accident')
+                           AND c3.flags ->> t.condition_key IS DISTINCT FROM 'true')));
 
 -- (3) done_at <-> done
 UPDATE estate.case_tasks SET done_at = updated_at WHERE status = 'done' AND done_at IS NULL;

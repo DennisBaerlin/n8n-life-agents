@@ -50,7 +50,10 @@ foreach ($file in (Get-ChildItem $wfDirs -Filter '*.json')) {
     if ($matrix.ContainsKey($name) -and $matrix[$name] -eq 'self') {
         # GENAU ein Postgres-Node, und der ruft $ApprovalSelfFn (kein zweiter Write daneben); ausser dem Gate kein
         # executeWorkflow (sonst liefe ein anderes Werkzeug hinter einer reinen Selbst-Bestaetigung).
-        $queries = @($wf.nodes | Where-Object { $_.type -like 'n8n-nodes-base.postgres*' } | ForEach-Object { [string]$_.parameters.query })
+        # Einzige Ausnahme: der reine Lese-Knoten "Resolve dates" (core.fn_resolve_fact_dates ist eine Funktion ohne
+        # Tabellenzugriff, WP3: Karte = Speicher bei relativen Daten) — exakt diese Query-Form, sonst zaehlt er mit.
+        $queries = @($wf.nodes | Where-Object { $_.type -like 'n8n-nodes-base.postgres*' } | ForEach-Object { [string]$_.parameters.query } |
+                     Where-Object { $_ -notmatch "^=SELECT core\.fn_resolve_fact_dates\(\(\`$1::jsonb\)->'facts'\)::text AS facts_resolved;$" })
         if ($queries.Count -ne 1 -or $queries[0] -notmatch [regex]::Escape($ApprovalSelfFn)) { Fail "${name}: Stufe self braucht GENAU einen Postgres-Node, der $ApprovalSelfFn ruft (gefunden: $($queries.Count))" }
         foreach ($q in $queries) { if ($q -match 'fn_set_context_facts') { Fail "${name}: Stufe self ruft agent.fn_set_context_facts direkt (nur $ApprovalSelfFn erlaubt)" } }
         $otherCalls = @($wf.nodes | Where-Object { $_.type -eq 'n8n-nodes-base.executeWorkflow' -and [string]$_.parameters.workflowId.cachedResultName -ne $GATE })

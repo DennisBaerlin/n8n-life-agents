@@ -93,9 +93,9 @@ BEGIN
     UPDATE finance.account_balances SET balance = -120000 WHERE account_id = v_loan;
     INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
       VALUES ('__liq_loan_rate__', v_cash, -1000, 'month', current_date, current_date) RETURNING id INTO v_rp;
-    INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate, principal_rate, monthly_annuity,
+    INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate,
                                loan_account_id, debit_account_id, recurring_payment_id)
-      VALUES ('__liq_loan__', 150000, current_date - 365, 6, 2, 1000, v_loan, v_cash, v_rp);
+      VALUES ('__liq_loan__', 150000, current_date - 365, 6, v_loan, v_cash, v_rp);
     IF round((finance.fn_liquidity_snapshot()->>'monthly_expenses_eur')::numeric - v_e, 2) <> 1000 THEN
       RAISE EXCEPTION 'FAIL [7]: Kreditrate (Zins + Tilgung) muss als Pflicht +1000 zaehlen, got %',
         (finance.fn_liquidity_snapshot()->>'monthly_expenses_eur')::numeric - v_e; END IF;

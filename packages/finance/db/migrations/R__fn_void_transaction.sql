@@ -123,12 +123,13 @@ BEGIN
         FROM finance.transactions
         WHERE id = ANY(v_ids) AND category = 'settlement' AND loan_id IS NOT NULL
     ), pre AS (
-        SELECT lo.id, lo.monthly_annuity, lo.recurring_payment_id, s.transaction_date
+        SELECT lo.id, lo.recurring_payment_id, s.transaction_date
         FROM finance.loans lo JOIN s ON s.loan_id = lo.id
         WHERE lo.status = 'paid_off' AND lo.settled_from IS NULL
     ), l AS (
+        -- WP2: "hat eine Rate" = hat eine Raten-Kette (die Kopie monthly_annuity entfiel mit finance:V026)
         UPDATE finance.loans lo
-        SET status = CASE WHEN pre.monthly_annuity IS NULL THEN 'paused'::finance.loan_status
+        SET status = CASE WHEN pre.recurring_payment_id IS NULL THEN 'paused'::finance.loan_status
                           ELSE 'active'::finance.loan_status END
         FROM pre
         WHERE lo.id = pre.id
@@ -137,9 +138,8 @@ BEGIN
         UPDATE finance.recurring_payments rp
         SET status = 'active', valid_to = NULL
         FROM pre
-        WHERE rp.id = pre.recurring_payment_id
+        WHERE rp.id IN (SELECT finance.fn_recurring_lineage(pre.recurring_payment_id))
           AND rp.status = 'paused' AND rp.valid_to = pre.transaction_date
-          AND pre.monthly_annuity IS NOT NULL
         RETURNING rp.id
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object('loan_id', l.id, 'status', l.status) ORDER BY l.id), '[]'::jsonb)
@@ -160,8 +160,9 @@ BEGIN
 
     -- 4b. Status-Ruecknahme "abbezahlt" (Audit F5 + Paket 2): jeder betroffene Kredit, der paid_off ist, einen
     --     gespeicherten Vorzustand (settled_from, von fn_mark_loan_paid_off) hat und NACH dem Loeschen wieder
-    --     Restschuld traegt, geht exakt auf diesen Zustand zurueck: Kredit-Status, Raten-rp (settled_from.rp_id)
-    --     mit Status + Ende. Deckt Abloesung, letzte Rate und den Void einer FRUEHEREN Rate nach der Abzahlung ab.
+    --     Restschuld traegt, geht exakt auf diesen Zustand zurueck: Kredit-Status, Raten-Kette mit Status + Ende je
+    --     Glied (settled_from.chain, WP2; Altformat settled_from.rp_id = nur der Kopf bleibt lesbar). Deckt
+    --     Abloesung, letzte Rate und den Void einer FRUEHEREN Rate nach der Abzahlung ab.
     WITH pre AS (
         SELECT lo.id, lo.settled_from
         FROM finance.loans lo
@@ -183,6 +184,13 @@ BEGIN
         WHERE rp.id = COALESCE((pre.settled_from->>'rp_id')::int,
                                (SELECT recurring_payment_id FROM finance.loans WHERE id = pre.id))
           AND pre.settled_from->>'rp_status' IS NOT NULL
+        RETURNING rp.id
+    ), rc AS (
+        UPDATE finance.recurring_payments rp
+        SET status   = (c->>'status')::finance.payment_status,
+            valid_to = (c->>'valid_to')::date
+        FROM pre, jsonb_array_elements(COALESCE(pre.settled_from->'chain', '[]'::jsonb)) c
+        WHERE rp.id = (c->>'id')::int
         RETURNING rp.id
     )
     SELECT v_loans || COALESCE(jsonb_agg(jsonb_build_object('loan_id', l.id, 'status', l.status) ORDER BY l.id), '[]'::jsonb)

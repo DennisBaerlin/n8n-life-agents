@@ -67,7 +67,7 @@ BEGIN
   v_giro := (v_res->>'account_id')::int;
   SELECT finance.fn_create_loan(jsonb_build_object(
     'name','__test_void_loan__','lender','ING','borrower','Erika','original_amount',100000,
-    'disbursement_date',CURRENT_DATE::text,'interest_rate',3.0,'principal_rate',2.0,'monthly_annuity',1200,
+    'disbursement_date',CURRENT_DATE::text,'interest_rate',3.0,'monthly_annuity',1200,
     'schedule_day_of_month',1,'first_payment_date',(CURRENT_DATE + 30)::text,   -- Rate => erstes Ratendatum Pflicht
     'debit_account_id',v_giro,'disbursement_account_id',v_giro
   )) INTO v_res;

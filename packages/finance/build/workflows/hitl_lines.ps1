@@ -104,8 +104,8 @@ function Get-FinanceHitlLines {
             @(
                 (New-HitlLine 'core.label.name'                  "$S.name")
                 (New-HitlLine 'core.label.type'                  "$S.account_type" -Kind enum -Enum 'finance.enum.account_type')
-                (New-HitlLine 'finance.label.bank'               "$S.bank")
-                (New-HitlLine 'finance.label.iban_number'        "$S.account_number")
+                (New-HitlLine 'finance.label.bank'               "$S.bank" -OmitEmpty)
+                (New-HitlLine 'finance.label.iban_number'        "$S.account_number" -OmitEmpty)
                 (& $own 'finance.label.owner_person' (& $need 'Person'))
                 (New-HitlLine 'finance.label.balance'            "($S.opening_balance || 0)" -Kind money -Currency (& $need 'Ccy') -If "!$isDepot")
                 # Stichtag des Saldos (Konto aus Kontoauszug): Wert aus dem Probelauf der fn, nur im Einzel-Tool (-D.BalanceDate)
@@ -177,22 +177,26 @@ function Get-FinanceHitlLines {
         'insurance' {
             @(
                 (New-HitlLine 'core.label.name'                    "$S.name")
-                (New-HitlLine 'finance.label.company'              "$S.insurance_company")
-                (New-HitlLine 'finance.label.policy_number'        "$S.policy_number")
+                (New-HitlLine 'finance.label.company'              "$S.insurance_company" -OmitEmpty)
+                (New-HitlLine 'finance.label.policy_number'        "$S.policy_number" -OmitEmpty)
                 (& $own 'finance.label.policyholder_person' (& $need 'Person'))
-                (New-HitlLine 'finance.label.annual_contribution'  "$S.annual_premium" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.payment_mode'         "'finance.tpl.every_unit'" -Kind tpl -Params @{
+                # WP2: Beitrag je Abbuchung (genannt oder aus dem Jahresbeitrag) und Jahreswert kommen aus fn_insurance_fields
+                # (Einzel-Tool: Vorschau-Knoten, Import: fn_import_card_rows) -- die Karte rechnet nichts. Ohne Beitrag =
+                # beitragsfreie Police: die Beitragszeilen entfallen.
+                (New-HitlLine 'finance.label.rate_per_debit'       "($(& $need 'PeriodAmount') ? 'finance.tpl.plain' : 'finance.value.no_premium')" -Kind tpl -Params @{
+                    value = (New-HitlValue -Kind money -Value (& $need 'PeriodAmount') -EurByModel) })
+                (New-HitlLine 'finance.label.payment_mode'         "'finance.tpl.every_unit'" -Kind tpl -If (& $need 'PeriodAmount') -Params @{
                     interval = "($S.schedule_interval || '1')"
                     unit     = (New-HitlValue -Kind enum -Value "($S.schedule_unit || 'year')" -Enum 'finance.enum.schedule_unit') })
-                (New-HitlLine 'finance.label.rate_per_debit'       (& $need 'PeriodAmount') -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
-                (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name")
-                (New-HitlLine 'finance.label.valid_from_contract'  "($S.valid_from || $S.first_payment_date)" -Kind date)
-                (New-HitlLine 'finance.label.first_debit'          "$S.first_payment_date" -Kind date)
-                (New-HitlLine 'finance.label.insurance_type'       "$S.insurance_type" -Kind enum -Enum 'finance.enum.insurance_type')
-                (New-HitlLine 'finance.label.coverage_amount'      "$S.coverage_amount" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.beneficiary'          "$S.beneficiary")
-                (New-HitlLine 'finance.label.claim_deadline'       "($S.claim_deadline_hours ? 'finance.tpl.hours' : null)" -Kind tpl -Params @{ value = "$S.claim_deadline_hours" })
+                (New-HitlLine 'finance.label.annual_contribution'  (& $need 'Annual') -Kind money -EurByModel -If (& $need 'PeriodAmount'))
+                (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If (& $need 'PeriodAmount'))
+                (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name" -If (& $need 'PeriodAmount'))
+                (New-HitlLine 'finance.label.valid_from_contract'  "($S.valid_from || $S.first_payment_date)" -Kind date -OmitEmpty)
+                (New-HitlLine 'finance.label.first_debit'          "$S.first_payment_date" -Kind date -If (& $need 'PeriodAmount'))
+                (New-HitlLine 'finance.label.insurance_type'       "$S.insurance_type" -Kind enum -Enum 'finance.enum.insurance_type' -OmitEmpty)
+                (New-HitlLine 'finance.label.coverage_amount'      "$S.coverage_amount" -Kind money -EurByModel -OmitEmpty)
+                (New-HitlLine 'finance.label.beneficiary'          "$S.beneficiary" -OmitEmpty)
+                (New-HitlLine 'finance.label.claim_deadline'       "($S.claim_deadline_hours ? 'finance.tpl.hours' : null)" -Kind tpl -Params @{ value = "$S.claim_deadline_hours" } -OmitEmpty)
             )
         }
         'pension' {
@@ -200,31 +204,35 @@ function Get-FinanceHitlLines {
             @(
                 (New-HitlLine 'core.label.name'                          "$S.name")
                 (New-HitlLine 'finance.label.kind'                       "$S.pension_type" -Kind enum -Enum 'finance.enum.pension_type')
-                (New-HitlLine 'finance.label.provider'                   "$S.provider")
-                (New-HitlLine 'finance.label.contract_number'            "$S.contract_number")
+                (New-HitlLine 'finance.label.provider'                   "$S.provider" -OmitEmpty)
+                (New-HitlLine 'finance.label.contract_number'            "$S.contract_number" -OmitEmpty)
                 (& $own 'finance.label.owner_person' (& $need 'Person'))
                 (New-HitlLine 'finance.label.current_value'              "($S.current_value ? 'finance.tpl.plain' : 'finance.value.unknown')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "$S.current_value" -EurByModel) })
-                (New-HitlLine 'finance.label.valuation_date'             "$S.value_updated_at" -Kind date)
-                (New-HitlLine 'finance.label.guaranteed_monthly_pension' "$S.guaranteed_monthly_pension" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.retirement_start'           "$S.retirement_start_date" -Kind date)
-                (New-HitlLine 'finance.label.monthly_contribution'       "($hasC ? 'finance.tpl.plain' : 'finance.value.none_parens')" -Kind tpl -Params @{
+                (New-HitlLine 'finance.label.valuation_date'             "$S.value_updated_at" -Kind date -OmitEmpty)
+                (New-HitlLine 'finance.label.guaranteed_monthly_pension' "$S.guaranteed_monthly_pension" -Kind money -EurByModel -OmitEmpty)
+                (New-HitlLine 'finance.label.retirement_start'           "$S.retirement_start_date" -Kind date -OmitEmpty)
+                # WP2: Beitrag je Abbuchung + Rhythmus roh (Default monatlich); den Monatswert leitet pension_overview ab
+                (New-HitlLine 'finance.label.rate_per_debit'            "($hasC ? 'finance.tpl.plain' : 'finance.value.none_parens')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "$S.contribution_amount" -EurByModel) })
+                (New-HitlLine 'finance.label.payment_mode'               "'finance.tpl.every_unit'" -Kind tpl -If $hasC -Params @{
+                    interval = "($S.schedule_interval || '1')"
+                    unit     = (New-HitlValue -Kind enum -Value "($S.schedule_unit || 'month')" -Enum 'finance.enum.schedule_unit') })
                 (New-HitlLine 'finance.label.debit_account'              "$S.debit_account_name" -If $hasC)
                 (New-HitlLine 'finance.label.first_debit'                "$S.first_payment_date" -Kind date -If $hasC)
                 (New-HitlLine 'finance.label.debit_day'                  $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If $hasC)
-                (New-HitlLine 'finance.label.notes'                      "$S.notes")
+                (New-HitlLine 'finance.label.notes'                      "$S.notes" -OmitEmpty)
             )
         }
         'pension_statement' {
             @(
                 (New-HitlLine 'finance.label.pension'         "$S.pension")
                 (New-HitlLine 'finance.label.statement_date'  "$S.statement_date" -Kind date)
-                (New-HitlLine 'finance.label.reached_claim'   "$S.reached_claim" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.projection'      "$S.projection" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.em_monthly'      "$S.em_monthly" -Kind money -EurByModel)
+                (New-HitlLine 'finance.label.reached_claim'   "$S.reached_claim" -Kind money -EurByModel -OmitEmpty)
+                (New-HitlLine 'finance.label.projection'      "$S.projection" -Kind money -EurByModel -OmitEmpty)
+                (New-HitlLine 'finance.label.em_monthly'      "$S.em_monthly" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.is_nominal'      (& $need 'IsNominal') -Kind bool -IsDefault "($S.is_nominal === undefined || $S.is_nominal === null || $S.is_nominal === '')")
-                (New-HitlLine 'finance.label.notes'           "$S.notes")
+                (New-HitlLine 'finance.label.notes'           "$S.notes" -OmitEmpty)
             )
         }
         'recurring_payment' {
@@ -242,23 +250,23 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.valid_from'    "($S.valid_from || $S.first_payment_date)" -Kind date -IsDefault "!$S.valid_from")
                 (New-HitlLine 'finance.label.valid_to'      "($S.valid_to ? 'finance.tpl.plain' : 'finance.value.unlimited')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind date -Value "$S.valid_to") })
-                (New-HitlLine 'core.label.note'             "$S.notes")
+                (New-HitlLine 'core.label.note'             "$S.notes" -OmitEmpty)
             )
         }
         'real_estate' {
             @(
                 (New-HitlLine 'core.label.name'             "$S.name")
-                (New-HitlLine 'finance.label.current_value' "($S.current_value || null)" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.valuation_date' "$S.value_updated_at" -Kind date)
+                (New-HitlLine 'finance.label.current_value' "($S.current_value || null)" -Kind money -EurByModel -OmitEmpty)
+                (New-HitlLine 'finance.label.valuation_date' "$S.value_updated_at" -Kind date -OmitEmpty)
                 (& $own 'finance.label.owner_person' (& $need 'Person'))
                 (New-HitlLine 'core.label.status'           "($S.status || 'active')" -Kind enum -Enum 'finance.enum.status' -IsDefault "!$S.status")
-                (New-HitlLine 'finance.label.notes'         "$S.notes")
+                (New-HitlLine 'finance.label.notes'         "$S.notes" -OmitEmpty)
             )
         }
         'savings_goal' {
             @(
                 (New-HitlLine 'core.label.name'                    "$S.goal_name")
-                (New-HitlLine 'finance.label.goal_type'            "$S.goal_type")
+                (New-HitlLine 'finance.label.goal_type'            "$S.goal_type" -OmitEmpty)
                 (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel)
                 (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date)
                 (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -Params @{
@@ -267,10 +275,11 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.debit_account'        "$S.account_name")
                 (New-HitlLine 'finance.label.reserve_pot'          "'finance.tpl.reserve_pot'" -Kind tpl -Params @{ name = "$S.reserve_account_name" })
                 (New-HitlLine 'finance.label.debit_day'            (Get-FinanceDomTpl "$S.schedule_day_of_month" -DayTpl 'finance.tpl.day_ordinal' -Empty "'finance.value.relative_to_start'") -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
-                (New-HitlLine 'finance.label.first_booking'        "$S.first_payment_date" -Kind date)
+                # WP2: ohne genanntes Datum die erste Rate aus fn_savings_rate_schedule (naechster Termin ab heute)
+                (New-HitlLine 'finance.label.first_booking'        "($S.first_payment_date || $(& $need 'FirstPayment'))" -Kind date -IsDefault "!$S.first_payment_date")
                 (& $own 'finance.label.beneficiary_person' (& $need 'Person'))
-                (New-HitlLine 'finance.label.priority'             "($S.priority ? 'finance.tpl.priority_hint' : null)" -Kind tpl -Params @{ value = "$S.priority" })
-                (New-HitlLine 'core.label.note'                    "$S.notes")
+                (New-HitlLine 'finance.label.priority'             "($S.priority ? 'finance.tpl.priority_hint' : null)" -Kind tpl -Params @{ value = "$S.priority" } -OmitEmpty)
+                (New-HitlLine 'core.label.note'                    "$S.notes" -OmitEmpty)
             )
         }
         'loan' {
@@ -285,15 +294,21 @@ function Get-FinanceHitlLines {
             $running = & $need 'Running'
             @(
                 (New-HitlLine 'core.label.name'                      "$S.name")
-                (New-HitlLine 'finance.label.lender'                 "$S.lender")
+                (New-HitlLine 'finance.label.lender'                 "$S.lender" -OmitEmpty)
                 (& $own 'finance.label.borrower_person' (& $need 'Person'))
-                (New-HitlLine 'finance.label.loan_amount_original'   "$S.original_amount" -Kind money -EurByModel)
+                (New-HitlLine 'finance.label.loan_amount_original'   "$S.original_amount" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.remaining_debt_current' "($running ? 'finance.tpl.amount_running_loan' : 'finance.tpl.plain')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "($S.current_balance || $S.original_amount)" -EurByModel) })
-                (New-HitlLine 'finance.label.disbursement_date'      "$S.disbursement_date" -Kind date)
+                (New-HitlLine 'finance.label.disbursement_date'      "$S.disbursement_date" -Kind date -OmitEmpty)
                 (New-HitlLine 'finance.label.interest_rate'          "'finance.tpl.percent_pa'" -Kind tpl -Params @{ value = "$S.interest_rate" })
-                (New-HitlLine 'finance.label.principal_rate'         "($S.principal_rate ? 'finance.tpl.percent_pa' : null)" -Kind tpl -Params @{ value = "$S.principal_rate" })
-                (New-HitlLine 'finance.label.fixed_until'            "$S.interest_rate_fixed_until" -Kind date)
+                (New-HitlLine 'finance.label.fixed_until'            "$S.interest_rate_fixed_until" -Kind date -OmitEmpty)
+                (New-HitlLine 'finance.label.term_end'               "$S.term_end_date" -Kind date -OmitEmpty)
+                # WP2: voraussichtliche Restschuld (bei gleichem Zins, ohne Sondertilgung) aus dem Probelauf von fn_create_loan
+                # (loan_overview/fn_loan_projected_balance) -- nur die Einzel-Karte; leer (kein Datum, keine Rate) entfaellt
+                if ($D.ContainsKey('BalFixed')) {
+                    (New-HitlLine 'finance.label.balance_projected_fixed_until' $D['BalFixed'] -Kind money -EurByModel -OmitEmpty)
+                    (New-HitlLine 'finance.label.balance_projected_term_end'    $D['BalTermEnd'] -Kind money -EurByModel -OmitEmpty)
+                }
                 (New-HitlLine 'finance.label.monthly_instalment'     "($hasRate ? 'finance.tpl.plain' : 'finance.value.no_instalment')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "$S.monthly_annuity" -EurByModel) })
                 (New-HitlLine 'finance.label.first_rate_split'       "'finance.tpl.rate_split'" -Kind tpl -If $hasRate -Params @{
@@ -303,7 +318,8 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.debit_day'              $ldom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If $hasRate)
                 (New-HitlLine 'finance.label.debit_account_instalment' "$S.debit_account_name")
                 (New-HitlLine 'finance.label.disbursed_to_own'       "($S.disbursement_account_name ? 'finance.tpl.disbursed_to_account' : 'finance.value.disbursed_no')" -Kind tpl -Params @{ account = "$S.disbursement_account_name" })
-                (New-HitlLine 'finance.label.real_estate'            (& $need 'RealEstate'))
+                (New-HitlLine 'finance.label.real_estate'            (& $need 'RealEstate') -OmitEmpty)
+                (New-HitlLine 'core.label.note'                      "$S.notes" -OmitEmpty)
             )
         }
     }
@@ -323,7 +339,9 @@ $script:FIN_IMPORT_CARD = [ordered]@{
                            # gespeichert -- die Karte zeigt das gewaehlte Depot
                            Covered = @('quote_currency', 'transaction_date', 'symbol', 'depot_holder') }
     insurance         = @{ Heading = 'finance.label.insurance'; Alias = @{ debit_account = 'debit_account_name' }
-                           D = @{ Person = 'X.person'; PeriodAmount = 'X.period_amount' }; Covered = @() }
+                           D = @{ Person = 'X.person'; PeriodAmount = 'X.period_amount'; Annual = 'X.annual_premium' }
+                           # Beitrag: die Karte zeigt den Betrag je Abbuchung bzw. Jahreswert als abgeleiteten Wert (X.*)
+                           Covered = @('premium_amount', 'annual_premium') }
     pension           = @{ Heading = 'finance.label.pension'; Alias = @{ debit_account = 'debit_account_name' }
                            D = @{ Person = 'X.person' }; Covered = @() }
     pension_statement = @{ Heading = 'finance.label.pension_statement'; Alias = @{}
@@ -333,7 +351,7 @@ $script:FIN_IMPORT_CARD = [ordered]@{
     real_estate       = @{ Heading = 'finance.label.real_estate'; Alias = @{}
                            D = @{ Person = 'X.person' }; Covered = @() }
     savings_goal      = @{ Heading = 'finance.label.savings_goal'; Alias = @{ name = 'goal_name'; account = 'account_name'; reserve_account = 'reserve_account_name' }
-                           D = @{ Person = 'X.person'; TargetDate = '(X.schedule || {}).target_date'; MonthlyRate = '(X.schedule || {}).monthly_rate'; Months = '(X.schedule || {}).months' }
+                           D = @{ Person = 'X.person'; TargetDate = '(X.schedule || {}).target_date'; MonthlyRate = '(X.schedule || {}).monthly_rate'; Months = '(X.schedule || {}).months'; FirstPayment = '(X.schedule || {}).first_payment_date' }
                            Covered = @('target_date', 'monthly_savings_rate') }
     loan              = @{ Heading = 'finance.label.loan'; Alias = @{ debit_account = 'debit_account_name'; disbursement_account = 'disbursement_account_name' }
                            D = @{ Person = 'X.person'; RealEstate = 'S.real_estate'; RateInterest = '(X.rate_split || {}).interest'; RatePrincipal = '(X.rate_split || {}).principal'; Running = 'X.running' }; Covered = @() }

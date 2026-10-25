@@ -63,12 +63,7 @@ BEGIN
             'recurring_target_count', v_cnt);
     END IF;
 
-    SELECT COUNT(*) INTO v_cnt FROM finance.insurances WHERE account_id = v_id;
-    IF v_cnt > 0 THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'This account is linked to ' || v_cnt || ' insurance(s) and cannot be deleted.',
-            'insurance_count', v_cnt);
-    END IF;
+    -- (WP2: das Abbuchungskonto einer Versicherung steht nur an ihrer Beitrags-rp -> von der rp-Pruefung oben gedeckt.)
 
     -- WS-B: der Depot-Reserve-Journal-Guard (savings_goal_reserve_entries.account_id = Depot) — eine
     -- Fehlanlage mit Reserve-Zuordnung haelt das Konto (FK RESTRICT waere sonst ein harter Fehler statt {ok:false}).

@@ -6,7 +6,7 @@ function Build-CreateInsurance {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('name','insurance_company','policy_number','policyholder_person','annual_premium',
+    $trig = Build-Trigger @('name','insurance_company','policy_number','policyholder_person','premium_amount','annual_premium',
                            'schedule_interval','schedule_unit','schedule_day_of_month','valid_from',
                            'first_payment_date','debit_account_name',
                            'insurance_type','beneficiary','coverage_amount','claim_deadline_hours')  # WS-0b estate
@@ -26,17 +26,18 @@ function Build-CreateInsurance {
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'debit_account_name');" `
         ([ordered]@{ debit_account_name = '$(''Start'').item.json.debit_account_name' })
 
-    $ifAcc = Build-If 'Debit unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
+    # WP2: beitragsfreie Police (ohne Beitrag) hat kein Abbuchungskonto -> ohne Namen weiter (die fn prueft den Rest)
+    $ifAcc = Build-If 'Debit unique?' @(440, 0) "={{ `$json.hit_count === 1 || !`$('Start').item.json.debit_account_name }}" 'true' 'equals' 'boolean'
 
     $errAcc = Build-ToolError 'Debit ambiguous' @(660, 200) `
         "=Debit account '{{ `$('Start').item.json.debit_account_name }}' resolves to {{ `$('Resolve Debit Account').item.json.hit_count }} matches. Ask the user which exact account to use."
 
-    # Read-only Vorschau fuer die Karte: Rohwerte (Praemie/Summe mit Tausenderpunkt, Meldefrist, Typ, Rhythmus) aus
-    # DERSELBEN fn wie der Write (fn_insurance_fields) + Beitrag je Abbuchung (fn_insurance_period_amount, Default
-    # jaehrlich) -> Karte und Buchung koennen nicht auseinanderlaufen ("1.200" zeigte die Karte vorher als 1,20).
+    # Read-only Vorschau fuer die Karte: Rohwerte (Beitrag je Abbuchung oder Jahresbeitrag, Summe mit Tausenderpunkt,
+    # Meldefrist, Typ, Rhythmus) aus DERSELBEN fn wie der Write (fn_insurance_fields: Betrag je Abbuchung + abgeleiteter
+    # Jahreswert) -> Karte und Buchung koennen nicht auseinanderlaufen; das LLM rechnet nichts um (WP2).
     $preview = Build-Pg 'Preview Rate' @(880, 0) `
-        "=SELECT (f->>'ok')::boolean AS ok, f->>'reason' AS reason, (f->>'annual_premium')::numeric AS annual_premium, (f->>'coverage_amount')::numeric AS coverage_amount, CASE WHEN (f->>'ok')::boolean AND f->>'annual_premium' IS NOT NULL THEN finance.fn_insurance_period_amount((f->>'annual_premium')::numeric, COALESCE(NULLIF((`$1::jsonb)->>'schedule_interval','')::int, 1), COALESCE(NULLIF((`$1::jsonb)->>'schedule_unit',''), 'year')::finance.schedule_unit) END AS period_amount FROM finance.fn_insurance_fields(`$1::jsonb) AS f;" `
-        ([ordered]@{ annual_premium = '$(''Start'').item.json.annual_premium'; coverage_amount = '$(''Start'').item.json.coverage_amount'; claim_deadline_hours = '$(''Start'').item.json.claim_deadline_hours'; insurance_type = '$(''Start'').item.json.insurance_type'; schedule_interval = '$(''Start'').item.json.schedule_interval'; schedule_unit = '$(''Start'').item.json.schedule_unit' })
+        "=SELECT (f->>'ok')::boolean AS ok, f->>'reason' AS reason, (f->>'premium_amount')::numeric AS period_amount, (f->>'annual_premium')::numeric AS annual_premium, (f->>'coverage_amount')::numeric AS coverage_amount FROM finance.fn_insurance_fields(`$1::jsonb) AS f;" `
+        ([ordered]@{ premium_amount = '$(''Start'').item.json.premium_amount'; annual_premium = '$(''Start'').item.json.annual_premium'; coverage_amount = '$(''Start'').item.json.coverage_amount'; claim_deadline_hours = '$(''Start'').item.json.claim_deadline_hours'; insurance_type = '$(''Start'').item.json.insurance_type'; schedule_interval = '$(''Start'').item.json.schedule_interval'; schedule_unit = '$(''Start'').item.json.schedule_unit' })
     $ifFields = Build-If 'Fields ok?' @(1100, -120) "={{ `$('Preview Rate').item.json.ok }}" 'true' 'equals' 'boolean'
     $errFields = Build-ToolError 'Invalid values' @(1320, -240) "={{ `$('Preview Rate').item.json.reason }}"
 
@@ -55,12 +56,13 @@ function Build-CreateInsurance {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_insurance' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create insurance (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'insurance_id' AS insurance_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'insurance_id' AS insurance_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, (r->>'annual_premium')::numeric AS annual_premium" `
         -Params ([ordered]@{
             name                  = '$(''Start'').item.json.name'
             insurance_company     = '$(''Start'').item.json.insurance_company'
             policy_number         = '$(''Start'').item.json.policy_number'
             policyholder_person_id = '$(''Resolve Person'').item.json.person_id'
+            premium_amount        = '$(''Start'').item.json.premium_amount'
             annual_premium        = '$(''Start'').item.json.annual_premium'
             schedule_interval     = '$(''Start'').item.json.schedule_interval'
             schedule_unit         = '$(''Start'').item.json.schedule_unit'
@@ -75,14 +77,13 @@ function Build-CreateInsurance {
         })
 
     # --- HITL approval gate (before the write) ---
-    # Strukturiertes Summary (Textkatalog): Jahresbeitrag/Versicherungssumme in EUR-Konvention (Praemie wird in EUR
-    # erfasst). Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1): alle Felder immer, auch die
-    # Nachlass-Felder (WS-0b estate) — leer = '—'.
+    # Strukturiertes Summary (Textkatalog): Beitrag/Versicherungssumme in EUR-Konvention (Praemie wird in EUR erfasst).
+    # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1); leere optionale Zeilen entfallen (-OmitEmpty).
     # Karte zeigt die GELESENEN Betraege (Preview Rate = fn_insurance_fields), nicht die Roh-Strings.
-    $S = "(Object.assign({}, `$('Start').item.json, { annual_premium: `$('Preview Rate').item.json.annual_premium, coverage_amount: `$('Preview Rate').item.json.coverage_amount }))"
+    $S = "(Object.assign({}, `$('Start').item.json, { coverage_amount: `$('Preview Rate').item.json.coverage_amount }))"
     $P = "`$('Resolve Person').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_insurance' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity insurance -S $S -D @{
-        Person = "$P.full_name"; PeriodAmount = "`$('Preview Rate').item.json.period_amount" })
+        Person = "$P.full_name"; PeriodAmount = "`$('Preview Rate').item.json.period_amount"; Annual = "`$('Preview Rate').item.json.annual_premium" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `
@@ -106,19 +107,20 @@ function Build-CreateInsurance {
         ,@('insurance_id', "={{ `$('Create insurance (atomic)').item.json.insurance_id }}", 'number')
         ,@('recurring_payment_id', "={{ `$('Create insurance (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('monthly_equivalent', "={{ `$('Create insurance (atomic)').item.json.monthly_equivalent }}", 'number')
+        ,@('annual_premium', "={{ `$('Create insurance (atomic)').item.json.annual_premium }}", 'number')
     )
 
-    $stickyGenerated = Build-Sticky 'DB-Automatik monthly_equivalent' @(2420, -260) `
-        'GENERATED: monthly_equivalent + trg_finance_balance_update' `
-        'monthly_equivalent (recurring_payment + insurance) ist GENERATED (read-only). Die Versicherung erscheint über das recurring_payment automatisch im Cashflow. Schreibt finance.fn_create_insurance atomar (recurring_payment + insurance + FK in einer Transaktion). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden mitgeschrieben und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) für Gap-Analyse + Todesfall-Checkliste gelesen.' 220 460
+    $stickyGenerated = Build-Sticky 'DB-Automatik Beitrag' @(2420, -260) `
+        'Eine Quelle: Beitrags-Zeile (WP2)' `
+        'Beitrag je Abbuchung, Rhythmus, Tag und Konto stehen nur an der Beitrags-Zeile (recurring_payment); den Jahreswert leitet fn_annual_equivalent ab, den Monatswert die GENERATED-Spalte monthly_equivalent (read-only). Die Versicherung erscheint über das recurring_payment automatisch im Cashflow. Ohne Beitrag = beitragsfreie Police ohne Beitrags-Zeile. Schreibt finance.fn_create_insurance atomar (recurring_payment + insurance + FK in einer Transaktion). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden mitgeschrieben und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) für Gap-Analyse + Todesfall-Checkliste gelesen.' 220 460
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -220) `
         'fn-Rückgabe {ok:false, reason}' `
-        'Nicht-positiver Jahresbeitrag liefert die fn als {ok:false, reason} -> Insurance rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.' 200 380
+        'Nicht-positiver oder unstimmiger Beitrag, Beitrag ohne Rhythmus liefert die fn als {ok:false, reason} -> Insurance rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.' 200 380
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1100, -480) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_create_insurance mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (nicht-positiver Jahresbeitrag und weitere korrigierbare Ablehnungen) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
+        'Dry run = fn_create_insurance mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (Beitrag nicht positiv/unstimmig/ohne Rhythmus und weitere korrigierbare Ablehnungen) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
 
     $nodes = @($trig, $checkDup, $ifExists, $errExists, $resAcc, $ifAcc, $errAcc, $preview, $ifFields, $errFields,
                $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyGenerated, $stickyOk,

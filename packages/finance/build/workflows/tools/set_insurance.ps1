@@ -7,8 +7,8 @@ function Build-SetInsurance {
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('insurance_name','new_name','insurance_company','policy_number','policyholder_person',
-                           'annual_premium','schedule_interval','schedule_unit','schedule_day_of_month',
-                           'valid_to','status','notes',
+                           'premium_amount','annual_premium','schedule_interval','schedule_unit','schedule_day_of_month',
+                           'effective_from','valid_to','status','notes',
                            'insurance_type','beneficiary','coverage_amount','claim_deadline_hours')  # WS-0b estate
 
     $resIns = Build-Pg 'Resolve Insurance' @(220, 0) `
@@ -20,17 +20,18 @@ function Build-SetInsurance {
     $errIns = Build-ToolError 'Insurance ambiguous' @(660, 200) `
         "=Insurance '{{ `$('Start').item.json.insurance_name }}' resolves to {{ `$('Resolve Insurance').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Insurance').item.json.candidates) }}. Ask the user which exact policy."
 
-    # Aktuelle Werte fuer Summary (alt->neu) UND fuer die Recurring-Neuberechnung (Merge alt/neu).
+    # Aktuelle Werte fuer die Karte (alt->neu): Beitrag/Rhythmus aus dem heute gueltigen Glied der Beitrags-Kette (WP2: die
+    # Police traegt keine Kopie), Jahreswert abgeleitet (fn_annual_equivalent), Status von der Police.
     $readCur = Build-Pg 'Read Current' @(660, 0) `
-        "=SELECT annual_premium, schedule_interval, schedule_unit::text AS schedule_unit, status::text AS status FROM finance.insurances WHERE id = ((`$1::jsonb)->>'id')::int;" `
+        "=SELECT finance.fn_annual_equivalent(abs(rc.amount), rc.schedule_interval, rc.schedule_unit, COALESCE(cardinality(rc.schedule_days_of_month), 1)) AS annual_premium, abs(rc.amount) AS premium_amount, rc.schedule_interval, rc.schedule_unit::text AS schedule_unit, i.status::text AS status FROM finance.insurances i LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(i.recurring_payment_id, current_date) WHERE i.id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Insurance'').item.json.id' })
 
     # Read-only Vorschau fuer die Karte: Rohwerte aus DERSELBEN fn wie der Write (fn_insurance_fields: "1.200" -> 1200,
-    # Meldefrist, Typ, Rhythmus; Status per fn_enum_reason) + neuer Beitrag je Abbuchung gemergt mit den aktuellen Werten
-    # (wie fn_set_insurance rechnet) -> Karte und Buchung koennen nicht auseinanderlaufen.
+    # Meldefrist, Typ, Beitrag; Status per fn_enum_reason). Ohne genannten Rhythmus gilt der bisherige (wie fn_set_insurance).
+    # Den wirksamen Beitrag je Abbuchung + Jahreswert + Stichtag zeigt die Karte aus dem Probelauf (r.*).
     $preview = Build-Pg 'Preview Rate' @(880, 0) `
-        "=SELECT x.ok, x.reason, x.annual_premium, x.coverage_amount, CASE WHEN x.ok THEN finance.fn_insurance_period_amount(COALESCE(x.annual_premium, i.annual_premium), COALESCE(NULLIF((`$1::jsonb)->>'schedule_interval','')::int, i.schedule_interval), COALESCE(NULLIF((`$1::jsonb)->>'schedule_unit','')::finance.schedule_unit, i.schedule_unit)) END AS period_amount FROM finance.insurances i CROSS JOIN LATERAL (SELECT r IS NULL AND (f->>'ok')::boolean AS ok, COALESCE(r, f->>'reason') AS reason, (f->>'annual_premium')::numeric AS annual_premium, (f->>'coverage_amount')::numeric AS coverage_amount FROM finance.fn_insurance_fields(`$1::jsonb) AS f, finance.fn_enum_reason('finance.insurance_status'::regtype, (`$1::jsonb)->>'status', 'status') AS r) x WHERE i.id = ((`$1::jsonb)->>'id')::int;" `
-        ([ordered]@{ id = '$(''Resolve Insurance'').item.json.id'; annual_premium = '$(''Start'').item.json.annual_premium'; coverage_amount = '$(''Start'').item.json.coverage_amount'; claim_deadline_hours = '$(''Start'').item.json.claim_deadline_hours'; insurance_type = '$(''Start'').item.json.insurance_type'; status = '$(''Start'').item.json.status'; schedule_interval = '$(''Start'').item.json.schedule_interval'; schedule_unit = '$(''Start'').item.json.schedule_unit' })
+        "=SELECT r IS NULL AND (f->>'ok')::boolean AS ok, COALESCE(r, f->>'reason') AS reason, (f->>'coverage_amount')::numeric AS coverage_amount FROM finance.fn_insurance_fields(`$1::jsonb) AS f, finance.fn_enum_reason('finance.insurance_status'::regtype, (`$1::jsonb)->>'status', 'status') AS r;" `
+        ([ordered]@{ premium_amount = '$(''Start'').item.json.premium_amount'; annual_premium = '$(''Start'').item.json.annual_premium'; coverage_amount = '$(''Start'').item.json.coverage_amount'; claim_deadline_hours = '$(''Start'').item.json.claim_deadline_hours'; insurance_type = '$(''Start'').item.json.insurance_type'; status = '$(''Start'').item.json.status'; schedule_interval = '($(''Start'').item.json.schedule_interval || $(''Read Current'').item.json.schedule_interval)'; schedule_unit = '($(''Start'').item.json.schedule_unit || $(''Read Current'').item.json.schedule_unit)' })
     $ifFields = Build-If 'Fields ok?' @(1100, -120) "={{ `$('Preview Rate').item.json.ok }}" 'true' 'equals' 'boolean'
     $errFields = Build-ToolError 'Invalid values' @(1320, -240) "={{ `$('Preview Rate').item.json.reason }}"
 
@@ -56,7 +57,9 @@ function Build-SetInsurance {
             insurance_company     = '$(''Start'').item.json.insurance_company'
             policy_number         = '$(''Start'').item.json.policy_number'
             policyholder_person_id = '$(''Resolve Person'').item.json.person_id'
+            premium_amount        = '$(''Start'').item.json.premium_amount'
             annual_premium        = '$(''Start'').item.json.annual_premium'
+            effective_from        = '$(''Start'').item.json.effective_from'
             schedule_interval     = '$(''Start'').item.json.schedule_interval'
             schedule_unit         = '$(''Start'').item.json.schedule_unit'
             schedule_day_of_month = '$(''Start'').item.json.schedule_day_of_month'
@@ -73,17 +76,22 @@ function Build-SetInsurance {
     # EUR-Konvention; Nachlass-Felder (WS-0b estate) optional.
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
+    $D = "`$('Dry run').item.json.r"
+    $hasPrem = "($S.premium_amount || $S.annual_premium)"
     $P = "`$('Resolve Person').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.set_insurance' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.insurance'           "$S.insurance_name")
         (New-HitlLine 'finance.label.new_name'            "$S.new_name" -If "$S.new_name")
-        (New-HitlLine 'finance.label.annual_contribution' "'finance.tpl.change'" -Kind tpl -If "$S.annual_premium" -Params @{
-            from = (New-HitlValue -Kind money -Value "$R.annual_premium" -EurByModel)
-            to   = (New-HitlValue -Kind money -Value "`$('Preview Rate').item.json.annual_premium" -EurByModel) })
+        (New-HitlLine 'finance.label.rate_per_debit'      "'finance.tpl.change'" -Kind tpl -If $hasPrem -Params @{
+            from = (New-HitlValue -Kind money -Value "$R.premium_amount" -EurByModel)
+            to   = (New-HitlValue -Kind money -Value "$D.premium_amount" -EurByModel) })
         (New-HitlLine 'finance.label.payment_mode'        "'finance.tpl.every_unit'" -Kind tpl -If "$S.schedule_unit" -Params @{
             interval = "($S.schedule_interval || '1')"
             unit     = (New-HitlValue -Kind enum -Value "$S.schedule_unit" -Enum 'finance.enum.schedule_unit') })
-        (New-HitlLine 'finance.label.rate_per_debit'      "`$('Preview Rate').item.json.period_amount" -Kind money -EurByModel -If "($S.annual_premium || $S.schedule_unit || $S.schedule_interval)")
+        (New-HitlLine 'finance.label.annual_contribution' "'finance.tpl.change'" -Kind tpl -If $hasPrem -Params @{
+            from = (New-HitlValue -Kind money -Value "$R.annual_premium" -EurByModel)
+            to   = (New-HitlValue -Kind money -Value "$D.annual_premium" -EurByModel) })
+        (New-HitlLine 'finance.label.effective_from'      "$D.effective_from" -Kind date -If "($hasPrem || $S.schedule_day_of_month)" -OmitEmpty)
         (New-HitlLine 'finance.label.policyholder_person' "($P.full_name || $S.policyholder_person)" -If "$S.policyholder_person")
         (New-HitlLine 'finance.label.company'             "$S.insurance_company" -If "$S.insurance_company")
         (New-HitlLine 'finance.label.policy_number'       "$S.policy_number" -If "$S.policy_number")
@@ -122,15 +130,15 @@ function Build-SetInsurance {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1100, -440) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_set_insurance mit denselben Werten, immer zurückgerollt (nach Preview Rate / Fields ok?). ok:false (z. B. nicht-positiver Jahresbeitrag) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception (CHECK, Recurring-Sync) -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
+        'Dry run = fn_set_insurance mit denselben Werten, immer zurückgerollt (nach Preview Rate / Fields ok?). Liefert den wirksamen Beitrag je Abbuchung, den Jahreswert und den Stichtag für die Karte. ok:false (z. B. Beitrag nicht positiv, neuer Rhythmus ohne Betrag) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception (CHECK, Recurring-Sync) -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
 
-    $stickyGen = Build-Sticky 'DB-Automatik monthly_equivalent' @(2420, -280) `
-        'GENERATED monthly_equivalent + Recurring-Sync' `
-        'monthly_equivalent (÷12) ist GENERATED. fn_set_insurance synct den verknüpften Beitrag (recurring_payment) IN-PLACE: Prämie/Schedule -> amount/schedule mit; status=cancelled/expired -> recurring paused + valid_to. Compute Schedule rechnet amount aus Merge(neu||aktuell). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden partiell mitgesetzt (leer=unverändert) und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) gelesen.' 220 480
+    $stickyGen = Build-Sticky 'DB-Automatik Beitrags-Kette' @(2420, -280) `
+        'Eine Quelle: Beitrags-Kette (WP2)' `
+        'Beitrag, Rhythmus, Tag und Vertragsende stehen nur an der Beitrags-Kette. Neuer Beitrag/Rhythmus/Tag -> fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from (Default nächster offener Termin), der alte Beitrag bleibt Historie. status=cancelled/expired -> Kette endet zum Vertragsende (paused erst, wenn erreicht). Umbenennung führt Versicherung <Name> an allen Gliedern mit. WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden partiell mitgesetzt (leer=unverändert) und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) gelesen.' 220 480
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `
-        'Nicht-positiver Jahresbeitrag -> {ok:false, reason} -> Update rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true ändert wirklich. Normalerweise fängt schon der Probelauf diese Fälle vor der Karte ab; hier landet nur, was sich zwischen Karte und Tipp geändert hat.' 200 400
+        'Nicht-positiver/unstimmiger Beitrag, Rhythmus ohne Betrag, Split-Guards -> {ok:false, reason} -> Update rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true ändert wirklich. Normalerweise fängt schon der Probelauf diese Fälle vor der Karte ab; hier landet nur, was sich zwischen Karte und Tipp geändert hat.' 200 400
 
     $nodes = @($trig, $resIns, $ifIns, $errIns, $readCur, $preview, $ifFields, $errFields, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyGen, $stickyOk)

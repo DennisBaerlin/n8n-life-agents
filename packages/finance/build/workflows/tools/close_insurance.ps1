@@ -8,9 +8,10 @@ function Build-CloseInsurance {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('insurance_name')
 
-    # Details + Buchungsanzahl fuer dynamischen HITL-Summary
+    # Details + Buchungsanzahl fuer dynamischen HITL-Summary (WP2: Jahreswert aus der Beitrags-Kette abgeleitet, Buchungen
+    # ueber die ganze Kette -- dieselbe Zaehlung wie fn_close_insurance)
     $readIns = Build-Pg 'Read Insurance' @(220, 0) `
-        "=SELECT i.insurance_company, ip.full_name AS policyholder, i.annual_premium, i.status::text AS ins_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id = i.recurring_payment_id) AS tx_count FROM finance.insurances i LEFT JOIN core.fn_household_persons() ip ON ip.person_id = i.policyholder_person_id WHERE i.name ILIKE ((`$1::jsonb)->>'insurance_name') LIMIT 1;" `
+        "=SELECT i.insurance_company, ip.full_name AS policyholder, finance.fn_annual_equivalent(abs(rc.amount), rc.schedule_interval, rc.schedule_unit, COALESCE(cardinality(rc.schedule_days_of_month), 1)) AS annual_premium, i.status::text AS ins_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(i.recurring_payment_id))) AS tx_count FROM finance.insurances i LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(i.recurring_payment_id, current_date) LEFT JOIN core.fn_household_persons() ip ON ip.person_id = i.policyholder_person_id WHERE i.name ILIKE ((`$1::jsonb)->>'insurance_name') LIMIT 1;" `
         ([ordered]@{ insurance_name = '$(''Start'').item.json.insurance_name' })
     # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
     $found = New-RequiredRowGate -Read $readIns -KeyField 'tx_count' -IfName 'Insurance found?' -ErrName 'Insurance not found' `
@@ -31,9 +32,9 @@ function Build-CloseInsurance {
     $titleVal = New-HitlValue -Kind key -Value "($I.tx_count > 0 ? 'finance.hitl.close_insurance_close' : 'finance.hitl.close_insurance_delete')"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.close_insurance' -LinesExpr $wg.CardLinesExpr -TitleParams @{ title = $titleVal } -Lines @(
         (New-HitlLine 'finance.label.insurance'      "$S.insurance_name")
-        (New-HitlLine 'finance.label.company'        "$I.insurance_company")
+        (New-HitlLine 'finance.label.company'        "$I.insurance_company" -OmitEmpty)
         (New-HitlLine 'finance.label.policyholder'   "($I.policyholder ? 'finance.tpl.plain' : 'finance.value.household')" -Kind tpl -Params @{ value = "$I.policyholder" })
-        (New-HitlLine 'finance.label.annual_contribution' "$I.annual_premium" -Kind money -EurByModel)
+        (New-HitlLine 'finance.label.annual_contribution' "$I.annual_premium" -Kind money -EurByModel -OmitEmpty)
         (New-HitlLine 'core.label.status'            "$I.ins_status" -Kind enum -Enum 'finance.enum.insurance_status')
         (New-HitlLine 'finance.label.booked_payments' "$I.tx_count")
         (New-HitlNote -KeyExpr "($I.tx_count > 0 ? 'finance.note.close_insurance_soft' : 'finance.note.close_insurance_hard')")

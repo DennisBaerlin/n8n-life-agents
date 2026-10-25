@@ -250,6 +250,30 @@
     "final": "Kredit angelegt."
   },
   {
+    "_comment": "tc72 WP2: Auszahlungsdatum eines laufenden Kredits nachtragen (Fixture Baufinanzierung ING).",
+    "match": "das Auszahlungsdatum 01.03.2021 nach",
+    "calls": [
+      { "tool": "tool_set_loan", "args": { "loan_name": "Baufinanzierung ING", "disbursement_date": "2021-03-01" } }
+    ],
+    "final": "Auszahlungsdatum nachgetragen."
+  },
+  {
+    "_comment": "tc73 WP2: Versicherung 30 Euro monatlich -> Betrag je Abbuchung roh + Rhythmus, kein Jahresbeitrag.",
+    "match": "Lege eine Zahnzusatzversicherung",
+    "calls": [
+      { "tool": "tool_create_insurance", "args": { "name": "Zahnzusatz Barmenia", "insurance_company": "Barmenia", "premium_amount": "30", "schedule_unit": "month", "first_payment_date": "2026-12-01", "debit_account_name": "DKB Giro" } }
+    ],
+    "final": "Versicherung angelegt."
+  },
+  {
+    "_comment": "tc74 WP2: Kreditrate ohne Betrag -> die faellige Rate kommt aus der DB.",
+    "match": "Buche die Kreditrate fuer die Baufinanzierung",
+    "calls": [
+      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung ING" } }
+    ],
+    "final": "Kreditrate gebucht."
+  },
+  {
     "_comment": "tc58 Versicherung fuer Kind per Vorname.",
     "match": "Lege eine Unfallversicherung 'Kinder-Unfall Lisa'",
     "calls": [

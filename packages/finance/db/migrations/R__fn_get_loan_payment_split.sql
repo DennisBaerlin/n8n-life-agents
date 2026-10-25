@@ -14,12 +14,16 @@
 --   recurring_payment_id (das Glied, dessen Vorkommen gebucht wird; Default = Kopf), "schon gebucht" gilt ueber
 --   die ganze Vorgaenger-Kette (Audit Paket 2 A0) und unabhaengig vom Belastungskonto. Aeltere offene Raten werden
 --   nie still rueckdatiert; abweichende Betraege (Sondertilgung) bleiben ungestempelt.
---   Eingabe jsonb: loan_id, payment_amount, payment_date, principal_amount (opt), due_date (opt),
+--   OHNE BETRAG (WP2 "Finanzen schlank", weniger Rueckfragen): payment_amount leer = die faellige Rate -- der Betrag
+--   des naechstgelegenen offenen Vorkommens der Raten-Kette im selben Fenster (bzw. am expliziten due_date), bei der
+--   letzten Rate der Abloesebetrag (Restschuld + Zins), wenn die volle Rate ueberzahlen wuerde. Ohne Raten-Kette oder
+--   ohne offenes Vorkommen -> {ok:false} (Betrag nennen).
+--   Eingabe jsonb: loan_id, payment_amount (opt), payment_date, principal_amount (opt), due_date (opt),
 --   recurring_payment_id (opt, Scheduler-Stempel).
---   RUECKGABE: {ok:true, remaining_debt (vor der Rate), interest_portion, principal_amount, matched_due_date,
---   booking_date, recurring_payment_id (nur bei Zuordnung)} | korrigierbar {ok:false, reason, ...betraege}
---   (Rate <= 0, Tilgung < 0 oder > Rate, Unterzahlung, Ueberzahlung inkl. payoff_amount, schon gebucht).
---   RAISE nur bei not-found.
+--   RUECKGABE: {ok:true, payment_amount (gegeben oder abgeleitet), remaining_debt (vor der Rate), interest_portion,
+--   principal_amount, matched_due_date, booking_date, recurring_payment_id (nur bei Zuordnung)} | korrigierbar
+--   {ok:false, reason, ...betraege} (Rate <= 0, keine faellige Rate, Tilgung < 0 oder > Rate, Unterzahlung,
+--   Ueberzahlung inkl. payoff_amount, schon gebucht). RAISE nur bei not-found.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_get_loan_payment_split(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -34,10 +38,46 @@ DECLARE
     v_months     NUMERIC := 1;
     v_restschuld NUMERIC;
     v_interest   NUMERIC;
+    v_def_rp     INT;
 BEGIN
-    IF v_payment IS NULL OR v_payment <= 0 THEN
+    SELECT * INTO v_loan FROM finance.loans WHERE id = v_loan_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Loan % not found.', v_loan_id;
+    END IF;
+
+    -- Ohne Betrag: die faellige Rate (eigener Zweig; kein Aufruf von fn_recurring_occurrence_amount, die ihrerseits
+    -- diese fn ruft). Zins mit dem Perioden-Faktor des gefundenen Glieds.
+    IF v_payment IS NULL THEN
+        IF v_loan.recurring_payment_id IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'This loan has no regular rate - ask the user for the payment amount.');
+        END IF;
+        SELECT o.recurring_payment_id, abs(r.amount) INTO v_def_rp, v_payment
+        FROM finance.fn_recurring_due_open(v_date + 14) o
+        JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
+        WHERE o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_loan.recurring_payment_id))
+          AND (v_due IS NULL OR o.due_date = v_due)
+          AND (v_due IS NOT NULL OR o.due_date > (v_date - interval '1 month')::date)
+        ORDER BY abs(o.due_date - v_date), o.due_date
+        LIMIT 1;
+        IF v_payment IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'No open installment of this loan is due around ' || v_date
+                       || ' - ask the user for the payment amount (or whether it is already booked).');
+        END IF;
+        SELECT GREATEST(-balance, 0) INTO v_restschuld
+        FROM finance.account_balances WHERE account_id = v_loan.loan_account_id;
+        v_interest := finance.fn_loan_monthly_interest(v_restschuld, v_loan.interest_rate,
+                                                       finance.fn_loan_period_months(v_def_rp));
+        IF v_payment - v_interest > v_restschuld THEN
+            v_payment := ROUND(v_restschuld + v_interest, 2);   -- letzte Rate = Abloesebetrag
+        END IF;
+        v_stamp_rp := COALESCE(v_stamp_rp, v_def_rp);
+    END IF;
+
+    IF v_payment <= 0 THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'Payment amount must be a positive number, got ' || COALESCE(v_payment::text, 'null') || '.');
+            'reason', 'Payment amount must be a positive number, got ' || v_payment || '.');
     END IF;
     -- Korrigierbar (Audit Paket 2): Tilgung negativ oder groesser als die Rate -> Zins waere negativ.
     IF v_principal IS NOT NULL AND (v_principal < 0 OR v_principal > v_payment) THEN
@@ -45,11 +85,6 @@ BEGIN
             'reason', 'The principal portion ' || v_principal || ' must be between 0 and the payment amount '
                    || v_payment || ' (the rest is interest).',
             'principal', v_principal, 'payment', v_payment);
-    END IF;
-
-    SELECT * INTO v_loan FROM finance.loans WHERE id = v_loan_id;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Loan % not found.', v_loan_id;
     END IF;
 
     -- Monate je Raten-Periode aus der Kadenz des Glieds, dessen Vorkommen gebucht wird (Scheduler-Stempel), sonst
@@ -120,6 +155,7 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true,
+        'payment_amount',       v_payment,
         'remaining_debt',       v_restschuld,
         'interest_portion',     v_interest,
         'principal_amount',     v_principal,

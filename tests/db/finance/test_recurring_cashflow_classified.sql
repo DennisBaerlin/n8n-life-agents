@@ -50,9 +50,9 @@ BEGIN
   UPDATE finance.account_balances SET balance = -120000 WHERE account_id = v_loan_acct;
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_loan_rate__', v_giro, -1000, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp;
-  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate, principal_rate, monthly_annuity,
+  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate,
                              loan_account_id, debit_account_id, recurring_payment_id)
-    VALUES ('__cfc_loan__', 150000, current_date - 365, 6, 2, 1000, v_loan_acct, v_giro, v_rp);
+    VALUES ('__cfc_loan__', 150000, current_date - 365, 6, v_loan_acct, v_giro, v_rp);
 
   SELECT cashflow_class, consumption_eur, saving_eur, principal_eur INTO c
     FROM finance.recurring_cashflow_classified WHERE name = '__cfc_loan_rate__';
@@ -127,9 +127,9 @@ BEGIN
   UPDATE finance.account_balances SET balance = -300000 WHERE account_id = v_loan2_acct;
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_loan2_rate__', v_giro, -1000, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp;
-  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate, principal_rate, monthly_annuity,
+  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate,
                              loan_account_id, debit_account_id, recurring_payment_id)
-    VALUES ('__cfc_loan2__', 300000, current_date - 30, 6, 0, 1000, v_loan2_acct, v_giro, v_rp);
+    VALUES ('__cfc_loan2__', 300000, current_date - 30, 6, v_loan2_acct, v_giro, v_rp);
   SELECT consumption_eur, principal_eur INTO c FROM finance.recurring_cashflow_classified WHERE name = '__cfc_loan2_rate__';
   IF c.consumption_eur IS DISTINCT FROM -1000 OR c.principal_eur IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL [8]: Zins > Rate -> Konsum -1000 / Tilgung 0 (nie positiv), got %', row_to_json(c); END IF;
@@ -164,9 +164,9 @@ BEGIN
   UPDATE finance.account_balances SET balance = -50000 WHERE account_id = v_loan_chf;
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_loan_chf_rate__', v_giro, -400, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp;
-  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate, principal_rate, monthly_annuity,
+  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate,
                              loan_account_id, debit_account_id, recurring_payment_id)
-    VALUES ('__cfc_loan_chf__', 50000, current_date - 30, 3, 2, 400, v_loan_chf, v_giro, v_rp);
+    VALUES ('__cfc_loan_chf__', 50000, current_date - 30, 3, v_loan_chf, v_giro, v_rp);
   SELECT consumption_eur, principal_eur, fx_gap INTO c FROM finance.recurring_cashflow_classified WHERE name = '__cfc_loan_chf_rate__';
   IF c.consumption_eur IS DISTINCT FROM -400 OR c.principal_eur IS DISTINCT FROM 0 OR c.fx_gap IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL [9b]: Kreditwaehrung ohne Kurs -> Konsum -400 / Tilgung 0 / fx_gap, got %', row_to_json(c); END IF;
@@ -228,9 +228,9 @@ BEGIN
       VALUES ('__cfc_split_loan_old__', v_giro, -500, 1, 'month', current_date - 60, current_date - 60, current_date + 30, 'active') RETURNING id INTO v_lold;
     INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status, predecessor_id)
       VALUES ('__cfc_split_loan_new__', v_giro, -600, 1, 'month', current_date - 60, current_date + 30, 'active', v_lold) RETURNING id INTO v_lnew;
-    INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate, principal_rate, monthly_annuity,
+    INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate,
                                loan_account_id, debit_account_id, recurring_payment_id)
-      VALUES ('__cfc_split_loan__', 70000, current_date - 365, 6, 4, 600, v_lacct, v_giro, v_lnew);
+      VALUES ('__cfc_split_loan__', 70000, current_date - 365, 6, v_lacct, v_giro, v_lnew);
     IF (SELECT row(cashflow_class, consumption_eur, principal_eur)::text FROM finance.recurring_cashflow_classified
         WHERE name = '__cfc_split_loan_old__') IS DISTINCT FROM '(loan,-300.00,-200.00)' THEN
       RAISE EXCEPTION 'FAIL [lineage loan]: alte Kreditrate muss loan mit Zins -300 / Tilgung -200 sein, got %',

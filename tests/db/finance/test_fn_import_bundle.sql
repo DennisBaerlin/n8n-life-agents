@@ -254,7 +254,7 @@ BEGIN
       -- frischer Kredit ohne Betrag bleibt ungueltig
       jsonb_build_object('entity_type','loan','name','__test_imp Frisch ohne Betrag','interest_rate',2.5,
                          'debit_account','__test_imp Girokredit','disbursement_date','2026-01-02'),
-      -- Restschuld = Betrag ist frisch (wie fn_create_loan) -> ohne Auszahlungsdatum ungueltig
+      -- frisch OHNE Auszahlungsdatum (WP2): gueltig -- eroeffnet zum Stichtag heute, Datum spaeter nachtragbar
       jsonb_build_object('entity_type','loan','name','__test_imp Frisch gleich','original_amount',9000,'current_balance',9000,
                          'interest_rate',2.5,'debit_account','__test_imp Girokredit'),
       -- Rate unter dem Monatszins (8000 * 2,5 % / 12 = 16,67) -> ungueltig vor der Karte
@@ -262,10 +262,10 @@ BEGIN
                          'debit_account','__test_imp Girokredit','monthly_annuity',10,'first_payment_date','2026-11-28')
     ))) INTO v_result;
   v_batch := (v_result->>'batch_id')::uuid;
-  IF (v_result->>'valid')::int IS DISTINCT FROM 1 OR (v_result->>'invalid')::int IS DISTINCT FROM 3 THEN
-    RAISE EXCEPTION 'FAIL import laufender Kredit: erwartet 1 valid + 3 invalid, got %', v_result;
+  IF (v_result->>'valid')::int IS DISTINCT FROM 2 OR (v_result->>'invalid')::int IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'FAIL import laufender Kredit: erwartet 2 valid + 2 invalid, got %', v_result;
   END IF;
-  RAISE NOTICE 'PASS fn_import_validate_row [laufender Kredit ohne Ursprungswerte gueltig; frisch ohne Betrag/Datum, Rate < Zins ungueltig]';
+  RAISE NOTICE 'PASS fn_import_validate_row [laufender Kredit ohne Ursprungswerte + frisch ohne Datum gueltig; frisch ohne Betrag, Rate < Zins ungueltig]';
 
   -- ---------- TEST 3c: ambiger Konto-Name im Bundle -> {ok:false} (Two-Pass-Resolve) ----------
   -- zwei aktive Bestands-Konten gleichen Namens -> Referenz aus einer recurring_payment-Row ambig
@@ -293,7 +293,7 @@ BEGIN
   -- ---------- TEST 4: Batch mit invalid Rows -> {ok:false} ohne Write ----------
   SELECT finance.fn_import_stage(jsonb_build_object(
     'rows', jsonb_build_array(
-      jsonb_build_object('entity_type','insurance','name','__test_imp Unvollständig'))
+      jsonb_build_object('entity_type','insurance','name','__test_imp Unvollständig','premium_amount',12))  -- ohne Rhythmus/Konto/Datum
   )) INTO v_result;
   v_batch := (v_result->>'batch_id')::uuid;
   SELECT finance.fn_import_bundle(jsonb_build_object('batch_id', v_batch)) INTO v_result;

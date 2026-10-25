@@ -827,5 +827,43 @@
                                },
         "expected_behavior":  "Ruft tool_create_loan direkt auf mit current_balance 84000 (Restschuld heute), Zins, Rate und naechster Faelligkeit, schedule_day_of_month -2 (vorletzter Tag). Fragt NICHT nach Ursprungsbetrag, Auszahlungsdatum oder anfaenglicher Tilgung und wertet die Rate nicht gegen solche Angebotswerte. Laesst disbursement_account_name leer. Rechnet Zins/Tilgung nicht selbst (die Karte zeigt die Aufteilung der 1. Rate aus der DB).",
         "notes":  "Live-Befund 2026-10-24 (Werte erfunden): laufender Kredit = Restschuld + Zins + Rate + naechste Faelligkeit, Ursprungswerte optional; neuer Abbuchungstag -2. Mock-Tier: Szenario 'Trag meinen laufenden Hauskredit'."
+    },
+    {
+        "id":  "tc72",
+        "name":  "Auszahlungsdatum eines laufenden Kredits nachtragen (set_loan)",
+        "task":  "Trag beim Kredit Baufinanzierung ING bitte das Auszahlungsdatum 01.03.2021 nach.",
+        "chat_id":  "test_tc72",
+        "expected_tool":  "tool_set_loan",
+        "expected_tool_args":  {
+                                   "loan_name":  "Baufinanzierung ING",
+                                   "disbursement_date":  "2021-03-01"
+                               },
+        "expected_behavior":  "Ruft tool_set_loan mit loan_name=Baufinanzierung ING und disbursement_date=2021-03-01 auf, ohne Rueckfrage. Aendert keine Rate und keinen Zins.",
+        "notes":  "WP2 Finanzen schlank (Live-Befund 2026-10-25, Werte erfunden): Ursprungswerte eines zum Stichtag eroeffneten Kredits sind nachtragbar. Feste Fixture Baufinanzierung ING (laufend: Restschuld kleiner Kreditbetrag). Mock-Tier: Szenario Auszahlungsdatum 01.03.2021."
+    },
+    {
+        "id":  "tc73",
+        "name":  "Versicherung 30 Euro monatlich: Betrag je Abbuchung roh, kein Umrechnen",
+        "task":  "Lege eine Zahnzusatzversicherung bei der Barmenia an: 30 Euro monatlich vom DKB Giro, erste Abbuchung am 01.12.2026.",
+        "chat_id":  "test_tc73",
+        "expected_tool":  "tool_create_insurance",
+        "expected_tool_args":  {
+                                   "premium_amount":  "30",
+                                   "schedule_unit":  "month"
+                               },
+        "expected_behavior":  "Ruft tool_create_insurance mit premium_amount=30 und schedule_unit=month auf. Rechnet NICHT in einen Jahresbeitrag um (kein annual_premium=360); den Jahreswert leitet die Datenbank ab.",
+        "notes":  "WP2 Finanzen schlank: das LLM rechnet nicht um. Mock-Tier: Szenario Zahnzusatzversicherung."
+    },
+    {
+        "id":  "tc74",
+        "name":  "Kreditrate ohne Betrag buchen: die faellige Rate kommt aus der DB",
+        "task":  "Buche die Kreditrate fuer die Baufinanzierung ING.",
+        "chat_id":  "test_tc74",
+        "expected_tool":  "tool_book_loan_payment",
+        "expected_tool_args":  {
+                                   "loan_name":  "Baufinanzierung ING"
+                               },
+        "expected_behavior":  "Ruft tool_book_loan_payment mit loan_name=Baufinanzierung ING auf, ohne nach dem Betrag zu fragen und ohne selbst einen Betrag einzusetzen; die faellige Rate zeigt die Karte.",
+        "notes":  "WP2 Finanzen schlank (weniger Rueckfragen): payment_amount optional, Default = faellige Rate. Mock-Tier: Szenario Buche die Kreditrate fuer die Baufinanzierung."
     }
 ]

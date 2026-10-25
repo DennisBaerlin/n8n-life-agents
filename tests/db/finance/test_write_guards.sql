@@ -72,12 +72,12 @@ BEGIN
 
   -- [5] Kredit: Rate vom Depot / set_loan unbekannter Status
   SELECT finance.fn_create_loan(jsonb_build_object('name','__wg loan__','original_amount',1000,'disbursement_date','2026-01-01',
-    'interest_rate',3,'principal_rate',2,'monthly_annuity',50,'first_payment_date','2026-02-01','debit_account_id', v_depot)) INTO v_res;
+    'interest_rate',3,'monthly_annuity',50,'first_payment_date','2026-02-01','debit_account_id', v_depot)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR EXISTS (SELECT 1 FROM finance.loans WHERE name = '__wg loan__') THEN
     RAISE EXCEPTION 'FAIL [5 depot] %', v_res;
   END IF;
   SELECT (finance.fn_create_loan(jsonb_build_object('name','__wg loan ok__','original_amount',1000,'disbursement_date','2026-01-01',
-    'interest_rate',3,'principal_rate',2,'monthly_annuity',50,'first_payment_date','2026-02-01','debit_account_id', v_cash))->>'loan_id')::int
+    'interest_rate',3,'monthly_annuity',50,'first_payment_date','2026-02-01','debit_account_id', v_cash))->>'loan_id')::int
     INTO v_loan;
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'status', 'abbezahlt')) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [5 status] %', v_res; END IF;
@@ -133,7 +133,7 @@ BEGIN
   IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [9 CHECK]: posting_day_of_month -1 haette finance_air_posting_dom_chk verletzen muessen'; END IF;
   RAISE NOTICE 'PASS [9 CHECK-Backstop Gutschrift-Tag 1-28]';
 
-  -- [10] Rundungs-Paket 2026-10-23: Zinssatz/Tilgung mit > 4 Nachkommastellen oder >= 100 -> ok:false (numeric(6,4)
+  -- [10] Rundungs-Paket 2026-10-23: Zinssatz mit > 4 Nachkommastellen oder >= 100 -> ok:false (numeric(6,4)
   -- kuerzte still bzw. warf Overflow); 3.5 und 3.50000 bleiben gueltig.
   SELECT finance.fn_create_account('{"name":"__wg r1__","account_type":"cash","interest_rate":3.12345}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 konto]: %', v_res; END IF;
@@ -142,17 +142,13 @@ BEGIN
   SELECT finance.fn_set_account_interest(jsonb_build_object('account_id', v_cash, 'annual_rate', 150)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 satz 150]: %', v_res; END IF;
   SELECT finance.fn_create_loan(jsonb_build_object('name','__wg loan r__','original_amount',1000,'disbursement_date','2026-01-01',
-    'interest_rate',3.12345,'principal_rate',2)) INTO v_res;
+    'interest_rate',3.12345)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit]: %', v_res; END IF;
-  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'principal_rate', 2.000001)) INTO v_res;
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'interest_rate', 2.000001)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit set]: %', v_res; END IF;
-  -- Zins + Tilgung >= 100 ist kein Fehler mehr (Live-Befund 2026-10-24: die GENERATED-Summe annuity_rate ist entfallen,
-  -- Tilgungssatz nur informativ); ein Einzelsatz >= 100 bleibt ok:false.
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__wg loan sum__','original_amount',1000,'disbursement_date','2026-01-01',
-    'interest_rate',60,'principal_rate',45)) INTO v_res;
-  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [10 kredit summe ok]: %', v_res; END IF;
-  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'principal_rate', 100)) INTO v_res;
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'interest_rate', 100)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit set 100]: %', v_res; END IF;
+  -- (WP2: die "anfaengliche Tilgung" wird nicht mehr erfasst -- loan_overview.initial_principal_rate leitet sie ab.)
   RAISE NOTICE 'PASS [10 Zinssatz-Praezision: > 4 Stellen / >= 100 -> ok:false, 3.50000 ok]';
 END $$;
 

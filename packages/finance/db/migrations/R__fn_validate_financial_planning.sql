@@ -56,6 +56,13 @@ BEGIN
 
     -- ---------- goal (optional) ----------
     IF p_facts ? 'goal' AND jsonb_typeof(p_facts->'goal') = 'object' THEN
+        -- WP2 ("Keine ableitbaren Spalten"): von Einkommen, Entnahmerate und Zielportfolio nur ZWEI speichern -- der dritte
+        -- haengt an den beiden (fn_plan_goal_resolved leitet ihn fuer Anzeige + Drift ab).
+        IF (p_facts->'goal') ? 'target_income_eur_month' AND (p_facts->'goal') ? 'withdrawal_rate_pct'
+           AND (p_facts->'goal') ? 'target_portfolio_eur' THEN
+            RETURN 'goal stores only two of target_income_eur_month, withdrawal_rate_pct and target_portfolio_eur - '
+                || 'the third is derived; keep the two figures the user stated';
+        END IF;
         IF (p_facts->'goal') ? 'withdrawal_rate_pct'
            AND jsonb_typeof(p_facts->'goal'->'withdrawal_rate_pct') = 'number' THEN
             v_rate := (p_facts->'goal'->>'withdrawal_rate_pct')::numeric;

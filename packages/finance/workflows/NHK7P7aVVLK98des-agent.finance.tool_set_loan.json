@@ -22,16 +22,25 @@
                                                                                    "name":  "interest_rate"
                                                                                },
                                                                                {
-                                                                                   "name":  "principal_rate"
+                                                                                   "name":  "interest_rate_fixed_until"
                                                                                },
                                                                                {
-                                                                                   "name":  "interest_rate_fixed_until"
+                                                                                   "name":  "term_end_date"
                                                                                },
                                                                                {
                                                                                    "name":  "monthly_annuity"
                                                                                },
                                                                                {
                                                                                    "name":  "schedule_day_of_month"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "effective_from"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "original_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "disbursement_date"
                                                                                },
                                                                                {
                                                                                    "name":  "status"
@@ -145,7 +154,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT interest_rate, monthly_annuity, status::text AS status FROM finance.loans WHERE id = (($1::jsonb)-\u003e\u003e\u0027id\u0027)::int;",
+                                         "query":  "=SELECT interest_rate, monthly_annuity, status::text AS status FROM finance.loan_overview WHERE id = (($1::jsonb)-\u003e\u003e\u0027id\u0027)::int;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ id: $(\u0027Resolve Loan\u0027).item.json.id }) }}"
                                                      }
@@ -258,7 +267,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_set_loan(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, lender: $(\u0027Start\u0027).item.json.lender, borrower_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, interest_rate: $(\u0027Start\u0027).item.json.interest_rate, principal_rate: $(\u0027Start\u0027).item.json.principal_rate, interest_rate_fixed_until: $(\u0027Start\u0027).item.json.interest_rate_fixed_until, monthly_annuity: $(\u0027Start\u0027).item.json.monthly_annuity, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, lender: $(\u0027Start\u0027).item.json.lender, borrower_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, interest_rate: $(\u0027Start\u0027).item.json.interest_rate, interest_rate_fixed_until: $(\u0027Start\u0027).item.json.interest_rate_fixed_until, term_end_date: $(\u0027Start\u0027).item.json.term_end_date, monthly_annuity: $(\u0027Start\u0027).item.json.monthly_annuity, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, effective_from: $(\u0027Start\u0027).item.json.effective_from, original_amount: $(\u0027Start\u0027).item.json.original_amount, disbursement_date: $(\u0027Start\u0027).item.json.disbursement_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -362,9 +371,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027loan_id\u0027)::int AS loan_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id FROM finance.fn_set_loan(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027loan_id\u0027)::int AS loan_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, r-\u003e\u003e\u0027effective_from\u0027 AS effective_from, (r-\u003e\u003e\u0027balance_at_fixed_until\u0027)::numeric AS balance_at_fixed_until, (r-\u003e\u003e\u0027balance_at_term_end\u0027)::numeric AS balance_at_term_end FROM finance.fn_set_loan(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, lender: $(\u0027Start\u0027).item.json.lender, borrower_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, interest_rate: $(\u0027Start\u0027).item.json.interest_rate, principal_rate: $(\u0027Start\u0027).item.json.principal_rate, interest_rate_fixed_until: $(\u0027Start\u0027).item.json.interest_rate_fixed_until, monthly_annuity: $(\u0027Start\u0027).item.json.monthly_annuity, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ loan_id: $(\u0027Resolve Loan\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, lender: $(\u0027Start\u0027).item.json.lender, borrower_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, interest_rate: $(\u0027Start\u0027).item.json.interest_rate, interest_rate_fixed_until: $(\u0027Start\u0027).item.json.interest_rate_fixed_until, term_end_date: $(\u0027Start\u0027).item.json.term_end_date, monthly_annuity: $(\u0027Start\u0027).item.json.monthly_annuity, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, effective_from: $(\u0027Start\u0027).item.json.effective_from, original_amount: $(\u0027Start\u0027).item.json.original_amount, disbursement_date: $(\u0027Start\u0027).item.json.disbursement_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -389,7 +398,7 @@
                                                                                  {
                                                                                      "id":  "e40f8005-a398-59a0-b5c9-3dcd3b8c4e71",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_loan\u0027, lines: [ { label: \u0027finance.label.loan\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.loan_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), (($(\u0027Start\u0027).item.json.borrower_person) ? { label: \u0027finance.label.borrower_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.borrower_person)) } : null), (($(\u0027Start\u0027).item.json.interest_rate) ? { label: \u0027finance.label.interest_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.percent_change\u0027), params: { from: ($(\u0027Read Current\u0027).item.json.interest_rate), to: ($(\u0027Start\u0027).item.json.interest_rate) } } : null), (($(\u0027Start\u0027).item.json.principal_rate) ? { label: \u0027finance.label.principal_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.percent\u0027), params: { value: ($(\u0027Start\u0027).item.json.principal_rate) } } : null), (($(\u0027Start\u0027).item.json.monthly_annuity) ? { label: \u0027finance.label.monthly_instalment\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.monthly_annuity), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.monthly_annuity), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.interest_rate_fixed_until) ? { label: \u0027finance.label.fixed_until\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.interest_rate_fixed_until) } : null), (($(\u0027Start\u0027).item.json.schedule_day_of_month) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((String($(\u0027Start\u0027).item.json.schedule_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (String($(\u0027Start\u0027).item.json.schedule_day_of_month ?? \u0027\u0027) === \u0027-2\u0027 ? \u0027finance.value.second_to_last_day_of_month\u0027 : ($(\u0027Start\u0027).item.json.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : null)))), params: { day: ($(\u0027Start\u0027).item.json.schedule_day_of_month) } } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_loan\u0027, lines: [ { label: \u0027finance.label.loan\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.loan_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), (($(\u0027Start\u0027).item.json.borrower_person) ? { label: \u0027finance.label.borrower_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.borrower_person)) } : null), (($(\u0027Start\u0027).item.json.interest_rate) ? { label: \u0027finance.label.interest_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.percent_change\u0027), params: { from: ($(\u0027Read Current\u0027).item.json.interest_rate), to: ($(\u0027Start\u0027).item.json.interest_rate) } } : null), (($(\u0027Start\u0027).item.json.monthly_annuity) ? { label: \u0027finance.label.monthly_instalment\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.monthly_annuity), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.monthly_annuity), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.schedule_day_of_month) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((String($(\u0027Start\u0027).item.json.schedule_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (String($(\u0027Start\u0027).item.json.schedule_day_of_month ?? \u0027\u0027) === \u0027-2\u0027 ? \u0027finance.value.second_to_last_day_of_month\u0027 : ($(\u0027Start\u0027).item.json.schedule_day_of_month ? \u0027finance.tpl.day_of_month\u0027 : null)))), params: { day: ($(\u0027Start\u0027).item.json.schedule_day_of_month) } } : null), (((($(\u0027Start\u0027).item.json.monthly_annuity || $(\u0027Start\u0027).item.json.schedule_day_of_month)) \u0026\u0026 (!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))($(\u0027Dry run\u0027).item.json.r.effective_from))) ? { label: \u0027finance.label.effective_from\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective_from) } : null), (($(\u0027Start\u0027).item.json.original_amount) ? { label: \u0027finance.label.loan_amount_original\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.original_amount), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.disbursement_date) ? { label: \u0027finance.label.disbursement_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.disbursement_date) } : null), (($(\u0027Start\u0027).item.json.interest_rate_fixed_until) ? { label: \u0027finance.label.fixed_until\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.interest_rate_fixed_until) } : null), (($(\u0027Start\u0027).item.json.term_end_date) ? { label: \u0027finance.label.term_end\u0027, kind: \u0027date\u0027, value: ($(\u0027Start\u0027).item.json.term_end_date) } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))($(\u0027Dry run\u0027).item.json.r.balance_at_fixed_until))) ? { label: \u0027finance.label.balance_projected_fixed_until\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.balance_at_fixed_until), currency: (\u0027EUR\u0027) } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))($(\u0027Dry run\u0027).item.json.r.balance_at_term_end))) ? { label: \u0027finance.label.balance_projected_term_end\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.balance_at_term_end), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -602,6 +611,24 @@
                                                                                      "name":  "recurring_payment_id",
                                                                                      "value":  "={{ $(\u0027Set loan (atomic)\u0027).item.json.recurring_payment_id }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c01f0096-86ed-53b9-ac6d-1e4224b1a95e",
+                                                                                     "name":  "effective_from",
+                                                                                     "value":  "={{ $(\u0027Set loan (atomic)\u0027).item.json.effective_from }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d86938cb-0961-5655-89d5-b666c9d6a46c",
+                                                                                     "name":  "balance_at_fixed_until",
+                                                                                     "value":  "={{ $(\u0027Set loan (atomic)\u0027).item.json.balance_at_fixed_until }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5ca0df13-eec3-51ca-b0ee-e9511d841a36",
+                                                                                     "name":  "balance_at_term_end",
+                                                                                     "value":  "={{ $(\u0027Set loan (atomic)\u0027).item.json.balance_at_term_end }}",
+                                                                                     "type":  "number"
                                                                                  }
                                                                              ]
                                                          },
@@ -620,7 +647,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_loan mit denselben Werten, immer zurückgerollt. ok:false (negative Rate, Annuität \u003c= 0, aktiver Kredit ohne Annuität, Rate unter dem Monatszins der Restschuld) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception (CHECK) -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_loan mit denselben Werten, immer zurückgerollt; liefert Stichtag der neuen Rate und die voraussichtliche Restschuld für die Karte. ok:false (negativer Zins, Rate \u003c= 0, aktiver Kredit ohne Rate, Rate ohne ersten Termin, Rate unter dem Monatszins, Ursprungswerte bei frischem Kredit/Datum in der Zukunft/Betrag unter der Eröffnungs-Restschuld, Laufzeitende vor Zinsbindung) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception (CHECK) -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  200,
                                          "width":  420,
                                          "color":  4
@@ -636,16 +663,16 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_set_loan: Konditionen + Rate-Sync + Status-Kaskade**\n\nZins/Tilgung je Rate liefert finance.loan_overview LIVE aus der Restschuld; der Tilgungssatz ist nur informativ (keine abgeleiteten Spalten). Annuität-/Tag-Änderung -\u003e verknüpfte Kreditrate (recurring) synchron; Status paused/paid_off/refinanced -\u003e recurring paused. {ok:false}: neg. Rate / annuity\u003c=0 / active ohne Annuität (CHECK) / Rate unter Monatszins. Umschuldungs-Mehrschritt NICHT hier.",
-                                         "height":  230,
-                                         "width":  450,
+                                         "content":  "## DB-Automatik\n**fn_set_loan: Konditionen + Raten-Kette + Status-Kaskade**\n\nRate und Abbuchungstag stehen NUR an der Raten-Kette (WP2): Änderung über fn_change_owned_recurring (Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from, alte Rate bleibt Historie); Kredit ohne Rate + Rate -\u003e neue Kette ab effective_from. Kreditbetrag/Auszahlungsdatum nur bei zum Stichtag eröffneten Krediten (keine Buchung hängt daran). Umbenennung führt Kreditrate \u003cName\u003e und das Kreditkonto mit. Status paused/paid_off/refinanced -\u003e laufende Glieder paused. Zins/Tilgung je Rate liefert loan_overview LIVE aus der Restschuld. Umschuldungs-Mehrschritt NICHT hier.",
+                                         "height":  240,
+                                         "width":  520,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
                       "typeVersion":  1,
                       "position":  [
                                        2200,
-                                       -240
+                                       -260
                                    ],
                       "id":  "0d661ea5-5606-5c31-8f7a-ba96af0cbe41",
                       "name":  "Doc set_loan"

@@ -6,6 +6,7 @@
 --   Wird current_value gesetzt OHNE value_updated_at -> value_updated_at = CURRENT_DATE.
 --   STATUS-KASKADE: status in ('paused','paid_out') + verknuepfte recurring_payment ->
 --   diese auf 'paused' (Beitrag verlaesst den Cashflow); status='active' -> recurring 'active'.
+--   NAMEN (WP2): eine Umbenennung fuehrt 'AV-Beitrag <Name>' an der Beitrags-Kette mit.
 --   Eingabe jsonb: pension_id (im n8n via fn_resolve_pension aufgeloest), name, provider,
 --   contract_number, owner_person_id (Slug; leer=unveraendert), current_value, value_updated_at, guaranteed_monthly_pension,
 --   retirement_start_date, status ('active'|'paused'|'paid_out'), notes.
@@ -20,8 +21,9 @@ DECLARE
     v_status finance.pension_status;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
     v_reason TEXT    := finance.fn_enum_reason('finance.pension_status'::regtype, p->>'status', 'status');
     v_rp     INT;
+    v_old    TEXT;
 BEGIN
-    SELECT recurring_payment_id INTO v_rp FROM finance.pension WHERE id = v_id;
+    SELECT recurring_payment_id, name INTO v_rp, v_old FROM finance.pension WHERE id = v_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Pension % not found.', v_id;
     END IF;
@@ -53,6 +55,9 @@ BEGIN
         status                     = COALESCE(v_status, status),
         notes                      = COALESCE(NULLIF(p->>'notes', ''), notes)
     WHERE id = v_id;
+
+    -- Namenskopie 'AV-Beitrag <Name>' an der Beitrags-Kette mitfuehren (WP2, fn_rename_owned_recurring).
+    PERFORM finance.fn_rename_owned_recurring(v_rp, 'AV-Beitrag', v_old, NULLIF(p->>'name', ''));
 
     -- Status-Kaskade auf den verknuepften Beitrag (recurring_payment).
     IF v_status IS NOT NULL AND v_rp IS NOT NULL THEN

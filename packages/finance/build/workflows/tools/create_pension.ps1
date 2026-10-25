@@ -8,7 +8,7 @@ function Build-CreatePension {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','pension_type','provider','contract_number','owner_person','current_value',
                            'value_updated_at','guaranteed_monthly_pension','retirement_start_date',
-                           'contribution_amount','debit_account_name','schedule_day_of_month',
+                           'contribution_amount','schedule_interval','schedule_unit','debit_account_name','schedule_day_of_month',
                            'first_payment_date','notes')
 
     # Dedup-Guard (aktive gleichnamige Altersvorsorge) — Block vor dem Gate.
@@ -63,6 +63,8 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
             guaranteed_monthly_pension = '$(''Start'').item.json.guaranteed_monthly_pension'
             retirement_start_date      = '$(''Start'').item.json.retirement_start_date'
             contribution_amount        = '$(''Start'').item.json.contribution_amount'
+            schedule_interval          = '$(''Start'').item.json.schedule_interval'
+            schedule_unit              = '$(''Start'').item.json.schedule_unit'
             debit_account_id           = '$(''Resolve Debit Account'').item.json.debit_id'
             schedule_day_of_month      = '$(''Start'').item.json.schedule_day_of_month'
             first_payment_date         = '$(''Start'').item.json.first_payment_date'
@@ -102,7 +104,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
 
     $stickyFn = Build-Sticky 'fn_create_pension (atomar)' @(2200, -240) `
         'optional Beitrag-recurring (Helper) + pension-INSERT' `
-        'fn_create_pension schreibt atomar: optional einen monatlichen Beitrag als recurring_payment (expense) via fn_add_recurring_payment (nur wenn contribution_amount + Abbuchungskonto gesetzt) + FK-Link, dann die finance.pension-Zeile (Asset). current_value optional (gesetzliche Rente oft unbekannt). Erscheint in finance.pension_overview (Net-Worth).' 220 460
+        'fn_create_pension schreibt atomar: optional einen Beitrag je Abbuchung (Rhythmus roh, Default monatlich; WP2: den Monatswert leitet pension_overview ab) als recurring_payment (expense) via fn_add_recurring_payment (nur wenn contribution_amount + Abbuchungskonto gesetzt) + FK-Link, dann die finance.pension-Zeile (Asset). current_value optional (gesetzliche Rente oft unbekannt). Erscheint in finance.pension_overview (Net-Worth).' 220 460
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2640, -240) `
         'fn-Rückgabe {ok:false, reason}' `

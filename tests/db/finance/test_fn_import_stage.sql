@@ -71,7 +71,8 @@ BEGIN
   SELECT finance.fn_import_stage(jsonb_build_object(
     'batch_id', v_batch,
     'rows', jsonb_build_array(
-      jsonb_build_object('entity_type','insurance','name','__test_imp Haftpflicht'),                -- ohne premium/debit_account
+      jsonb_build_object('entity_type','insurance','name','__test_imp Haftpflicht','premium_amount',10,
+                         'schedule_unit','month','first_payment_date','2026-01-01'),                  -- Beitrag ohne debit_account (WP2: ohne Beitrag waere sie beitragsfrei gueltig)
       jsonb_build_object('entity_type','recurring_payment','name','__test_imp Miete','direction','expense',
                          'amount',900,'account','__test_imp GIBTSNICHT','schedule_unit','month',
                          'first_payment_date','2026-01-01'),                                          -- Referenz unaufloesbar

@@ -19,9 +19,10 @@ Sammelort fuer ausgeklammerte Items aus aktuellen + vergangenen Sessions. **Beim
 ### Finance-Buchhaltungs-Audit — Rest (2026-10-21)
 - **Deadlock gegenläufiger Transfers** (Saldo-Zeilen in Konto-Reihenfolge sperren) — lauter Abbruch mit Rollback, kein stiller Fehler. Trigger: ein realer Deadlock-Alarm.
 
-### Kredite — laufende Kredite (Live-Befund 2026-10-24)
-- **Restschuld zum Zinsbindungsende / Restlaufzeit** (Annuitäten-Projektion aus Restschuld, Zins, Rate als `fn_*`, nie vom LLM; arch-challenge DEFER). Trigger: Owner fragt nach Anschlussfinanzierung oder ein `interest_rate_fixed_until` liegt < 24 Monate voraus.
-- **Ursprungswerte nachträglich ändern** (`fn_set_loan` kennt `original_amount`/`disbursement_date` nicht; heute nur beim Anlegen, rein informativ). Trigger: Owner will sie nachtragen.
+### Kredite und Vorsorge — Folgepunkte (WP2 „Finanzen schlank", 2026-10-25)
+- **Exakte Ballon-/Schlussrate:** heute `term_end_date` = Termin der letzten Rate, Betrag in `notes`; die Restschuld-Vorschau zeigt die offene Restschuld zu diesem Termin. Eine eigene Schlussraten-Zeile (Betrag als Vorkommen, Erinnerung, Buchung) fehlt. Trigger: ein realer Kredit mit Schlussrate soll gebucht werden.
+- **Vorsorge-Beitrag ändern:** `fn_set_pension` ändert Betrag/Rhythmus des Beitrags nicht (auch vorher nicht); der Weg wäre `fn_change_owned_recurring` wie bei Kredit/Versicherung. Trigger: Owner will einen Vorsorge-Beitrag ändern.
+- **Relative Datumsangaben im Advisor (`due_date`) und in finance-Datumsfeldern** über `core.fn_resolve_date` (WP3). Trigger: WP3 ist auf `main`.
 
 ### Privatsphäre persönlicher Kontexte (Mitglieder-Selbstpflege, 2026-10-21)
 - **Freies SQL von Guide/Monitor kann per_user-Kontexte lesen:** beide fahren `postgres_select` unter `core_ro`, das `agent.core_contexts` liest — also auch `career_profile__<pid>` eines Mitglieds, wenn der Owner gezielt fragt. Trigger: zweites Mitglied nutzt den Career-Coach real bzw. Owner-Wunsch nach strikter Privatsphäre → per_user-Zeilen aus dem `core_ro`-Fenster ausblenden (View/RLS).

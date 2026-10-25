@@ -30,8 +30,7 @@ BEGIN
   v_debit := (finance.fn_create_account('{"name":"__nm_debit__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   PERFORM finance.fn_create_loan(jsonb_build_object(
     'name','__nm Hauskredit__','lender','TestBank','original_amount','100000',
-    'disbursement_date','2024-01-01','interest_rate','3','principal_rate','1',
-    'monthly_annuity','500','schedule_day_of_month','1','first_payment_date','2024-02-01','debit_account_id', v_debit));
+    'disbursement_date','2024-01-01','interest_rate','3','monthly_annuity','500','schedule_day_of_month','1','first_payment_date','2024-02-01','debit_account_id', v_debit));
   SELECT loan_id, hit_count INTO v_loan, v_hits FROM finance.fn_resolve_loan('__nm hauskredit__');
   IF v_hits IS DISTINCT FROM 1 OR v_loan IS NULL THEN
     RAISE EXCEPTION 'FAIL resolve_loan [ci-Pass]: hits=% id=%', v_hits, v_loan; END IF;

@@ -178,7 +178,7 @@ function Build-AgentFinanceAdvisor {
         @(
             ,@('section_key', 'Catalog section key from your instructions, e.g. household_basics, wealth_building, goals_triggers', 'string')
             ,@('section_content', 'The confirmed section summary in markdown (the text the user just approved in chat)', 'string')
-            ,@('section_data', 'Optional JSON object string - ONLY for the four block-carrying sections; omit for prose-only sections. e.g. risk_profile: {"risk_profile": {"risk_tolerance":"medium","risk_capacity":"high","as_of":"2026-06-15"} }; wealth_building: {"target_allocation": {"rebalance_drift_pp":5,"blocks":[{"key":"sp500","name":"S&P 500 ETF","target_pct":85,"corridor":[80,90]} ]} }. Block key is mandatory, lowercase_snake, unique. Store raw figures only - no derived years/ages/nominal values, no risk_need.', 'string', '')
+            ,@('section_data', 'Optional JSON object string - ONLY for the four block-carrying sections; omit for prose-only sections. e.g. risk_profile: {"risk_profile": {"risk_tolerance":"medium","risk_capacity":"high"} }; wealth_building: {"target_allocation": {"rebalance_drift_pp":5,"blocks":[{"key":"sp500","name":"S&P 500 ETF","target_pct":85,"corridor":[80,90]} ]} }. Block key is mandatory, lowercase_snake, unique. Store raw figures only - no derived years/ages/nominal values, no risk_need, no as_of (the system stamps it).', 'string', '')
             ,@('plan_name', 'Optional plan display name - only used when this save creates a new draft', 'string', '')
         ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(480, 208) -StartNode $START_NODE
 

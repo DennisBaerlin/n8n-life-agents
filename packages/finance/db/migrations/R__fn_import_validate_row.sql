@@ -17,6 +17,7 @@ DECLARE
     v_key    TEXT;
     v_ref    TEXT;
     v_acct_type TEXT;
+    v_fields JSONB;
 BEGIN
     -- Derived-Value-Denylist (gleiche Klasse wie household facts: Rohfakt rein, Ableitung rechnen)
     SELECT k INTO v_key FROM jsonb_object_keys(p) k
@@ -73,9 +74,9 @@ BEGIN
         END IF;
     END LOOP;
     FOR v_key IN SELECT k FROM jsonb_object_keys(p) k
-                 WHERE k IN ('opening_balance','interest_rate','annual_premium','coverage_amount','current_value',
+                 WHERE k IN ('opening_balance','interest_rate','annual_premium','premium_amount','coverage_amount','current_value',
                              'contribution_amount','guaranteed_monthly_pension','amount','target_amount',
-                             'monthly_savings_rate','original_amount','current_balance','monthly_annuity','principal_rate',
+                             'monthly_savings_rate','original_amount','current_balance','monthly_annuity',
                              'shares','price_per_share','order_fee','reached_claim','projection','em_monthly')
     LOOP
         IF NULLIF(p->>v_key,'') IS NOT NULL THEN
@@ -191,23 +192,21 @@ BEGIN
         END IF;
 
     ELSIF p_type = 'insurance' THEN
-        v_num := NULLIF(p->>'annual_premium','')::numeric;
-        IF v_num IS NULL OR v_num <= 0 THEN RETURN 'annual_premium must be a positive number'; END IF;
-        IF NULLIF(p->>'first_payment_date','') IS NULL THEN RETURN 'first_payment_date is required'; END IF;
-        IF NULLIF(p->>'schedule_unit','') IS NOT NULL THEN
-            BEGIN PERFORM (p->>'schedule_unit')::finance.schedule_unit;
-            EXCEPTION WHEN OTHERS THEN
-                RETURN format('schedule_unit "%s" invalid (day|week|month|year; empty = year)', p->>'schedule_unit');
-            END;
-        END IF;
-        v_ref := NULLIF(trim(COALESCE(p->>'debit_account','')), '');
-        IF v_ref IS NULL THEN RETURN 'debit_account (account name) is required'; END IF;
-        IF finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
-            RETURN format('debit_account "%s" not found (neither existing nor in this batch)', v_ref);
-        END IF;
-        -- Spiegel fn_create_insurance: Praemien sind EUR nach Modell
-        IF finance.fn_import_ref_currency(p_batch_id, v_ref) IS DISTINCT FROM 'EUR' THEN
-            RETURN format('insurance premiums are kept in EUR - debit_account "%s" is in %s; use a EUR account', v_ref, finance.fn_import_ref_currency(p_batch_id, v_ref));
+        -- Spiegel fn_create_insurance (WP2): Beitrag je Abbuchung (+ Rhythmus) ODER Jahresbeitrag -- dieselbe Pruef-fn;
+        -- ohne Beitrag = beitragsfreie Police (dann kein Konto/keine erste Abbuchung noetig).
+        v_fields := finance.fn_insurance_fields(p);
+        IF (v_fields->>'ok')::boolean IS DISTINCT FROM true THEN RETURN v_fields->>'reason'; END IF;
+        IF v_fields->>'premium_amount' IS NOT NULL THEN
+            IF NULLIF(p->>'first_payment_date','') IS NULL THEN RETURN 'first_payment_date is required'; END IF;
+            v_ref := NULLIF(trim(COALESCE(p->>'debit_account','')), '');
+            IF v_ref IS NULL THEN RETURN 'debit_account (account name) is required'; END IF;
+            IF finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
+                RETURN format('debit_account "%s" not found (neither existing nor in this batch)', v_ref);
+            END IF;
+            -- Spiegel fn_create_insurance: Praemien sind EUR nach Modell
+            IF finance.fn_import_ref_currency(p_batch_id, v_ref) IS DISTINCT FROM 'EUR' THEN
+                RETURN format('insurance premiums are kept in EUR - debit_account "%s" is in %s; use a EUR account', v_ref, finance.fn_import_ref_currency(p_batch_id, v_ref));
+            END IF;
         END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_insurance(v_name, FALSE);
         IF v_hits > 0 THEN RETURN format('insurance "%s" already exists', v_name); END IF;
@@ -295,9 +294,17 @@ BEGIN
            AND ((p->>'current_balance')::numeric <= 0 OR (p->>'current_balance')::numeric > v_num) THEN
             RETURN 'current_balance (remaining debt) must be greater than 0 and not above original_amount';
         END IF;
-        IF NOT (NULLIF(p->>'current_balance','') IS NOT NULL AND (v_num IS NULL OR (p->>'current_balance')::numeric < v_num))
-           AND (v_num IS NULL OR NULLIF(p->>'disbursement_date','') IS NULL) THEN
-            RETURN 'a new loan needs original_amount and disbursement_date (a running loan: current_balance instead)';
+        -- WP2: ein frischer Kredit ohne Auszahlungsdatum eroeffnet zum Stichtag heute (Datum spaeter nachtragbar)
+        IF NULLIF(p->>'current_balance','') IS NULL AND v_num IS NULL THEN
+            RETURN 'the remaining debt is required: current_balance (running loan) or original_amount (new loan)';
+        END IF;
+        IF NULLIF(p->>'disbursement_date','')::date > core.fn_today() THEN
+            RETURN 'disbursement_date lies in the future - record the loan once it has been paid out';
+        END IF;
+        IF NULLIF(p->>'term_end_date','') IS NOT NULL
+           AND ((p->>'term_end_date')::date < NULLIF(p->>'interest_rate_fixed_until','')::date
+                OR (p->>'term_end_date')::date < NULLIF(p->>'disbursement_date','')::date) THEN
+            RETURN 'term_end_date must not be before interest_rate_fixed_until or disbursement_date';
         END IF;
         -- die Rate muss den Monatszins der Restschuld decken (fn_create_loan; sonst scheiterte jede Buchung)
         IF NULLIF(p->>'monthly_annuity','') IS NOT NULL
@@ -329,6 +336,9 @@ BEGIN
             END IF;
             IF v_num IS NULL OR COALESCE(NULLIF(p->>'current_balance','')::numeric, v_num) < v_num THEN
                 RETURN 'a loan that is already being repaid has no disbursement_account (the payout is part of today''s balance) - remove it';
+            END IF;
+            IF NULLIF(p->>'disbursement_date','') IS NULL THEN
+                RETURN 'a payout into one of your own accounts (disbursement_account) needs the disbursement_date';
             END IF;
         END IF;
         v_ref := NULLIF(trim(COALESCE(p->>'real_estate','')), '');

@@ -33,7 +33,6 @@ BEGIN
         'original_amount',           '100000',
         'disbursement_date',         '2024-01-01',
         'interest_rate',             '3.0',
-        'principal_rate',            '1.0',
         'interest_rate_fixed_until', '2034-01-01',
         'monthly_annuity',           '500',
         'schedule_day_of_month',      '1',

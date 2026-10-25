@@ -272,4 +272,27 @@ BEGIN
   RAISE NOTICE 'PASS loan [3 Tage vor Faelligkeit bezahlt -> Vorkommen geschlossen]';
 END $$;
 
+-- WP2 (weniger Rueckfragen): ohne Betrag bucht die fn die faellige Rate (Betrag des naechstgelegenen offenen Vorkommens);
+-- der Return nennt sie (payment_amount). Ohne Raten-Kette -> ok:false (Betrag nennen).
+DO $$
+DECLARE v_res JSONB; v_giro INT; v_loan INT; v_lacc INT; v_fam JSONB; v_due DATE := CURRENT_DATE - 2;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_blp_def_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_blp_def__','lender','B','original_amount',12000,
+    'disbursement_date',(v_due - 30)::text,'interest_rate',6,'monthly_annuity',600,'first_payment_date',v_due::text,'debit_account_id',v_giro));
+  v_loan := (v_res->>'loan_id')::int; v_lacc := (v_res->>'loan_account_id')::int;
+  v_res := finance.fn_book_loan_payment(jsonb_build_object('loan_id',v_loan,'loan_account_id',v_lacc,'debit_account_id',v_giro));
+  -- 12.000 x 6 % / 12 = 60 Zins, 540 Tilgung
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'payment_amount')::numeric IS DISTINCT FROM 600
+     OR (v_res->>'interest_portion')::numeric IS DISTINCT FROM 60.00 OR (v_res->>'matched_due_date')::date IS DISTINCT FROM v_due
+     OR finance.fn_get_balance(v_lacc) IS DISTINCT FROM -11460.00 THEN
+    RAISE EXCEPTION 'FAIL loan [ohne Betrag]: faellige Rate 600 erwartet, got %', v_res; END IF;
+  v_fam := finance.fn_create_loan(jsonb_build_object('name','__test_blp_fam__','lender','Familie','current_balance',2000,
+    'interest_rate',0,'debit_account_id',v_giro));
+  v_res := finance.fn_book_loan_payment(jsonb_build_object('loan_id',(v_fam->>'loan_id')::int,
+    'loan_account_id',(v_fam->>'loan_account_id')::int,'debit_account_id',v_giro));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL loan [ohne Betrag, ohne Rate]: ok:false erwartet, got %', v_res; END IF;
+  RAISE NOTICE 'PASS loan [ohne Betrag -> faellige Rate 600 (60/540) gebucht; ohne Raten-Kette ok:false]';
+END $$;
 ROLLBACK;

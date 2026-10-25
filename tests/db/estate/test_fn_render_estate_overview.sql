@@ -91,8 +91,8 @@ BEGIN
   ON CONFLICT (package) DO UPDATE SET status = 'active';
   INSERT INTO finance.accounts (name, account_type, bank, ownership, has_transmortal_poa)
   VALUES ('Gemeinschaftskonto', 'cash', 'DKB', 'joint_or', TRUE);
-  INSERT INTO finance.insurances (name, insurance_company, annual_premium, schedule_unit, valid_from, insurance_type, beneficiary, claim_deadline_hours)
-  VALUES ('Risiko-LV Erika', 'Allianz', 300, 'year', CURRENT_DATE, 'life', 'Max Beispiel', 72);
+  INSERT INTO finance.insurances (name, insurance_company, valid_from, insurance_type, beneficiary, claim_deadline_hours)
+  VALUES ('Risiko-LV Erika', 'Allianz', CURRENT_DATE, 'life', 'Max Beispiel', 72);
 
   v_hdr := estate.fn_render_estate_overview('estate_overview');
   IF v_hdr LIKE '%estate.register.fin_absent%' THEN

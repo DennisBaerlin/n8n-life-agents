@@ -11,8 +11,7 @@ BEGIN
 
   PERFORM finance.fn_create_loan(jsonb_build_object(
     'name','__rl_loan__','lender','TestBank','borrower','T','original_amount','100000',
-    'disbursement_date','2024-01-01','interest_rate','3','principal_rate','1',
-    'interest_rate_fixed_until','2034-01-01','monthly_annuity','500','schedule_day_of_month','1',
+    'disbursement_date','2024-01-01','interest_rate','3','interest_rate_fixed_until','2034-01-01','monthly_annuity','500','schedule_day_of_month','1',
     'first_payment_date','2024-02-01','debit_account_id', v_debit));   -- Rate => erstes Ratendatum Pflicht
 
   -- 1 Treffer -> loan_id gesetzt

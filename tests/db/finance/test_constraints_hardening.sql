@@ -24,12 +24,8 @@ BEGIN
   UPDATE finance.depot_holdings SET shares = 0 WHERE id = v_hid;
   RAISE NOTICE 'PASS [shares=0 erlaubt]';
 
-  -- annual_premium > 0
-  BEGIN
-    INSERT INTO finance.insurances (name, annual_premium, schedule_unit, valid_from)
-    VALUES ('__test_chk_ins__', 0, 'month', CURRENT_DATE);
-    RAISE EXCEPTION 'FAIL [annual_premium>0]: CHECK haette ablehnen muessen';
-  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'PASS [annual_premium>0 lehnt 0 ab]'; END;
+  -- (Versicherungs-Beitrag > 0: seit finance:V027 nur an der rp -- dort CHECK amount <> 0, V005.)
+
 
   -- original_amount > 0 (status=paused -> active_needs_annuity nicht relevant)
   BEGIN

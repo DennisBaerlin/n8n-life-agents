@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_create_loan_status.sql
 -- Testet: fn_create_loan leitet status korrekt ab (active wenn Annuität gesetzt, paused wenn NULL).
--- Testet: CHECK-Constraint verhindert status='active' + monthly_annuity IS NULL.
+-- Testet: CHECK-Constraint verhindert status='active' ohne Raten-Kette (WP2, finance:V026: aktiv <=> recurring_payment_id).
 BEGIN;
 
 DO $$
@@ -75,11 +75,11 @@ BEGIN
 
   RAISE NOTICE 'PASS fn_create_loan [status paused]: loan_id=%, kein rp', v_loan_id;
 
-  -- TEST 3: CHECK-Constraint verhindert direktes INSERT mit annuity=NULL + status='active'
+  -- TEST 3: CHECK-Constraint verhindert direktes INSERT ohne Raten-Kette + status='active'
   BEGIN
     INSERT INTO finance.loans
       (name, lender, original_amount, disbursement_date, interest_rate,
-       monthly_annuity, status, loan_account_id, debit_account_id)
+       recurring_payment_id, status, loan_account_id, debit_account_id)
     VALUES ('__test_loan_invalid__', 'X', 1000, CURRENT_DATE, 0.0,
             NULL, 'active', v_debit_id, v_debit_id);
     RAISE EXCEPTION 'FAIL fn_create_loan [check active+no_annuity]: CHECK hätte INSERT ablehnen müssen';

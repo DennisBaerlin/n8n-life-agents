@@ -70,20 +70,27 @@ BEGIN
     END IF;
 
     -- ---------- Ziel ----------
-    v_goal := v_facts->'goal';
+    -- WP2: gespeichert sind zwei von Einkommen/Entnahmerate/Zielportfolio, den dritten leitet fn_plan_goal_resolved ab
+    -- (Anzeige "(abgeleitet)"; nie gespeichert).
+    v_goal := finance.fn_plan_goal_resolved(v_facts->'goal');
     IF jsonb_typeof(v_goal) = 'object' THEN
         v_lines := v_lines || (
             'Ziel: '
             || CASE WHEN v_goal ? 'target_income_eur_month'
-                    THEN (v_goal->>'target_income_eur_month') || ' €/Monat' ELSE '—' END
+                    THEN (v_goal->>'target_income_eur_month') || ' €/Monat'
+                         || CASE WHEN v_goal->>'derived_key' = 'target_income_eur_month' THEN ' (abgeleitet)' ELSE '' END
+                    ELSE '—' END
             || CASE WHEN v_goal ? 'target_portfolio_eur'
                     THEN ', Zielportfolio ' ||
                          CASE WHEN jsonb_typeof(v_goal->'target_portfolio_eur') = 'array'
                               THEN (v_goal->'target_portfolio_eur'->>0) || '–' || (v_goal->'target_portfolio_eur'->>1) || ' €'
                               ELSE (v_goal->>'target_portfolio_eur') || ' €' END
+                         || CASE WHEN v_goal->>'derived_key' = 'target_portfolio_eur' THEN ' (abgeleitet)' ELSE '' END
                     ELSE '' END
             || CASE WHEN v_goal ? 'horizon_years' THEN ', Horizont ' || (v_goal->>'horizon_years') || ' J' ELSE '' END
-            || CASE WHEN v_goal ? 'withdrawal_rate_pct' THEN ', Entnahme ' || (v_goal->>'withdrawal_rate_pct') || ' %' ELSE '' END);
+            || CASE WHEN v_goal ? 'withdrawal_rate_pct' THEN ', Entnahme ' || (v_goal->>'withdrawal_rate_pct') || ' %'
+                         || CASE WHEN v_goal->>'derived_key' = 'withdrawal_rate_pct' THEN ' (abgeleitet)' ELSE '' END
+                    ELSE '' END);
             -- Phase A: die fruehere goal-interne ', Risiko <tolerance>'-Klausel ist nach risk_profile umgezogen (s. u.).
 
         -- real/Inflation-Marker an die Ziel-Zeile (FPA: alle Geld-Ziele REAL, EINE Inflations-Annahme)

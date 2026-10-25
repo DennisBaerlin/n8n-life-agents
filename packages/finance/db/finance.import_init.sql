@@ -17,23 +17,23 @@
 --                      shares*, price_per_share* (Einstand), isin (Pflicht bei stocks_depot), name, order_fee (def 0),
 --                      transaction_date (def heute), depot_number/depot_holder (gedruckt -> fn_import_resolve_depot)
 --                      -> Bestandsuebernahme (existing_position): Verrechnungskonto-Saldo bleibt
---   insurance:         name*, annual_premium*, debit_account* (Name, EUR), first_payment_date*,
---                      insurance_company, policy_number, policyholder_person,
---                      schedule_unit (def year)/interval/day_of_month, valid_from (Rate leitet die DB ab)
+--   insurance:         name*, premium_amount (je Abbuchung, + schedule_unit Pflicht) ODER annual_premium (def year),
+--                      mit Beitrag: debit_account* (Name, EUR) + first_payment_date*; ohne Beitrag = beitragsfrei,
+--                      insurance_company, policy_number, policyholder_person, interval/day_of_month, valid_from
 --   pension:           name*, pension_type*, provider, current_value, contract_number, owner_person,
---                      contribution_amount (+ debit_account & first_payment_date Pflicht),
+--                      contribution_amount (je Abbuchung, + debit_account Pflicht), schedule_unit (def month)/interval,
 --                      schedule_day_of_month, retirement_start_date, ...
 --   recurring_payment: name*, direction* (income|expense), amount*, account* (Name),
 --                      schedule_unit*, first_payment_date*, schedule_interval/day, valid_from/to
 --   real_estate:       name*, current_value*, owner_person, notes, value_updated_at
 --   savings_goal:      name*, target_amount*, account* (Name), reserve_account* (Name, Sparkonto/Topf, ≠ account),
---                      first_payment_date*, beneficiary_person,
+--                      first_payment_date (def naechster Abbuchungstag ab heute), beneficiary_person,
 --                      GENAU EINES von {target_date, monthly_savings_rate}, goal_type, ...
 --   loan:              name*, interest_rate*, debit_account* (Name, EUR), monthly_annuity (+ first_payment_date Pflicht),
---                      frisch: original_amount* + disbursement_date*; laufend: current_balance* (Restschuld heute,
---                      0 < x <= original), Ursprungswerte + principal_rate dann optional, borrower_person,
---                      lender, schedule_day_of_month, disbursement_account (Name; nur frischer Kredit),
---                      real_estate (Name), interest_rate_fixed_until
+--                      frisch: original_amount* (+ disbursement_date; ohne = Eroeffnung zum Stichtag heute); laufend:
+--                      current_balance* (Restschuld heute, 0 < x <= original), Ursprungswerte dann optional, borrower_person,
+--                      lender, schedule_day_of_month, disbursement_account (Name; nur frischer Kredit, + disbursement_date),
+--                      real_estate (Name), interest_rate_fixed_until, term_end_date, notes
 --   Personen-Felder: Name aus dem Haushalt (fn_import_resolve_persons), leer = Haushalt.
 --
 -- Usage:   db_apply.ps1 -File packages\finance\db\finance.import_init.sql

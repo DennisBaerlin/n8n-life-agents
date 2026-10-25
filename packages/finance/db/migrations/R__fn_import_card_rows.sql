@@ -74,10 +74,10 @@ BEGIN
                 'settlement_ref', CASE WHEN v_settle IS NOT NULL THEN finance.fn_import_ref_account(p_batch_id, v_settle) END,
                 'transaction_date', COALESCE(NULLIF(v_p->>'transaction_date', ''), to_char(CURRENT_DATE, 'YYYY-MM-DD')));
         ELSIF v_row.entity_type = 'insurance' THEN
-            v_x := v_x || jsonb_build_object('period_amount', finance.fn_insurance_period_amount(
-                (v_p->>'annual_premium')::numeric,
-                COALESCE(NULLIF(v_p->>'schedule_interval', '')::int, 1),
-                COALESCE(NULLIF(v_p->>'schedule_unit', '')::finance.schedule_unit, 'year')));
+            -- dieselbe Pruef-/Ableitungs-fn wie fn_create_insurance (WP2): Betrag je Abbuchung roh oder aus dem
+            -- Jahresbeitrag, Jahreswert abgeleitet
+            v_x := v_x || (SELECT jsonb_build_object('period_amount', f->'premium_amount', 'annual_premium', f->'annual_premium')
+                           FROM finance.fn_insurance_fields(v_p) f);
         ELSIF v_row.entity_type = 'savings_goal' THEN
             v_x := v_x || jsonb_build_object('schedule', finance.fn_savings_rate_schedule(v_p));
             -- Keine Person genannt -> Inhaber des Spartopfs, wie fn_create_savings_goal beim Write

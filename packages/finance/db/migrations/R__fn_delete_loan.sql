@@ -47,9 +47,11 @@ BEGIN
     DELETE FROM finance.transactions WHERE loan_id = v_loan.id;
     -- 2. Loan-Stammdaten (loest FK loan->rp + loan->Konten)
     DELETE FROM finance.loans WHERE id = v_loan.id;
-    -- 3. verknuepfte Rate-rp (jetzt referenzfrei)
+    -- 3. die ganze Raten-Kette (jetzt referenzfrei; WP2: nach einer Ratenaenderung mehrere Glieder -- EIN Statement,
+    --    der Vorgaenger-FK ist NO ACTION und wird erst am Statement-Ende geprueft)
     IF v_loan.recurring_payment_id IS NOT NULL THEN
-        DELETE FROM finance.recurring_payments WHERE id = v_loan.recurring_payment_id;
+        DELETE FROM finance.recurring_payments
+         WHERE id IN (SELECT finance.fn_recurring_lineage(v_loan.recurring_payment_id));
     END IF;
     -- 4. balance-Zeile des Loan-Kontos (kein CASCADE) + 5. das dedizierte Loan-Konto selbst
     DELETE FROM finance.account_balances WHERE account_id = v_loan.loan_account_id;

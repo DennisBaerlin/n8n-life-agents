@@ -1,14 +1,17 @@
 -- ============================================================
 -- fn_create_pension (ATOMIC WRITE)
 --   Erfasst eine Altersvorsorge als Net-Worth-Asset (gesetzlich/bAV/Riester/Ruerup/privat).
---   Optional monatlicher Beitrag -> recurring_payment (expense) via fn_add_recurring_payment + FK.
+--   Optional Beitrag -> recurring_payment (expense) via fn_add_recurring_payment + FK. Beitrag JE ABBUCHUNG roh +
+--   Rhythmus (schedule_interval/schedule_unit, Default 1 x Monat; WP2: das LLM rechnet nie in einen Monatswert um --
+--   pension_overview.monthly_contribution leitet ihn aus rp.monthly_equivalent ab).
 --   Eingabe jsonb: name, pension_type, provider, contract_number, owner_person_id (Slug, NULL=Haushalt), current_value (opt;
 --   Rueckkaufswert/Deckungskapital), value_updated_at (opt), guaranteed_monthly_pension (opt),
---   retirement_start_date (opt), contribution_amount (opt, positiv), debit_account_id (opt, n8n-
+--   retirement_start_date (opt), contribution_amount (opt, positiv, je Abbuchung), schedule_interval/schedule_unit (opt),
+--   debit_account_id (opt, n8n-
 --   resolved; Pflicht wenn contribution gesetzt), schedule_day_of_month (opt), first_payment_date
 --   (opt), notes.
 --   RUECKGABE: Erfolg -> {ok:true, pension_id, recurring_payment_id}. Korrigierbar
---   (unbekannter pension_type, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
+--   (unbekannter pension_type/Rhythmus, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
 --   debit_account [Depot/Kredit]) -> {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_pension(p jsonb)
@@ -21,14 +24,18 @@ DECLARE
     v_debit      INT      := NULLIF(p->>'debit_account_id','')::int;
     v_dom        SMALLINT := NULLIF(p->>'schedule_day_of_month','')::smallint;
     v_first      DATE     := NULLIF(p->>'first_payment_date','')::date;
+    v_interval   SMALLINT := COALESCE(NULLIF(p->>'schedule_interval','')::smallint, 1);
+    v_unit       finance.schedule_unit;
     v_pension_id INT;
     v_rp_id      INT;
 BEGIN
-    v_reason := finance.fn_enum_reason('finance.pension_type'::regtype, p->>'pension_type', 'pension_type');
+    v_reason := COALESCE(finance.fn_enum_reason('finance.pension_type'::regtype, p->>'pension_type', 'pension_type'),
+                         finance.fn_enum_reason('finance.schedule_unit'::regtype, p->>'schedule_unit', 'schedule_unit'));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
     v_type := (p->>'pension_type')::finance.pension_type;
+    v_unit := COALESCE(NULLIF(p->>'schedule_unit','')::finance.schedule_unit, 'month');
     -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
@@ -54,11 +61,11 @@ BEGIN
         END IF;
     END IF;
 
-    -- Optional: monatlicher Beitrag als recurring_payment (expense) via Helper.
+    -- Optional: Beitrag je Abbuchung als recurring_payment (expense) via Helper.
     IF v_contrib IS NOT NULL AND v_contrib > 0 THEN
         v_rp_id := finance.fn_add_recurring_payment(
-            v_debit, -v_contrib, 'AV-Beitrag ' || (p->>'name'),
-            1::smallint, 'month'::finance.schedule_unit, v_dom,
+            v_debit, -v_contrib, left('AV-Beitrag ' || (p->>'name'), 100),
+            v_interval, v_unit, v_dom,
             COALESCE(v_first, CURRENT_DATE),
             finance.fn_recurring_valid_from(v_debit, COALESCE(v_first, CURRENT_DATE)), NULL, NULL, NULL);
     END IF;

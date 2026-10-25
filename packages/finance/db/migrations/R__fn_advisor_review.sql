@@ -121,7 +121,7 @@ BEGIN
     SELECT c.metadata->'facts' INTO v_facts
     FROM agent.core_contexts c
     WHERE c.name = 'financial_planning';
-    v_goal  := v_facts->'goal';
+    v_goal  := finance.fn_plan_goal_resolved(v_facts->'goal');   -- WP2: abgeleiteter dritter Zielwert (z. B. Zielportfolio)
     v_alloc := v_facts->'target_allocation';
 
     -- Tunbare Schwellen aus core.config ueber das generische DEFINER-Lesefenster core.fn_config_get

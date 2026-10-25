@@ -95,4 +95,19 @@ BEGIN
 
 END $$;
 
+-- WP2 (weniger Rueckfragen): ohne first_payment_date gilt der naechste Termin des Abbuchungstags ab heute, ohne Tag heute.
+DO $$
+DECLARE v JSONB; v_exp DATE;
+BEGIN
+  v := finance.fn_savings_rate_schedule('{"target_amount":1200,"monthly_savings_rate":100}'::jsonb);
+  IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'first_payment_date')::date IS DISTINCT FROM core.fn_today() THEN
+    RAISE EXCEPTION 'FAIL schedule [Default ohne Tag]: heute erwartet, got %', v; END IF;
+  v_exp := CASE WHEN extract(day FROM core.fn_today()) <= 15
+                THEN date_trunc('month', core.fn_today())::date + 14
+                ELSE (date_trunc('month', core.fn_today()) + interval '1 month')::date + 14 END;
+  v := finance.fn_savings_rate_schedule('{"target_amount":1200,"monthly_savings_rate":100,"schedule_day_of_month":15}'::jsonb);
+  IF (v->>'first_payment_date')::date IS DISTINCT FROM v_exp THEN
+    RAISE EXCEPTION 'FAIL schedule [Default Tag 15]: % erwartet, got %', v_exp, v; END IF;
+  RAISE NOTICE 'PASS schedule [erste Rate ohne Datum: heute bzw. naechster 15.]';
+END $$;
 ROLLBACK;

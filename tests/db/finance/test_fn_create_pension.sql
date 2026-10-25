@@ -80,4 +80,21 @@ BEGIN
 
 END $$;
 
+-- WP2 (das LLM rechnet nicht): Beitrag je Abbuchung + Rhythmus roh; der Monatswert kommt aus der Beitrags-Zeile.
+DO $$
+DECLARE v_res JSONB; v_giro INT;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_cp_rh_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  v_res := finance.fn_create_pension(jsonb_build_object('name','__test_cp_rh__','pension_type','private',
+    'contribution_amount',600,'schedule_unit','year','first_payment_date','2026-12-01','debit_account_id',v_giro));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT contribution_amount::text || '|' || schedule_unit || '|' || monthly_contribution FROM finance.pension_overview
+         WHERE id = (v_res->>'pension_id')::int) IS DISTINCT FROM '600.00|year|-50.00' THEN
+    RAISE EXCEPTION 'FAIL fn_create_pension [Rhythmus]: 600 jaehrlich -> Monatswert -50 erwartet, got % / %', v_res,
+      (SELECT row_to_json(o) FROM finance.pension_overview o WHERE id = (v_res->>'pension_id')::int); END IF;
+  v_res := finance.fn_create_pension(jsonb_build_object('name','__test_cp_rh_bad__','pension_type','private',
+    'contribution_amount',50,'schedule_unit','yearly','debit_account_id',v_giro));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL fn_create_pension [Rhythmus unbekannt]: %', v_res; END IF;
+  RAISE NOTICE 'PASS fn_create_pension [600 jaehrlich roh, Monatswert -50 abgeleitet; unbekannter Rhythmus ok:false]';
+END $$;
 ROLLBACK;

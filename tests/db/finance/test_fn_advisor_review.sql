@@ -813,9 +813,9 @@ BEGIN
   UPDATE finance.account_balances SET balance = -80000 WHERE account_id = v_loan;    -- 80.000 @ 6 % = Zins 400
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('__p3_loan_rate__', v_giro, -1000, 'month', current_date, current_date) RETURNING id INTO v_rp;
-  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate, principal_rate, monthly_annuity,
+  INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate,
                              loan_account_id, debit_account_id, recurring_payment_id)
-    VALUES ('__p3_loan__', 100000, current_date - 365, 6, 9, 1000, v_loan, v_giro, v_rp);
+    VALUES ('__p3_loan__', 100000, current_date - 365, 6, v_loan, v_giro, v_rp);
   r := finance.fn_advisor_review('finance');
   SELECT (a->>'value')::numeric INTO v_val FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'cashflow_coverage';
   IF v_val IS DISTINCT FROM -200.00 THEN

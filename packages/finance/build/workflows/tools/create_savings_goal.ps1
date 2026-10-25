@@ -34,13 +34,16 @@ function Build-CreateSavingsGoal {
     # Rate ODER Zieldatum DETERMINISTISCH in der DB berechnen (LLM rechnet nicht, Root-CLAUDE.md).
     # READ-ONLY-Aufruf desselben Helpers, den auch die Write-fn nutzt -> eine Quelle, der HITL-Preview
     # zeigt den exakt zu schreibenden Wert. target_amount + GENAU EINES von {target_date, monthly_savings_rate}.
+    # WP2: ohne first_payment_date liefert der Helper den naechsten Termin des Abbuchungstags ab heute; genau dieses Datum
+    # geht in den Write (Karte = Write).
     $computeSched = Build-Pg 'Compute Schedule' @(660, 0) `
-        "=SELECT (r->>'ok')::boolean AS sched_ok, r->>'reason' AS sched_reason, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'months')::int AS months FROM finance.fn_savings_rate_schedule(`$1::jsonb) AS r;" `
+        "=SELECT (r->>'ok')::boolean AS sched_ok, r->>'reason' AS sched_reason, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'months')::int AS months, r->>'first_payment_date' AS first_payment_date FROM finance.fn_savings_rate_schedule(`$1::jsonb) AS r;" `
         ([ordered]@{
             target_amount        = '$(''Start'').item.json.target_amount'
             target_date          = '$(''Start'').item.json.target_date'
             monthly_savings_rate = '$(''Start'').item.json.monthly_savings_rate'
             first_payment_date   = '$(''Start'').item.json.first_payment_date'
+            schedule_day_of_month = '$(''Start'').item.json.schedule_day_of_month'
         })
 
     $ifSchedOk = Build-If 'Schedule ok?' @(880, 0) "={{ `$json.sched_ok }}" 'true' 'equals' 'boolean'
@@ -86,7 +89,7 @@ function Build-CreateSavingsGoal {
             monthly_savings_rate  = '$(''Start'').item.json.monthly_savings_rate'
             account_id            = '$(''Resolve Account'').item.json.id'
             schedule_day_of_month = '$(''Start'').item.json.schedule_day_of_month'
-            first_payment_date    = '$(''Start'').item.json.first_payment_date'
+            first_payment_date    = '$(''Compute Schedule'').item.json.first_payment_date'
             notes                 = '$(''Start'').item.json.notes'
             beneficiary_person_id = '$(''Resolve Person'').item.json.person_id'
             reserve_account_id    = '$(''Resolve Reserve'').item.json.id'
@@ -95,14 +98,14 @@ function Build-CreateSavingsGoal {
 
     # --- HITL approval gate (Rate + Zieldatum aus Compute Schedule, nicht aus dem Prompt) ---
     # Strukturiertes Summary (Textkatalog): Zielbetrag + berechnete Sparrate sind EUR per Konvention -> Literal 'EUR';
-    # Zieldatum aus Compute Schedule, erste Buchung aus dem Start.
+    # Zieldatum + erste Buchung (genannt oder Default) aus Compute Schedule.
     $S  = "`$('Start').item.json"
     $CS = "`$('Compute Schedule').item.json"
     # Begünstigte(r) aus dem Probelauf: genannt, sonst Inhaber des Spartopfs (fn_default_beneficiary) -> Karte = Write.
     $Y  = "`$('Dry run').item.json.r"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_savings_goal' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity savings_goal -S $S -D @{
-        Person = "$Y.beneficiary_name"; TargetDate = "$CS.target_date"; MonthlyRate = "$CS.monthly_rate"; Months = "$CS.months" })
+        Person = "$Y.beneficiary_name"; TargetDate = "$CS.target_date"; MonthlyRate = "$CS.monthly_rate"; Months = "$CS.months"; FirstPayment = "$CS.first_payment_date" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `

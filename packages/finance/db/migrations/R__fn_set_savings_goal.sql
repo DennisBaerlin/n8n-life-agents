@@ -160,6 +160,9 @@ BEGIN
         notes         = COALESCE(NULLIF(p->>'notes', ''), notes)
     WHERE id = v_id;
 
+    -- Namenskopie 'Sparrate <Name>' an der Raten-Kette mitfuehren (WP2, fn_rename_owned_recurring).
+    PERFORM finance.fn_rename_owned_recurring(v_row.recurring_payment_id, 'Sparrate', v_row.name, NULLIF(p->>'name', ''));
+
     IF v_row.recurring_payment_id IS NOT NULL THEN
         IF v_reserve IS NOT NULL THEN
             -- Rate wird Umbuchung in den Reserve-Topf (fn_book_recurring_occurrence delegiert dann an den Transfer-Pfad);

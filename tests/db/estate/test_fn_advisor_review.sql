@@ -124,8 +124,8 @@ BEGIN
   -- finance aktiv + Police/Konto mit offenen Nachlass-Feldern -> Singleton finance_gaps.
   INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
-  INSERT INTO finance.insurances (name, annual_premium, schedule_unit, valid_from, insurance_type)
-  VALUES ('__test__ Risikoleben', 240, 'year', CURRENT_DATE, 'life');       -- beneficiary/policy/claim fehlen
+  INSERT INTO finance.insurances (name, valid_from, insurance_type)
+  VALUES ('__test__ Risikoleben', CURRENT_DATE, 'life');       -- beneficiary/policy/claim fehlen
   INSERT INTO finance.accounts (name, account_type) VALUES ('__test__ Giro', 'cash');  -- ownership/poa offen
   r := estate.fn_advisor_review('estate');
   SELECT count(*) INTO v_n FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'finance_gap';

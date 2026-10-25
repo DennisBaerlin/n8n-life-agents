@@ -13,14 +13,14 @@
 --   principal => amount > 0 mit Owner-Alarm verletzte); principal_tx_id = null.
 --   ABBEZAHLT (Audit Paket 2): bringt die Rate die Restschuld auf 0 -> fn_mark_loan_paid_off (Kredit paid_off,
 --   Raten-rp endet am Tag nach der Rate, Vorzustand in settled_from -> fn_void_transaction stellt ihn her).
---   Eingabe jsonb: loan_id, loan_account_id, debit_account_id, payment_amount,
---   payment_date, principal_amount (optional; leer = berechnen), due_date (optional; Scheduler),
+--   Eingabe jsonb: loan_id, loan_account_id, debit_account_id, payment_amount (optional, WP2: leer = die faellige Rate
+--   laut fn_get_loan_payment_split), payment_date, principal_amount (optional; leer = berechnen), due_date (optional; Scheduler),
 --   recurring_payment_id (optional; Scheduler: das Ketten-Glied, dessen Vorkommen gebucht wird),
 --   transaction_date (optional, Monats-Check WP-A: Ist-Datum laut Kontoauszug; ohne -> Buchung auf das zugeordnete
 --   due_date wie bisher). Identitaet des Vorkommens = recurring_due_date = zugeordnetes due_date.
 --   ABGLEICH-SPERRE: Buchungsdatum <= letzter Abgleich des Belastungskontos -> {ok:false, code:'reconciled'}.
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, loan_payment_tx_id, principal_tx_id,
---   interest_portion, principal_amount, remaining_debt, matched_due_date, loan_status} (Post-State: neue Restschuld
+--   RUECKGABE-VERTRAG: Erfolg -> {ok:true, loan_payment_tx_id, principal_tx_id, payment_amount (gebuchte Rate,
+--   bei leerer Eingabe DB-abgeleitet), interest_portion, principal_amount, remaining_debt, matched_due_date, loan_status} (Post-State: neue Restschuld
 --   NACH der Tilgung + Kredit-Status, in derselben Transaktion gelesen; matched_due_date = gestempeltes Vorkommen
 --   oder null).
 --   Korrigierbarer Fall (Ueberzahlung/Unterzahlung/nicht-positive Rate/Vorkommen schon gebucht) ->
@@ -33,7 +33,7 @@ DECLARE
     v_loan_id      INT     := (p->>'loan_id')::int;
     v_loan_acc     INT     := (p->>'loan_account_id')::int;
     v_debit_acc    INT     := (p->>'debit_account_id')::int;
-    v_payment      NUMERIC := (p->>'payment_amount')::numeric;
+    v_payment      NUMERIC := NULLIF(p->>'payment_amount', '')::numeric;   -- leer = die faellige Rate (fn_get_loan_payment_split)
     v_split        JSONB;
     v_interest     NUMERIC;
     v_principal    NUMERIC;
@@ -45,8 +45,8 @@ DECLARE
     v_reason       TEXT;
     v_group        UUID := gen_random_uuid();   -- Multi-Leg: Giro-Bein + principal-Bein teilen eine group_id
 BEGIN
-    -- Korrigierbar: Rate muss positiv sein (vor dem Lock; die Split-fn prueft es ebenfalls).
-    IF v_payment IS NULL OR v_payment <= 0 THEN
+    -- Korrigierbar: eine genannte Rate muss positiv sein (vor dem Lock; die Split-fn prueft es ebenfalls).
+    IF v_payment <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Payment amount must be a positive number, got ' || COALESCE(v_payment::text, 'null') || '.');
     END IF;
@@ -69,6 +69,7 @@ BEGIN
     IF (v_split->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_split;
     END IF;
+    v_payment   := (v_split->>'payment_amount')::numeric;
     v_interest  := (v_split->>'interest_portion')::numeric;
     v_principal := (v_split->>'principal_amount')::numeric;
     v_date      := COALESCE(NULLIF(p->>'transaction_date', '')::date, (v_split->>'booking_date')::date);
@@ -134,6 +135,7 @@ BEGIN
         'ok', true,
         'loan_payment_tx_id', v_pay_tx,
         'principal_tx_id',    v_principal_tx,
+        'payment_amount',     v_payment,
         'interest_portion',   v_interest,
         'principal_amount',   v_principal,
         'remaining_debt',     v_rest_after,

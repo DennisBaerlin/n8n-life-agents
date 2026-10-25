@@ -7,9 +7,9 @@ function Build-CreateLoan {
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','lender','borrower_person','original_amount','current_balance','disbursement_date',
-                           'interest_rate','principal_rate','interest_rate_fixed_until',
+                           'interest_rate','interest_rate_fixed_until','term_end_date',
                            'monthly_annuity','schedule_day_of_month','first_payment_date',
-                           'disbursement_account_name','debit_account_name','real_estate_id')
+                           'disbursement_account_name','debit_account_name','real_estate_id','notes')
 
     # Dedup-Guard (Name, aktive Kredite) — Block vor dem Gate. Liest den Namen der verknuepften Immobilie fuer die
     # Karte mit (das Tool bekommt sie als real_estate_id; die Karte zeigt den Namen, leer = '—').
@@ -63,7 +63,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_loan' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create loan (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'loan_id' AS loan_id, r->>'loan_account_id' AS loan_account_id, r->>'debit_account_id' AS debit_account_id, r->>'recurring_payment_id' AS recurring_payment_id" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'loan_id' AS loan_id, r->>'loan_account_id' AS loan_account_id, r->>'debit_account_id' AS debit_account_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'balance_at_fixed_until')::numeric AS balance_at_fixed_until, (r->>'balance_at_term_end')::numeric AS balance_at_term_end" `
         -Params ([ordered]@{
             name                      = '$(''Start'').item.json.name'
             lender                    = '$(''Start'').item.json.lender'
@@ -72,14 +72,15 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
             current_balance           = '$(''Start'').item.json.current_balance'
             disbursement_date         = '$(''Start'').item.json.disbursement_date'
             interest_rate             = '$(''Start'').item.json.interest_rate'
-            principal_rate            = '$(''Start'').item.json.principal_rate'
             interest_rate_fixed_until = '$(''Start'').item.json.interest_rate_fixed_until'
+            term_end_date             = '$(''Start'').item.json.term_end_date'
             monthly_annuity           = '$(''Start'').item.json.monthly_annuity'
             schedule_day_of_month      = '$(''Start'').item.json.schedule_day_of_month'
             first_payment_date        = '$(''Start'').item.json.first_payment_date'
             disbursement_account_id   = '$(''Resolve Disbursement Account'').item.json.disbursement_id'
             debit_account_id          = '$(''Resolve Debit Account'').item.json.id'
             real_estate_id            = '$(''Start'').item.json.real_estate_id'
+            notes                     = '$(''Start'').item.json.notes'
         })
 
     # --- HITL approval gate (before the atomic write) ---
@@ -91,7 +92,8 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_loan' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity loan -S $S -D @{
         Person = "$P.full_name"; RealEstate = "`$('Check duplicate name').item.json.real_estate_name"
         RateInterest = "`$('Dry run').item.json.r.first_rate_interest"; RatePrincipal = "`$('Dry run').item.json.r.first_rate_principal"
-        Running = "!!`$('Dry run').item.json.r.opening_balance_date" })
+        Running = "!!`$('Dry run').item.json.r.opening_balance_date"
+        BalFixed = "`$('Dry run').item.json.r.balance_at_fixed_until"; BalTermEnd = "`$('Dry run').item.json.r.balance_at_term_end" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `
@@ -116,19 +118,21 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
         ,@('loan_account_id', "={{ `$('Create loan (atomic)').item.json.loan_account_id }}", 'number')
         ,@('debit_account_id', "={{ `$('Create loan (atomic)').item.json.debit_account_id }}", 'number')
         ,@('recurring_payment_id', "={{ `$('Create loan (atomic)').item.json.recurring_payment_id }}", 'number')
+        ,@('balance_at_fixed_until', "={{ `$('Create loan (atomic)').item.json.balance_at_fixed_until }}", 'number')
+        ,@('balance_at_term_end', "={{ `$('Create loan (atomic)').item.json.balance_at_term_end }}", 'number')
     )
 
     $stickyGen = Build-Sticky 'DB-Automatik Loan' @(2420, -240) `
         'Trigger + GENERATED (fn_create_loan atomar)' `
-        'fn_create_loan schreibt in EINER Transaktion: Loan-Konto (balance-Zeile via trg_finance_account_balance_init), Loan-Stammdaten, optional recurring_payment für die Rate (gültig ab dem Stichtag von Abbuchungs- und Kreditkonto), Restschuld-Eröffnung aufs Loan-Konto (frisch: -original_amount zum Auszahlungsdatum; laufend: -current_balance zum Stichtag heute + opening_balance_date am Kreditkonto), und NUR bei gesetztem disbursement_account_id eine Auszahlungsbuchung (+original_amount). Salden via trg_finance_balance_update. Zins/Tilgung je Rate rechnet die DB immer aus der Restschuld (fn_loan_monthly_interest, finance.loan_overview).' 240 520
+        'fn_create_loan schreibt in EINER Transaktion: Loan-Konto (balance-Zeile via trg_finance_account_balance_init), Loan-Stammdaten, optional recurring_payment für die Rate (gültig ab dem Stichtag von Abbuchungs- und Kreditkonto), Restschuld-Eröffnung aufs Loan-Konto (frisch mit Datum: -original_amount zum Auszahlungsdatum; laufend oder ohne Datum: Restschuld zum Stichtag heute + opening_balance_date am Kreditkonto, Datum später per set_loan nachtragbar), und NUR bei gesetztem disbursement_account_id eine Auszahlungsbuchung (+original_amount). Salden via trg_finance_balance_update. Rate/Rhythmus/Tag stehen NUR an der Raten-Zeile (WP2, eine Quelle). Zins/Tilgung je Rate rechnet die DB immer aus der Restschuld (fn_loan_monthly_interest, finance.loan_overview); die voraussichtliche Restschuld zum Zinsbindungs-/Laufzeitende (bei gleichem Zins, ohne Sondertilgung) liefert der Probelauf aus loan_overview (fn_loan_projected_balance).' 240 560
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `
-        'Korrigierbare Fehler (frischer Kredit ohne Betrag/Auszahlungsdatum, nicht-positive Beträge, Rate unter dem Monatszins der Restschuld, Auszahlungskonto bei laufendem Kredit …) liefert die fn als {ok:false, reason} -> Loan rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.' 200 420
+        'Korrigierbare Fehler (Restschuld fehlt, Auszahlungsdatum in der Zukunft, Laufzeitende vor Zinsbindung/Auszahlung, nicht-positive Beträge, Rate unter dem Monatszins der Restschuld, Auszahlungskonto bei laufendem Kredit …) liefert die fn als {ok:false, reason} -> Loan rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.' 200 420
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1100, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_create_loan mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (z. B. Rate unter dem Monatszins, frischer Kredit ohne Betrag) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte mit der DB-Aufteilung der 1. Rate (first_rate_interest/_principal aus der Restschuld); Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 460
+        'Dry run = fn_create_loan mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (z. B. Rate unter dem Monatszins, frischer Kredit ohne Betrag) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte mit der DB-Aufteilung der 1. Rate (first_rate_interest/_principal aus der Restschuld) und der voraussichtlichen Restschuld zum Zinsbindungs-/Laufzeitende (leer entfällt); Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 460
 
     $nodes = @($trig, $checkDup, $ifExists, $errExists, $resAcc, $ifAcc, $errAcc,
                $resDisbursement, $ifDisbursement, $errDisbursement,

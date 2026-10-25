@@ -62,6 +62,14 @@ WHERE status = 'active'
 -- VIEW: Loan overview with current Restschuld
 -- Joins loans with their live balance so the LLM gets all
 -- relevant loan data including outstanding debt in one query.
+-- EINE QUELLE (WP2, finance:V026): Rate und Abbuchungstag kommen aus dem HEUTE gueltigen Glied der Raten-Kette
+-- (fn_recurring_current) -- die Kredit-Zeile traegt keine Kopie mehr. Abgeleitet (nie gespeichert):
+--   initial_principal_rate           = rechnerische anfaengliche Tilgung in % p.a. aus Kreditbetrag + ERSTER erfasster
+--                                      Rate (aeltestes Glied, Jahreswert ueber fn_annual_equivalent) - Zins; nur mit
+--                                      original_amount und Rate.
+--   balance_at_*_projected           = voraussichtliche Restschuld zum Zinsbindungs- bzw. Laufzeitende (bei gleichem
+--                                      Zins, ohne Sondertilgung; fn_loan_projected_balance; NULL wenn pausiert, ohne
+--                                      Rate oder Datum <= heute).
 -- ============================================================
 CREATE VIEW finance.loan_overview AS
 SELECT
@@ -75,9 +83,8 @@ SELECT
     l.original_amount,
     l.disbursement_date,
     l.interest_rate,
-    l.principal_rate,                  -- informativ (Vertragswert, NULL = nicht angegeben); nie Rechengrundlage
     l.interest_rate_fixed_until,
-    l.monthly_annuity,
+    abs(rc.amount)                     AS monthly_annuity,   -- Rate des heute gueltigen Glieds (Spaltenname consumer-stabil)
     l.status,
     b.balance                          AS current_remaining_debt,
     l.loan_account_id,
@@ -86,16 +93,30 @@ SELECT
     l.disbursement_account_id,
     -- Zins/Tilgung dynamisch aus der LIVE-Restschuld (nicht origination): exakt fuer laufende Kredite.
     -- Zinsanteil = aktuelle Restschuld x Zinssatz / 12; Tilgungsanteil = gegebene Rate - Zinsanteil.
-    -- (monthly_annuity wird direkt erfasst -> keine Rundungsdifferenz zur Bank.)
     -- Audit Paket 3: die EINE Zinsformel fn_loan_monthly_interest (wie Cashflow-Klassifikation + Raten-Vorschau)
     finance.fn_loan_monthly_interest(-b.balance, l.interest_rate) AS monthly_interest_current,
-    CASE WHEN l.monthly_annuity IS NOT NULL
-         THEN l.monthly_annuity - finance.fn_loan_monthly_interest(-b.balance, l.interest_rate)
-         ELSE NULL END                 AS monthly_principal_current,
+    abs(rc.amount) - finance.fn_loan_monthly_interest(-b.balance, l.interest_rate) AS monthly_principal_current,
     -- Multi-Waehrung: Loan-Konto-Waehrung + Restschuld in EUR-Basis.
     la.currency,
-    finance.fn_to_eur(b.balance, la.currency) AS current_remaining_debt_eur
+    finance.fn_to_eur(b.balance, la.currency) AS current_remaining_debt_eur,
+    -- WP2 (Spalten am Ende):
+    l.term_end_date,
+    rc.schedule_day_of_month,
+    l.recurring_payment_id,
+    CASE WHEN l.original_amount > 0 AND fr.amount IS NOT NULL THEN
+        ROUND(finance.fn_annual_equivalent(abs(fr.amount), fr.schedule_interval, fr.schedule_unit,
+                                           COALESCE(cardinality(fr.schedule_days_of_month), 1))
+              / l.original_amount * 100 - l.interest_rate, 2)
+    END                                AS initial_principal_rate,
+    finance.fn_loan_projected_balance(l.id, l.interest_rate_fixed_until, current_date) AS balance_at_fixed_until_projected,
+    finance.fn_loan_projected_balance(l.id, l.term_end_date, current_date)             AS balance_at_term_end_projected
 FROM finance.loans l
+LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(l.recurring_payment_id, current_date)
+LEFT JOIN LATERAL (
+    SELECT r.amount, r.schedule_interval, r.schedule_unit, r.schedule_days_of_month
+    FROM finance.recurring_payments r
+    WHERE r.id IN (SELECT finance.fn_recurring_lineage(l.recurring_payment_id))
+    ORDER BY r.valid_from, r.id LIMIT 1) fr ON true
 LEFT JOIN finance.account_balances b ON b.account_id = l.loan_account_id
 LEFT JOIN finance.accounts la ON la.id = l.loan_account_id
 LEFT JOIN core.fn_household_persons() bp ON bp.person_id = l.borrower_person_id;
@@ -465,8 +486,10 @@ GROUP BY re.id, re.name, re.current_value, re.value_updated_at,
 
 -- ============================================================
 -- VIEW: Pension overview (net-worth building block)
--- One row per pension provision + the linked monthly Beitrag (recurring_payment) if any.
+-- One row per pension provision + the linked Beitrag (recurring_payment) if any.
 -- current_value may be NULL (e.g. statutory) -> excluded from net-worth sums by callers.
+-- WP2: Beitrag je Abbuchung + Rhythmus kommen aus dem heute gueltigen Glied der Beitrags-Kette; monthly_contribution
+-- ist der daraus abgeleitete Monatswert (rp.monthly_equivalent; vorher roh rp.amount -> bei jaehrlichem Beitrag falsch).
 -- ============================================================
 CREATE VIEW finance.pension_overview AS
 SELECT
@@ -482,17 +505,24 @@ SELECT
     p.value_updated_at,
     p.guaranteed_monthly_pension,
     p.retirement_start_date,
-    rp.amount                                          AS monthly_contribution,  -- negative (expense) or NULL
+    rc.monthly_equivalent                              AS monthly_contribution,  -- negative (expense) or NULL, Monatswert
     p.recurring_payment_id,
     p.status,
-    p.notes
+    p.notes,
+    abs(rc.amount)                                     AS contribution_amount,   -- WP2: Beitrag je Abbuchung
+    rc.schedule_interval,
+    rc.schedule_unit
 FROM finance.pension p
-LEFT JOIN finance.recurring_payments rp ON rp.id = p.recurring_payment_id
+LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(p.recurring_payment_id, current_date)
 LEFT JOIN core.fn_household_persons() pp ON pp.person_id = p.owner_person_id;
 
 -- ============================================================
 -- VIEW: Currently active insurances (mirrors finance_active_recurring_payments)
 -- Filters to active + date-valid insurances and joins the debit account name.
+-- EINE QUELLE (WP2, finance:V027): Beitrag je Abbuchung, Rhythmus, Tag und Konto aus dem heute gueltigen Glied der
+-- Beitrags-Kette, das Vertragsende (valid_to, exklusiv) vom Kopf der Kette. annual_premium/monthly_equivalent sind
+-- ABGELEITET (fn_annual_equivalent bzw. rp.monthly_equivalent; Spaltennamen consumer-stabil, positiv). Ohne
+-- Beitrags-Kette (beitragsfreie Police) sind die Beitrags-Spalten NULL.
 -- ============================================================
 CREATE VIEW finance.active_insurances AS
 SELECT
@@ -503,22 +533,27 @@ SELECT
     -- WS-4: Freitext-policyholder abgeloest -> abgeleitete Anzeige (NULL=Haushalt); Name bleibt policyholder.
     COALESCE(ip.full_name, 'Haushalt')  AS policyholder,
     i.policyholder_person_id,
-    i.annual_premium,
-    i.monthly_equivalent,
-    i.schedule_interval,
-    i.schedule_unit,
-    i.schedule_day_of_month,
+    finance.fn_annual_equivalent(abs(rc.amount), rc.schedule_interval, rc.schedule_unit,
+                                 COALESCE(cardinality(rc.schedule_days_of_month), 1)) AS annual_premium,
+    -rc.monthly_equivalent              AS monthly_equivalent,
+    rc.schedule_interval,
+    rc.schedule_unit,
+    rc.schedule_day_of_month,
     i.valid_from,
-    i.valid_to,
-    i.account_id,
+    hd.valid_to,
+    rc.account_id,
     a.name  AS account_name,
-    i.notes
+    i.notes,
+    abs(rc.amount)                      AS premium_amount,      -- WP2 (am Ende): Beitrag je Abbuchung
+    i.recurring_payment_id
 FROM finance.insurances i
-LEFT JOIN finance.accounts a ON a.id = i.account_id
+LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(i.recurring_payment_id, current_date)
+LEFT JOIN finance.recurring_payments hd ON hd.id = i.recurring_payment_id
+LEFT JOIN finance.accounts a ON a.id = rc.account_id
 LEFT JOIN core.fn_household_persons() ip ON ip.person_id = i.policyholder_person_id
 WHERE i.status = 'active'
   AND i.valid_from <= current_date
-  AND (i.valid_to IS NULL OR i.valid_to > current_date);
+  AND (hd.valid_to IS NULL OR hd.valid_to > current_date);
 
 -- ============================================================
 -- VIEW: Depot holdings with account name, book value AND live market value (Phase M)

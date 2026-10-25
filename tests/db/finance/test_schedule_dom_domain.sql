@@ -1,7 +1,8 @@
 -- tests/db/finance/test_schedule_dom_domain.sql
 -- WP-2b: schedule_day_of_month-Domaene (1-28 | -1 | NULL). Beweist die DREI Adressen der Invariante:
 --   (1) fn_valid_schedule_dom (IMMUTABLE Bool-Helper, freundlicher Guard-Kern),
---   (2) der V012-CHECK auf allen 4 tragenden Tabellen (struktureller Backstop, direktes DML),
+--   (2) der V012-CHECK auf den tragenden Tabellen (struktureller Backstop, direktes DML; Kredit/Versicherung tragen den
+--       Tag seit finance:V026/V027 nur noch an der rp),
 --   (3) der freundliche {ok:false}-Guard in einer repraesentativen Schreib-fn.
 -- Regression gegen den fixed-dom-Overflow (29/30/31 overflowt kurze Monate -> Kachel-Bruch, arch-surfaced).
 BEGIN;
@@ -21,7 +22,7 @@ BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status)
     VALUES ('__dom_acct__', 'cash', 'EUR', 'active') RETURNING id INTO v_acct;
 
-  -- ===== (2) V012-CHECK weist dom=30 an ALLEN 4 Tabellen ab (direktes DML -> check_violation) =====
+  -- ===== (2) V012-CHECK weist dom=30 ab (direktes DML -> check_violation) =====
   BEGIN
     INSERT INTO finance.account_interest_rates
       (account_id, annual_rate, schedule_interval, schedule_unit, schedule_day_of_month, valid_from)
@@ -36,20 +37,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [CHECK rp]: recurring_payments akzeptierte schedule_day_of_month=30';
   EXCEPTION WHEN check_violation THEN NULL; END;
 
-  BEGIN
-    INSERT INTO finance.loans
-      (name, original_amount, disbursement_date, interest_rate, monthly_annuity, schedule_day_of_month, loan_account_id)
-      VALUES ('__dom_loan__', 1000, DATE '2026-01-01', 3, 10, 30, v_acct);
-    RAISE EXCEPTION 'FAIL [CHECK loans]: loans akzeptierte schedule_day_of_month=30';
-  EXCEPTION WHEN check_violation THEN NULL; END;
-
-  BEGIN
-    INSERT INTO finance.insurances
-      (name, annual_premium, schedule_interval, schedule_unit, schedule_day_of_month, valid_from)
-      VALUES ('__dom_ins__', 120, 1, 'month', 30, DATE '2026-01-01');
-    RAISE EXCEPTION 'FAIL [CHECK ins]: insurances akzeptierte schedule_day_of_month=30';
-  EXCEPTION WHEN check_violation THEN NULL; END;
-  RAISE NOTICE 'PASS [V012-CHECK: dom=30 an allen 4 Tabellen abgewiesen]';
+  -- (Kredit/Versicherung tragen seit finance:V026/V027 keinen eigenen Abbuchungstag mehr -- der steht nur an der rp.)
+  RAISE NOTICE 'PASS [V012-CHECK: dom=30 an account_interest_rates + recurring_payments abgewiesen]';
 
   -- ===== (2b) -1 (Monatsletzter) und 28 werden akzeptiert (Guard ueber-rejected nicht) =====
   INSERT INTO finance.recurring_payments
@@ -155,16 +144,11 @@ BEGIN
 
   INSERT INTO finance.accounts (name, account_type, currency, status)
     VALUES ('__dom2_acct__', 'cash', 'EUR', 'active') RETURNING id INTO v_acct;
-  -- CHECK: rp/loans/insurances nehmen -2, account_interest_rates nicht (Zins-Raster kennt nur -1)
+  -- CHECK: rp nimmt -2, account_interest_rates nicht (Zins-Raster kennt nur -1)
   INSERT INTO finance.recurring_payments
     (name, account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
     VALUES ('__dom2_rp__', v_acct, 100, 'month', -2, DATE '2026-01-01', DATE '2026-01-01');
-  INSERT INTO finance.loans
-    (name, original_amount, disbursement_date, interest_rate, monthly_annuity, schedule_day_of_month, loan_account_id)
-    VALUES ('__dom2_loan__', 1000, DATE '2026-01-01', 3, 10, -2, v_acct);
-  INSERT INTO finance.insurances
-    (name, annual_premium, schedule_interval, schedule_unit, schedule_day_of_month, valid_from)
-    VALUES ('__dom2_ins__', 120, 1, 'month', -2, DATE '2026-01-01');
+
   BEGIN
     INSERT INTO finance.account_interest_rates
       (account_id, annual_rate, schedule_interval, schedule_unit, schedule_day_of_month, valid_from)
@@ -177,7 +161,7 @@ BEGIN
       VALUES ('__dom3_rp__', v_acct, 100, 'month', -3, DATE '2026-01-01', DATE '2026-01-01');
     RAISE EXCEPTION 'FAIL [CHECK rp]: -3 akzeptiert';
   EXCEPTION WHEN check_violation THEN NULL; END;
-  RAISE NOTICE 'PASS [CHECK: -2 auf rp/loans/insurances, nicht auf account_interest_rates; -3 nirgends]';
+  RAISE NOTICE 'PASS [CHECK: -2 auf rp, nicht auf account_interest_rates; -3 nirgends]';
 
   -- Schreib-fns: Dauerauftrag mit -2 ok; Zins-Konditionen mit -2 -> ok:false (eigener Grund)
   v_res := finance.fn_create_recurring_payment(jsonb_build_object(

@@ -36,7 +36,6 @@ BEGIN
       'original_amount',           v_amount,
       'disbursement_date',         '2024-01-15',
       'interest_rate',             '3.0',
-      'principal_rate',            '1.0',
       'interest_rate_fixed_until', '2034-01-15',
       'monthly_annuity',           v_annuity,
       'schedule_day_of_month',     '15',
@@ -61,11 +60,12 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_loan [1]: Loan-Konto nicht angelegt (id=%)', v_loan_acc;
   END IF;
 
-  -- Assert 1b: Zahl-Rhythmus-Tag landete in der umbenannten Spalte schedule_day_of_month (5e)
+  -- Assert 1b: der Abbuchungstag steht nur an der Raten-Kette (WP2, finance:V026: keine Kopie am Kredit)
   IF NOT EXISTS (
-    SELECT 1 FROM finance.loans WHERE id = v_loan_id AND schedule_day_of_month = 15
-  ) THEN
-    RAISE EXCEPTION 'FAIL fn_create_loan [1b]: schedule_day_of_month nicht 15 (loan_id=%)', v_loan_id;
+    SELECT 1 FROM finance.recurring_payments WHERE id = v_rp_id AND schedule_day_of_month = 15
+  ) OR EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'finance' AND table_name = 'loans'
+               AND column_name IN ('schedule_day_of_month', 'monthly_annuity', 'principal_rate')) THEN
+    RAISE EXCEPTION 'FAIL fn_create_loan [1b]: Tag nicht an der Raten-Kette bzw. Kopie am Kredit (loan_id=%)', v_loan_id;
   END IF;
 
   -- Assert 2: Loan-Eröffnungssaldo = -original_amount (disbursement trigger)
@@ -112,7 +112,7 @@ BEGIN
   VALUES ('__test_loan_borrower', 'Test Kreditnehmer', 'partner') ON CONFLICT (person_id) DO NOTHING;
   SELECT finance.fn_create_loan(jsonb_build_object(
     'name','__test_kredit_b__','lender','TestBank','borrower_person_id','__test_loan_borrower',
-    'original_amount',50000,'disbursement_date','2024-01-15','interest_rate','3.0','principal_rate','1.0',
+    'original_amount',50000,'disbursement_date','2024-01-15','interest_rate','3.0',
     'monthly_annuity',300,'schedule_day_of_month','15','first_payment_date','2024-02-15','debit_account_id',v_debit_id
   )) INTO v_result;
   v_loan_id := (v_result->>'loan_id')::int;
@@ -202,7 +202,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [laufend Stichtag]: opening_balance_date nicht heute, got %', v_res; END IF;
   -- Rate zaehlt ab Stichtag; -2 gespeichert
   IF (SELECT valid_from FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int) < core.fn_today()
-     OR (SELECT schedule_day_of_month FROM finance.loans WHERE id = (v_res->>'loan_id')::int) IS DISTINCT FROM -2 THEN
+     OR (SELECT schedule_day_of_month FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int) IS DISTINCT FROM -2 THEN
     RAISE EXCEPTION 'FAIL [laufend rp]: valid_from vor heute oder -2 nicht gespeichert'; END IF;
   -- Post-State: Restschuld + DB-Aufteilung der 1. Rate (95.000 * 1,2 % / 12 = 95,00 Zins, 505,00 Tilgung)
   IF (v_res->>'remaining_debt')::numeric IS DISTINCT FROM 95000
@@ -211,26 +211,46 @@ BEGIN
      OR v_res->'disbursement_balance' IS DISTINCT FROM 'null'::jsonb THEN
     RAISE EXCEPTION 'FAIL [laufend Post-State]: got %', v_res; END IF;
   IF EXISTS (SELECT 1 FROM finance.loans WHERE id = (v_res->>'loan_id')::int
-             AND (original_amount IS NOT NULL OR disbursement_date IS NOT NULL OR principal_rate IS NOT NULL)) THEN
+             AND (original_amount IS NOT NULL OR disbursement_date IS NOT NULL)) THEN
     RAISE EXCEPTION 'FAIL [laufend minimal]: Ursprungswerte nicht NULL'; END IF;
   RAISE NOTICE 'PASS [laufend minimal: Eroeffnung heute, opening_balance_date, rp ab heute, -2, Aufteilung 95/505]';
 
-  -- laufend MIT Ursprungswerten: Eroeffnung trotzdem heute, Werte gespeichert (informativ)
+  -- laufend MIT Ursprungswerten + Laufzeit (WP2): Eroeffnung trotzdem heute, Werte gespeichert; die anfaengliche
+  -- Tilgung wird abgeleitet (600 x 12 / 180.000 = 4,0 % - 1,2 % Zins = 2,80 %), nie gespeichert; Restschuld-Vorschau
+  -- zum Zinsbindungsende vorhanden und plausibel, ohne Laufzeitende NULL.
   v_res := finance.fn_create_loan(v_base || jsonb_build_object('name','__test_lr_full__','original_amount',180000,
-    'disbursement_date','2016-05-02','principal_rate',4.2));
+    'disbursement_date','2016-05-02','interest_rate_fixed_until',(core.fn_today() + 730)::text,
+    'term_end_date',(core.fn_today() + 7300)::text));
   v_acc := (v_res->>'loan_account_id')::int;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true
      OR (SELECT transaction_date FROM finance.transactions WHERE account_id = v_acc AND category = 'disbursement')
         IS DISTINCT FROM core.fn_today()
      OR NOT EXISTS (SELECT 1 FROM finance.loans WHERE id = (v_res->>'loan_id')::int
-                    AND original_amount = 180000 AND disbursement_date = '2016-05-02' AND principal_rate = 4.2) THEN
-    RAISE EXCEPTION 'FAIL [laufend voll]: Eroeffnung heute + Ursprungswerte gespeichert erwartet, got %', v_res; END IF;
-  RAISE NOTICE 'PASS [laufend mit Ursprungswerten: Eroeffnung heute, Werte informativ gespeichert]';
+                    AND original_amount = 180000 AND disbursement_date = '2016-05-02'
+                    AND term_end_date = core.fn_today() + 7300)
+     OR (v_res->>'initial_principal_rate')::numeric IS DISTINCT FROM 2.80
+     OR NOT ((v_res->>'balance_at_fixed_until')::numeric BETWEEN 80000 AND 95000)
+     OR (v_res->>'balance_at_term_end')::numeric IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [laufend voll]: Eroeffnung heute, Ursprungswerte, 2,80 %%, Vorschau erwartet, got %', v_res; END IF;
+  IF (finance.fn_create_loan(v_base || '{"name":"__test_lr_nofix__"}'::jsonb)->>'balance_at_fixed_until') IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [Vorschau ohne Datum]: NULL erwartet'; END IF;
+  RAISE NOTICE 'PASS [laufend mit Ursprungswerten + Laufzeit: Werte gespeichert, Tilgung 2,80 abgeleitet, Vorschau]';
+
+  -- frisch OHNE Datum (Auszahlung an Dritte, WP2): Eroeffnung zum Stichtag heute, Datum spaeter nachtragbar
+  v_res := finance.fn_create_loan(v_base || '{"name":"__test_lr_nodate__","current_balance":"","original_amount":50000}'::jsonb);
+  v_acc := (v_res->>'loan_account_id')::int;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT opening_balance_date FROM finance.accounts WHERE id = v_acc) IS DISTINCT FROM core.fn_today()
+     OR finance.fn_get_balance(v_acc) IS DISTINCT FROM -50000.00 THEN
+    RAISE EXCEPTION 'FAIL [frisch ohne Datum]: Eroeffnung heute erwartet, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [frisch ohne Datum: Eroeffnung zum Stichtag heute]';
 
   -- Korrigierbare Ablehnungen ohne Write
   FOR r IN SELECT * FROM (VALUES
       ('frisch ohne Betrag',       '{"current_balance":"","disbursement_date":"2026-01-02"}'::jsonb),
-      ('frisch ohne Datum',        '{"current_balance":"","original_amount":50000}'::jsonb),
+      ('ohne Restschuld',          '{"current_balance":""}'::jsonb),
+      ('Auszahlung in Zukunft',    jsonb_build_object('current_balance','','original_amount',50000,'disbursement_date',(core.fn_today() + 5)::text)),
+      ('Laufzeit vor Zinsbindung', '{"interest_rate_fixed_until":"2030-01-01","term_end_date":"2029-01-01"}'::jsonb),
       ('Auszahlung ohne Betrag',   jsonb_build_object('disbursement_account_id', v_giro)),
       ('Rate unter Monatszins',    '{"monthly_annuity":90}'::jsonb),
       ('Zinssatz fehlt',           '{"interest_rate":""}'::jsonb)
@@ -248,7 +268,7 @@ BEGIN
   v_res := finance.fn_create_loan(v_base || '{"name":"__test_lr_over__","original_amount":20000,"current_balance":25000}'::jsonb);
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not above the original amount%' THEN
     RAISE EXCEPTION 'FAIL [Restschuld > Betrag]: falscher Grund, got %', v_res; END IF;
-  RAISE NOTICE 'PASS [Guards: frisch ohne Betrag/Datum, Auszahlungskonto ohne Betrag, Rate < Monatszins, Zins fehlt, Restschuld > Betrag]';
+  RAISE NOTICE 'PASS [Guards: frisch ohne Betrag, ohne Restschuld, Auszahlung in Zukunft, Laufzeit vor Zinsbindung, Auszahlungskonto bei laufend, Rate < Monatszins, Zins fehlt, Restschuld > Betrag]';
 
   -- Frischer Kredit: Eroeffnung bleibt am Auszahlungsdatum; Post-State beider Konten + Aufteilung
   DECLARE v_disb INT;

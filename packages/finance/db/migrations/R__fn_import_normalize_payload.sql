@@ -29,7 +29,7 @@ BEGIN
     v_money := CASE p_type
         WHEN 'account'           THEN ARRAY['opening_balance']
         WHEN 'stock_buy'         THEN ARRAY['order_fee','cost_basis_total']
-        WHEN 'insurance'         THEN ARRAY['annual_premium','coverage_amount']
+        WHEN 'insurance'         THEN ARRAY['premium_amount','annual_premium','coverage_amount']
         WHEN 'pension'           THEN ARRAY['current_value','contribution_amount','guaranteed_monthly_pension']
         WHEN 'recurring_payment' THEN ARRAY['amount']
         WHEN 'real_estate'       THEN ARRAY['current_value']
@@ -41,7 +41,7 @@ BEGIN
     v_plain := CASE p_type
         WHEN 'account'           THEN ARRAY['interest_rate']
         WHEN 'stock_buy'         THEN ARRAY['shares','price_per_share','average_purchase_price']
-        WHEN 'loan'              THEN ARRAY['interest_rate','principal_rate']
+        WHEN 'loan'              THEN ARRAY['interest_rate']
         ELSE ARRAY[]::TEXT[]
     END;
 

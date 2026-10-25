@@ -131,10 +131,10 @@
         "name":  "set_insurance: Praemie aendern + Recurring-Sync (echter Write)",
         "task":  "Lege ein neues Cash-Konto \u0027__E2E__ Ins Cash\u0027 an (Inhaber Erika, ohne Zinsen). Erfasse dann eine neue Versicherung \u0027__E2E__ Hausrat\u0027 bei der DEVK, Jahrespraemie 120 Euro, Versicherungsnehmer Erika, monatliche Zahlung, Abbuchung vom __E2E__ Ins Cash, gueltig ab heute, erste Abbuchung heute. Aendere danach die Jahrespraemie dieser Versicherung auf 180 Euro.",
         "chat_id":  "test_e2e_e2e11",
-        "verify_sql":  "SELECT count(*) FROM finance.insurances i JOIN finance.recurring_payments rp ON rp.id = i.recurring_payment_id WHERE i.name = \u0027__E2E__ Hausrat\u0027 AND i.annual_premium = 180 AND i.monthly_equivalent = 15 AND rp.amount = -15;",
+        "verify_sql":  "SELECT count(*) FROM finance.active_insurances ai JOIN finance.insurances i ON i.id = ai.id JOIN finance.recurring_payments rp ON rp.id = i.recurring_payment_id WHERE i.name = \u0027__E2E__ Hausrat\u0027 AND ai.annual_premium = 180 AND ai.monthly_equivalent = 15 AND rp.amount = -15;",
         "expect":  1,
         "is_negative":  false,
-        "notes":  "Schema-Fidelity fuer set_insurance: create_insurance (monatlich 120/Jahr -\u003e rp.amount=-10) dann set_insurance auf 180 -\u003e monthly_equivalent (GENERATED) = 15 UND verknuepfte recurring_payment.amount in-place auf -15 gesynct (Befund B). Cleanup via fn_clear_e2e_data (insurance + recurring_payment + account sentinel-scoped)."
+        "notes":  "Schema-Fidelity fuer set_insurance: create_insurance (monatlich 120/Jahr -\u003e rp.amount=-10) dann set_insurance auf 180 -\u003e am selben Tag ist noch nichts faellig, also Korrektur in place (WP2): Beitrags-Zeile -15; active_insurances leitet Jahreswert 180 / Monatswert 15 daraus ab (eine Quelle, keine Kopie an der Police). Cleanup via fn_clear_e2e_data (insurance + recurring_payment + account sentinel-scoped)."
     },
     {
         "id":  "e2e12",

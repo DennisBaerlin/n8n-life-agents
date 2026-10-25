@@ -25,8 +25,10 @@ function Build-BookLoanPayment {
 
     # Zins/Tilgung + Buchungsdatum aus DERSELBEN fn, die fn_book_loan_payment intern nutzt (Audit F7: vorher
     # rechnete dieser Graph mit der negativen Restschuld -> Karte "Zins -600 / Tilgung 1.600", gebucht 600/400).
+    # WP2: ohne genannten Betrag liefert die fn die faellige Rate (payment_amount); genau dieser Betrag geht in den Write
+    # (Karte = Buchung, auch wenn zwischen Karte und Tipp ein Tag wechselt).
     $preview = Build-Pg 'Preview Loan Payment' @(880, 0) `
-        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'remaining_debt')::numeric AS remaining_debt, (r->>'interest_portion')::numeric AS interest_portion, (r->>'principal_amount')::numeric AS principal_amount, r->>'booking_date' AS booking_date FROM finance.fn_get_loan_payment_split(`$1::jsonb) AS r;" `
+        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'payment_amount')::numeric AS payment_amount, (r->>'remaining_debt')::numeric AS remaining_debt, (r->>'interest_portion')::numeric AS interest_portion, (r->>'principal_amount')::numeric AS principal_amount, r->>'booking_date' AS booking_date FROM finance.fn_get_loan_payment_split(`$1::jsonb) AS r;" `
         ([ordered]@{
             loan_id          = '$(''Resolve Loan'').item.json.loan_id'
             payment_amount   = '$(''Start'').item.json.payment_amount'
@@ -50,7 +52,7 @@ function Build-BookLoanPayment {
             loan_id          = '$(''Resolve Loan'').item.json.loan_id'
             loan_account_id  = '$(''Resolve Loan'').item.json.loan_account_id'
             debit_account_id = '$(''Resolve Loan'').item.json.debit_account_id'
-            payment_amount   = '$(''Start'').item.json.payment_amount'
+            payment_amount   = '$(''Preview Loan Payment'').item.json.payment_amount'
             payment_date     = '$(''Start'').item.json.payment_date'
             principal_amount = '$(''Start'').item.json.principal_amount'
         })
@@ -63,7 +65,7 @@ function Build-BookLoanPayment {
     $summary = New-HitlSummary -Pos @(1980, 0) -Title 'finance.hitl.book_loan_payment' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.loan'                  "$L.name")
         (New-HitlLine 'finance.label.remaining_debt_current' "$I.remaining_debt" -Kind money -Currency "$L.currency")
-        (New-HitlLine 'finance.label.rate_total'            "$S.payment_amount" -Kind money -Currency "$L.currency")
+        (New-HitlLine 'finance.label.rate_total'            "$I.payment_amount" -Kind money -Currency "$L.currency" -IsDefault "!$S.payment_amount")
         (New-HitlLine 'finance.label.principal_part'        "$I.principal_amount" -Kind money -Currency "$L.currency")
         (New-HitlLine 'finance.label.interest_part'         "$I.interest_portion" -Kind money -Currency "$L.currency")
         (New-HitlLine 'core.label.date'                     "$I.booking_date" -Kind date)

@@ -1,7 +1,8 @@
 -- ============================================================
 -- fn_resolve_loan
 --   Loan-Name → IDs + Stammdaten fuer Kreditraten-Buchung.
---   Mehrdeutigkeit wird wie bei Accounts via hit_count gemeldet.
+--   Mehrdeutigkeit wird wie bei Accounts via hit_count gemeldet. monthly_annuity = Rate des heute gueltigen Glieds der
+--   Raten-Kette (WP2: die Kopie am Kredit entfiel mit finance:V026; Spaltenname consumer-stabil).
 --   p_active_only: default TRUE -> nur status='active' (book_loan_payment/settle_loan);
 --   FALSE -> auch paused/paid_off (delete_loan findet Fehlanlagen, settle/sell geben
 --   freundliche {ok:false} bei bereits beendeten Entitaeten statt RAISE).
@@ -37,7 +38,8 @@ BEGIN
             'name',            l.name,
             'lender',          l.lender,
             'status',          l.status,
-            'monthly_annuity', l.monthly_annuity
+            'monthly_annuity', (SELECT abs(r.amount) FROM finance.recurring_payments r
+                                WHERE r.id = finance.fn_recurring_current(l.recurring_payment_id, current_date))
         ) ORDER BY l.id)
     INTO v_count, v_cand
     FROM finance.loans l
@@ -51,7 +53,8 @@ BEGIN
             l.id,
             l.loan_account_id,
             l.debit_account_id,
-            l.monthly_annuity,
+            (SELECT abs(r.amount) FROM finance.recurring_payments r
+              WHERE r.id = finance.fn_recurring_current(l.recurring_payment_id, current_date)),
             1,
             v_cand
         FROM finance.loans l

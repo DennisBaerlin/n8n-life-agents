@@ -25,8 +25,7 @@ BEGIN
 
   SELECT finance.fn_create_loan(jsonb_build_object(
     'name','__test_liabreg_kredit__','lender','TestBank','original_amount',200000,
-    'disbursement_date','2024-01-15','interest_rate','3.0','principal_rate','1.0',
-    'monthly_annuity',800,'schedule_day_of_month','15','first_payment_date','2024-02-15',
+    'disbursement_date','2024-01-15','interest_rate','3.0','monthly_annuity',800,'schedule_day_of_month','15','first_payment_date','2024-02-15',
     'disbursement_account_id',v_disb,'debit_account_id',v_debit
   )) INTO v_result;
   v_loan_id := (v_result->>'loan_id')::int;

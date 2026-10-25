@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_set_recurring_payment (ATOMIC WRITE) -- nur STANDALONE-Zeilen
 --   Aendert eine standalone wiederkehrende Einnahme/Ausgabe (Gehalt/Miete/Abo/Rente).
---   STANDALONE-GUARD (Befund B): ist die Zeile von einer Entitaet besessen (insurance/loan/
---   savings_goal/pension -> recurring_payment_id), wird abgelehnt ({ok:false}) -> Aenderung
+--   STANDALONE-GUARD (Befund B): ist die Zeile (bzw. der Kopf ihrer Kette) von einer Entitaet besessen (insurance/loan/
+--   savings_goal/pension/savings_plan -> recurring_payment_id, fn_recurring_owner), wird abgelehnt ({ok:false}) -> Aenderung
 --   ueber das jeweilige set_<entity>-Tool (sonst Verwaisen der FK beim Split).
 --   BETRAGS-AENDERUNG = history-erhaltender VALIDITY-SPLIT (Best Practice "effective date") ueber den
 --   gemeinsamen Helfer fn_split_recurring_payment (Vorzeichen aus der alten Zeile; Ziel-Konto, Status, Ende,
@@ -41,15 +41,9 @@ BEGIN
         RAISE EXCEPTION 'Recurring payment % not found.', v_id;
     END IF;
 
-    -- Standalone-Guard (Befund B): entitaets-besessene Zeilen -> ueber das set_<entity>-Tool.
-    SELECT CASE
-        WHEN EXISTS (SELECT 1 FROM finance.insurances    WHERE recurring_payment_id = v_id) THEN 'insurance'
-        WHEN EXISTS (SELECT 1 FROM finance.loans         WHERE recurring_payment_id = v_id) THEN 'loan'
-        WHEN EXISTS (SELECT 1 FROM finance.savings_goals WHERE recurring_payment_id = v_id) THEN 'savings goal'
-        WHEN EXISTS (SELECT 1 FROM finance.pension       WHERE recurring_payment_id = v_id) THEN 'pension'
-        WHEN EXISTS (SELECT 1 FROM finance.savings_plans WHERE recurring_payment_id = v_id) THEN 'savings plan'
-        ELSE NULL END
-    INTO v_owner;
+    -- Standalone-Guard (Befund B): entitaets-besessene Zeilen -> ueber das set_<entity>-Tool. Die eine Besitzer-Abfrage
+    -- fn_recurring_owner erkennt auch Vorgaenger-Glieder einer Entitaets-Kette (WP2: Kopf-Regel).
+    v_owner := replace(finance.fn_recurring_owner(v_id), '_', ' ');
     IF v_owner IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'This recurring payment belongs to a ' || v_owner || '; change it via that entity set tool, not directly.');

@@ -132,7 +132,7 @@ BEGIN
         v_r := finance.fn_create_insurance(jsonb_build_object(
             'name','HUK Hausratversicherung', 'insurance_company','HUK-COBURG',
             'policy_number','HR-FIXTURE-001', 'policyholder','Erika',
-            'annual_premium', 89, 'recurring_amount', -89,
+            'premium_amount', 89,
             'schedule_interval', 1, 'schedule_unit','year', 'schedule_day_of_month', 15,
             'valid_from','2026-01-01', 'first_payment_date','2026-01-15',
             'debit_account_id', v_dkb));

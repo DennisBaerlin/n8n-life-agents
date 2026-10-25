@@ -273,6 +273,142 @@ CREATE OR REPLACE FUNCTION finance.fn_monthly_equivalent(
     SELECT finance.fn_monthly_equivalent(p_amount * GREATEST(p_per_unit, 1), p_interval, p_unit);
 $$;
 
+-- fn_period_months: Monate je Periode eines Rhythmus (day/week ueber fn_days_per_month normalisiert). Die EINE Adresse
+-- fuer den Zins-Faktor einer Kreditrate (fn_loan_period_months, fn_loan_balance_at) und den Jahreswert.
+CREATE OR REPLACE FUNCTION finance.fn_period_months(p_interval int, p_unit finance.schedule_unit)
+RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
+    SELECT GREATEST(COALESCE(p_interval, 1), 1) * CASE p_unit
+               WHEN 'day'   THEN 1.0 / finance.fn_days_per_month()
+               WHEN 'week'  THEN 7.0 / finance.fn_days_per_month()
+               WHEN 'month' THEN 1.0
+               WHEN 'year'  THEN 12.0
+           END;
+$$;
+
+-- fn_annual_equivalent (WP2 "Finanzen schlank"): Jahreswert eines Betrags je Abbuchung ohne Zwischenrundung
+-- (monatlich 30 -> 360, jaehrlich 89 -> 89; p_per_unit = Termine je Einheit bei festen Monatstagen). Der Jahresbeitrag
+-- einer Versicherung wird so aus der echten Abbuchung abgeleitet statt gespeichert (Views active_insurances,
+-- loan_overview.initial_principal_rate). Bei nicht-jaehrlichem Rhythmus kann er um Cent vom genannten Jahresbeitrag
+-- abweichen (100/Jahr monatlich = 8,33 je Abbuchung = 99,96): die Abbuchung ist die Wahrheit.
+CREATE OR REPLACE FUNCTION finance.fn_annual_equivalent(
+    p_amount numeric, p_interval int, p_unit finance.schedule_unit, p_per_unit int
+) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
+    SELECT ROUND(p_amount * GREATEST(COALESCE(p_per_unit, 1), 1) * 12.0 / finance.fn_period_months(p_interval, p_unit), 2);
+$$;
+
+-- fn_insurance_period_amount: Beitrag JE ABBUCHUNG aus einer genannten Jahrespraemie (nur wenn der Nutzer den
+-- Jahresbeitrag nennt; sonst kommt der Betrag je Abbuchung roh). Exakte Umkehrung von fn_monthly_equivalent
+-- (365,25-Tage-Basis): day annual*n/365.25, week annual*n*7/365.25, month annual*n/12, year annual*n.
+-- RUECKGABE: POSITIVER Betrag (2 Nachkommastellen). IM INIT (WP2, vorher R__): finance:V027 vergleicht im Pre-flight
+-- dagegen, und V-Migrationen laufen vor allen R__-fns.
+CREATE OR REPLACE FUNCTION finance.fn_insurance_period_amount(
+    p_annual numeric, p_interval int, p_unit finance.schedule_unit
+) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
+    SELECT ROUND(
+        p_annual * GREATEST(COALESCE(p_interval, 1), 1) * CASE p_unit
+            WHEN 'day'   THEN 1.0
+            WHEN 'week'  THEN 7.0
+            WHEN 'month' THEN finance.fn_days_per_month()
+            WHEN 'year'  THEN 365.25
+        END / 365.25, 2);
+$$;
+
+-- fn_schedule_occurrences (WP2): das EINE Faelligkeitsraster eines Rhythmus -- alle Termine d mit
+-- p_from <= d <= p_until und d >= Anker. Monat: Tag aus dom (-1 Monatsletzter, -2 vorletzter, NULL = Tag des Ankers mit
+-- Monatsend-Clamping gegen den Anker, sonst fester Tag) bzw. jeder Tag aus p_days (feste Monatstage). Rein und
+-- IMMUTABLE (explizite timestamp-Casts + make_interval: keine Zeitzonen-Abhaengigkeit), LANGUAGE sql ohne STRICT/SET
+-- -> inlinebar. Gerufen von fn_recurring_due_open (Scheduler, Gueltigkeit/Status/gebucht dort) und fn_loan_balance_at
+-- (Restschuld-Vorschau) -> Erinnerung und Vorschau rechnen dasselbe Raster. IM INIT, weil Views es (indirekt) nutzen.
+CREATE OR REPLACE FUNCTION finance.fn_schedule_occurrences(
+    p_anchor date, p_interval int, p_unit finance.schedule_unit, p_dom smallint, p_days smallint[],
+    p_from date, p_until date
+) RETURNS SETOF date LANGUAGE sql IMMUTABLE AS $$
+    WITH a AS (
+        SELECT p_anchor::timestamp AS f,
+               GREATEST(COALESCE(p_interval, 1), 1) AS n,
+               EXTRACT(YEAR FROM age(p_until::timestamp, p_anchor::timestamp))::int * 12
+               + EXTRACT(MONTH FROM age(p_until::timestamp, p_anchor::timestamp))::int AS m
+    )
+    SELECT o.d FROM (
+        SELECT gs::date AS d
+        FROM a, generate_series(a.f, p_until::timestamp, make_interval(days => a.n)) gs
+        WHERE p_unit = 'day'
+        UNION ALL
+        SELECT gs::date
+        FROM a, generate_series(a.f, p_until::timestamp, make_interval(days => a.n * 7)) gs
+        WHERE p_unit = 'week'
+        UNION ALL
+        SELECT (CASE
+                  WHEN p_dom IN (-1, -2) THEN date_trunc('month', a.f) + make_interval(months => k * a.n + 1, days => p_dom)
+                  WHEN p_dom IS NULL     THEN a.f + make_interval(months => k * a.n)
+                  ELSE date_trunc('month', a.f) + make_interval(months => k * a.n, days => p_dom - 1)
+                END)::date
+        FROM a, generate_series(0, a.m / a.n + 1) k
+        WHERE p_unit = 'month' AND p_days IS NULL
+        UNION ALL
+        SELECT (date_trunc('month', a.f) + make_interval(months => k * a.n, days => dd - 1))::date
+        FROM a, generate_series(0, a.m / a.n + 1) k, unnest(p_days) dd
+        WHERE p_unit = 'month' AND p_days IS NOT NULL
+        UNION ALL
+        SELECT (a.f + make_interval(years => k * a.n))::date
+        FROM a, generate_series(0, (a.m / 12) / a.n + 1) k
+        WHERE p_unit = 'year'
+    ) o
+    WHERE o.d >= p_anchor AND o.d >= p_from AND o.d <= p_until;
+$$;
+
+-- fn_loan_balance_at (WP2): voraussichtliche Restschuld zum Zieldatum -- rein, alle Eingaben als Argumente.
+--   p_balance  = Restschuld heute (positiv), p_rate_pct = Jahreszins, p_segments = die Raten-Glieder der Kette
+--   [{anchor, interval, unit, dom, days, valid_from, valid_to (exklusiv), amount (positiv)}], p_after = juengster
+--   erledigter (gebuchter/uebersprungener) Faelligkeitstermin der Kette (NULL = keiner), p_target, p_today.
+--   Rechnet jeden Rasterpunkt d mit d > p_after, valid_from <= d < valid_to, d <= p_target in Datumsfolge: Zins =
+--   fn_loan_monthly_interest(Restschuld, Zins, fn_period_months) (dieselbe Formel + Rundung wie jede Buchung), Tilgung =
+--   Rate - Zins. Faellige, noch nicht gebuchte Raten zaehlen mit; Annahme: gleicher Zins, keine Sondertilgung.
+--   RUECKGABE: Restschuld (2 Nachkommastellen), 0 sobald getilgt; NULL bei Ziel <= heute, ohne Segmente (pausiert /
+--   ohne Rate) oder ueber 2.400 Termine (Iterationsdeckel). IM INIT, weil loan_overview (R__finance_views laeuft vor
+--   allen R__fn_*) sie nutzt.
+CREATE OR REPLACE FUNCTION finance.fn_loan_balance_at(
+    p_balance numeric, p_rate_pct numeric, p_segments jsonb, p_after date, p_target date, p_today date
+) RETURNS numeric LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+    v_bal NUMERIC := p_balance;
+    v_n   INT := 0;
+    r     RECORD;
+BEGIN
+    IF p_target IS NULL OR p_today IS NULL OR p_target <= p_today OR p_balance IS NULL
+       OR p_segments IS NULL OR jsonb_typeof(p_segments) <> 'array' OR jsonb_array_length(p_segments) = 0 THEN
+        RETURN NULL;
+    END IF;
+    IF v_bal <= 0 THEN
+        RETURN 0;
+    END IF;
+    FOR r IN
+        SELECT o.d,
+               (s->>'amount')::numeric AS amt,
+               finance.fn_period_months((s->>'interval')::int, (s->>'unit')::finance.schedule_unit) AS months
+        FROM jsonb_array_elements(p_segments) s
+        CROSS JOIN LATERAL finance.fn_schedule_occurrences(
+            (s->>'anchor')::date, (s->>'interval')::int, (s->>'unit')::finance.schedule_unit,
+            NULLIF(s->>'dom', '')::smallint,
+            CASE WHEN jsonb_typeof(s->'days') = 'array'
+                 THEN ARRAY(SELECT x::smallint FROM jsonb_array_elements_text(s->'days') x) END,
+            GREATEST((s->>'valid_from')::date, p_after + 1), p_target) o(d)
+        WHERE NULLIF(s->>'valid_to', '') IS NULL OR o.d < (s->>'valid_to')::date
+        ORDER BY o.d
+    LOOP
+        v_n := v_n + 1;
+        IF v_n > 2400 THEN
+            RETURN NULL;
+        END IF;
+        v_bal := v_bal - (r.amt - finance.fn_loan_monthly_interest(v_bal, p_rate_pct, r.months));
+        IF v_bal <= 0 THEN
+            RETURN 0;
+        END IF;
+    END LOOP;
+    RETURN ROUND(v_bal, 2);
+END;
+$$;
+
 -- fn_valid_schedule_days: Domaene einer Liste fester Monatstage (recurring_payments.schedule_days_of_month,
 -- accounts.plan_execution_days) -- NULL oder leer, sonst eindimensional, ohne NULL, jeder Tag 1-28 (29/30/31
 -- overflowen kurze Monate, wie fn_valid_schedule_dom), streng aufsteigend (kanonisch: eine Liste = eine Schreibweise).
@@ -864,6 +1000,19 @@ RETURNS int LANGUAGE sql STABLE AS $$
     WHERE NOT EXISTS (SELECT 1 FROM finance.recurring_payments s WHERE s.predecessor_id = d.id);
 $$;
 
+-- fn_recurring_current (WP2): das am Tag p_on GUELTIGE Glied der Kette ([valid_from, valid_to)), sonst der Kopf (Kette
+-- beendet oder erst kuenftig gueltig). Die eine Adresse fuer "aktuelle Rate/aktueller Beitrag" einer Entitaet, deren
+-- Rate nur noch an der Raten-Kette steht (loan_overview, active_insurances, pension_overview). Init wie oben.
+CREATE OR REPLACE FUNCTION finance.fn_recurring_current(p_rp_id int, p_on date)
+RETURNS int LANGUAGE sql STABLE AS $$
+    SELECT COALESCE(
+        (SELECT r.id FROM finance.recurring_payments r
+          WHERE r.id IN (SELECT finance.fn_recurring_lineage(p_rp_id))
+            AND r.valid_from <= p_on AND (r.valid_to IS NULL OR r.valid_to > p_on)
+          ORDER BY r.valid_from DESC LIMIT 1),
+        finance.fn_recurring_lineage_head(p_rp_id));
+$$;
+
 -- ============================================================
 -- RECURRING PAYMENT SKIPS (Fälligkeits-Scheduler)
 -- Schlankes State-Modell: "gebucht" wird aus finance_transactions abgeleitet
@@ -1044,17 +1193,23 @@ CREATE INDEX IF NOT EXISTS finance_pension_statements_pension_idx
 --        Kreditkonto:  amount = -original_amount,  category='disbursement', loan_id=X
 --
 -- Monthly payment (Annuität = Zins + Tilgung) — two transactions per installment:
---        Girokonto:    amount = -monthly_annuity,  category='loan_payment'
+--        Girokonto:    amount = -rate,              category='loan_payment'
 --        Kreditkonto:  amount = +principal_portion, category='principal'
---   Interest portion is implicit: monthly_annuity - principal_portion.
+--   Interest portion is implicit: rate - principal_portion.
 --
 -- Zins/Tilgung einer Rate rechnet die DB immer aus der AKTUELLEN Restschuld (fn_loan_monthly_interest;
 -- loan_overview.monthly_*_current, fn_get_loan_payment_split) -- nie aus Ursprungswerten (Live-Befund 2026-10-24:
 -- die "anfaengliche Tilgung" eines alten Angebots passt bei einem laufenden Kredit nicht zur Rate; die Rate ist die
 -- Wahrheit). Die frueheren GENERATED-Spalten annuity_rate / origination_monthly_* entfielen (finance:V025).
---   monthly_annuity = die exakte Vertragsrate (Abbuchungsbetrag).
---   Laufender Kredit (fn_create_loan mit current_balance): Pflicht nur Restschuld, Zins, Rate, naechste Faelligkeit;
---   original_amount / disbursement_date / principal_rate sind informativ (NULL = nicht angegeben).
+--
+-- EINE QUELLE (WP2 "Finanzen schlank", finance:V026): Rate, Rhythmus und Abbuchungstag stehen NUR an der Raten-Kette
+-- (recurring_payment_id -> Kopf, fn_recurring_lineage); loan_overview liest das heute gueltige Glied
+-- (fn_recurring_current). Eine Ratenaenderung legt ein neues Glied an (Historie). Die frueheren Kopien
+-- monthly_annuity / schedule_interval / schedule_unit / schedule_day_of_month und die gespeicherte "anfaengliche
+-- Tilgung" principal_rate entfielen; loan_overview.initial_principal_rate rechnet sie aus Kreditbetrag + erster Rate.
+--   Laufender Kredit (Kreditkonto mit opening_balance_date, ohne Auszahlungskonto): Pflicht nur Restschuld, Zins,
+--   Abbuchungskonto (+ Rate mit naechster Faelligkeit); original_amount / disbursement_date sind nachtragbar.
+--   term_end_date = Laufzeitende (letzte Rate; bei Schlussrate deren Termin, Betrag in notes).
 --
 -- Refinancing / Umschuldung:
 --   - Set old loan: status='refinanced'
@@ -1062,7 +1217,7 @@ CREATE INDEX IF NOT EXISTS finance_pension_statements_pension_idx
 --   - Create new finance_accounts (new Kreditkonto) + new finance_loans entry
 --   - Link successive loans via real_estate_id or name convention
 --
--- Family debts / paused repayment: monthly_annuity=NULL, status='paused' (die Pause ist allein der Status)
+-- Family debts / paused repayment: keine Raten-Kette (recurring_payment_id NULL), status='paused'
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS finance.loans (
@@ -1073,12 +1228,11 @@ CREATE TABLE IF NOT EXISTS finance.loans (
     original_amount           numeric(12,2),             -- original loan sum; informational for a running loan (NULL = not given)
     disbursement_date         date,                      -- payout date; informational for a running loan (NULL = not given)
     interest_rate             numeric(6,4) NOT NULL,     -- annual rate, e.g. 3.5000 = 3.5%
-    principal_rate            numeric(6,4),              -- initial repayment rate p.a. from the contract, informational only; NULL = not given
     interest_rate_fixed_until date,                      -- Zinsbindungsende
-    monthly_annuity           numeric(10,2),             -- actual contract monthly installment (Zins + Tilgung); NULL when paused
-    schedule_interval         smallint NOT NULL DEFAULT 1,
-    schedule_unit             finance.schedule_unit NOT NULL DEFAULT 'month',
-    schedule_day_of_month     smallint,                  -- 1-28, -1 = last day, -2 = second-to-last day
+    term_end_date             date,                      -- Laufzeitende (Termin der letzten Rate); NULL = nicht angegeben
+    -- GERUEST (WP2): finance:V012/V024 setzen ungeguardet einen CHECK auf diese Spalte -> auf einer FRISCHEN DB muss
+    -- sie bis dahin existieren; finance:V026 droppt sie danach (Abbuchungstag steht nur an der Raten-Kette).
+    schedule_day_of_month     smallint,
     status                    finance.loan_status NOT NULL DEFAULT 'active',
     loan_account_id           int NOT NULL REFERENCES finance.accounts(id), -- Kreditkonto (negative balance = Restschuld)
     debit_account_id          int REFERENCES finance.accounts(id),          -- Abbuchungskonto fuer die Rate (Girokonto)
@@ -1098,24 +1252,35 @@ ALTER TABLE finance.loans ALTER COLUMN disbursement_date DROP NOT NULL;
 -- Migration packages/finance/db/migrations/V001__rename_loan_payout_to_disbursement.sql (laeuft NACH den Inits,
 -- VOR den R__-View-Repeatables). CREATE TABLE oben traegt den Endzustand disbursement_account_id.
 
--- Constraint: active loan requires an annuity; paused/paid_off/refinanced may have NULL.
--- Data migration first (fix any pre-existing rows), then enforce.
-UPDATE finance.loans SET status = 'paused' WHERE monthly_annuity IS NULL AND status = 'active';
+ALTER TABLE finance.loans ADD COLUMN IF NOT EXISTS term_end_date date;
+
+-- Constraint: ein aktiver Kredit hat eine Raten-Kette; paused/paid_off/refinanced duerfen ohne sein.
+-- WP2: Bestands-DBs tauschen den alten CHECK (monthly_annuity) in finance:V026 NACH dessen Pre-flight -> hier erst,
+-- wenn die Kopie monthly_annuity weg ist (frische DB sofort; Init laeuft vor den V-Migrationen).
+-- Laufzeit-CHECKs (Spiegel der fn_create_loan/fn_set_loan-Guards): Zinsbindung nicht nach dem Laufzeitende, Laufzeitende
+-- nicht vor der Auszahlung.
 DO $$ BEGIN
-    ALTER TABLE finance.loans
-        DROP CONSTRAINT IF EXISTS finance_loans_active_needs_annuity;
-    ALTER TABLE finance.loans
-        ADD CONSTRAINT finance_loans_active_needs_annuity CHECK (
-            monthly_annuity IS NOT NULL OR status <> 'active'
-        );
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'finance' AND table_name = 'loans' AND column_name = 'monthly_annuity') THEN
+        ALTER TABLE finance.loans DROP CONSTRAINT IF EXISTS finance_loans_active_needs_annuity;
+        ALTER TABLE finance.loans ADD CONSTRAINT finance_loans_active_needs_annuity
+            CHECK (recurring_payment_id IS NOT NULL OR status <> 'active');
+    END IF;
+    ALTER TABLE finance.loans DROP CONSTRAINT IF EXISTS finance_loans_term_end_chk;
+    ALTER TABLE finance.loans ADD CONSTRAINT finance_loans_term_end_chk CHECK (
+        term_end_date IS NULL
+        OR ((interest_rate_fixed_until IS NULL OR interest_rate_fixed_until <= term_end_date)
+            AND (disbursement_date IS NULL OR term_end_date >= disbursement_date)));
 END $$;
 
 -- ============================================================
 -- INSURANCES
--- annual_premium is entered directly (Jahresbeitrag — the natural unit for insurance in Germany).
--- monthly_equivalent is GENERATED (read-only) as annual_premium / 12 for cashflow comparison.
--- schedule_interval + schedule_unit describe the actual payment rhythm (e.g. semi-annual),
--- independent of the annual premium amount.
+-- EINE QUELLE (WP2 "Finanzen schlank", finance:V027): Beitrag je Abbuchung, Rhythmus, Abbuchungstag, Vertragsende
+-- und Abbuchungskonto stehen NUR an der Raten-Kette (recurring_payment_id -> Kopf); active_insurances liest das heute
+-- gueltige Glied und leitet Jahres-/Monatswert ab (fn_annual_equivalent, rp.monthly_equivalent). Die frueheren Kopien
+-- annual_premium / monthly_equivalent / schedule_* / valid_to / account_id entfielen. Ohne Raten-Kette = beitragsfreie
+-- Police (z. B. fuers Nachlass-Register). valid_from = Vertragsbeginn (eigener Fakt: rp.valid_from klemmt auf den
+-- Konto-Stichtag); status = Vertragszustand (cancelled/expired sind kein Zahlungszustand).
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS finance.insurances (
@@ -1124,18 +1289,12 @@ CREATE TABLE IF NOT EXISTS finance.insurances (
     insurance_company     varchar(100),
     policy_number         varchar(50),
     policyholder_person_id text,                         -- Multi-Member: Versicherungsnehmer-Person, das EINZIGE Inhaber-Feld (Slug aus family; NULL=Haushalt); FK unten. WS-4: Freitext-policyholder abgelöst.
-    annual_premium        numeric(10,2) NOT NULL,        -- Jahresbeitrag (entered directly)
-    monthly_equivalent    numeric(8,2) GENERATED ALWAYS AS (
-                              round(annual_premium / 12.0, 2)
-                          ) STORED,                      -- read-only: annual_premium / 12 for cashflow comparison
-    schedule_interval     smallint NOT NULL DEFAULT 1,
-    schedule_unit         finance.schedule_unit NOT NULL,
-    schedule_day_of_month smallint,                      -- 1-28, -1 = last day, -2 = second-to-last day
-    valid_from            date NOT NULL,
-    valid_to              date,                          -- NULL = indefinite
+    -- GERUEST (WP2): finance:V012/V024 setzen ungeguardet einen CHECK auf diese Spalte -> auf einer FRISCHEN DB muss
+    -- sie bis dahin existieren; finance:V027 droppt sie danach (Abbuchungstag steht nur an der Raten-Kette).
+    schedule_day_of_month smallint,
+    valid_from            date NOT NULL,                 -- Vertragsbeginn
     status                finance.insurance_status NOT NULL DEFAULT 'active',
-    account_id            int REFERENCES finance.accounts(id),
-    recurring_payment_id  int REFERENCES finance.recurring_payments(id),
+    recurring_payment_id  int REFERENCES finance.recurring_payments(id),   -- Kopf der Beitrags-Kette; NULL = beitragsfrei
     -- WS-0b (estate): Nachlass-relevante Policen-Attribute (additiv nullable, Init-only, KEIN V).
     -- insurance_type = grobe Policen-Klasse (geschlossene Liste, s. CHECK; life/accident tragen Todesfall-
     --   Meldefristen); beneficiary = benannter Bezugsberechtigter (schlaegt das Testament, Bezugsrecht-Falle);
@@ -1678,8 +1837,6 @@ END $$;
 
 -- Positive-Wert-Backstops (spiegeln die bestehenden fn-Guards 1:1 -> kein Verhaltensbruch).
 DO $$ BEGIN
-    ALTER TABLE finance.insurances    DROP CONSTRAINT IF EXISTS finance_insurances_premium_pos;
-    ALTER TABLE finance.insurances    ADD  CONSTRAINT finance_insurances_premium_pos CHECK (annual_premium > 0);
     ALTER TABLE finance.loans         DROP CONSTRAINT IF EXISTS finance_loans_amount_pos;
     ALTER TABLE finance.loans         ADD  CONSTRAINT finance_loans_amount_pos CHECK (original_amount > 0);
     -- Auszahlung auf ein eigenes Konto nur bei frischem Kredit mit Kreditbetrag (Spiegel des fn_create_loan-Guards).
@@ -2196,6 +2353,49 @@ CREATE OR REPLACE FUNCTION finance.fn_to_eur(
         WHEN p_currency = 'EUR' THEN p_amount
         ELSE ROUND(finance.fn_to_eur_unrounded(p_amount, p_currency, p_as_of), 2)
     END;
+$$;
+
+-- ============================================================
+-- RESTSCHULD-VORSCHAU (WP2 "Finanzen schlank") -- Lese-Helfer ueber die Raten-Kette, IM INIT (loan_overview nutzt sie;
+-- R__finance_views laeuft vor allen R__fn_*), hier am Ende, weil sie transactions/account_balances lesen.
+--   fn_recurring_last_done(rp): juengster erledigter (gebuchter ODER uebersprungener) Faelligkeitstermin der ganzen
+--     Kette ("gebucht" keyt auf recurring_due_date). NULL = noch keiner.
+--   fn_recurring_segments(rp): die AKTIVEN Glieder der Kette als Segment-Liste fuer fn_loan_balance_at
+--     (Rhythmus, Gueltigkeit [valid_from, valid_to), Betrag positiv).
+--   fn_loan_projected_balance(loan, target, today): voraussichtliche Restschuld zum Zieldatum (bei gleichem Zins, ohne
+--     Sondertilgung) -- NULL bei pausiertem/abgeschlossenem Kredit, ohne Rate oder Ziel <= heute.
+-- ============================================================
+CREATE OR REPLACE FUNCTION finance.fn_recurring_last_done(p_rp_id int)
+RETURNS date LANGUAGE sql STABLE AS $$
+    SELECT max(x.d) FROM (
+        SELECT max(t.recurring_due_date) AS d FROM finance.transactions t
+         WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(p_rp_id))
+        UNION ALL
+        SELECT max(s.due_date) FROM finance.recurring_payment_skips s
+         WHERE s.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(p_rp_id))
+    ) x;
+$$;
+
+CREATE OR REPLACE FUNCTION finance.fn_recurring_segments(p_rp_id int)
+RETURNS jsonb LANGUAGE sql STABLE AS $$
+    SELECT jsonb_agg(jsonb_build_object(
+               'anchor', r.first_payment_date, 'interval', r.schedule_interval, 'unit', r.schedule_unit,
+               'dom', r.schedule_day_of_month, 'days', to_jsonb(r.schedule_days_of_month),
+               'valid_from', r.valid_from, 'valid_to', r.valid_to, 'amount', abs(r.amount))
+           ORDER BY r.valid_from)
+    FROM finance.recurring_payments r
+    WHERE r.id IN (SELECT finance.fn_recurring_lineage(p_rp_id)) AND r.status = 'active';
+$$;
+
+CREATE OR REPLACE FUNCTION finance.fn_loan_projected_balance(p_loan_id int, p_target date, p_today date)
+RETURNS numeric LANGUAGE sql STABLE AS $$
+    SELECT finance.fn_loan_balance_at(
+               GREATEST(-b.balance, 0), l.interest_rate,
+               CASE WHEN l.status = 'active' THEN finance.fn_recurring_segments(l.recurring_payment_id) END,
+               finance.fn_recurring_last_done(l.recurring_payment_id), p_target, p_today)
+    FROM finance.loans l
+    LEFT JOIN finance.account_balances b ON b.account_id = l.loan_account_id
+    WHERE l.id = p_loan_id;
 $$;
 
 -- ============================================================

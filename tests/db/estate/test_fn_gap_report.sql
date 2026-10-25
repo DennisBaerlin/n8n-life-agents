@@ -66,8 +66,8 @@ BEGIN
   -- ---------- finance-Feld-Gaps (aktiv-Pfad; Superuser sieht finance) ----------
   INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
-  INSERT INTO finance.insurances (name, annual_premium, schedule_unit, valid_from, insurance_type)
-  VALUES ('__test__ Risikoleben', 240, 'year', CURRENT_DATE, 'life');
+  INSERT INTO finance.insurances (name, valid_from, insurance_type)
+  VALUES ('__test__ Risikoleben', CURRENT_DATE, 'life');
   INSERT INTO finance.accounts (name, account_type) VALUES ('__test__ Giro', 'cash');
 
   v_r := estate.fn_gap_report();
@@ -100,8 +100,8 @@ BEGIN
   RAISE NOTICE 'PASS [finance-Feld-Gaps: konkrete missing_fields je Police/Konto + Aggregat-Parity]';
 
   -- Nicht-todesfall-relevante Police: beneficiary/claim_deadline werden NICHT genudgt:
-  INSERT INTO finance.insurances (name, annual_premium, schedule_unit, valid_from, insurance_type, policy_number)
-  VALUES ('__test__ Haftpflicht', 89, 'year', CURRENT_DATE, 'liability', 'HP-1');
+  INSERT INTO finance.insurances (name, valid_from, insurance_type, policy_number)
+  VALUES ('__test__ Haftpflicht', CURRENT_DATE, 'liability', 'HP-1');
   v_r := estate.fn_gap_report();
   PERFORM 1 FROM jsonb_array_elements(v_r->'finance'->'gaps') g
    WHERE g->>'item' = '__test__ Haftpflicht';

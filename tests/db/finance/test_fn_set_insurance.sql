@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_set_insurance.sql
--- Testet fn_set_insurance: Praemie + Recurring-Sync, monthly_equivalent (GENERATED),
--- Kuendigungs-Kaskade (recurring paused + valid_to), neg-Praemie
+-- Testet fn_set_insurance: Beitragsaenderung ueber die Beitrags-Kette mit Historie (WP2, eine Quelle: Jahres-/Monatswert
+-- abgeleitet), Kuendigungs-Kaskade (Kopf paused + valid_to), neg-Praemie, Rhythmus nur mit Betrag, Namenskopie
 BEGIN;
 
 DO $$
@@ -28,23 +28,26 @@ BEGIN
   v_id := (v_res->>'insurance_id')::int;
   v_rp := (v_res->>'recurring_payment_id')::int;
 
-  -- TEST 1: Praemie 120 -> 180 (monatlich -15, von der fn abgeleitet); Recurring-Sync + monthly_equivalent neu (15).
-  -- Ein mitgeliefertes recurring_amount (-999) wird ignoriert (eine Rechen-Adresse: fn_insurance_period_amount).
+  -- TEST 1: Jahresbeitrag 120 -> 180 ab 01.02. (monatlich -15, von der fn abgeleitet) -> neues Glied, der alte Beitrag
+  -- bleibt Historie; Jahres-/Monatswert der Uebersicht abgeleitet (180/15). recurring_amount (-999) wird ignoriert.
   SELECT finance.fn_set_insurance(jsonb_build_object(
-    'insurance_id', v_id, 'annual_premium', 180, 'recurring_amount', -999
+    'insurance_id', v_id, 'annual_premium', 180, 'recurring_amount', -999, 'effective_from', '2026-02-01'
   )) INTO v_res;
-  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'split')::boolean IS DISTINCT FROM true
+     OR (v_res->>'premium_amount')::numeric IS DISTINCT FROM 15.00 OR (v_res->>'annual_premium')::numeric IS DISTINCT FROM 180.00 THEN
     RAISE EXCEPTION 'FAIL set_insurance [ok]: %', v_res;
   END IF;
-  SELECT annual_premium, monthly_equivalent INTO v_prem, v_me FROM finance.insurances WHERE id = v_id;
+  SELECT annual_premium, monthly_equivalent INTO v_prem, v_me FROM finance.active_insurances WHERE id = v_id;
   IF v_prem IS DISTINCT FROM 180 OR v_me IS DISTINCT FROM 15 THEN
     RAISE EXCEPTION 'FAIL set_insurance [premium/me]: premium=% me=% (erwartet 180/15)', v_prem, v_me;
   END IF;
-  SELECT amount INTO v_amt FROM finance.recurring_payments WHERE id = v_rp;
-  IF v_amt IS DISTINCT FROM -15 THEN
-    RAISE EXCEPTION 'FAIL set_insurance [recurring-sync]: amount erwartet -15, got %', v_amt;
+  IF (SELECT amount::text || '|' || valid_to FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM '-10.00|2026-02-01'
+     OR (SELECT amount FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int) IS DISTINCT FROM -15.00
+     OR (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_id) IS DISTINCT FROM (v_res->>'recurring_payment_id')::int THEN
+    RAISE EXCEPTION 'FAIL set_insurance [historie]: alter Beitrag -10 bis 01.02., Kopf -15 erwartet';
   END IF;
-  RAISE NOTICE 'PASS set_insurance [Praemie 180, me=15, recurring amount=-15]';
+  v_rp := (v_res->>'recurring_payment_id')::int;
+  RAISE NOTICE 'PASS set_insurance [Beitrag 180 ab 01.02. -> neues Glied, Historie -10, Uebersicht 180/15]';
 
   -- TEST 2: Kuendigung (status=cancelled, valid_to) -> Versicherung cancelled + recurring paused + valid_to
   SELECT finance.fn_set_insurance(jsonb_build_object(
@@ -137,12 +140,21 @@ BEGIN
   IF v_rpstat IS DISTINCT FROM 'active' OR v_rpto IS DISTINCT FROM CURRENT_DATE + 61 THEN
     RAISE EXCEPTION 'FAIL set_insurance [kuenftige Kuendigung]: rp status=% valid_to=% (erwartet active/+61 exklusiv)', v_rpstat, v_rpto;
   END IF;
+  -- Rhythmus OHNE neuen Betrag -> ok:false (Ratenzuschlag; das LLM rechnet nicht um); mit Betrag je Abbuchung -> neues Glied
   SELECT finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'schedule_unit', 'year')) INTO v_res;
-  SELECT amount INTO v_amt FROM finance.recurring_payments WHERE id = v_rp;
-  IF v_amt IS DISTINCT FROM -120 THEN
-    RAISE EXCEPTION 'FAIL set_insurance [rhythmus]: jaehrlich aus Praemie 120 -> -120 erwartet, got %', v_amt;
-  END IF;
-  RAISE NOTICE 'PASS set_insurance [Vertragsende gespiegelt, kuenftige Kuendigung pausiert nicht, Rhythmus-Rate abgeleitet]';
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL set_insurance [rhythmus ohne betrag]: ok:false erwartet, got %', v_res; END IF;
+  SELECT finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'schedule_unit', 'year', 'premium_amount', 115)) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT amount::text || '|' || schedule_unit FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int)
+        IS DISTINCT FROM '-115.00|year' THEN
+    RAISE EXCEPTION 'FAIL set_insurance [rhythmus mit betrag]: got %', v_res; END IF;
+  -- Umbenennung fuehrt 'Versicherung <Name>' an allen Gliedern mit
+  SELECT finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'name', '__test_set_ins_neu__')) INTO v_res;
+  IF EXISTS (SELECT 1 FROM finance.recurring_payments WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp))
+             AND name <> 'Versicherung __test_set_ins_neu__') THEN
+    RAISE EXCEPTION 'FAIL set_insurance [rename]: Namenskopie nicht mitgefuehrt'; END IF;
+  RAISE NOTICE 'PASS set_insurance [Vertragsende an der Kette, kuenftige Kuendigung pausiert nicht, Rhythmus nur mit Betrag, Umbenennung]';
 
 END $$;
 

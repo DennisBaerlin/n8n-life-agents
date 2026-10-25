@@ -14,7 +14,10 @@
 # Fehlercode · (f) Kanarien-Text + Test-Schluessel nie im Journal (auch bei kaputtem JSON) · (g) 400 mit cache_control
 # -> einmal ohne Einfuegen wiederholt (fallback) · (i) ungueltiges Anfrage-Ziel -> 400 ohne Absturz · (j) Agenten-Anfrage ->
 # tool_choice auto + disable_parallel_tool_use, eigener Wert unveraendert · (k) Keep-Alive (eigene Unit, Takt 1,5 s):
-# Agenten-Anfang mit max_tokens 0 angestupst, Einmal-Aufruf nicht gemerkt, KEEPALIVE_HOURS=0 = aus · (h) echter Upstream: POST /v1/messages/count_tokens (kostenlos)
+# Agenten-Anfang mit max_tokens 0 angestupst, Einmal-Aufruf nicht gemerkt, KEEPALIVE_HOURS=0 = aus · (l) Workflow-Kennung
+# (Kosten-Report): Kennzeile `<<la-wf:NAME>>` (String-/Block-System, Kette nur mit Kennzeile, 400-Wiederholung) und Header
+# x-lifeagents-workflow erreichen upstream nie, wf steht in der usage-Zeile + usage.jsonl, GET /__usage blaettert,
+# Keep-Alive-Schluessel mit/ohne Kennzeile gleich · (h) echter Upstream: POST /v1/messages/count_tokens (kostenlos)
 # mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP).
 #
 # Kein LLM-Credit (count_tokens ist laut Anthropic kostenlos). Exit = Anzahl FAIL.
@@ -36,6 +39,7 @@ $Container = $conn.Container
 $GwJs     = '/usr/local/lib/lifeagents-llm-gateway/server.js'
 $MockDir  = '/opt/gwtest'
 $MockLog  = '/tmp/gwtest_mock.jsonl'
+$UsageDir = '/tmp/gwtest_usage'
 $Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka' }
 $Canary   = 'CANARY_7f3a9c_PROMPT'
 $FakeKey  = 'sk-ant-test-CANARYKEY-0000'
@@ -76,7 +80,7 @@ function Start-TestUnit([string]$Unit, [string[]]$Env, [string]$Js, [int]$Port) 
 
 # Sendet einen Body (String, roh) an einen Gateway-Port; liefert @{ Status; Body }.
 $script:reqN = 0
-function Send-Gw([int]$Port, [string]$Path, [string]$RawBody, [string]$ApiKey = $FakeKey) {
+function Send-Gw([int]$Port, [string]$Path, [string]$RawBody, [string]$ApiKey = $FakeKey, [string]$Workflow = '') {
     $script:reqN++
     $hostFile = Join-Path $env:TEMP "gwtest_req_$($script:reqN).json"
     [System.IO.File]::WriteAllText($hostFile, $RawBody, $Utf8NoBom)
@@ -85,6 +89,7 @@ function Send-Gw([int]$Port, [string]$Path, [string]$RawBody, [string]$ApiKey = 
     Remove-Item $hostFile -ErrorAction SilentlyContinue
     # Schluessel per curl-Config auf stdin (nie im argv, /proc/<pid>/cmdline ist lesbar).
     $cfg = "header = `"x-api-key: $ApiKey`"`nheader = `"anthropic-version: 2023-06-01`"`nheader = `"content-type: application/json`"`n"
+    if ($Workflow) { $cfg += "header = `"x-lifeagents-workflow: $Workflow`"`n" }
     $r = Invoke-Native docker @('exec', '-i', $Container, 'curl', '-s', '-K', '-', '-o', '/tmp/gwtest_resp', '-w', '%{http_code}',
         '-X', 'POST', "http://127.0.0.1:$Port$Path", '--data-binary', "@$inC") -StdIn $cfg
     $body = ((Invoke-InC @('cat', '/tmp/gwtest_resp')).Output -join "`n")
@@ -118,7 +123,8 @@ Invoke-InC @('mkdir', '-p', $MockDir) | Out-Null
 Invoke-Native docker @('cp', (Join-Path $RepoRoot 'tests\mock_llm\server.js'), "${Container}:$MockDir/server.js") | Out-Null
 Invoke-InC @('sh', '-c', "echo '[]' > $MockDir/scenarios.json") | Out-Null
 Start-TestUnit $Units.mock @('MOCK_LLM_PORT=8096', "MOCK_LLM_LOG=$MockLog", "MOCK_LLM_SCENARIOS=$MockDir/scenarios.json") "$MockDir/server.js" 8096
-Start-TestUnit $Units.gw @('LLM_GATEWAY_PORT=8095', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0') $GwJs 8095
+Invoke-InC @('sh', '-c', "rm -rf $UsageDir && mkdir -p $UsageDir") | Out-Null
+Start-TestUnit $Units.gw @('LLM_GATEWAY_PORT=8095', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', "LLM_GATEWAY_USAGE_DIR=$UsageDir") $GwJs 8095
 Start-TestUnit $Units.dead @('LLM_GATEWAY_PORT=8097', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:1', 'LLM_GATEWAY_KEEPALIVE_HOURS=0') $GwJs 8097
 # (k) Keep-Alive mit verkuerztem Takt (1,5 s statt 55 Min), sonst identisch.
 Start-TestUnit $Units.ka @('LLM_GATEWAY_PORT=8099', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=1', 'LLM_GATEWAY_KEEPALIVE_EVERY_MS=1500') $GwJs 8099
@@ -223,12 +229,50 @@ try {
     }
     else { Fail "keepalive-Anfragen=$($kaReq.Count) erste=$($k0 | ConvertTo-Json -Compress -Depth 5) health=$($hKa | ConvertTo-Json -Compress -Depth 4) aus=$($hOff.keepalive | ConvertTo-Json -Compress) usage=$($kaUse.Count)" }
 
+    # (l) Workflow-Kennung (Kosten-Report): Kennzeile + Header erreichen upstream nie, wf wird gemessen
+    Write-Host '  (l) Workflow-Kennung: Kennzeile/Header nie upstream, wf in usage + usage.jsonl, /__usage, Keep-Alive-Schluessel stabil'
+    $lOk = $true; $lWhy = @()
+    Clear-MockLog
+    $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = "<<la-wf:agent.demo_agent>>`nSYS persona: butler"; tools = @($tool1); messages = $msgs }))
+    $m = Get-LastMockEntry; $u = Get-LastUsage $Units.gw
+    if (-not ($res.Status -eq '200' -and $m.wf_tag_seen -eq $false -and $m.system_tail -eq 'SYS persona: butler' -and $m.markers.system -eq '1h' -and $u.wf -eq 'agent.demo_agent')) { $lOk = $false; $lWhy += "string mock=$($m | ConvertTo-Json -Compress -Depth 4) wf=$($u.wf)" }
+    Clear-MockLog
+    $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = @([ordered]@{ type = 'text'; text = "<<la-wf:agent.guide>>`nBLOCK" }); tools = @($tool1); messages = $msgs }))
+    $m = Get-LastMockEntry; $u = Get-LastUsage $Units.gw
+    if (-not ($m.wf_tag_seen -eq $false -and $m.system_tail -eq 'BLOCK' -and $u.wf -eq 'agent.guide')) { $lOk = $false; $lWhy += "block mock=$($m | ConvertTo-Json -Compress -Depth 4)" }
+    Clear-MockLog
+    $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; system = "<<la-wf:agent.advisor.cron_review>>`n"; messages = $msgs }))
+    $m = Get-LastMockEntry; $u = Get-LastUsage $Units.gw
+    if (-not ($m.wf_tag_seen -eq $false -and $m.has_system -eq $false -and $u.wf -eq 'agent.advisor.cron_review')) { $lOk = $false; $lWhy += "kette mock=$($m | ConvertTo-Json -Compress -Depth 4)" }
+    Clear-MockLog
+    $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = 'SYS'; messages = $msgs })) -Workflow 'agent.tool_web_search'
+    $m = Get-LastMockEntry; $u = Get-LastUsage $Units.gw
+    if (-not ($m.wf_header_seen -eq $false -and $u.wf -eq 'agent.tool_web_search')) { $lOk = $false; $lWhy += "header mock=$($m | ConvertTo-Json -Compress -Depth 4) wf=$($u.wf)" }
+    Clear-MockLog
+    $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = "<<la-wf:agent.demo_agent>>`nSYS"; tools = @($tool1); messages = @(@{ role = 'user'; content = '__mock_400_cache_control__' }) }))
+    $all = @((Invoke-InC @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' } | ForEach-Object { $_ | ConvertFrom-Json })
+    $u = Get-LastUsage $Units.gw
+    if (-not ($res.Status -eq '200' -and $all.Count -eq 2 -and @($all | Where-Object { $_.wf_tag_seen }).Count -eq 0 -and $u.fallback -eq $true -and $u.wf -eq 'agent.demo_agent')) { $lOk = $false; $lWhy += "400 n=$($all.Count) fallback=$($u.fallback)" }
+    # usage.jsonl + /__usage (Seite 1 von 2, dann der Rest)
+    $p1 = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8095/__usage?limit=2')).Output -join '') | ConvertFrom-Json
+    $p2 = ((Invoke-InC @('curl', '-s', "http://127.0.0.1:8095/__usage?limit=5000&after=$($p1.next_after)")).Output -join '') | ConvertFrom-Json
+    $fileN = [int](((Invoke-InC @('sh', '-c', "wc -l < $UsageDir/usage.jsonl")).Output -join '').Trim())
+    if (-not ($p1.rows.Count -eq 2 -and $p1.has_more -eq $true -and ($p1.rows.Count + $p2.rows.Count) -eq $fileN -and $p2.has_more -eq $false -and
+              @($p2.rows | Where-Object { $_.wf -eq 'agent.tool_web_search' }).Count -eq 1 -and $p1.rows[0].id -match '^[0-9]{13}-[0-9a-f]{6}-[0-9]{6}$')) {
+        $lOk = $false; $lWhy += "usage p1=$($p1.rows.Count)/$($p1.has_more) p2=$($p2.rows.Count) datei=$fileN" }
+    # Keep-Alive-Schluessel: derselbe Anfang wie (k), jetzt mit Kennzeile -> weiterhin genau 1 Eintrag
+    $null = Send-Gw 8099 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = "<<la-wf:agent.monitor>>`nSYS"; tools = @($tool1, $tool2); messages = $msgs }))
+    $hKa2 = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8099/__health')).Output -join '') | ConvertFrom-Json
+    if ($hKa2.keepalive.entries -ne 1) { $lOk = $false; $lWhy += "keepalive entries=$($hKa2.keepalive.entries) (erwartet 1)" }
+    if ($lOk) { Pass 'Kennzeile (String/Block/Kette/400) + Header nie upstream; wf gemessen; /__usage blaettert; 1 Keep-Alive-Eintrag' }
+    else { Fail ($lWhy -join ' | ') }
+
     # (f) Privacy: Kanarien + Schluessel nie im Journal (inkl. kaputtem JSON)
     Write-Host '  (f) Privacy: Prompt-Inhalt und Schluessel nie im Journal'
     $res = Send-Gw 8095 '/v1/messages' ('{"model":"x","messages":[{"role":"user","content":"' + $Canary + '"}')   # kaputtes JSON
-    $all = @(Get-UnitJournal $Units.gw) + @(Get-UnitJournal $Units.dead) + @(Get-UnitJournal $Units.ka)
+    $all = @(Get-UnitJournal $Units.gw) + @(Get-UnitJournal $Units.dead) + @(Get-UnitJournal $Units.ka) + @((Invoke-InC @('cat', "$UsageDir/usage.jsonl")).Output)
     $leak = @($all | Where-Object { $_ -match 'CANARY' })
-    if ($leak.Count -eq 0 -and (@($all) -match '"code":"parse_error"')) { Pass 'kein Inhalt/Schluessel im Journal, kaputtes JSON nur als parse_error' }
+    if ($leak.Count -eq 0 -and (@($all) -match '"code":"parse_error"')) { Pass 'kein Inhalt/Schluessel im Journal + usage.jsonl, kaputtes JSON nur als parse_error' }
     else { Fail "Journal enthaelt Inhalt/Schluessel: $($leak -join ' | ')" }
 
     # (i) ungueltiges Anfrage-Ziel ('//host/…') -> 400, Prozess lebt weiter (kein uncaughtException-Neustart)

@@ -201,7 +201,15 @@
                   {
                       "parameters":  {
                                          "promptType":  "define",
-                                         "text":  "={{ $json.prompt }}"
+                                         "text":  "={{ $json.prompt }}",
+                                         "messages":  {
+                                                          "messageValues":  [
+                                                                                {
+                                                                                    "type":  "SystemMessagePromptTemplate",
+                                                                                    "message":  "\u003c\u003cla-wf:agent.guide.cron_learn_context\u003e\u003e\n"
+                                                                                }
+                                                                            ]
+                                                      }
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.chainLlm",
                       "typeVersion":  1.7,

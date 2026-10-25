@@ -408,6 +408,20 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> /reminders-Texte]: Titel=% Fenster=%', COALESCE(v_out,'<null>'), COALESCE(v_out2,'<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> /reminders-Texte (fn_ui_texts + Sprach-Kette + general.reminders_from)]';
 
+  -- (3c-k) /kosten: core.sub_send_cost_report liest den Kosten-Report unter core_ro ueber das DEFINER-Fenster
+  -- core.fn_get_llm_cost_report (Grant in util_create_core_ro.sql). Unbekannter Absender -> owner_only (kein Fehler).
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    SELECT (core.fn_get_llm_cost_report('{"chat_id":"999999999"}'::jsonb)->>'reason') INTO v_out;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_llm_cost_report]: Fenster bricht unter core_ro -- %', SQLERRM;
+  END;
+  IF v_out IS DISTINCT FROM 'owner_only' THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_llm_cost_report]: erwartet owner_only, got %', COALESCE(v_out,'<null>'); END IF;
+  RAISE NOTICE 'PASS [core_ro -> core.fn_get_llm_cost_report (Kosten-Report lesbar)]';
+
   -- ===== (3d) WS-3 (Onboarding-Sequenzierung): core_ro -> core.fn_onboarding_pending_packages =====
   -- Der Guide bietet nach Haushalts-Abschluss generisch die offenen Paket-Onboardings an -> liest die
   -- Discovery-fn unter core_ro. Das DEFINER-Fenster REVOKEt PUBLIC + grantet NUR core_ro (util_create_core_ro);

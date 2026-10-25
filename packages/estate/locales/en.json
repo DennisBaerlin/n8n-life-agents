@@ -208,6 +208,8 @@
   "estate.enum.health_insurance_type.gkv": "statutory (GKV)",
   "estate.enum.health_insurance_type.pkv": "private (PKV)",
   "estate.package.name": "Estate & provision",
+  "estate.wf.estate_advisor": "Estate",
+  "estate.wf.estate_cron_review_register": "Estate review",
   "estate.package.summary": "Emergency register (powers of attorney, contracts, contacts) and support in the event of death or incapacity",
   "estate.onboarding.documents": "Provision documents",
   "estate.onboarding.insurance_check": "Insurance check (finances)",

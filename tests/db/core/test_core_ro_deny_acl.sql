@@ -20,6 +20,10 @@ BEGIN
      OR to_regclass('agent.hitl_pending') IS NULL THEN
     RAISE EXCEPTION 'FAIL acl [Deny-Listen-Tabelle fehlt — Test prueft ins Leere]';
   END IF;
+  -- /kosten: die KI-Nutzung je Workflow (Tagesablauf des Owners) nur ueber core.fn_get_llm_cost_report (Owner-Gate)
+  IF to_regclass('core.llm_usage') IS NULL OR has_table_privilege('core_ro', 'core.llm_usage', 'SELECT') THEN
+    RAISE EXCEPTION 'FAIL acl [core_ro liest core.llm_usage direkt (oder Tabelle fehlt) — Deny-Liste pruefen]';
+  END IF;
   IF has_table_privilege('context_ro', 'agent.core_contexts', 'SELECT') THEN
     RAISE EXCEPTION 'FAIL acl [context_ro liest agent.core_contexts direkt — util_create_context_ro.sql pruefen]';
   END IF;

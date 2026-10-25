@@ -78,8 +78,10 @@ install_llm_gateway() {
     || die "LLM-Gateway antwortet nicht (${LLM_GATEWAY_URL}/__health) — Abbruch, bevor die Anthropic-Credential umgestellt wird. Diagnose: journalctl -u ${LLM_GATEWAY_UNIT_NAME} -n 50"
 }
 
-# uninstall_llm_gateway — Dienst stoppen + Unit + Code entfernen (idempotent; von uninstall.sh gerufen).
+# uninstall_llm_gateway — Dienst stoppen + Unit + Code + Mitschrift (StateDirectory, usage.jsonl) entfernen
+# (idempotent; von uninstall.sh gerufen). Mit DynamicUser liegt der Ordner unter /var/lib/private, /var/lib traegt
+# nur den Link.
 uninstall_llm_gateway() {
   _u_stop_unit "${LLM_GATEWAY_UNIT_NAME}.service" 1
-  rm -rf "$LLM_GATEWAY_DIR" 2>/dev/null || true
+  rm -rf "$LLM_GATEWAY_DIR" "/var/lib/${LLM_GATEWAY_UNIT_NAME}" "/var/lib/private/${LLM_GATEWAY_UNIT_NAME}" 2>/dev/null || true
 }

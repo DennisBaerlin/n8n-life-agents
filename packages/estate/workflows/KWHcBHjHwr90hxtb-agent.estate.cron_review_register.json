@@ -201,7 +201,15 @@
                   {
                       "parameters":  {
                                          "promptType":  "define",
-                                         "text":  "={{ \u0027Rewrite the following yearly estate-preparedness reminder as a short, warm, reassuring Telegram message, written in the language \u0027 + $json.language_label + \u0027. Keep German legal terms (e.g. Vorsorgevollmacht, Patientenverfuegung) in German. PLAIN TEXT only (no markdown, no asterisks). Keep EVERY number and every concrete item EXACTLY as given. Maximum 16 lines. Text:\\n\\n\u0027 + $json.det_text }}"
+                                         "text":  "={{ \u0027Rewrite the following yearly estate-preparedness reminder as a short, warm, reassuring Telegram message, written in the language \u0027 + $json.language_label + \u0027. Keep German legal terms (e.g. Vorsorgevollmacht, Patientenverfuegung) in German. PLAIN TEXT only (no markdown, no asterisks). Keep EVERY number and every concrete item EXACTLY as given. Maximum 16 lines. Text:\\n\\n\u0027 + $json.det_text }}",
+                                         "messages":  {
+                                                          "messageValues":  [
+                                                                                {
+                                                                                    "type":  "SystemMessagePromptTemplate",
+                                                                                    "message":  "\u003c\u003cla-wf:agent.estate.cron_review_register\u003e\u003e\n"
+                                                                                }
+                                                                            ]
+                                                      }
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.chainLlm",
                       "typeVersion":  1.7,

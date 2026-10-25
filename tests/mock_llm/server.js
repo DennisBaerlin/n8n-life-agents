@@ -255,7 +255,7 @@ const server = http.createServer((req, res) => {
     // Test-Ausloeser (llm_gateway_test.ps1): Anthropic lehnt die Haltepunkte ab -> der Gateway muss EINMAL ohne
     // Einfuegen wiederholen. Ohne Marker (die Wiederholung) normal weiter.
     if (raw.indexOf('__mock_400_cache_control__') !== -1 && (markers.top || markers.tool || markers.system)) {
-      logLine({ url: req.url, dialect: 'anthropic', markers, decision: 'forced-400-cache_control' });
+      logLine({ url: req.url, dialect: 'anthropic', markers, decision: 'forced-400-cache_control', wf_tag_seen: raw.indexOf('<<la-wf:') !== -1 });
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'mock: cache_control rejected' } }));
       return;
@@ -278,6 +278,11 @@ const server = http.createServer((req, res) => {
       : (Array.isArray(body.system) ? body.system.map((s) => (s && s.text) || '').join('\n') : ''));
     logLine({ url: req.url, dialect: 'anthropic', offered: out.offered, task: out.task, decision: out.why, markers,
       system_tail: sysText.slice(-300),
+      // Workflow-Kennung des Gateways (Kosten-Report): darf upstream NIE ankommen, weder als Kennzeile im Body noch
+      // als Header -> llm_gateway_test + die Mock-Tiers pruefen beide Felder.
+      wf_tag_seen: raw.indexOf('<<la-wf:') !== -1,
+      wf_header_seen: req.headers['x-lifeagents-workflow'] !== undefined,
+      has_system: !!(body && body.system !== undefined),
       tool_choice: (body && body.tool_choice) || null,      // llm_gateway_test (j): ein Werkzeug je Antwort
       max_tokens: body ? body.max_tokens : null });          // llm_gateway_test (k): Keep-Alive = max_tokens 0
     // Streaming (body.stream) -> echtes Anthropic-SSE; sonst JSON. Recherche-verifiziert: der Node ruft

@@ -77,6 +77,11 @@ BEGIN
     LOOP
         EXECUTE format('REVOKE ALL ON %s FROM core_ro', v_t);
     END LOOP;
+    -- /kosten: core.llm_usage zeigt, wann welcher Assistent lief (Tagesablauf des Owners) -> nur ueber das DEFINER-Fenster
+    -- core.fn_get_llm_cost_report mit Owner-Gate, nie roh fuer den Frei-SQL-Pfad (ein Mitglied fragt den Guide).
+    IF to_regclass('core.llm_usage') IS NOT NULL THEN
+        REVOKE ALL ON core.llm_usage FROM core_ro;
+    END IF;
 END $$;
 
 -- Monitor-Specs (Security-Audit 2026-10): agent.fn_monitor_ro_eval fuehrt die gespeicherte Trigger-Abfrage als
@@ -163,6 +168,14 @@ END $$;
 DO $$ BEGIN
     IF to_regprocedure('agent.fn_get_hitl_pending_state(bigint)') IS NOT NULL THEN
         GRANT EXECUTE ON FUNCTION agent.fn_get_hitl_pending_state(bigint) TO core_ro;
+    END IF;
+END $$;
+
+-- /kosten: der Sub core.sub_send_cost_report liest den Kosten-Report unter __CRED_POSTGRES_CORE_RO__ ueber das
+-- DEFINER-Fenster core.fn_get_llm_cost_report(jsonb) (Owner-Gate in der fn). Grant am Rollen-Ort (Muster oben).
+DO $$ BEGIN
+    IF to_regprocedure('core.fn_get_llm_cost_report(jsonb)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_get_llm_cost_report(jsonb) TO core_ro;
     END IF;
 END $$;
 

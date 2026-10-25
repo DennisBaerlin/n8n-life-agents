@@ -134,7 +134,15 @@
                   {
                       "parameters":  {
                                          "promptType":  "define",
-                                         "text":  "={{ $(\u0027Prepare lanes\u0027).item.json.prompt_a || \u0027Reply with exactly: []\u0027 }}"
+                                         "text":  "={{ $(\u0027Prepare lanes\u0027).item.json.prompt_a || \u0027Reply with exactly: []\u0027 }}",
+                                         "messages":  {
+                                                          "messageValues":  [
+                                                                                {
+                                                                                    "type":  "SystemMessagePromptTemplate",
+                                                                                    "message":  "\u003c\u003cla-wf:agent.tool_expert_panel\u003e\u003e\n"
+                                                                                }
+                                                                            ]
+                                                      }
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.chainLlm",
                       "typeVersion":  1.7,
@@ -177,7 +185,15 @@
                   {
                       "parameters":  {
                                          "promptType":  "define",
-                                         "text":  "={{ $(\u0027Prepare lanes\u0027).item.json.prompt_b || \u0027Reply with exactly: []\u0027 }}"
+                                         "text":  "={{ $(\u0027Prepare lanes\u0027).item.json.prompt_b || \u0027Reply with exactly: []\u0027 }}",
+                                         "messages":  {
+                                                          "messageValues":  [
+                                                                                {
+                                                                                    "type":  "SystemMessagePromptTemplate",
+                                                                                    "message":  "\u003c\u003cla-wf:agent.tool_expert_panel\u003e\u003e\n"
+                                                                                }
+                                                                            ]
+                                                      }
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.chainLlm",
                       "typeVersion":  1.7,

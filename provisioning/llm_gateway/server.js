@@ -3,7 +3,7 @@
 // WARUM: der lmChatAnthropic-Node v1.5 (unser Pin; geprueft 2.21.7 + 2.44.4) kennt keine Caching-Option; sein einziger Hebel ist die
 // Credential-"Base URL" (`credentials.url` -> anthropicApiUrl). inject_credentials.sh biegt sie auf diesen
 // Dienst (127.0.0.1). Er setzt die Cache-Haltepunkte und reicht die Anfrage unveraendert an Anthropic weiter —
-// Inhalte gehen NUR an Anthropic (Privacy-Hard-Rule), dieser Dienst speichert nichts davon.
+// Inhalte gehen NUR an Anthropic (Privacy-Hard-Rule), dieser Dienst speichert nichts davon (nur Zahlen, s. MESSUNG).
 // Ab n8n 2.37 gibt es eine eingebaute Option, die setzt aber nur den mitwandernden oberen Haltepunkt → kein
 // Treffer ueber Gespraeche/Testfaelle hinweg (Anthropic schreibt Cache-Eintraege NUR an Haltepunkten).
 //
@@ -26,16 +26,26 @@
 //   EINMAL ohne Einfuegen wiederholen (400er werden nicht berechnet), Zeile fallback:true.
 // MESSUNG (12-Factor): je Anfrage EINE JSON-Zeile {"ev":"usage",...} auf stdout → systemd-Journal. Bewusst die
 //   Anthropic-Feldnamen (input_tokens = UNGECACHTER Rest; Gesamt-Eingabe = input + cache_creation + cache_read),
-//   nicht OTel-GenAI (dort noch "Development", einziger Leser ist der Kosten-Report).
-// PRIVACY: es werden NIE Header, Schluessel, Prompt- oder Antwort-Inhalte geloggt (der Keep-Alive haelt den Anfang
-//   einer Agenten-Anfrage samt Auth-Header nur im Arbeitsspeicher, nie das Gespraech) — Fehler nur als feste Codes
-//   (nie err.message: Node-Parse-Fehler zitieren Eingabe-Stuecke).
+//   nicht OTel-GenAI (dort noch "Development"). Zusaetzlich haengt sie (mit id + Workflow) an
+//   $STATE_DIRECTORY/usage.jsonl (systemd StateDirectory, 62 Tage, atomar gekuerzt); der /kosten-Sub holt sie per
+//   GET /__usage (nur 127.0.0.1) nach core.llm_usage (core.fn_import_llm_usage), die DB rechnet die Kosten.
+// WORKFLOW-KENNUNG (Kosten je Workflow): HTTP-Knoten senden Header x-lifeagents-workflow; lmChatAnthropic kann keinen
+//   Header je Knoten setzen (n8n-Quirk) -> der Build setzt eine KONSTANTE Kennzeile `<<la-wf:NAME>>` an den Anfang der
+//   System-Nachricht. stripWfTag entfernt sie direkt nach dem Parsen, VOR Caching/Keep-Alive-Schluessel, und der
+//   bereinigte Body ist das "Original" aller Rueckfallpfade -> Anthropic und das Modell sehen byte-gleiche Prompts,
+//   der gecachte Anfang aendert sich nicht. Header und Kennzeile gehen nie an Anthropic.
+// PRIVACY: es werden NIE Header, Schluessel, Prompt- oder Antwort-Inhalte geloggt oder gespeichert (der Keep-Alive haelt
+//   den Anfang einer Agenten-Anfrage samt Auth-Header nur im Arbeitsspeicher, nie das Gespraech; usage.jsonl traegt nur
+//   Zahlen, Modell, Workflow-Name, Zeit) — Fehler nur als feste Codes (nie err.message: Node-Parse-Fehler zitieren
+//   Eingabe-Stuecke).
 //
 // Bewusst dependency-frei (nur Node-Core): Node ist durch n8n garantiert, kein npm install, keine Lieferkette.
 'use strict';
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const fs = require('fs');
+const pathMod = require('path');
 
 const PORT = parseInt(process.env.LLM_GATEWAY_PORT || '8090', 10);
 const UPSTREAM = new URL(process.env.LLM_GATEWAY_UPSTREAM || 'https://api.anthropic.com');
@@ -51,8 +61,22 @@ const KA_HEADERS = ['x-api-key', 'authorization', 'anthropic-version', 'anthropi
 const MAX_BODY = 32 * 1024 * 1024;           // Anfrage-Deckel (PDF-Belege als base64)
 const MAX_USAGE_SCAN = 16 * 1024 * 1024;     // JSON-Antworten nur bis hierhin fuer usage puffern
 // Hop-by-hop + von uns neu gesetzte Header (RFC 9110 §7.6.1); accept-encoding → identity, damit usage lesbar bleibt.
+// x-lifeagents-workflow = unsere Workflow-Kennung (nur fuer die Messung, nie an Anthropic).
+const WF_HEADER = 'x-lifeagents-workflow';
 const DROP_REQ = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer',
-  'upgrade', 'host', 'content-length', 'accept-encoding']);
+  'upgrade', 'host', 'content-length', 'accept-encoding', WF_HEADER]);
+// Mitschrift fuer den Kosten-Report: systemd StateDirectory= setzt STATE_DIRECTORY; fehlt es (Test-Units ohne
+// LLM_GATEWAY_USAGE_DIR), wird nur ins Journal geschrieben. 62 Tage = 30-Tage-Fenster + Vorperiode + Puffer.
+const USAGE_DIR = process.env.LLM_GATEWAY_USAGE_DIR || process.env.STATE_DIRECTORY || '';
+const USAGE_FILE = USAGE_DIR ? pathMod.join(USAGE_DIR.split(':')[0], 'usage.jsonl') : '';
+const USAGE_KEEP_MS = 62 * 24 * 3600 * 1000;
+const USAGE_PAGE_MAX = 5000;
+// Zeilen-id: 13-stellige Epoch-ms + Prozess-Kennung + Zaehler -> sortierbar und eindeutig ueber Neustarts
+// (dieselbe Form prueft core.llm_usage per CHECK).
+const PROC_ID = crypto.randomBytes(3).toString('hex');
+let usageSeq = 0;
+const WF_TAG = /^<<la-wf:([^>\n]{0,120})>>(?:\n|$)/;
+const WF_NAME = /^[a-z0-9._-]{1,80}$/;
 const DROP_RES = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 
 const client = UPSTREAM.protocol === 'http:' ? http : https;
@@ -63,6 +87,93 @@ function emit(obj) {
   catch (e) { /* Logging darf nie den Request kippen */ }
 }
 function diag(code) { emit({ ev: 'error', code: String(code || 'unknown') }); }
+
+// ---- Mitschrift (Kosten-Report) ------------------------------------------------------------------
+// Eine usage-Zeile: Journal (wie bisher) + an usage.jsonl angehaengt. appendFileSync: geordnet, ohne Puffer, der beim
+// Kuerzen verloren ginge; bei wenigen hundert Zeilen am Tag vernachlaessigbar. Fehler nur als fester Code.
+function recordUsage(obj) {
+  const t = new Date();
+  usageSeq = (usageSeq + 1) % 1000000;
+  const id = String(t.getTime()).padStart(13, '0') + '-' + PROC_ID + '-' + String(usageSeq).padStart(6, '0');
+  const line = Object.assign({ t: t.toISOString(), ev: 'usage', id }, obj);
+  try { process.stdout.write(JSON.stringify(line) + '\n'); } catch (e) { /* Logging darf nie den Request kippen */ }
+  if (!USAGE_FILE) return;
+  try { fs.appendFileSync(USAGE_FILE, JSON.stringify(line) + '\n', { mode: 0o600 }); }
+  catch (e) { diag('usage_write_' + (e && e.code ? e.code : 'error')); }
+}
+// Zeilen aelter als USAGE_KEEP_MS entfernen: tmp-Datei + rename (atomar); synchron, damit kein appendFileSync
+// dazwischen in die alte Datei geht.
+function trimUsageFile() {
+  if (!USAGE_FILE) return;
+  try {
+    let raw;
+    try { raw = fs.readFileSync(USAGE_FILE, 'utf8'); } catch (e) { if (e && e.code === 'ENOENT') return; throw e; }
+    const cutoff = Date.now() - USAGE_KEEP_MS;
+    const lines = raw.split('\n').filter(Boolean);
+    const keep = lines.filter((l) => {
+      try { return Date.parse(JSON.parse(l).t) >= cutoff; } catch (e) { return false; }
+    });
+    if (keep.length === lines.length) return;
+    const tmp = USAGE_FILE + '.tmp';
+    fs.writeFileSync(tmp, keep.length ? keep.join('\n') + '\n' : '', { mode: 0o600 });
+    fs.renameSync(tmp, USAGE_FILE);
+  } catch (e) { diag('usage_trim_' + (e && e.code ? e.code : 'error')); }
+}
+// GET /__usage?after=<id-Praefix>&limit=<n>: Zeilen mit id > after (Text-Vergleich; ids sind sortierbar), aelteste
+// zuerst, hoechstens limit. Antwort {rows, next_after, has_more} = die Pagination des n8n-HTTP-Knotens.
+function usagePage(query) {
+  const after = /^[0-9a-f-]{0,40}$/.test(query.get('after') || '') ? (query.get('after') || '') : '';
+  const lim = Math.min(USAGE_PAGE_MAX, Math.max(1, parseInt(query.get('limit') || '2000', 10) || 2000));
+  let raw = '';
+  if (USAGE_FILE) { try { raw = fs.readFileSync(USAGE_FILE, 'utf8'); } catch (e) { if (!e || e.code !== 'ENOENT') diag('usage_read_' + (e && e.code ? e.code : 'error')); } }
+  // Nur die id je Zeile ausschneiden (recordUsage schreibt sie an fester Stelle, 27 Zeichen) — voll geparst werden nur
+  // die ausgelieferten Zeilen: der Abruf blockiert die Weiterleitung auch bei 60 000 Zeilen nur Millisekunden.
+  const cand = [];
+  for (const l of raw.split('\n')) {
+    const i = l.indexOf('"id":"');
+    if (i < 0) continue;
+    const id = l.slice(i + 6, i + 33);
+    if (id.length === 27 && id > after) cand.push([id, l]);
+  }
+  cand.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const page = [];
+  for (const [, l] of cand.slice(0, lim)) { try { page.push(JSON.parse(l)); } catch (e) { /* kaputte Zeile auslassen */ } }
+  const lastId = cand.length ? cand[Math.min(lim, cand.length) - 1][0] : null;
+  return { rows: page, next_after: lastId || after || null, has_more: cand.length > lim };
+}
+
+// ---- Workflow-Kennung ----------------------------------------------------------------------------
+// Entfernt die Kennzeile `<<la-wf:NAME>>` vom Anfang der System-Nachricht (String oder erster Text-Block) und
+// liefert { found, wf } (wf = NAME nur bei gueltiger Form, sonst null — die Zeile wird trotzdem entfernt). Bleibt
+// danach kein System-Text, faellt das Feld bzw. der Block weg -> exakt der Body ohne Kennzeile. Veraendert in-place.
+function stripWfTag(body) {
+  const take = (text) => {
+    const m = WF_TAG.exec(text);
+    if (!m) return null;
+    return { rest: text.slice(m[0].length), wf: WF_NAME.test(m[1]) ? m[1] : null };
+  };
+  if (typeof body.system === 'string') {
+    const r = take(body.system);
+    if (!r) return { found: false, wf: null };
+    if (r.rest) body.system = r.rest; else delete body.system;
+    return { found: true, wf: r.wf };
+  }
+  if (Array.isArray(body.system)) {
+    const i = body.system.findIndex((b) => b && b.type === 'text' && typeof b.text === 'string');
+    if (i < 0) return { found: false, wf: null };
+    const r = take(body.system[i].text);
+    if (!r) return { found: false, wf: null };
+    if (r.rest) body.system[i] = Object.assign({}, body.system[i], { text: r.rest });
+    else body.system.splice(i, 1);
+    if (body.system.length === 0) delete body.system;
+    return { found: true, wf: r.wf };
+  }
+  return { found: false, wf: null };
+}
+function headerWf(reqHeaders) {
+  const v = reqHeaders[WF_HEADER];
+  return typeof v === 'string' && WF_NAME.test(v) ? v : null;
+}
 
 // ---- Haltepunkte ---------------------------------------------------------------------------------
 function hasMarker(b) { return !!(b && typeof b === 'object' && b.cache_control); }
@@ -155,7 +266,7 @@ function keepAliveKey(body) {
   return crypto.createHash('sha256').update(JSON.stringify([body.model, body.tools, body.system, body.thinking,
     body.output_config, body.tool_choice])).digest('hex');
 }
-function keepAliveRecord(key, ka, reqHeaders, model) {
+function keepAliveRecord(key, ka, reqHeaders, model, wf) {
   const now = Date.now();
   let e = keepAlive.get(key);
   if (!e) {
@@ -172,6 +283,7 @@ function keepAliveRecord(key, ka, reqHeaders, model) {
   e.buf = Buffer.from(JSON.stringify(ka), 'utf8');
   e.headers = headers;
   e.model = model;
+  e.wf = wf;             // Workflow der letzten echten Nutzung -> Kosten der Anstupser landen bei ihm
   e.lastUse = now;
   e.lastRefresh = now;   // die echte Anfrage hat den Eintrag gerade gelesen/geschrieben
 }
@@ -191,7 +303,7 @@ function keepAliveSend(key, e) {
       const status = up.statusCode || 502;
       const usage = emptyUsage();
       try { mergeUsage(usage, JSON.parse(Buffer.concat(parts).toString('utf8')).usage); } catch (x) { /* Nullen */ }
-      emit(Object.assign({ ev: 'usage', model: e.model, stream: false, cached: true, fallback: false, keepalive: true,
+      recordUsage(Object.assign({ wf: e.wf, model: e.model, stream: false, cached: true, fallback: false, keepalive: true,
         status, ms: Date.now() - started }, usage));
       if (status === 200) e.lastRefresh = started; else drop('keepalive_' + status);
     });
@@ -341,7 +453,7 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
     done = true;
     // Keep-Alive merkt sich den Anfang nur nach Erfolg MIT den eingefuegten Haltepunkten (nicht nach dem Fallback).
     if (status === 200 && meta.cached && meta.onOk) { try { meta.onOk(); } catch (e) { diag('keepalive_record_error'); } }
-    emit(Object.assign({ ev: 'usage', model: meta.model, stream: meta.stream, cached: meta.cached,
+    recordUsage(Object.assign({ wf: meta.wf, model: meta.model, stream: meta.stream, cached: meta.cached,
       fallback: meta.fallback, status, ms: Date.now() - meta.started }, usage));
   }
 }
@@ -350,7 +462,16 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/__health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true, upstream: UPSTREAM.origin, static_ttl: STATIC_TTL,
-      keepalive: { on: KA_ON, hours: KA_HOURS, entries: keepAlive.size } }));
+      keepalive: { on: KA_ON, hours: KA_HOURS, entries: keepAlive.size }, usage_file: !!USAGE_FILE }));
+    return;
+  }
+  // Abruf der Mitschrift (nur 127.0.0.1, wie /__health) — VOR der Weiterleitung, sonst ginge der GET an Anthropic.
+  if (req.method === 'GET' && typeof req.url === 'string' && (req.url === '/__usage' || req.url.indexOf('/__usage?') === 0)) {
+    let page;
+    try { page = usagePage(new URL(req.url, 'http://127.0.0.1').searchParams); }
+    catch (e) { diag('usage_page_error'); page = { rows: [], next_after: null, has_more: false }; }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(page));
     return;
   }
   // Pfad-Waechter: nur origin-form ('/…'). Absolute-form oder '//host' wuerde in new URL() den Host ersetzen
@@ -383,25 +504,37 @@ const server = http.createServer((req, res) => {
     if (req.method !== 'POST' || path !== '/v1/messages') { forward(req, res, original, meta, null); return; }
 
     meta.measure = true;
+    meta.wf = headerWf(req.headers);
     let body;
     try { body = JSON.parse(original.toString('utf8')); }
     catch (e) { diag('parse_error'); forward(req, res, original, meta, null); return; }
     if (!body || typeof body !== 'object') { forward(req, res, original, meta, null); return; }
     meta.model = typeof body.model === 'string' ? body.model : null;
     meta.stream = body.stream === true;
+    // Kennzeile ZUERST entfernen: ab hier ist der bereinigte Body das "Original" fuer jeden Pfad (Einmal-Aufruf,
+    // inject_error, 400-Wiederholung) — die Kennzeile erreicht Anthropic nie, Cache-Anfang + Keep-Alive-Schluessel
+    // bleiben byte-gleich zu einer Anfrage ohne Kennzeile.
+    let clean = original;
+    try {
+      const tag = stripWfTag(body);
+      if (tag.found) {
+        if (tag.wf) meta.wf = tag.wf;
+        clean = Buffer.from(JSON.stringify(body), 'utf8');
+      }
+    } catch (e) { diag('wf_tag_error'); forward(req, res, original, meta, null); return; }
     let cached = false;
     let serial = false;
     try { cached = applyCaching(body); serial = applySerialTools(body); }
-    catch (e) { diag('inject_error'); forward(req, res, original, meta, null); return; }
-    if (!cached && !serial) { forward(req, res, original, meta, null); return; }
+    catch (e) { diag('inject_error'); forward(req, res, clean, meta, null); return; }
+    if (!cached && !serial) { forward(req, res, clean, meta, null); return; }
     meta.cached = cached;
     if (cached && KA_ON) {
       try {
         const ka = keepAliveBody(body);
-        if (ka) { const key = keepAliveKey(body); meta.onOk = () => keepAliveRecord(key, ka, req.headers, meta.model); }
+        if (ka) { const key = keepAliveKey(body); meta.onOk = () => keepAliveRecord(key, ka, req.headers, meta.model, meta.wf); }
       } catch (e) { diag('keepalive_prepare_error'); }
     }
-    forward(req, res, Buffer.from(JSON.stringify(body), 'utf8'), meta, original);
+    forward(req, res, Buffer.from(JSON.stringify(body), 'utf8'), meta, clean);
   });
   req.on('error', () => { diag('client_error'); });
 });
@@ -415,7 +548,10 @@ server.requestTimeout = 0;
 process.on('uncaughtException', (e) => { diag(e && e.code ? e.code : 'uncaught'); process.exit(1); });
 
 if (KA_ON) setInterval(keepAliveTick, KA_TICK_MS).unref();
+trimUsageFile();
+setInterval(trimUsageFile, 24 * 3600 * 1000).unref();
 
 server.listen(PORT, '127.0.0.1', () => {
-  emit({ ev: 'start', port: PORT, upstream: UPSTREAM.origin, static_ttl: STATIC_TTL, keepalive_hours: KA_ON ? KA_HOURS : 0 });
+  emit({ ev: 'start', port: PORT, upstream: UPSTREAM.origin, static_ttl: STATIC_TTL, keepalive_hours: KA_ON ? KA_HOURS : 0,
+    usage_file: !!USAGE_FILE });
 });

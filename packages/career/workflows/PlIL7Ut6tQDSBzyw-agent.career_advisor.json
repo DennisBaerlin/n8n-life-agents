@@ -409,7 +409,7 @@
                                          "promptType":  "define",
                                          "text":  "={{ $json.task }}",
                                          "options":  {
-                                                         "systemMessage":  "={{ $json.system_prompt }}",
+                                                         "systemMessage":  "=\u003c\u003cla-wf:agent.career_advisor\u003e\u003e\n{{ $json.system_prompt }}",
                                                          "maxIterations":  12
                                                      }
                                      },

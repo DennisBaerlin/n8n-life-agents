@@ -208,6 +208,8 @@
   "estate.enum.health_insurance_type.gkv": "법정 (GKV)",
   "estate.enum.health_insurance_type.pkv": "민간 (PKV)",
   "estate.package.name": "유산 및 대비",
+  "estate.wf.estate_advisor": "유산",
+  "estate.wf.estate_cron_review_register": "유산 점검",
   "estate.package.summary": "비상 등록부(위임장, 계약, 연락처)와 사망 또는 대비 상황에서의 안내",
   "estate.onboarding.documents": "대비 서류",
   "estate.onboarding.insurance_check": "보험 점검 (재무)",

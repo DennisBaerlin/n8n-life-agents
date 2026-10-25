@@ -1,6 +1,7 @@
 {
   "_comment": "paperless 패키지의 고정 사용자 문구, 한국어 (docs/package-contract.md §3.11). de.json/en.json과 같은 키와 자리표시자 (locale_lint).",
   "paperless.package.name": "문서",
+  "paperless.wf.paperless_assistant": "문서",
   "paperless.package.summary": "에이전트가 기존 Paperless 인스턴스의 문서를 찾고, 읽고, 질문에 답해요",
   "paperless.help.documents.title": "문서",
   "paperless.help.documents.description": "Paperless 인스턴스의 문서를 찾고 읽으며 문서에 관한 질문에 답을 받아요 (읽기 전용, 성인만).",

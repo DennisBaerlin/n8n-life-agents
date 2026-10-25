@@ -321,8 +321,6 @@ function Clear-MockLlmRequests {
 $script:LlmGatewayUnit = 'lifeagents-llm-gateway'
 $script:LlmGatewayHealthUrl = 'http://127.0.0.1:8090/__health'
 $script:LlmCostLog = '.local\llm_cost_log.jsonl'
-# Websuche: 10 $ je 1000 Suchen (https://platform.claude.com/docs/en/about-claude/pricing) — einziger Leser ist dieser Report.
-$script:LlmWebSearchUsd = 0.01
 
 # Get-LlmGatewayHealth — /__health des Gateways im Container ({ok, upstream, static_ttl}) oder $null.
 function Get-LlmGatewayHealth {
@@ -392,8 +390,9 @@ function Get-LlmRequestCost {
     $in = [double]$Row.input_tokens; $cw = [double]$Row.cache_creation_input_tokens; $cr = [double]$Row.cache_read_input_tokens
     $out = [double]$Row.output_tokens
     $w1h = [double]$Row.ephemeral_1h_input_tokens; $w5m = [Math]::Max(0, $cw - $w1h)   # fehlt die Aufteilung -> 5m-Preis
+    # Websuche je Anfrage (web_search_usd_per_request im Modell-Register, gleiche Quelle wie core.fn_get_llm_cost_report).
+    $web = [double]$Row.web_search_requests * [double]$p.web_search_usd_per_request
     if ($p.long_context -and ($in + $cw + $cr) -gt [double]$p.long_context.above_input_tokens) { $p = $p.long_context }
-    $web = [double]$Row.web_search_requests * $script:LlmWebSearchUsd
     $cost = ($in * $p.input + $w5m * $p.cache_write_5m + $w1h * $p.cache_write_1h + $cr * $p.cache_read + $out * $p.output) / 1e6 + $web
     $noCache = (($in + $cw + $cr) * $p.input + $out * $p.output) / 1e6 + $web
     return [pscustomobject]@{ Cost = $cost; NoCache = $noCache }

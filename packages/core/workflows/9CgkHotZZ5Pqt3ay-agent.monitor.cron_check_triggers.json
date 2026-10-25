@@ -185,6 +185,10 @@
                                                                                      {
                                                                                          "name":  "anthropic-version",
                                                                                          "value":  "2023-06-01"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "x-lifeagents-workflow",
+                                                                                         "value":  "={{ $workflow.name }}"
                                                                                      }
                                                                                  ]
                                                               },

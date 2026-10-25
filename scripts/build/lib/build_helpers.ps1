@@ -1847,7 +1847,7 @@ function New-ModelSelectorBundle {
 # Denken: kein thinking-Parameter -> die 5.5-Generation denkt adaptiv; effort steuert die Tiefe.
 # max_tokens grosszuegig (Denken zaehlt mit). Auswertung IMMER ueber Get-AnthropicResultJs (stop_reason!).
 # URL = der lokale LLM-Gateway (provisioning/llm_gateway, 127.0.0.1:8090) statt api.anthropic.com: er misst die
-# Nutzung (Kosten-Report) und reicht unveraendert weiter — gecacht wird hier NICHT (Einmal-Aufruf ohne eigene
+# Nutzung (Kosten-Report, Header x-lifeagents-workflow = Workflow) und reicht unveraendert weiter — gecacht wird hier NICHT (Einmal-Aufruf ohne eigene
 # Werkzeuge; ein Cache-Eintrag wuerde 1,25x/2x kosten und nie gelesen). Im Mock-Tier landet der Aufruf so beim
 # Mock statt kostenpflichtig bei Anthropic.
 
@@ -1913,7 +1913,13 @@ function New-AnthropicMessagesNode {
             authentication = 'predefinedCredentialType'
             nodeCredentialType = 'anthropicApi'
             sendHeaders = $true
-            headerParameters = @{ parameters = @( ,([ordered]@{ name = 'anthropic-version'; value = '2023-06-01' }) ) }
+            # x-lifeagents-workflow: Workflow-Kennung fuer den Kosten-Report (/kosten); der Gateway misst sie und reicht sie
+            # nie an Anthropic weiter (provisioning/llm_gateway/server.js). Agenten/Ketten tragen sie als Kennzeile
+            # (Add-LlmWorkflowTag in workflow_lifecycle.ps1), weil lmChatAnthropic keinen Header je Knoten kann.
+            headerParameters = @{ parameters = @(
+                [ordered]@{ name = 'anthropic-version'; value = '2023-06-01' },
+                [ordered]@{ name = 'x-lifeagents-workflow'; value = '={{ $workflow.name }}' }
+            ) }
             sendBody = $true
             specifyBody = 'json'
             jsonBody = $jsonBody

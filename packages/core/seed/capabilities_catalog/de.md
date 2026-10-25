@@ -86,4 +86,4 @@ Trigger zu beliebigen Themen: Schwellen, Drawdown, Termine, regelmäßige Checks
 - "Welche Überwachungs-Trigger sind gerade aktiv?"
 
 ## Befehle & Backup
-Diese Übersicht jederzeit mit /help (oder /hilfe). Den Haushalt einrichten oder den Stand sehen: /onboarding. Die Sprache der festen Texte ändern: /language (oder /sprache). Den Charakter des Bots wählen (z. B. Butler): /persona. Was der Bot von sich aus schickt, siehst und schaltest du mit /reminders (oder /erinnerungen). Backups deiner Daten laufen verschlüsselt über die Server-Kommandozeile (lifeagents backup export|restore) — nicht mehr über den Chat.
+Diese Übersicht jederzeit mit /help (oder /hilfe). Den Haushalt einrichten oder den Stand sehen: /onboarding. Die Sprache der festen Texte ändern: /language (oder /sprache). Den Charakter des Bots wählen (z. B. Butler): /persona. Was der Bot von sich aus schickt, siehst und schaltest du mit /reminders (oder /erinnerungen). Als Owner siehst du mit /costs (oder /kosten), was die KI in den letzten 7 und 30 Tagen gekostet hat. Backups deiner Daten laufen verschlüsselt über die Server-Kommandozeile (lifeagents backup export|restore) — nicht mehr über den Chat.

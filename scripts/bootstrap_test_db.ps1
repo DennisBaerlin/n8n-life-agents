@@ -289,10 +289,10 @@ try {
     $seedSql = @"
 \set ON_ERROR_STOP on
 BEGIN;
-INSERT INTO agent.ai_models (model_key, provider, n8n_model_id, selector_index, mode)
-SELECT e->>'model_key', e->>'provider', e->>'n8n_model_id', (e->>'selector_index')::int, e->>'mode'
+INSERT INTO agent.ai_models (model_key, provider, n8n_model_id, selector_index, mode, pricing_usd_per_mtok)
+SELECT e->>'model_key', e->>'provider', e->>'n8n_model_id', (e->>'selector_index')::int, e->>'mode', NULLIF(e->'pricing_usd_per_mtok', 'null'::jsonb)
 FROM jsonb_array_elements(`$__boot_ai__`$$aiJson`$__boot_ai__`$::jsonb) e
-ON CONFLICT (model_key) DO UPDATE SET provider=EXCLUDED.provider, n8n_model_id=EXCLUDED.n8n_model_id, selector_index=EXCLUDED.selector_index, mode=EXCLUDED.mode;
+ON CONFLICT (model_key) DO UPDATE SET provider=EXCLUDED.provider, n8n_model_id=EXCLUDED.n8n_model_id, selector_index=EXCLUDED.selector_index, mode=EXCLUDED.mode, pricing_usd_per_mtok=EXCLUDED.pricing_usd_per_mtok;
 SELECT core.fn_config_seed(e)
 FROM jsonb_array_elements(`$__boot_cfg__`$$cfgJson`$__boot_cfg__`$::jsonb) e;
 COMMIT;

@@ -3253,6 +3253,30 @@
                                                                                              "conditions":  [
                                                                                                                 {
                                                                                                                     "id":  "369c8dde-4db1-5c5a-84a4-618220673582",
+                                                                                                                    "leftValue":  "={{ [\u0027/costs\u0027,\u0027/kosten\u0027].includes(($(\u0027Trigger normalize\u0027).item.json.message.text || \u0027\u0027).trim().split(/\\s+/)[0].toLowerCase()) }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "costs",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "6f1fe38c-b3ed-515d-b4ef-6790c843c97c",
                                                                                                                     "leftValue":  "={{ ($(\u0027Trigger normalize\u0027).item.json.message.text || \u0027\u0027).trim().split(/\\s+/)[0].toLowerCase() === \u0027/notfall\u0027 }}",
                                                                                                                     "operator":  {
                                                                                                                                      "operation":  "equals",
@@ -3761,6 +3785,42 @@
                   },
                   {
                       "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Kc7rT2wLq9XpM4vB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Kc7rT2wLq9XpM4vB",
+                                                            "cachedResultName":  "core.sub_send_cost_report"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.message.chat.id) }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       224,
+                                       1300
+                                   ],
+                      "id":  "032b1468-5288-505f-b7c5-d607e46df10c",
+                      "name":  "Send cost report"
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -3865,7 +3925,7 @@
                                          "text":  "={{ $json.chat_message }}",
                                          "options":  {
                                                          "returnIntermediateSteps":  true,
-                                                         "systemMessage":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Runtime flags\\ninterview_advisor: \u0027 + (($(\u0027Interview pin\u0027).item.json.interview_advisor) || \u0027none\u0027) + \u0027\\nonboarding_in_progress: \u0027 + ($(\u0027Onboarding pin\u0027).item.json.onboarding_in_progress === true ? \u0027true\u0027 : \u0027false\u0027) + \u0027\\nCurrent user: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).full_name || \u0027unknown\u0027) + \u0027 (\u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).role || \u0027unknown\u0027) + \u0027)\u0027 + \u0027\\npersona: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).persona || \u0027neutral\u0027) }}"
+                                                         "systemMessage":  "=\u003c\u003cla-wf:agent.orchestrator.main_route\u003e\u003e\n{{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Runtime flags\\ninterview_advisor: \u0027 + (($(\u0027Interview pin\u0027).item.json.interview_advisor) || \u0027none\u0027) + \u0027\\nonboarding_in_progress: \u0027 + ($(\u0027Onboarding pin\u0027).item.json.onboarding_in_progress === true ? \u0027true\u0027 : \u0027false\u0027) + \u0027\\nCurrent user: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).full_name || \u0027unknown\u0027) + \u0027 (\u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).role || \u0027unknown\u0027) + \u0027)\u0027 + \u0027\\npersona: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).persona || \u0027neutral\u0027) }}"
                                                      }
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.agent",
@@ -4161,7 +4221,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**/help, /onboarding, /start (deterministisch, KEIN LLM)**\n\nTEXT -\u003e Command router. Core-Zweige (Host-bespoke, hardkodiert): /help|/hilfe -\u003e Load capabilities (core.help_catalog in der Sprache des Absenders, sonst en; Rahmen-Texte als t-Map) -\u003e Split help (WS-5 Code-Node: splittet an `## `-Kategorie-Grenzen, baut Index-Karte zuerst + (n/N)-Praefix, greedy-Chunks \u003c 4096) -\u003e Send help laeuft PER-ITEM (N sequenzielle Plain-Text-Nachrichten, ## -\u003e \u003e, memory-los). /onboarding (WS-2) -\u003e Send onboarding menu (ruft core.sub_send_onboarding_menu INLINE: Uebersicht in Onboarding-Reihenfolge: Bereiche mit Fortschritt + Weiter-Knopf auf den naechsten offenen Abschnitt, der Sub sendet selbst -\u003e KEIN Relay, KEIN LLM, gratis; nur hier am Eintritt -\u003e kein Spam). bare /start -\u003e Start owner? (Rolle aus Resolve sender): Owner -\u003e Start onboarding read (core.fn_render_welcome = EINE Textquelle mit der Installer-Begruessung: Vorname + installierte Funktionen + naechster Schritt; kind back = Haushalt fertig; Lesefehler -\u003e statischer Ersatztext) -\u003e Welcome-zurueck (Core fertig) bzw. Send welcome new + Buttons [Haushalt einrichten=onboarding:core:household / Was kannst du?=help:overview] (Core offen); Mitglied -\u003e Send welcome member (kein Haushalts-Onboarding). /language|/sprache -\u003e Send language picker (core.sub_send_language_picker Modus self: die Person waehlt ihre EIGENE Sprache, Tipp -\u003e lang:-Callback). /persona -\u003e Send persona picker (core.sub_send_persona_picker: die Person waehlt ihren EIGENEN Bot-Charakter, Tipp -\u003e persona:-Callback; wirkt nur als Runtime-Flag persona im Orchestrator-Prompt = Rahmen, s. persona_styles.md). FESTE TEXTE (Textkatalog Phase B): Resolve sender laedt die t-Maps (t = Absender-Sprache, t_owner = Owner-Sprache), jede feste Antwort liest daraus; die Begruessung kommt aus core.fn_render_welcome(lang) inkl. Knopf-Texte. PAKET-COMMANDS (WS-5 Command-Router-Generalisierung, build-time aus $CommandDispatchList je Manifest-commands.dispatch): je Befehl /\u003ccmd\u003e -\u003e Run command \u003ccmd\u003e (der dispatch.agent des Pakets INLINE ueber agent.sub_dispatch_agent, synthetischer Task, call_depth=1) -\u003e Relay command \u003ccmd\u003e (Markdown-\u003ePlain-Fallback). Der Switch-Fallback (Nicht-Command-Text) steht ZULETZT (fallbackOutput=extra, dynamisch verdrahtet) -\u003e ein neues Paket-Command verschiebt ihn NICHT. Sonst -\u003e normale Agent-Pipeline. DOCUMENT/PHOTO -\u003e Attachment-Marker (das Ziel waehlt der Router nach Dokumentart, s. Doc: Voice/Vision). Backup/Restore CLI-only (lifeagents backup).",
+                                         "content":  "## Ablauf\n**/help, /onboarding, /start (deterministisch, KEIN LLM)**\n\nTEXT -\u003e Command router. Core-Zweige (Host-bespoke, hardkodiert): /help|/hilfe -\u003e Load capabilities (core.help_catalog in der Sprache des Absenders, sonst en; Rahmen-Texte als t-Map) -\u003e Split help (WS-5 Code-Node: splittet an `## `-Kategorie-Grenzen, baut Index-Karte zuerst + (n/N)-Praefix, greedy-Chunks \u003c 4096) -\u003e Send help laeuft PER-ITEM (N sequenzielle Plain-Text-Nachrichten, ## -\u003e \u003e, memory-los). /onboarding (WS-2) -\u003e Send onboarding menu (ruft core.sub_send_onboarding_menu INLINE: Uebersicht in Onboarding-Reihenfolge: Bereiche mit Fortschritt + Weiter-Knopf auf den naechsten offenen Abschnitt, der Sub sendet selbst -\u003e KEIN Relay, KEIN LLM, gratis; nur hier am Eintritt -\u003e kein Spam). bare /start -\u003e Start owner? (Rolle aus Resolve sender): Owner -\u003e Start onboarding read (core.fn_render_welcome = EINE Textquelle mit der Installer-Begruessung: Vorname + installierte Funktionen + naechster Schritt; kind back = Haushalt fertig; Lesefehler -\u003e statischer Ersatztext) -\u003e Welcome-zurueck (Core fertig) bzw. Send welcome new + Buttons [Haushalt einrichten=onboarding:core:household / Was kannst du?=help:overview] (Core offen); Mitglied -\u003e Send welcome member (kein Haushalts-Onboarding). /language|/sprache -\u003e Send language picker (core.sub_send_language_picker Modus self: die Person waehlt ihre EIGENE Sprache, Tipp -\u003e lang:-Callback). /persona -\u003e Send persona picker (core.sub_send_persona_picker: die Person waehlt ihren EIGENEN Bot-Charakter, Tipp -\u003e persona:-Callback; wirkt nur als Runtime-Flag persona im Orchestrator-Prompt = Rahmen, s. persona_styles.md). /costs|/kosten -\u003e Send cost report (core.sub_send_cost_report: KI-Kosten 7/30 Tage je Assistent/Modell/Kostenart aus der Gateway-Mitschrift, Rechnung in der DB, sendet selbst; das Owner-Gate sitzt in core.fn_get_llm_cost_report, ein Mitglied bekommt den Owner-only-Hinweis). FESTE TEXTE (Textkatalog Phase B): Resolve sender laedt die t-Maps (t = Absender-Sprache, t_owner = Owner-Sprache), jede feste Antwort liest daraus; die Begruessung kommt aus core.fn_render_welcome(lang) inkl. Knopf-Texte. PAKET-COMMANDS (WS-5 Command-Router-Generalisierung, build-time aus $CommandDispatchList je Manifest-commands.dispatch): je Befehl /\u003ccmd\u003e -\u003e Run command \u003ccmd\u003e (der dispatch.agent des Pakets INLINE ueber agent.sub_dispatch_agent, synthetischer Task, call_depth=1) -\u003e Relay command \u003ccmd\u003e (Markdown-\u003ePlain-Fallback). Der Switch-Fallback (Nicht-Command-Text) steht ZULETZT (fallbackOutput=extra, dynamisch verdrahtet) -\u003e ein neues Paket-Command verschiebt ihn NICHT. Sonst -\u003e normale Agent-Pipeline. DOCUMENT/PHOTO -\u003e Attachment-Marker (das Ziel waehlt der Router nach Dokumentart, s. Doc: Voice/Vision). Backup/Restore CLI-only (lifeagents backup).",
                                          "height":  360,
                                          "width":  520,
                                          "color":  4
@@ -7301,6 +7361,13 @@
                                                                 {
                                                                     "index":  0,
                                                                     "node":  "Send persona picker",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send cost report",
                                                                     "type":  "main"
                                                                 }
                                                             ],

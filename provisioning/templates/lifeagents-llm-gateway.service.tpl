@@ -8,8 +8,12 @@ Before=n8n.service
 
 [Service]
 Type=simple
-# Keine Dateien/Secrets auf Platte (der API-Key kommt je Anfrage im Header) -> fluechtiger System-User.
+# Keine Secrets auf Platte (der API-Key kommt je Anfrage im Header) -> fluechtiger System-User.
 DynamicUser=yes
+# Einzige Datei: usage.jsonl (nur Zahlen, Modell, Workflow-Name, Zeit; 62 Tage) fuer den Kosten-Report /kosten —
+# systemd legt /var/lib/lifeagents-llm-gateway an und setzt STATE_DIRECTORY (mit DynamicUser ueber Neustarts stabil).
+StateDirectory=lifeagents-llm-gateway
+StateDirectoryMode=0700
 Environment=LLM_GATEWAY_PORT=@@GATEWAY_PORT@@
 # Cache-Keep-Alive: Stunden nach der letzten Nutzung eines Agenten-Anfangs (0 = aus; install_llm_gateway.sh).
 Environment=LLM_GATEWAY_KEEPALIVE_HOURS=@@KEEPALIVE_HOURS@@
@@ -19,7 +23,7 @@ Environment=NODE_OPTIONS=--dns-result-order=ipv4first
 ExecStart=@@NODE_BIN@@ @@GATEWAY_JS@@
 Restart=on-failure
 RestartSec=2
-# Haertung: lauscht nur auf 127.0.0.1, spricht nur HTTPS nach aussen, schreibt nichts.
+# Haertung: lauscht nur auf 127.0.0.1, spricht nur HTTPS nach aussen, schreibt nur ins StateDirectory.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

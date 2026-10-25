@@ -51,6 +51,45 @@ ALTER TABLE agent.ai_models DROP CONSTRAINT IF EXISTS ai_models_mode_selector_ch
 ALTER TABLE agent.ai_models ADD CONSTRAINT ai_models_mode_selector_check
     CHECK ((mode = 'chat') = (selector_index IS NOT NULL));
 
+-- n8n_model_id eindeutig: core.llm_usage (Kosten-Report) bepreist eine Gateway-Zeile ueber genau diese Spalte.
+ALTER TABLE agent.ai_models DROP CONSTRAINT IF EXISTS ai_models_n8n_model_id_key;
+ALTER TABLE agent.ai_models ADD CONSTRAINT ai_models_n8n_model_id_key UNIQUE (n8n_model_id);
+
+-- Preise je Modell (USD je Million Tokens, Quelle ai_models.json, Anthropic-Preisseite). Einziger DB-Leser ist
+-- core.fn_get_llm_cost_report. NULL = unbepreist (Embeddings, Bestands-DB vor dem Seed) -> der Report zaehlt die
+-- Zeilen als "ohne Preis". Form-Pruefung im Helfer unten (CHECK-gekoppelt, deshalb Init statt R__).
+ALTER TABLE agent.ai_models ADD COLUMN IF NOT EXISTS pricing_usd_per_mtok jsonb;
+
+-- agent.fn_valid_model_pricing(p) — true, wenn p die Preis-Form traegt: input, cache_write_5m, cache_write_1h,
+-- cache_read, output als Zahl >= 0; optional long_context {above_input_tokens > 0 + dieselben fuenf} und
+-- web_search_usd_per_request >= 0. Weitere Schluessel (z. B. _source) sind erlaubt.
+CREATE OR REPLACE FUNCTION agent.fn_valid_model_pricing(p jsonb)
+RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE k text;
+BEGIN
+    IF jsonb_typeof(p) IS DISTINCT FROM 'object' THEN RETURN false; END IF;
+    FOREACH k IN ARRAY ARRAY['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output'] LOOP
+        IF jsonb_typeof(p->k) IS DISTINCT FROM 'number' OR (p->>k)::numeric < 0 THEN RETURN false; END IF;
+    END LOOP;
+    IF p ? 'web_search_usd_per_request'
+       AND (jsonb_typeof(p->'web_search_usd_per_request') IS DISTINCT FROM 'number' OR (p->>'web_search_usd_per_request')::numeric < 0) THEN
+        RETURN false;
+    END IF;
+    IF p ? 'long_context' THEN
+        IF jsonb_typeof(p->'long_context'->'above_input_tokens') IS DISTINCT FROM 'number'
+           OR (p->'long_context'->>'above_input_tokens')::numeric <= 0 THEN RETURN false; END IF;
+        FOREACH k IN ARRAY ARRAY['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output'] LOOP
+            IF jsonb_typeof(p->'long_context'->k) IS DISTINCT FROM 'number' OR (p->'long_context'->>k)::numeric < 0 THEN RETURN false; END IF;
+        END LOOP;
+    END IF;
+    RETURN true;
+END;
+$$;
+
+ALTER TABLE agent.ai_models DROP CONSTRAINT IF EXISTS ai_models_pricing_check;
+ALTER TABLE agent.ai_models ADD CONSTRAINT ai_models_pricing_check
+    CHECK (pricing_usd_per_mtok IS NULL OR agent.fn_valid_model_pricing(pricing_usd_per_mtok));
+
 -- updated_at automatisch bei UPDATE pflegen
 CREATE OR REPLACE FUNCTION agent.touch_ai_models_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$

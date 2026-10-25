@@ -208,6 +208,8 @@
   "estate.enum.health_insurance_type.gkv": "gesetzlich (GKV)",
   "estate.enum.health_insurance_type.pkv": "privat (PKV)",
   "estate.package.name": "Nachlass & Vorsorge",
+  "estate.wf.estate_advisor": "Nachlass",
+  "estate.wf.estate_cron_review_register": "Nachlass-Prüfung",
   "estate.package.summary": "Notfall-Register (Vollmachten, Verträge, Kontakte) und Begleitung im Todes- oder Vorsorgefall",
   "estate.onboarding.documents": "Vorsorge-Dokumente",
   "estate.onboarding.insurance_check": "Versicherungs-Check (Finanzen)",

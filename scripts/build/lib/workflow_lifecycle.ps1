@@ -274,6 +274,91 @@ function Set-StableNodeIds {
     return $out
 }
 
+# ---- Workflow-Kennung fuer den Kosten-Report (/kosten) ---------------------------------------------------------
+# lmChatAnthropic kann keinen Header je Knoten setzen (n8n-Quirk) -> jede System-Nachricht eines Knotens, der an einem
+# Claude-Modell haengt, beginnt mit der KONSTANTEN Kennzeile `<<la-wf:<Workflow-Name>>>` + Zeilenumbruch. Der LLM-Gateway
+# (provisioning/llm_gateway/server.js, stripWfTag) misst sie und entfernt sie vor dem Weiterleiten -> Anthropic und das
+# Modell sehen byte-gleiche Prompts, der gecachte Anfang bleibt stabil (arch-challenge 2026-10-25). Zentral hier statt
+# in jeder Def: kein Agent-Bau muss daran denken, workflow_lint prueft das Ergebnis. HTTP-Knoten senden stattdessen den
+# Header x-lifeagents-workflow (New-AnthropicMessagesNode).
+function Get-WfProp($Obj, [string]$Key) {
+    if ($null -eq $Obj) { return $null }
+    if ($Obj -is [System.Collections.IDictionary]) { if ($Obj.Contains($Key)) { return $Obj[$Key] }; return $null }
+    $pp = $Obj.PSObject.Properties[$Key]; if ($pp) { return $pp.Value }; return $null
+}
+function Set-WfProp($Obj, [string]$Key, $Value) {
+    if ($Obj -is [System.Collections.IDictionary]) { $Obj[$Key] = $Value; return }
+    if ($Obj.PSObject.Properties[$Key]) { $Obj.$Key = $Value } else { $Obj | Add-Member -NotePropertyName $Key -NotePropertyValue $Value }
+}
+# Kennzeile vor einen n8n-Parameterwert setzen: Ausdruck ('=...') bleibt Ausdruck (Literal-Praefix vor dem Template),
+# reiner Text bekommt sie direkt davor. Schon vorhanden -> unveraendert (Save-WorkflowFile darf zweimal laufen).
+function Add-WfTagPrefix([string]$Value, [string]$Tag) {
+    if ($Value.StartsWith('=')) { if ($Value.Substring(1).StartsWith($Tag)) { return $Value }; return '=' + $Tag + $Value.Substring(1) }
+    if ($Value.StartsWith($Tag)) { return $Value }
+    return $Tag + $Value
+}
+function Add-LlmWorkflowTag {
+    param([Parameter(Mandatory)]$Workflow, [Parameter(Mandatory)][string]$Name)
+    $nodes = @(Get-WfProp $Workflow 'nodes')
+    $lm = @($nodes | Where-Object { (Get-WfProp $_ 'type') -eq '@n8n/n8n-nodes-langchain.lmChatAnthropic' })
+    if ($lm.Count -eq 0) { return }
+    if ($Name -cnotmatch '^[a-z0-9._-]{1,80}$') {
+        throw "Add-LlmWorkflowTag: Workflow-Name '$Name' passt nicht zur Kennung ^[a-z0-9._-]{1,80}`$ (Gateway + core.llm_usage pruefen dieselbe Form)."
+    }
+    $byName = @{}
+    foreach ($n in $nodes) { $byName[[string](Get-WfProp $n 'name')] = $n }
+    $conns = Get-WfProp $Workflow 'connections'
+    # Kanten ai_languageModel verfolgen: Modell -> (Model Selector ->) Wurzel-Knoten, der den Prompt baut
+    $roots = New-Object 'System.Collections.Generic.HashSet[string]'
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]'
+    $queue = New-Object 'System.Collections.Generic.Queue[string]'
+    foreach ($n in $lm) { $queue.Enqueue([string](Get-WfProp $n 'name')) }
+    while ($queue.Count -gt 0) {
+        $src = $queue.Dequeue()
+        if (-not $seen.Add($src)) { continue }
+        foreach ($grp in @(Get-WfProp (Get-WfProp $conns $src) 'ai_languageModel')) {
+            foreach ($e in @($grp)) {
+                $t = [string](Get-WfProp $e 'node')
+                $tn = $byName[$t]
+                if ($null -eq $tn) { continue }
+                if ((Get-WfProp $tn 'type') -eq '@n8n/n8n-nodes-langchain.modelSelector') { $queue.Enqueue($t) } else { [void]$roots.Add($t) }
+            }
+        }
+    }
+    $tag = "<<la-wf:$Name>>`n"
+    foreach ($rn in $roots) {
+        $n = $byName[$rn]
+        $type = [string](Get-WfProp $n 'type')
+        $p = Get-WfProp $n 'parameters'
+        switch ($type) {
+            '@n8n/n8n-nodes-langchain.agent' {
+                $opt = Get-WfProp $p 'options'
+                $sm = [string](Get-WfProp $opt 'systemMessage')
+                # Ohne eigene systemMessage nimmt n8n seinen Standardtext — die Kennzeile davor wuerde ihn ersetzen
+                # (Verhaltensaenderung) -> Bau-Fehler statt still geaenderter Prompt.
+                if ([string]::IsNullOrEmpty($sm)) { throw "Add-LlmWorkflowTag: '$Name' / Agent '$rn' hat keine options.systemMessage — explizit setzen (die Kennzeile braucht eine eigene System-Nachricht)." }
+                Set-WfProp $opt 'systemMessage' (Add-WfTagPrefix $sm $tag)
+            }
+            '@n8n/n8n-nodes-langchain.chainLlm' {
+                # Basic LLM Chain: System-Nachricht = messages.messageValues (Typ SystemMessagePromptTemplate). Gibt es
+                # schon eine, bekommt sie die Kennzeile vorn; sonst kommt eine reine Kennzeilen-Nachricht hinzu (der
+                # Gateway entfernt sie und dann das leere system -> exakt der heutige Aufruf).
+                $msgs = Get-WfProp $p 'messages'
+                $vals = @(Get-WfProp $msgs 'messageValues' | Where-Object { $null -ne $_ })
+                $sys = @($vals | Where-Object { (Get-WfProp $_ 'type') -eq 'SystemMessagePromptTemplate' })
+                if ($sys.Count -gt 0) {
+                    Set-WfProp $sys[0] 'message' (Add-WfTagPrefix ([string](Get-WfProp $sys[0] 'message')) $tag)
+                } else {
+                    $newVals = @( ,([ordered]@{ type = 'SystemMessagePromptTemplate'; message = $tag }) ) + $vals
+                    if ($null -eq $msgs) { Set-WfProp $p 'messages' ([ordered]@{ messageValues = $newVals }) }
+                    else { Set-WfProp $msgs 'messageValues' $newVals }
+                }
+            }
+            default { throw "Add-LlmWorkflowTag: '$Name' / '$rn' (Typ $type) haengt an einem Claude-Modell, ist aber weder Agent noch Basic LLM Chain — Kennzeile fuer diesen Typ nachruesten." }
+        }
+    }
+}
+
 # Schreibt das Workflow-Objekt (OHNE id-Feld) als getrackte Datei. ID via Get-WorkflowIdByName:
 #   - bekannt   -> '<id>-<safe>.json' mit eingebackener id (import:workflow erhaelt sie); verwaiste bare-Datei weg.
 #   - unbekannt -> bare '<safe>.json'; der Autor vergibt selbst eine n8n-konforme id im Dateinamen.
@@ -322,6 +407,7 @@ function Save-WorkflowFile {
         $file = Join-Path $WorkflowsDir "$safe.json"
     }
 
+    Add-LlmWorkflowTag -Workflow $out -Name $Name   # Kosten-Report: Workflow-Kennung je Claude-System-Nachricht
     $out  = Set-StableNodeIds $out $Name
     # LF wie im Index (.gitattributes *.json eol=lf): sonst meldet git nach jedem Build jede Datei als geaendert.
     $json = ($out | ConvertTo-Json -Depth 30) -replace "`r`n", "`n"

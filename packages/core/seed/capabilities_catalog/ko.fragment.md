@@ -6,4 +6,4 @@
 - "지금 어떤 모니터링 트리거가 켜져 있나요?"
 
 ## 명령어 및 백업
-이 안내는 언제든지 /help 로 볼 수 있어요. 가구를 설정하거나 진행 상황 보기: /onboarding. 고정 문구의 언어 변경: /language. 봇 캐릭터 선택 (예: 집사): /persona. 봇이 스스로 보내는 알림 보기 및 켜기/끄기: /reminders. 데이터 백업은 서버 명령줄에서 암호화되어 실행돼요 (lifeagents backup export|restore) — 채팅으로는 더 이상 하지 않아요.
+이 안내는 언제든지 /help 로 볼 수 있어요. 가구를 설정하거나 진행 상황 보기: /onboarding. 고정 문구의 언어 변경: /language. 봇 캐릭터 선택 (예: 집사): /persona. 봇이 스스로 보내는 알림 보기 및 켜기/끄기: /reminders. 가구주는 /costs 로 최근 7일과 30일의 AI 비용을 볼 수 있어요. 데이터 백업은 서버 명령줄에서 암호화되어 실행돼요 (lifeagents backup export|restore) — 채팅으로는 더 이상 하지 않아요.

@@ -27,6 +27,8 @@
 #       deterministischer Backstop der Prosa-Pflicht (Harness-Rightsizing 2026-10-20).
 #   (Sprachmodelle) kein Gemini-Chat-Node; Google-Gemini (Node/Credential/URL) nur im Transkriptions-Tool
 #       (Modell-Phase 2: Chat-Modelle laufen nur noch ueber Claude).
+#   (Kosten-Kennung) jeder Claude-Aufruf traegt seinen Workflow-Namen fuer den Kosten-Report: Kennzeile vorn in der
+#       System-Nachricht (Agent/Kette) bzw. Header x-lifeagents-workflow (Gateway-HTTP-Knoten).
 #   (Ausdrucks-Syntax) jeder {{ … }}-Ausdruck in Node-Parametern ist gueltiges JavaScript (via node lokal oder per Docker;
 #       in der CI Pflicht — fehlt node dort, failt der Check statt still zu ueberspringen). n8n akzeptiert einen kaputten Ausdruck beim Publish und scheitert erst zur Laufzeit mit
 #       "invalid syntax" (real 2026-10-20: tool_book_savings_plan_execution, Approval-Summary mit fehlender Klammer
@@ -267,6 +269,9 @@ $tgEscapeAllow = @(
     # Escape passiert UPSTREAM im Format-Message-Code-Node (eigener Check in der error_notify-Sektion oben:
     # "Code escapt Markdown-Entities").
     'core.sub_error_notify :: Send Telegram Alert'
+    # /kosten: der Code-Node 'Build message' baut deterministisches HTML (<pre>-Tabellen, <b>/<i>) und escapt jeden
+    # DB-Wert (& < >); parse_mode=HTML -> keine Markdown-Entities moeglich. Kein LLM-Text.
+    'core.sub_send_cost_report :: Send cost report'
 )
 # MUSTER-Allowlist (P1/WS-5): die build-time pro Paket generierten Relay-Ketten (New-TelegramRelayChain, Text im
 # '<Name> split'-Code-Node HTML-escapt, parse_mode=HTML) -> ein neues Paket dockt an, ohne dass diese Liste editiert
@@ -547,6 +552,40 @@ foreach ($wfFile in (Get-AllWfFiles)) {
 }
 if ($vSqlGuard.Count) { $vSqlGuard | ForEach-Object { Write-Host "    $_ (Frei-SQL ohne Guard -> New-PostgresSelectToolNode)" -ForegroundColor DarkGray } }
 Check 'Frei-SQL: jedes postgresTool mit $fromAI-query traegt den Guard gegen fehlendes Argument' { $vSqlGuard.Count -eq 0 }
+
+# (Kosten-Kennung) Kosten-Report /kosten: jeder Claude-Aufruf traegt seinen Workflow-Namen, sonst landet er unter
+# "Sonstige". Agenten/Ketten an einem lmChatAnthropic: System-Nachricht beginnt mit `<<la-wf:<Workflow-Name>>>` + Umbruch
+# (Add-LlmWorkflowTag in Save-WorkflowFile); HTTP-Knoten auf den Gateway (/v1/messages): Header x-lifeagents-workflow.
+# Der Gateway entfernt beides vor dem Weiterleiten (provisioning/llm_gateway/server.js).
+$vWfTag = @()
+foreach ($wfFile in (Get-AllWfFiles)) {
+    $w = [System.IO.File]::ReadAllText($wfFile.FullName, $Utf8NoBom) | ConvertFrom-Json
+    $tag = "<<la-wf:$($w.name)>>`n"
+    $byName = @{}; foreach ($n in $w.nodes) { $byName[[string]$n.name] = $n }
+    $queue = New-Object 'System.Collections.Generic.Queue[string]'; $seenN = @{}; $roots = @{}
+    foreach ($n in @($w.nodes | Where-Object { $_.type -eq '@n8n/n8n-nodes-langchain.lmChatAnthropic' })) { $queue.Enqueue([string]$n.name) }
+    while ($queue.Count -gt 0) {
+        $src = $queue.Dequeue(); if ($seenN.ContainsKey($src)) { continue }; $seenN[$src] = $true
+        $cn = $w.connections.PSObject.Properties[$src]
+        if (-not $cn -or -not $cn.Value.ai_languageModel) { continue }
+        foreach ($grp in @($cn.Value.ai_languageModel)) { foreach ($e in @($grp)) {
+            $t = $byName[[string]$e.node]; if (-not $t) { continue }
+            if ($t.type -eq '@n8n/n8n-nodes-langchain.modelSelector') { $queue.Enqueue([string]$t.name) } else { $roots[[string]$t.name] = $t }
+        } }
+    }
+    foreach ($r in $roots.Values) {
+        $sysText = if ($r.type -eq '@n8n/n8n-nodes-langchain.agent') { [string]$r.parameters.options.systemMessage }
+                   else { [string](@($r.parameters.messages.messageValues | Where-Object { $_.type -eq 'SystemMessagePromptTemplate' }) | Select-Object -First 1).message }
+        if ($sysText.StartsWith('=')) { $sysText = $sysText.Substring(1) }
+        if (-not $sysText.StartsWith($tag)) { $vWfTag += "$($w.name) :: $($r.name) (System-Nachricht ohne Kennzeile)" }
+    }
+    foreach ($n in @($w.nodes | Where-Object { $_.type -eq 'n8n-nodes-base.httpRequest' -and [string]$_.parameters.url -match '127\.0\.0\.1:8090/v1/messages' })) {
+        $hdr = @($n.parameters.headerParameters.parameters | Where-Object { $_.name -eq 'x-lifeagents-workflow' })
+        if ($hdr.Count -ne 1 -or [string]$hdr[0].value -ne '={{ $workflow.name }}') { $vWfTag += "$($w.name) :: $($n.name) (Gateway-HTTP ohne Header x-lifeagents-workflow)" }
+    }
+}
+if ($vWfTag.Count) { $vWfTag | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
+Check 'Kosten-Kennung: jede Claude-System-Nachricht beginnt mit <<la-wf:Workflow>>, jeder Gateway-HTTP-Knoten sendet x-lifeagents-workflow' { $vWfTag.Count -eq 0 }
 
 # --- Ausdrucks-Syntax: jeder {{ … }}-Ausdruck ist gueltiges JavaScript (node, falls verfuegbar) ---
 if ($LintNode) {

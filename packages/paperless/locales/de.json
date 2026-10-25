@@ -1,6 +1,7 @@
 {
   "_comment": "Feste Nutzertexte des paperless-Pakets, Deutsch (docs/package-contract.md §3.11). Gleiche Keys + Platzhalter in en.json/ko.json (locale_lint). Echte Umlaute.",
   "paperless.package.name": "Dokumente",
+  "paperless.wf.paperless_assistant": "Dokumente",
   "paperless.package.summary": "Deine Agenten finden, lesen und befragen die Dokumente in deiner bestehenden Paperless-Instanz",
   "paperless.help.documents.title": "Dokumente",
   "paperless.help.documents.description": "Dokumente in deiner Paperless-Instanz finden, lesen und Fragen dazu beantworten lassen (nur lesend, nur für Erwachsene).",

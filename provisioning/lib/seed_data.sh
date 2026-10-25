@@ -57,12 +57,15 @@ _seed_ai_models() {
   # mode (chat|embedding, core:V024) zusammen mit selector_index: der CHECK ai_models_mode_selector_check
   # koppelt beide, deshalb setzt das UPSERT sie in derselben Zeile. Je Modell eine Anweisung in JSON-Reihenfolge
   # -> das Umnummerieren (z. B. 2/4/6 -> 1/2/3 nach V024) kollidiert nie mit dem UNIQUE auf selector_index.
-  jq -r '.[] | [.model_key, .provider, .n8n_model_id, (.selector_index|tostring), .mode] | @tsv' "$file" |
-  while IFS=$'\t' read -r mk pv mid si md; do
+  # pricing_usd_per_mtok (Kosten-Report) als kompaktes JSON (enthaelt keine Tabs/Newlines); fehlt es -> SQL NULL.
+  jq -r '.[] | [.model_key, .provider, .n8n_model_id, (.selector_index|tostring), .mode, (.pricing_usd_per_mtok // null | tojson)] | @tsv' "$file" |
+  while IFS=$'\t' read -r mk pv mid si md pr; do
     [ -n "$mk" ] || continue
-    printf 'INSERT INTO agent.ai_models (model_key, provider, n8n_model_id, selector_index, mode)\n'
-    printf 'VALUES (%s, %s, %s, %s, %s)\n' "$(_sql_str "$mk")" "$(_sql_str "$pv")" "$(_sql_str "$mid")" "$si" "$(_sql_str "$md")"
-    printf 'ON CONFLICT (model_key) DO UPDATE SET provider=EXCLUDED.provider, n8n_model_id=EXCLUDED.n8n_model_id, selector_index=EXCLUDED.selector_index, mode=EXCLUDED.mode;\n'
+    local prsql='NULL'
+    [ "$pr" = 'null' ] || prsql="$(_sql_str "$pr")::jsonb"
+    printf 'INSERT INTO agent.ai_models (model_key, provider, n8n_model_id, selector_index, mode, pricing_usd_per_mtok)\n'
+    printf 'VALUES (%s, %s, %s, %s, %s, %s)\n' "$(_sql_str "$mk")" "$(_sql_str "$pv")" "$(_sql_str "$mid")" "$si" "$(_sql_str "$md")" "$prsql"
+    printf 'ON CONFLICT (model_key) DO UPDATE SET provider=EXCLUDED.provider, n8n_model_id=EXCLUDED.n8n_model_id, selector_index=EXCLUDED.selector_index, mode=EXCLUDED.mode, pricing_usd_per_mtok=EXCLUDED.pricing_usd_per_mtok;\n'
   done
 }
 

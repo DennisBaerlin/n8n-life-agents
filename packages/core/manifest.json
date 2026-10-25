@@ -33,7 +33,7 @@
     ],
     "crons": ["cron_check_triggers", "cron_drift_check", "cron_review", "cron_learn_context", "cron_onboarding_nudge"],
     "routes": ["monitor", "guide"],
-    "config": ["api", "model", "feature", "monitor", "transcription", "schedule", "cron_enable", "advisor", "telegram", "learn_context"],
+    "config": ["api", "model", "feature", "monitor", "transcription", "schedule", "cron_enable", "advisor", "telegram", "learn_context", "cost"],
     "models": ["ai_models"],
     "services": {
       "human_approval": "agent.tool_human_approval",
@@ -122,6 +122,9 @@
       "cashflow_buffer_nudge": { "value": "true", "type": "boolean", "description": "Phase L: enable-flag (boolean string) for the SOFT savings-buffer band of cashflow_coverage only. When 'true' (default) and monthly_free is positive but below cashflow_buffer_pct * monthly_income, finance.fn_advisor_review emits a thin-buffer nudge. The HARD deficit band (monthly_free < 0) is ALWAYS on and not gated by this. Read at RUNTIME via core.fn_config_get COALESCE default 'true' (literal 'true'/'false', not numeric). Disable: lifeagents config set advisor cashflow_buffer_nudge false (no rebuild).", "summary": "Schaltet die Warnung „zu wenig Puffer am Monatsende“ ein oder aus (true/false)." },
       "savings_squeeze_nudge": { "value": "true", "type": "boolean", "description": "Phase L: enable-flag (boolean string) for the savings_squeeze check (over-saving). When 'true' (default) and monthly_free >= 0 but monthly_account_change (free minus all savings rates) < 0, finance.fn_advisor_review warns that the savings rates are draining the checking balance even though spending and loan instalments are covered. Read at RUNTIME via core.fn_config_get COALESCE default 'true'. Disable: lifeagents config set advisor savings_squeeze_nudge false (no rebuild).", "summary": "Warnt, wenn das Sparen dein Girokonto leerzieht (true/false)." }
     },
+    "cost": {
+      "cold_start_min_tokens": { "value": "20000", "type": "integer", "minimum": 1000, "description": "Cost report /costs (core.fn_get_llm_cost_report): a real request whose 1h cache write is at least this many tokens counts as a COLD START (a large agent prefix - tools + system prompt - was written to the cache again, typically after an update or more than 24 h without use; ~$0.20 each on Sonnet). 20000 = well above a normal conversation tail (a few thousand tokens), well below an agent prefix (~45k). Read at RUNTIME (COALESCE default 20000); change: lifeagents config set cost cold_start_min_tokens <n> (no rebuild).", "summary": "Ab so vielen neu geschriebenen Cache-Tokens zählt die Kostenübersicht eine Anfrage als Kaltstart." }
+    },
     "learn_context": {
       "daily_cap": { "value": "3", "type": "integer", "minimum": 0, "description": "Phase C: max NEW learn candidates surfaced per CALENDAR DAY (agent.fn_record_learn_candidates caps pending-of-the-day at this; priority update>new). Keeps the daily nudge small. Read at RUNTIME (core.fn_config_get, COALESCE default 3); change = edit here + re-seed (provision.sh / substrate -Reset), no rebuild.", "summary": "Höchstens so viele neue Merk-Vorschläge am Tag." },
       "expiry_days": { "value": "7", "type": "integer", "minimum": 1, "description": "Phase C: learn-candidate lifetime (days). A pending candidate auto-expires (pending->expired) once expires_at passes (cleanup at the next cron run); ALSO the window during which a REJECTED candidate suppresses re-proposing the same slot (durable rejection memory). Read at RUNTIME (COALESCE default 7); change = edit here + re-seed, no rebuild.", "summary": "Nach so vielen Tagen verfällt ein unbeantworteter Merk-Vorschlag." }
@@ -195,13 +198,14 @@
     ]
   },
   "commands": {
-    "_comment": "Single source of truth for the bot's slash commands (WS-5). Feeds (a) scripts/command_lint.ps1 (every non-hidden Command-router branch in agent.orchestrator is registered here; every entry is wired in the router AND documented in the /help catalog tail) and (b) setMyCommands (deploy_workflows.sh). visibility = who sees the command in their Telegram command menu: owner menu (BotCommandScope chat=OWNER) = visibility IN (owner,all); default menu = visibility IN (member,all); each menu is set once per catalog language (language_code) plus a fallback in the owner's language. The menu text is the text-catalog key <pkg>.cmd.<name> (§3.11, max 48 chars per language, command_lint). Hidden deterministic commands are intentionally NOT advertised and live on the command_lint allowlist, not here: /start (Telegram-special, auto-invoked on first contact), /hilfe (German alias of /help) and /sprache (German alias of /language).",
+    "_comment": "Single source of truth for the bot's slash commands (WS-5). Feeds (a) scripts/command_lint.ps1 (every non-hidden Command-router branch in agent.orchestrator is registered here; every entry is wired in the router AND documented in the /help catalog tail) and (b) setMyCommands (deploy_workflows.sh). visibility = who sees the command in their Telegram command menu: owner menu (BotCommandScope chat=OWNER) = visibility IN (owner,all); default menu = visibility IN (member,all); each menu is set once per catalog language (language_code) plus a fallback in the owner's language. The menu text is the text-catalog key <pkg>.cmd.<name> (§3.11, max 48 chars per language, command_lint). Hidden deterministic commands are intentionally NOT advertised and live on the command_lint allowlist, not here: /start (Telegram-special, auto-invoked on first contact), /hilfe (German alias of /help), /sprache (German alias of /language), /erinnerungen (German alias of /reminders) and /kosten (German alias of /costs). /costs is owner-only in the menu; the gate itself is the DB fn core.fn_get_llm_cost_report (a member typing it gets the owner-only hint).",
     "list": [
       { "cmd": "/help", "visibility": "all" },
       { "cmd": "/onboarding", "visibility": "all" },
       { "cmd": "/language", "visibility": "all" },
       { "cmd": "/persona", "visibility": "all" },
-      { "cmd": "/reminders", "visibility": "all" }
+      { "cmd": "/reminders", "visibility": "all" },
+      { "cmd": "/costs", "visibility": "owner" }
     ]
   },
   "migrations": "db",

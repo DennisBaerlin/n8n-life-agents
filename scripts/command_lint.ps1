@@ -22,8 +22,8 @@ function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails
 
 # --- Hidden-Allowlist: deterministische Befehle, die bewusst NICHT beworben werden (nicht im Menue) -----
 #   /start = Telegram-Spezial (auto-invoked beim Erstkontakt); /hilfe = DE-Alias von /help, /sprache = DE-Alias
-#   von /language, /erinnerungen = DE-Alias von /reminders (jeweils selber Branch).
-$hidden = @('/start', '/hilfe', '/sprache', '/erinnerungen')
+#   von /language, /erinnerungen = DE-Alias von /reminders, /kosten = DE-Alias von /costs (jeweils selber Branch).
+$hidden = @('/start', '/hilfe', '/sprache', '/erinnerungen', '/kosten')
 $descCap = 48   # Kuerze-Cap fuer ein aufgeraeumtes Menue (Telegram BotCommand.description Hard-Limit ist 256).
 $langs = @((([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\manifest.json'), $u8) | ConvertFrom-Json).languages.list) | ForEach-Object { [string]$_.code })
 

@@ -44,7 +44,7 @@ function Build-CreateRecurringPayment {
     # Strukturiertes Summary (Textkatalog): Rate in der Konto-Waehrung (Resolve Account liest accounts.currency mit).
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $S = "`$('Start').item.json"
-    $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.create_recurring_payment' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity recurring_payment -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.create_recurring_payment' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity recurring_payment -S (Get-WritePayloadExpr) -D @{
         Ccy = "`$('Resolve Account').item.json.currency" })
 
     $gateId = $GateId

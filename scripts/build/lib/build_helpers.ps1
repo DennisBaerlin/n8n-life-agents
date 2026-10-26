@@ -241,10 +241,11 @@ function Build-ToolCancelled {
 
 # Datums-Hinweis fuer $fromAI-Parameter (Modell-Schicht -> englisch): das LLM gibt eine relative Angabe ROH weiter,
 #   die Write-fn rechnet sie (core.fn_resolve_input_dates -> core.fn_resolve_date). Nennt genau deren Grammatik
-#   (Ziffern, kein "a week"/"next month"); was nicht passt, fragt der Agent nach (Prompt-Regel des Agenten).
+#   (Ziffern, kein "a week"/"next month"); was nicht passt, fragt der Agent nach (Prompt-Regel des Agenten). Die
+#   Ablehnung der fn ({ok:false, code:'invalid_date'}) verweist nur hierher, wiederholt die Grammatik nicht.
 #   Die EINE Adresse fuer den Text: Aufrufer setzen ihn per ('<Feld> (' + (Get-DateParamHint) + '), …') zusammen.
 function Get-DateParamHint {
-    'YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (digits, never words) - never compute a date yourself'
+    'YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself'
 }
 
 # Ausdruck fuer eine Karten-Zeile mit einem Datum, das die Write-fn aufgeloest hat: r.effective.<Key> aus dem Probelauf
@@ -254,6 +255,14 @@ function Get-DryEffectiveExpr {
     param([Parameter(Mandatory)][string]$Key, [string]$DryName = 'Dry run', [string]$StartName = 'Start')
     if ($Key -notmatch '^[a-z_]+$') { throw "Get-DryEffectiveExpr: -Key '$Key' muss snake_case sein" }
     "((`$('$DryName').item.json.r.effective || {}).$Key || `$('$StartName').item.json.$Key)"
+}
+
+# Das Feld-Objekt einer Karte = genau der Payload des Gate-Writes: Start-Felder || r.effective des Probelaufs
+#   (New-FnWriteGate mischt dasselbe in den echten Write). Fuer geteilte Kartenzeilen (-S in Get-FinanceHitlLines),
+#   damit jedes Datum/jeder Default so erscheint, wie er gespeichert wird.
+function Get-WritePayloadExpr {
+    param([string]$DryName = 'Dry run', [string]$StartName = 'Start')
+    "(Object.assign({}, `$('$StartName').item.json, `$('$DryName').item.json.r.effective || {}))"
 }
 
 # New-FnWriteGate — "DB ist das Gesetz": Probelauf der Write-fn VOR der HITL-Karte + der echte Write, aus EINER

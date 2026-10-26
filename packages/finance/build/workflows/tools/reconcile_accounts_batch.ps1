@@ -23,10 +23,11 @@ function Build-ReconcileAccountsBatch {
         "={{ `$('Preview reconcile').item.json.reason }}"
 
     # EINE Approval-Summary (Textkatalog) fuer alle Konten (native Waehrung je Zeile): je Konto eine Zeile, Label =
-    # Kontoname (kein Katalog-Key -> das Gate zeigt ihn unveraendert), Wert = Vorlage mit typisierten Betraegen.
+    # Kontoname (kein Katalog-Key -> das Gate zeigt ihn unveraendert), Wert = Vorlage mit Stichtag (aufgeloest von
+    # fn_reconcile_accounts_preview, relativ wie "yesterday" erlaubt) und typisierten Betraegen.
     $linesExpr = "`$('Preview reconcile').item.json.rows.map(r => ({ label: r.name, kind: 'tpl', " +
         "value: (r.diff != 0 ? 'finance.tpl.reconcile_row_correction' : 'finance.tpl.reconcile_row_nochange'), " +
-        "params: { db: { kind: 'money', value: r.db_balance, currency: r.currency }, confirmed: { kind: 'money', value: r.confirmed, currency: r.currency }, diff: { kind: 'money', value: r.diff, currency: r.currency } } }))" +
+        "params: { date: { kind: 'date', value: r.reconciliation_date }, db: { kind: 'money', value: r.db_balance, currency: r.currency }, confirmed: { kind: 'money', value: r.confirmed, currency: r.currency }, diff: { kind: 'money', value: r.diff, currency: r.currency } } }))" +
         # Wie die Einzel-Karte (tool_reconcile_account): je Konto ein Hinweis, wenn der Abgleich offene regelmaessige
         # Vorkommen <= Stichtag-10 als erledigt markiert (skip_count aus fn_reconcile_open_due, dieselbe Menge wie der Write).
         ".concat(`$('Preview reconcile').item.json.rows.filter(r => Number(r.skip_count) > 0).map(r => ({ kind: 'note', " +

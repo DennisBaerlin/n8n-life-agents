@@ -41,18 +41,18 @@ BEGIN
                       array_to_string(finance.fn_import_allowed_keys(p_type), ', '));
     END IF;
 
-    -- generische Datums-Casts (falls vorhanden)
+    -- generische Datums-Pruefung (falls vorhanden): genau YYYY-MM-DD und ein echter Tag — dieselbe Annahme wie die
+    -- Write-fns (core.fn_resolve_input_dates). Ein Postgres-Cast liesse '10/24/2026', '2026-10-24T00:00' oder 'now'
+    -- durch, die der Commit dann ablehnte; relative Texte gehoeren nicht in einen Import (Dokument-Werte).
     FOR v_key IN SELECT k FROM jsonb_object_keys(p) k
                  WHERE k IN ('first_payment_date','valid_from','valid_to','transaction_date',
                              'target_date','disbursement_date','value_updated_at',
                              'retirement_start_date','interest_rate_fixed_until',
                              'fixed_deposit_maturity_date','statement_date','interest_valid_from')
     LOOP
-        IF NULLIF(p->>v_key,'') IS NOT NULL THEN
-            BEGIN PERFORM (p->>v_key)::date;
-            EXCEPTION WHEN OTHERS THEN
-                RETURN format('%s "%s" is not a valid DATE (YYYY-MM-DD)', v_key, p->>v_key);
-            END;
+        IF NULLIF(p->>v_key,'') IS NOT NULL
+           AND (btrim(p->>v_key) !~ '^\d{4}-\d{2}-\d{2}$' OR core.fn_resolve_date(p->>v_key) IS NULL) THEN
+            RETURN format('%s "%s" is not a valid DATE (YYYY-MM-DD)', v_key, p->>v_key);
         END IF;
     END LOOP;
 

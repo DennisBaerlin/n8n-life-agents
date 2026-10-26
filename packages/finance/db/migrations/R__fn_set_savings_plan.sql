@@ -193,7 +193,7 @@ BEGIN
 
         RETURN jsonb_build_object(
             'ok',                   true,
-            'effective',            v_dates->'resolved',
+            'effective',            (v_dates->'resolved') || jsonb_build_object('valid_from', to_char(v_from, 'YYYY-MM-DD')),
             'savings_plan_id',      v_plan.id,
             'recurring_payment_id', v_new_rp_id,
             'previous_rp_id',       v_rp.id,
@@ -218,7 +218,7 @@ BEGIN
             WHERE id = v_plan.id;
             RETURN jsonb_build_object(
                 'ok',                   true,
-                'effective',            v_dates->'resolved',
+                'effective',            (v_dates->'resolved') || jsonb_build_object('valid_from', to_char(v_from, 'YYYY-MM-DD')),
                 'savings_plan_id',      v_plan.id,
                 'recurring_payment_id', (v_split_res->>'recurring_payment_id')::int,
                 'previous_rp_id',       v_rp.id,
@@ -249,7 +249,7 @@ BEGIN
 
         RETURN jsonb_build_object(
             'ok',                   true,
-            'effective',            v_dates->'resolved',
+            'effective',            (v_dates->'resolved') || jsonb_build_object('valid_from', to_char(v_from, 'YYYY-MM-DD')),
             'savings_plan_id',      v_plan.id,
             'recurring_payment_id', v_plan.recurring_payment_id,
             'split',                false)

@@ -102,7 +102,7 @@ function Build-CreateSavingsGoal {
     # Begünstigte(r) aus dem Probelauf: genannt, sonst Inhaber des Spartopfs (fn_default_beneficiary) -> Karte = Write.
     $Y  = "`$('Dry run').item.json.r"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
-    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_savings_goal' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity savings_goal -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_savings_goal' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity savings_goal -S (Get-WritePayloadExpr) -D @{
         Person = "$Y.beneficiary_name"; TargetDate = "$CS.target_date"; MonthlyRate = "$CS.monthly_rate"; Months = "$CS.months"; FirstPayment = "$CS.first_payment_date" })
 
     $gateId = $GateId

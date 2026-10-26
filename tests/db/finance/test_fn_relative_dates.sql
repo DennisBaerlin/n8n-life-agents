@@ -1,8 +1,8 @@
 -- tests/db/finance/test_fn_relative_dates.sql
 -- Relative Datumsangaben in den finance-Write-fns (das LLM gibt "yesterday", "in 2 weeks" roh weiter, die DB rechnet
 --   ueber core.fn_resolve_input_dates):
---   (1) Drift-Guard ueber pg_proc.prosrc aller finance-fns: jeder Tool-Key, der roh nach date gecastet wird
---       ((p->>'k')::date, NULLIF(p->>'k', '')::date [+ 1], v DATE := p->>'k'), steht im ARRAY[...] eines
+--   (1) Drift-Guard ueber pg_proc.prosrc aller finance- und estate-fns: jeder Tool-Key, der roh nach date gecastet
+--       wird ((p->>'k')::date, NULLIF(p->>'k', '')::date [+ 1], v DATE := [NULLIF(]p->>'k'), steht im ARRAY[...] eines
 --       core.fn_resolve_input_dates-Aufrufs, und dieser Aufruf steht im Text VOR dem ersten Cast (faengt
 --       DECLARE-Initialisierer, die vor dem Body laufen). Ausnahmen = benannte Allowlist (Import/Statement/Cron/
 --       Render/Void + Lookup-Keys, die nie das LLM fuellt). Grenze: Aliase (v_acct->>'k') sieht der Scan nicht —
@@ -26,7 +26,8 @@ DECLARE
     'fn_book_savings_plan_execution.due_date', 'fn_book_interest_occurrence.value_date',
     'fn_book_interest_occurrence.period_end'];
   v_cast_re text := '(?:NULLIF\s*\(\s*)?\(?\s*p\s*->>\s*''([a-z_]+)''\s*\)?\s*(?:,\s*''''\s*\))?\s*::\s*date\M';
-  v_decl_re text := '\m[a-z_]+\s+date\s*:=\s*p\s*->>\s*''([a-z_]+)''';
+  -- impliziter text->date-Cast im DECLARE, auch hinter NULLIF/COALESCE/trim: v DATE := NULLIF(p->>'k', '')
+  v_decl_re text := '\m[a-z_]+\s+date\s*:=\s*(?:(?:NULLIF|COALESCE|btrim|trim)\s*\(\s*)*p\s*->>\s*''([a-z_]+)''';
   r       record;
   v_keys  text[];
   v_cast  text[];
@@ -39,7 +40,7 @@ DECLARE
 BEGIN
   FOR r IN
     SELECT p.proname, p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname = 'finance' AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+     WHERE n.nspname IN ('finance', 'estate') AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
        AND NOT p.proname LIKE ANY (v_skip_fn)
      ORDER BY p.proname
   LOOP
@@ -187,6 +188,78 @@ BEGIN
       'recurring_payment', jsonb_build_object('name', 'X', 'first_payment_date', 'in 3 days')); END IF;
 
   RAISE NOTICE 'PASS relative_dates fachlich';
+END $$;
+
+-- ============================================================
+-- (3) effective je Write-fn (sql.md: jedes neue Return-Feld bekommt eine Zahlen-Assertion) + Import-Validator
+-- ============================================================
+DO $$
+DECLARE
+  t      date := core.fn_today();
+  v_r    jsonb;
+  v_giro int; v_disb int; v_loan int; v_lacc int; v_pen int;
+BEGIN
+  v_giro := (finance.fn_create_account('{"name":"__rd3_giro__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  v_disb := (finance.fn_create_account('{"name":"__rd3_disb__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+
+  -- Kredit: Auszahlung "-3 days", erste Rate "in 27 days", Laufzeitende "+10 years"
+  v_r := finance.fn_create_loan(jsonb_build_object('name', '__rd3_loan__', 'lender', 'Testbank',
+           'original_amount', 40000, 'disbursement_date', '-3 days', 'interest_rate', 6, 'monthly_annuity', 700,
+           'first_payment_date', 'in 27 days', 'term_end_date', '+10 years',
+           'disbursement_account_id', v_disb, 'debit_account_id', v_giro));
+  v_loan := (v_r->>'loan_id')::int; v_lacc := (v_r->>'loan_account_id')::int;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+     OR (v_r->'effective'->>'first_payment_date')::date IS DISTINCT FROM t + 27
+     OR (v_r->'effective'->>'disbursement_date')::date IS DISTINCT FROM t - 3
+     OR (SELECT term_end_date FROM finance.loans WHERE id = v_loan) IS DISTINCT FROM (t + interval '10 years')::date THEN
+    RAISE EXCEPTION 'FAIL relative_dates [create_loan]: %', v_r; END IF;
+
+  -- Kreditrate ohne Datum: heute FEST in effective (der Write nach Mitternacht bucht denselben Tag)
+  v_r := core.fn_dry_run('finance.fn_book_loan_payment(jsonb)'::regprocedure, jsonb_build_object(
+           'loan_id', v_loan, 'loan_account_id', v_lacc, 'debit_account_id', v_giro, 'payment_amount', 700));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->'effective'->>'payment_date')::date IS DISTINCT FROM t THEN
+    RAISE EXCEPTION 'FAIL relative_dates [book_loan_payment Default heute]: %', v_r; END IF;
+
+  -- Kredit aendern: Laufzeitende "+12 years"; abloesen "yesterday" (Probelauf)
+  v_r := finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'term_end_date', '+12 years'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+     OR (v_r->'effective'->>'term_end_date')::date IS DISTINCT FROM (t + interval '12 years')::date
+     OR (SELECT term_end_date FROM finance.loans WHERE id = v_loan) IS DISTINCT FROM (t + interval '12 years')::date THEN
+    RAISE EXCEPTION 'FAIL relative_dates [set_loan]: %', v_r; END IF;
+  v_r := core.fn_dry_run('finance.fn_settle_loan(jsonb)'::regprocedure, jsonb_build_object(
+           'loan_name', '__rd3_loan__', 'debit_account_id', v_giro, 'settlement_date', 'yesterday'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->'effective'->>'settlement_date')::date IS DISTINCT FROM t - 1 THEN
+    RAISE EXCEPTION 'FAIL relative_dates [settle_loan]: %', v_r; END IF;
+
+  -- Zinssatz ab "tomorrow": effective + gespeicherte Zeile
+  v_r := finance.fn_set_account_interest(jsonb_build_object('account_id', v_giro, 'annual_rate', 2.0,
+           'schedule_unit', 'year', 'valid_from', 'tomorrow'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->'effective'->>'valid_from')::date IS DISTINCT FROM t + 1
+     OR (SELECT valid_from FROM finance.account_interest_rates WHERE id = (v_r->>'interest_rate_id')::int) IS DISTINCT FROM t + 1 THEN
+    RAISE EXCEPTION 'FAIL relative_dates [set_account_interest]: %', v_r; END IF;
+
+  -- Vorsorge-Stand "-1 week"
+  v_pen := (finance.fn_create_pension('{"name":"__rd3_pension__","pension_type":"occupational","current_value":100}'::jsonb)->>'pension_id')::int;
+  v_r := finance.fn_set_pension(jsonb_build_object('pension_id', v_pen, 'current_value', 200, 'value_updated_at', '-1 week'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->'effective'->>'value_updated_at')::date IS DISTINCT FROM t - 7
+     OR (SELECT value_updated_at FROM finance.pension WHERE id = v_pen) IS DISTINCT FROM t - 7 THEN
+    RAISE EXCEPTION 'FAIL relative_dates [set_pension]: %', v_r; END IF;
+
+  -- Immobilie verkaufen "-2 days" (Probelauf)
+  PERFORM finance.fn_create_real_estate('{"name":"__rd3_house__","current_value":300000}'::jsonb);
+  v_r := core.fn_dry_run('finance.fn_sell_real_estate(jsonb)'::regprocedure, jsonb_build_object(
+           'real_estate_name', '__rd3_house__', 'proceeds_account_id', v_giro, 'sale_date', '-2 days', 'sale_price', '320000'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->'effective'->>'sale_date')::date IS DISTINCT FROM t - 2 THEN
+    RAISE EXCEPTION 'FAIL relative_dates [sell_real_estate]: %', v_r; END IF;
+
+  -- Import-Validator: nur YYYY-MM-DD (ein Postgres-Cast liesse US-Format/Zeitstempel/'now' durch, die der Commit ablehnte)
+  IF COALESCE(finance.fn_import_validate_row(gen_random_uuid(), 1, 'recurring_payment',
+       jsonb_build_object('name', 'X', 'first_payment_date', '10/24/2026')), '') NOT LIKE 'first_payment_date %not a valid DATE%'
+     OR COALESCE(finance.fn_import_validate_row(gen_random_uuid(), 1, 'recurring_payment',
+       jsonb_build_object('name', 'X', 'first_payment_date', 'now')), '') NOT LIKE 'first_payment_date %not a valid DATE%' THEN
+    RAISE EXCEPTION 'FAIL relative_dates [Import-Validator US-Format/now]'; END IF;
+
+  RAISE NOTICE 'PASS relative_dates effective je fn';
 END $$;
 
 ROLLBACK;

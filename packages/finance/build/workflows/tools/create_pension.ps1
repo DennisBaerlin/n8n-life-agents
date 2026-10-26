@@ -75,7 +75,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
     $P = "`$('Resolve Person').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1): Beitrag -> Abbuchungskonto/erste Abbuchung/Tag
     # als vollstaendige Folgegruppe.
-    $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.create_pension' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity pension -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.create_pension' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity pension -S (Get-WritePayloadExpr) -D @{
         Person = "$P.full_name" })
 
     $gateId = $GateId

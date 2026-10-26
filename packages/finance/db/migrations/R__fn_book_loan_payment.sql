@@ -51,6 +51,8 @@ BEGIN
     v_dates := core.fn_resolve_input_dates(p, ARRAY['payment_date', 'due_date', 'transaction_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
+    -- leeres Zahlungsdatum = heute, FEST im Payload: der Write nach der Karte bucht denselben Tag wie die Vorschau
+    p := p || jsonb_build_object('payment_date', COALESCE(NULLIF(p->>'payment_date', ''), to_char(core.fn_today(), 'YYYY-MM-DD')));
     -- Korrigierbar: eine genannte Rate muss positiv sein (vor dem Lock; die Split-fn prueft es ebenfalls).
     IF v_payment <= 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -147,7 +149,7 @@ BEGIN
         'remaining_debt',     v_rest_after,
         'matched_due_date',   v_split->'matched_due_date',
         'loan_status',        (SELECT status::text FROM finance.loans WHERE id = v_loan_id),
-        'effective',          v_dates->'resolved'
+        'effective',          (v_dates->'resolved') || jsonb_build_object('payment_date', p->>'payment_date')
     );
 END;
 $$;

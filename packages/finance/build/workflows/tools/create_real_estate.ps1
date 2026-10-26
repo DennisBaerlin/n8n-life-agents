@@ -47,7 +47,7 @@ function Build-CreateRealEstate {
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
-    $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.create_real_estate' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity real_estate -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.create_real_estate' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity real_estate -S (Get-WritePayloadExpr) -D @{
         Person = "$P.full_name" })
 
     $gateId = $GateId

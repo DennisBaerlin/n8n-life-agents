@@ -87,7 +87,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
-    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_loan' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity loan -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_loan' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity loan -S (Get-WritePayloadExpr) -D @{
         Person = "$P.full_name"; RealEstate = "`$('Check duplicate name').item.json.real_estate_name"
         RateInterest = "`$('Dry run').item.json.r.first_rate_interest"; RatePrincipal = "`$('Dry run').item.json.r.first_rate_principal"
         Running = "!!`$('Dry run').item.json.r.opening_balance_date"

@@ -71,7 +71,7 @@ function Build-BookStockBuy {
     $Y = "`$('Resolve Yahoo symbol').item.json"
     $G = "`$('Get Settlement Account').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
-    $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.book_stock_buy' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity stock_buy -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.book_stock_buy' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity stock_buy -S (Get-WritePayloadExpr) -D @{
         Ccy = "($S.quote_currency || $G.currency)"; Settlement = "$G.settlement_name"; Quote = $Y; Date = "`$('Dry run').item.json.r.effective.transaction_date" })
 
     $gateId = $GateId

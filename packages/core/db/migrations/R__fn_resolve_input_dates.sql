@@ -14,7 +14,7 @@
 --     p := v_dates->'p';
 --   und jeder Erfolgs-Return meldet 'effective', (v_dates->'resolved') || COALESCE(<eigenes effective>, '{}'),
 --   damit der echte Write nach der Karte dasselbe Datum bekommt (New-FnWriteGate, auch nach Mitternacht).
---   Der Grund-Text nennt genau die Grammatik von core.fn_resolve_date (gleiche Formulierung wie Get-DateParamHint).
+--   Der Grund-Text verweist auf die Parameter-Beschreibung (Get-DateParamHint = die eine Adresse der Grammatik).
 --   Aufrufer: die finance-/estate-Write-fns (Drift-Guard tests/db/finance/test_fn_relative_dates.sql).
 --   STABLE, INVOKER, ohne Tabellenzugriff. Paket-Rollen: EXECUTE-Grant in core.fn_provision_package_roles.
 --   Tests: tests/db/core/test_fn_resolve_input_dates.sql
@@ -39,9 +39,8 @@ BEGIN
                     THEN core.fn_resolve_date(v_val #>> '{}', p_today) END;   -- late-bound: plpgsql
         IF v_d IS NULL THEN
             RETURN jsonb_build_object('ok', false, 'code', 'invalid_date', 'reason',
-                v_key || ' must be YYYY-MM-DD or relative to today (today/yesterday/tomorrow, digits + unit: '
-                      || 'in 1 week, -3 days, 2 months ago, or next/last <weekday>). If the user said it differently, '
-                      || 'ask for the date.');
+                v_key || ' "' || (v_val #>> '{}') || '" is not a date the database can read - give YYYY-MM-DD or a '
+                      || 'relative form from the parameter description, or ask the user for the exact day.');
         END IF;
         v_out := v_out || jsonb_build_object(v_key, to_char(v_d, 'YYYY-MM-DD'));
         v_res := v_res || jsonb_build_object(v_key, to_char(v_d, 'YYYY-MM-DD'));

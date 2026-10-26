@@ -79,7 +79,7 @@ function Build-CreateInsurance {
     # Karte zeigt die GELESENEN Betraege (Preview Rate = fn_insurance_fields), nicht die Roh-Strings.
     $S = "(Object.assign({}, `$('Start').item.json, { coverage_amount: `$('Preview Rate').item.json.coverage_amount }))"
     $P = "`$('Resolve Person').item.json"
-    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_insurance' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity insurance -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_insurance' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity insurance -S (Get-WritePayloadExpr) -D @{
         Person = "$P.full_name"; PeriodAmount = "`$('Preview Rate').item.json.period_amount"; Annual = "`$('Preview Rate').item.json.annual_premium" })
 
     $gateId = $GateId

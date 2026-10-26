@@ -107,7 +107,7 @@ function Build-CreateAccount {
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     $D = "`$('Resolve interest defaults').item.json"
-    $summary = New-HitlSummary -Pos @(1560, 0) -Title 'finance.hitl.create_account' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity account -S $S -D @{
+    $summary = New-HitlSummary -Pos @(1560, 0) -Title 'finance.hitl.create_account' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity account -S (Get-WritePayloadExpr) -D @{
         Person = "$P.full_name"; Ccy = "($S.currency ? String($S.currency).toUpperCase() : 'EUR')"
         Conv = "$D.conv"; ConvReason = "$D.conv_reason"; AutoPost = "$D.auto_post"; ValidFrom = "$D.valid_from"; FirstCredit = "$D.first_credit_date"
         BalanceDate = "`$('Dry run').item.json.r.opening_balance_date" })

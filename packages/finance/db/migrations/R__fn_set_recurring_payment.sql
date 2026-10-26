@@ -21,9 +21,9 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_id       INT      := (p->>'recurring_payment_id')::int;
     v_amount   NUMERIC  := NULLIF(p->>'amount', '')::numeric;   -- positiver Magnitude-Betrag
-    v_from     DATE     := NULLIF(p->>'valid_from', '')::date;  -- Stichtag fuer den Split
+    v_from     DATE;                                         -- Stichtag fuer den Split
     v_status   finance.payment_status := NULLIF(p->>'status', '')::finance.payment_status;
-    v_to       DATE     := NULLIF(p->>'valid_to', '')::date + 1;   -- inklusive Eingabe -> exklusiv gespeichert
+    v_to       DATE;                                         -- inklusive Eingabe -> exklusiv gespeichert
     v_dom      SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
     v_row      finance.recurring_payments%ROWTYPE;
     v_owner    TEXT;
@@ -31,7 +31,14 @@ DECLARE
     v_new_id   INT;
     v_eff_from DATE;
     v_core     JSONB;     -- Phase L WS-3: Erfolgs-Kern beider Zweige (Split/In-Place) vor dem Cashflow-Fold
+    v_dates    JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from', 'valid_to']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_from := NULLIF(p->>'valid_from', '')::date;
+    v_to   := NULLIF(p->>'valid_to', '')::date + 1;
     -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
@@ -89,6 +96,6 @@ BEGIN
     -- Stichtag HEUTE spiegelt die View exakt die neue Zeile. Audit Paket 3: der eine Fold-Helfer
     -- fn_cashflow_coverage_fold (Pflichtausgaben > Einnahmen, gelatcht, Re-Arm bei Erholung; geteilt mit
     -- fn_create_recurring_payment) -> Note (advisory, nicht-blockierend).
-    RETURN v_core || finance.fn_cashflow_coverage_fold();
+    RETURN v_core || jsonb_build_object('effective', v_dates->'resolved') || finance.fn_cashflow_coverage_fold();
 END;
 $$;

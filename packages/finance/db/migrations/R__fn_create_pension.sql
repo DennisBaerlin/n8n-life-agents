@@ -24,12 +24,18 @@ DECLARE
     v_contrib    NUMERIC  := NULLIF(p->>'contribution_amount','')::numeric;
     v_debit      INT      := NULLIF(p->>'debit_account_id','')::int;
     v_dom        SMALLINT := NULLIF(p->>'schedule_day_of_month','')::smallint;
-    v_first      DATE     := NULLIF(p->>'first_payment_date','')::date;
+    v_first      DATE;
     v_interval   SMALLINT;
     v_unit       finance.schedule_unit;
     v_pension_id INT;
     v_rp_id      INT;
+    v_dates      JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'value_updated_at', 'retirement_start_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_first := NULLIF(p->>'first_payment_date','')::date;
     v_reason := COALESCE(finance.fn_enum_reason('finance.pension_type'::regtype, p->>'pension_type', 'pension_type'),
                          finance.fn_enum_reason('finance.schedule_unit'::regtype, p->>'schedule_unit', 'schedule_unit'));
     IF v_reason IS NOT NULL THEN
@@ -114,6 +120,7 @@ BEGIN
     )
     RETURNING id INTO v_pension_id;
 
-    RETURN jsonb_build_object('ok', true, 'pension_id', v_pension_id, 'recurring_payment_id', v_rp_id);
+    RETURN jsonb_build_object('ok', true, 'pension_id', v_pension_id, 'recurring_payment_id', v_rp_id,
+        'effective', v_dates->'resolved');
 END;
 $$;

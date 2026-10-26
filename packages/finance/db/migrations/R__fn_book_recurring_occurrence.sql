@@ -25,7 +25,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_rp_id    INT  := (p->>'recurring_payment_id')::int;
     v_due      DATE := (p->>'due_date')::date;
-    v_date     DATE := COALESCE(NULLIF(p->>'transaction_date', '')::date, (p->>'due_date')::date);
+    v_date     DATE;
     v_override NUMERIC := NULLIF(p->>'amount', '')::numeric;
     v_acct     INT;
     v_target   INT;
@@ -37,7 +37,14 @@ DECLARE
     v_loan_acc INT;
     v_loan_res JSONB;
     v_reason   TEXT;
+    v_dates    JSONB;
 BEGIN
+    -- relative Ist-Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
+    -- due_date kommt aus dem DB-Lookup (Vorkommen-Identitaet), nie vom LLM -> nicht aufgeloest.
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, (p->>'due_date')::date);
     SELECT account_id, target_account_id, amount, name INTO v_acct, v_target, v_amount, v_name
     FROM finance.recurring_payments WHERE id = v_rp_id;
     IF v_acct IS NULL THEN
@@ -92,7 +99,8 @@ BEGIN
             'interest_portion', (v_loan_res->>'interest_portion')::numeric,
             'principal_amount', (v_loan_res->>'principal_amount')::numeric,
             'remaining_debt',   (v_loan_res->>'remaining_debt')::numeric,
-            'loan_status',      v_loan_res->>'loan_status');
+            'loan_status',      v_loan_res->>'loan_status',
+            'effective',        v_dates->'resolved');
     END IF;
 
     -- Korrigierbar (Audit Paket 2, Kontotyp): ein Dauerauftrag auf einem Depot-/Kreditkonto bucht nie frei
@@ -130,6 +138,6 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'transaction_id', v_tx,
-        'amount', v_book_amt, 'plan_amount', v_amount);
+        'amount', v_book_amt, 'plan_amount', v_amount, 'effective', v_dates->'resolved');
 END;
 $$;

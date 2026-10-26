@@ -20,7 +20,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_name     TEXT := p->>'loan_name';
     v_debit    INT  := (p->>'debit_account_id')::int;
-    v_date     DATE := COALESCE(NULLIF(p->>'settlement_date', '')::date, CURRENT_DATE);
+    v_date     DATE;
     v_amount   NUMERIC := NULLIF(p->>'settlement_amount', '')::numeric;
     v_resolve  RECORD;
     v_loan     finance.loans%ROWTYPE;
@@ -30,7 +30,14 @@ DECLARE
     v_prin_tx  INT;
     v_reason   TEXT;
     v_group    UUID := gen_random_uuid();
+    v_dates    JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
+    -- Leer = heute in der Haushalts-Zeitzone (vorher CURRENT_DATE = Server-Zeitzone, Drift zu core.fn_today).
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['settlement_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'settlement_date', '')::date, core.fn_today());
     SELECT r.loan_id, r.hit_count, r.candidates INTO v_resolve
     FROM finance.fn_resolve_loan(v_name, FALSE) r;
 
@@ -95,6 +102,7 @@ BEGIN
 
     RETURN jsonb_build_object('ok', true,
         'settlement_tx_id', v_giro_tx, 'principal_tx_id', v_prin_tx,
-        'remaining_debt', v_rest, 'interest', v_interest);
+        'remaining_debt', v_rest, 'interest', v_interest,
+        'effective', (v_dates->'resolved') || jsonb_build_object('settlement_date', v_date));
 END;
 $$;

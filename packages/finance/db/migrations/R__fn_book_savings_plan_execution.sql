@@ -34,7 +34,13 @@ DECLARE
     v_buy_result JSONB;
     v_rp_in     INT     := NULLIF(p->>'recurring_payment_id', '')::int;
     v_tx_date   DATE;
+    v_dates     JSONB;
 BEGIN
+    -- relative Ist-Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
+    -- due_date kommt aus dem DB-Lookup (Vorkommen-Identitaet), nie vom LLM -> nicht aufgeloest.
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
     -- Input-Pruefungen
     IF v_shares IS NULL OR v_shares <= 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -107,7 +113,8 @@ BEGIN
         'due_date',     v_due_date,
         'total_cost',   v_total,
         'plan_amount',  v_plan_amt,
-        'variance',     v_variance
+        'variance',     v_variance,
+        'effective',    v_dates->'resolved'
     );
 END;
 $$;

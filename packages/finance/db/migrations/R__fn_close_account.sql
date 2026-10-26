@@ -15,8 +15,14 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_account     finance.accounts%ROWTYPE;
     v_blk         JSONB;
-    v_date        DATE := COALESCE(NULLIF(p->>'closure_date', '')::date, core.fn_today());
+    v_date        DATE;
+    v_dates       JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['closure_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'closure_date', '')::date, core.fn_today());
     SELECT * INTO v_account FROM finance.accounts WHERE id = (p->>'account_id')::int;
 
     IF v_account.id IS NULL THEN
@@ -46,6 +52,6 @@ BEGIN
     WHERE id = v_account.id;
 
     RETURN jsonb_build_object('ok', true, 'account_id', v_account.id, 'status', 'closed',
-        'effective', jsonb_build_object('closure_date', v_date));
+        'effective', (v_dates->'resolved') || jsonb_build_object('closure_date', v_date));
 END;
 $$;

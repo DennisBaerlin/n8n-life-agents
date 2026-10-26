@@ -15,7 +15,12 @@ DECLARE
     v_id     INT     := (p->>'real_estate_id')::int;
     v_cv     NUMERIC := NULLIF(p->>'current_value', '')::numeric;
     v_reason TEXT    := finance.fn_enum_reason('finance.property_status'::regtype, p->>'status', 'status');
+    v_dates  JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['value_updated_at']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
     IF NOT EXISTS (SELECT 1 FROM finance.real_estate WHERE id = v_id) THEN
         RAISE EXCEPTION 'Real estate % not found.', v_id;
     END IF;
@@ -34,7 +39,7 @@ BEGIN
         current_value    = COALESCE(v_cv, current_value),
         value_updated_at = CASE
                                WHEN v_cv IS NOT NULL
-                               THEN COALESCE(NULLIF(p->>'value_updated_at', '')::date, CURRENT_DATE)
+                               THEN COALESCE(NULLIF(p->>'value_updated_at', '')::date, core.fn_today())
                                ELSE COALESCE(NULLIF(p->>'value_updated_at', '')::date, value_updated_at)
                            END,
         owner_person_id  = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- WS-4: typisierter Eigentuemer (Slug); leer=unveraendert
@@ -42,6 +47,6 @@ BEGIN
         notes            = COALESCE(NULLIF(p->>'notes', ''), notes)
     WHERE id = v_id;
 
-    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id);
+    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id, 'effective', v_dates->'resolved');
 END;
 $$;

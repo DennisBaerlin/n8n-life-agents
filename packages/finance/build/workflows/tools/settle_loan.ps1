@@ -49,7 +49,7 @@ function Build-SettleLoan {
             value    = (New-HitlValue -Kind money -Value "($S.settlement_amount || $L.remaining_debt)" -EurByModel)
             interest = (New-HitlValue -Kind money -Value "(Number($S.settlement_amount) - Number($L.remaining_debt))" -EurByModel) })
         (New-HitlLine 'finance.label.debit_account'          "$S.debit_account_name")
-        (New-HitlLine 'core.label.date'                      "$S.settlement_date" -Kind date)
+        (New-HitlLine 'core.label.date'                      (Get-DryEffectiveExpr 'settlement_date') -Kind date)
         (New-HitlNote -Key 'finance.note.settle_loan_action')
     )
 

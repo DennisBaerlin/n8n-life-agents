@@ -24,7 +24,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_account   INT     := (p->>'account_id')::int;
     v_confirmed NUMERIC := (p->>'confirmed_balance')::numeric;
-    v_date      DATE    := COALESCE(NULLIF(p->>'reconciliation_date', '')::date, core.fn_today());
+    v_date      DATE;
     v_db_bal    NUMERIC;
     v_diff      NUMERIC;
     v_tx_id     INT;
@@ -35,7 +35,13 @@ DECLARE
     v_skipped   INT := 0;
     v_n         JSONB;
     v_skip_list JSONB;
+    v_dates     JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['reconciliation_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'reconciliation_date', '')::date, core.fn_today());
     -- FOR UPDATE: Saldo-Zeile sperren (Cron parallel Chat) -> Differenz/Korrekturbuchung auf konsistentem Stand.
     PERFORM 1 FROM finance.account_balances WHERE account_id = v_account FOR UPDATE;
     IF NOT FOUND THEN
@@ -110,7 +116,7 @@ BEGIN
         'balance_after',        v_after,
         'skipped_occurrences',  v_skipped,
         'skipped',              v_skip_list,
-        'effective',            jsonb_build_object('reconciliation_date', v_date)
+        'effective',            (v_dates->'resolved') || jsonb_build_object('reconciliation_date', v_date)
     );
 END;
 $$;

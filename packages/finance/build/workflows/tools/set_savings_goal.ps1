@@ -79,7 +79,7 @@ function Build-SetSavingsGoal {
             to   = (New-HitlValue -Kind money -Value "$S.target_amount" -EurByModel) })
         (New-HitlLine 'finance.label.target_date'        "'finance.tpl.change'" -Kind tpl -If "$S.target_date" -Params @{
             from = (New-HitlValue -Kind date -Value "$R.target_date")
-            to   = (New-HitlValue -Kind date -Value "$S.target_date") })
+            to   = (New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'target_date')) })
         (New-HitlLine 'core.label.status'                "'finance.tpl.change'" -Kind tpl -If "$S.status" -Params @{
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.status') })

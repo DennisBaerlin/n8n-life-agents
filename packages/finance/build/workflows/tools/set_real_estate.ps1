@@ -58,7 +58,7 @@ function Build-SetRealEstate {
         (New-HitlLine 'finance.label.value'          "'finance.tpl.change'" -Kind tpl -If "$S.current_value" -Params @{
             from = (New-HitlValue -Kind money -Value "$R.current_value" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$S.current_value" -EurByModel) })
-        (New-HitlLine 'finance.label.valuation_date' "$S.value_updated_at" -Kind date -If "$S.value_updated_at")
+        (New-HitlLine 'finance.label.valuation_date' (Get-DryEffectiveExpr 'value_updated_at') -Kind date -If "$S.value_updated_at")
         (New-HitlLine 'finance.label.owner_person'   "($P.full_name || $S.owner_person)" -If "$S.owner_person")
         (New-HitlLine 'core.label.status'            "'finance.tpl.change'" -Kind tpl -If "$S.status" -Params @{
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.status')

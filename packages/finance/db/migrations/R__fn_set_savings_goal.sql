@@ -33,7 +33,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_id        INT     := (p->>'goal_id')::int;
     v_target    NUMERIC := NULLIF(p->>'target_amount', '')::numeric;
-    v_tdate     DATE    := NULLIF(p->>'target_date', '')::date;
+    v_tdate     DATE;
     v_status    finance.goal_status;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
     v_reason    TEXT    := finance.fn_enum_reason('finance.goal_status'::regtype, p->>'status', 'status');
     v_reserve   INT     := NULLIF(p->>'reserve_account_id', '')::int;  -- WS-A: Reserve-Topf aendern (rate.target_account_id)
@@ -54,7 +54,13 @@ DECLARE
     v_stop_funders BOOLEAN := COALESCE(NULLIF(p->>'stop_funders', '')::boolean, false);  -- WS-B3: alle Beitraege stoppen
     v_stop_res    jsonb;
     v_reopen      jsonb;   -- Audit Paket 2: Folge-rp bei Reaktivierung einer beendeten Rate
+    v_dates       JSONB;
 BEGIN
+    -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_tdate := NULLIF(p->>'target_date', '')::date;
     SELECT * INTO v_row FROM finance.savings_goals WHERE id = v_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Savings goal % not found.', v_id;
@@ -204,7 +210,7 @@ BEGIN
         v_stop_res := finance.fn_stop_savings_goal_funders(jsonb_build_object('goal_id', v_id));
     END IF;
 
-    RETURN jsonb_build_object('ok', true, 'goal_id', v_id,
+    RETURN jsonb_build_object('ok', true, 'goal_id', v_id, 'effective', v_dates->'resolved',
         'recurring_payment_id', v_row.recurring_payment_id, 'new_monthly_rate', v_rate,
         'linked_savings_plan_id', v_touched_plan,
         -- Post-State der Funder-Pausierung (kein Input-Echo): was WIRKLICH pausiert wurde. Ohne stop_funders

@@ -277,6 +277,10 @@ BEGIN
     IF to_regprocedure('core.fn_resolve_date(text, date)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_resolve_date(text, date) TO %I, %I', v_rw, v_ro);
     END IF;
+    -- ... und der Payload-Einstieg darauf (alle Datums-Keys eines Tool-Aufrufs einmal, {ok:false} statt Cast-Fehler).
+    IF to_regprocedure('core.fn_resolve_input_dates(jsonb, text[], date)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_resolve_input_dates(jsonb, text[], date) TO %I, %I', v_rw, v_ro);
+    END IF;
 
     RETURN jsonb_build_object('ok', true, 'package', v_pkg, 'rw_role', v_rw, 'ro_role', v_ro);
 END;

@@ -54,7 +54,7 @@ function Build-SetSavingsPlan {
     $R = "`$('Read Current').item.json"
     $P = "`$('Resolve Person').item.json"
     $Y = "`$('Dry run').item.json.r"   # Probelauf: abgeleitete Tage (Depot-Kalender) + Betrag je Monat der neuen Zeile
-    $validFrom = "($S.valid_from ? " + (New-HitlValue -Kind date -Value "$S.valid_from") + " : " + (New-HitlValue -Kind key -Value "'finance.value.today'") + ")"
+    $validFrom = "($S.valid_from ? " + (New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'valid_from')) + " : " + (New-HitlValue -Kind key -Value "'finance.value.today'") + ")"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.set_savings_plan' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.plan'               "'finance.tpl.name_symbol'" -Kind tpl -Params @{ name = "$S.savings_plan_name"; symbol = "$R.symbol" })
         (New-HitlLine 'finance.label.beneficiary_person' "($P.full_name || $S.beneficiary_person)" -If "$S.beneficiary_person")

@@ -35,7 +35,7 @@ DECLARE
     v_interval    SMALLINT          := COALESCE(NULLIF(p->>'schedule_interval', '')::smallint, 1);
     v_unit        finance.schedule_unit := (COALESCE(NULLIF(p->>'schedule_unit', ''), 'month'))::finance.schedule_unit;
     v_dom         SMALLINT          := NULLIF(p->>'schedule_day_of_month', '')::smallint;
-    v_first       DATE              := (p->>'first_payment_date')::date;
+    v_first       DATE;
     v_asset_cls   TEXT              := NULLIF(p->>'asset_class', '');  -- Phase L WS-6: Allokations-Block-key (vererbt)
     v_depot_id    INT;
     v_settle_id   INT;
@@ -47,7 +47,13 @@ DECLARE
     v_days        SMALLINT[];
     v_benef       TEXT;
     v_monthly     NUMERIC;
+    v_dates       JSONB;
 BEGIN
+    -- relative Datumsangabe ("next monday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_first := (p->>'first_payment_date')::date;
     -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
@@ -183,7 +189,7 @@ BEGIN
         'schedule_interval',     v_interval,
         'schedule_day_of_month', v_dom,
         'schedule_days',         array_to_string(v_days, ', '),
-        'effective',             jsonb_build_object('beneficiary_person_id', v_benef)
+        'effective',             (v_dates->'resolved') || jsonb_build_object('beneficiary_person_id', v_benef)
     )
     || CASE WHEN (v_sched->>'calendar_changed')::boolean AND jsonb_array_length(v_sched->'calendar') > 0
             THEN jsonb_build_object('calendar_learned',

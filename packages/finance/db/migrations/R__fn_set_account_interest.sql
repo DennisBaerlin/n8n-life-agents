@@ -7,7 +7,7 @@
 --        (nur falls vorhanden -- Konto kann zinslos sein),
 --     2. neue Zeile INSERTen. Das half-offene daterange '[)' verhindert dann Overlap.
 --   Eingabe jsonb: account_id (im n8n aufgeloest), annual_rate (% p.a.), schedule_interval, schedule_unit,
---   schedule_day_of_month, valid_from (opt->CURRENT_DATE), day_count_convention, posting_day_of_month (gesetzt =
+--   schedule_day_of_month, valid_from (opt, ISO oder relativ -> fn_interest_rate_preview; leer = heute), day_count_convention, posting_day_of_month (gesetzt =
 --   Arrears), auto_post -- alle optional.
 --   WIRKSAME WERTE + Pruefungen kommen aus finance.fn_interest_rate_preview (dieselbe fn speist die HITL-Karte ->
 --   Karte = Buchung). Audit Paket 2, Punkt 5: ein reiner Satzwechsel ERBT Kadenz, Abbuchungstag, posting_day_of_month
@@ -61,6 +61,7 @@ BEGIN
             'reason', 'valid_from (' || v_from || ') overlaps an existing interest-rate period for this account. Use a date after the latest period.');
     END;
 
-    RETURN jsonb_build_object('ok', true, 'interest_rate_id', v_new_id, 'closed_previous', v_closed);
+    RETURN jsonb_build_object('ok', true, 'interest_rate_id', v_new_id, 'closed_previous', v_closed,
+        'effective', jsonb_build_object('valid_from', to_char(v_from, 'YYYY-MM-DD')));   -- aufgeloest (Preview)
 END;
 $$;

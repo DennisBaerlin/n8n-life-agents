@@ -37,7 +37,13 @@ DECLARE
     v_dom     SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
     v_why     TEXT;      -- fn_goal_reserve_account_reason
     v_benef   TEXT     := finance.fn_default_beneficiary(p->>'beneficiary_person_id', v_reserve);  -- genannt > Topf-Inhaber
+    v_dates   JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 2 years") -> ISO, damit effective sie fest in den Write nach der Karte traegt
+    -- (fn_savings_rate_schedule loest dieselben Keys fuer die Karte auf); nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date', 'first_payment_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
     -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
@@ -113,7 +119,7 @@ BEGIN
         'card_lines', finance.fn_similar_note(v_sim),
         'beneficiary_person_id', v_benef,
         'beneficiary_name', (SELECT hp.full_name FROM core.fn_household_persons() hp WHERE hp.person_id = v_benef),
-        'effective', jsonb_build_object('beneficiary_person_id', v_benef))
+        'effective', (v_dates->'resolved') || jsonb_build_object('beneficiary_person_id', v_benef))
         || finance.fn_savings_squeeze_fold();
 END;
 $$;

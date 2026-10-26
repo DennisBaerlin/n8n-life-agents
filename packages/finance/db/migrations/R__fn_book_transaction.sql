@@ -5,7 +5,8 @@
 --   Gegenkonto). Verwendung: Versicherungs-Abbuchung, Miete, Gehalt, Erstattung, externe Gebuehr.
 --   Eingabe jsonb: account_id (im n8n aufgeloest), amount (IMMER positiv), direction
 --   ('inflow'|'outflow'), category (optional, Default 'other'; sinnvoll: 'fee'/'interest'/'other'),
---   description (optional -> sonst Auto), transaction_date. Die Richtung bestimmt das VORZEICHEN
+--   description (optional -> sonst Auto), transaction_date (ISO oder relativ, core.fn_resolve_input_dates;
+--   leer = heute). Die Richtung bestimmt das VORZEICHEN
 --   (outflow = -, inflow = +); der Saldo wird danach per trg_finance_balance_update gepflegt.
 --   Audit Paket 2 (Punkt 7/8): der Betrag wird VOR dem Buchen auf die Waehrungseinheit des Kontos gerundet
 --   (currencies.minor_unit; Rueckgabe = gespeicherter Wert, vorher 10.005 zurueck / 10.01 gespeichert); Kategorien
@@ -26,14 +27,21 @@ DECLARE
     v_cat_raw TEXT    := COALESCE(NULLIF(p->>'category',''), 'other');
     v_cat     finance.transaction_category;
     v_reason  TEXT;
-    v_date    DATE    := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
+    v_date    DATE;
     v_desc    TEXT    := NULLIF(p->>'description','');
     v_signed  NUMERIC;
     v_tx      INT;
     v_bal     NUMERIC;
     v_breach  JSONB;
     v_card    JSONB;
+    v_dates   JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
+
     -- Korrigierbare Input-Pruefungen -> {ok:false} (kein RAISE).
     IF v_dir NOT IN ('inflow','outflow') THEN
         RETURN jsonb_build_object('ok', false,
@@ -101,7 +109,7 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'tx_id', v_tx, 'amount', v_signed, 'account_balance', v_bal,
-        'effective', jsonb_build_object('transaction_date', v_date),
+        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date),
         'card_lines', v_card)
         || CASE WHEN v_breach IS NOT NULL THEN jsonb_build_object('reserve_breach', v_breach) ELSE '{}'::jsonb END;
 END;

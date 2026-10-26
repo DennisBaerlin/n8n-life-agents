@@ -27,7 +27,7 @@ DECLARE
     v_rp_id    INT;
     v_ins_id   INT;
     v_dom      SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
-    v_first    DATE := NULLIF(p->>'first_payment_date', '')::date;   -- Pflicht mit Beitrag (kein Rueckfall auf valid_from)
+    v_first    DATE;   -- Pflicht mit Beitrag (kein Rueckfall auf valid_from)
     v_from     DATE;
     v_acct     INT := NULLIF(p->>'debit_account_id', '')::int;
     v_per      NUMERIC;
@@ -38,7 +38,13 @@ DECLARE
     v_fields   JSONB;
     v_reason   TEXT;
     v_acct_ccy CHAR(3);
+    v_dates    JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_first := NULLIF(p->>'first_payment_date', '')::date;
     -- Rohwerte lesen + pruefen: EINE Adresse mit fn_set_insurance und der Karten-Vorschau (fn_insurance_fields).
     v_fields := finance.fn_insurance_fields(p);
     IF (v_fields->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -104,7 +110,8 @@ BEGIN
         'recurring_payment_id', v_rp_id,
         'premium_amount', v_per,
         'annual_premium', v_annual,
-        'monthly_equivalent', (SELECT -monthly_equivalent FROM finance.recurring_payments WHERE id = v_rp_id)
+        'monthly_equivalent', (SELECT -monthly_equivalent FROM finance.recurring_payments WHERE id = v_rp_id),
+        'effective', v_dates->'resolved'
     );
 END;
 $$;

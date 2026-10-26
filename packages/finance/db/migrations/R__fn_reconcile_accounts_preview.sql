@@ -7,7 +7,8 @@
 --   Eingabe jsonb: { accounts: [{account_name, confirmed_balance, reconciliation_date?, notes?}, ...] }
 --   Rueckgabe:
 --     - bei 0/>1 Treffer ODER leerer Liste: { ok:false, reason, candidates? }  (Tool -> Build-ToolError)
---     - sonst: { ok:true, n, rows:[{account_id, name, currency, db_balance, confirmed, diff, skip_count}] }
+--     - sonst: { ok:true, n, rows:[{account_id, name, currency, db_balance, confirmed, diff, reconciliation_date
+--       (aufgeloester Stichtag; relativ wie "yesterday" erlaubt, core.fn_resolve_input_dates), skip_count}] }
 --   Read-only -> baut die EINE Approval-Summary, BEVOR geschrieben wird (CQRS-Read-Seite).
 --   Phase B: Form-Guards (accounts Array NULL-sicher, confirmed_balance schlichte Zahl) als {ok:false} statt
 --     Cast-RAISE — die Eingabe kommt vom Modell (Spiegel der Guards in fn_reconcile_accounts).
@@ -26,6 +27,7 @@ DECLARE
     v_minor SMALLINT;
     v_reason TEXT;
     v_rows  JSONB := '[]'::jsonb;
+    v_dates JSONB;
 BEGIN
     IF jsonb_typeof(p->'accounts') IS DISTINCT FROM 'array' OR jsonb_array_length(p->'accounts') = 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'No accounts provided to reconcile (accounts must be a JSON array).');
@@ -38,15 +40,13 @@ BEGIN
                 v_acct->>'account_name', v_acct->>'confirmed_balance'));
         END IF;
 
-        IF NULLIF(v_acct->>'reconciliation_date', '') IS NOT NULL THEN
-            BEGIN
-                PERFORM (v_acct->>'reconciliation_date')::date;
-            EXCEPTION WHEN OTHERS THEN
-                RETURN jsonb_build_object('ok', false, 'reason', format(
-                    'reconciliation_date for %L must be a date YYYY-MM-DD, got %L',
-                    v_acct->>'account_name', v_acct->>'reconciliation_date'));
-            END;
+        -- Stichtag je Zeile wie fn_reconcile_accounts: ISO oder relativ -> ISO, leer = heute (Haushalts-Zeitzone)
+        v_dates := core.fn_resolve_input_dates(v_acct, ARRAY['reconciliation_date']);
+        IF NOT (v_dates->>'ok')::boolean THEN
+            RETURN v_dates || jsonb_build_object('reason', format('Account %L: %s',
+                v_acct->>'account_name', v_dates->>'reason'));
         END IF;
+        v_date := COALESCE(NULLIF(v_dates->'p'->>'reconciliation_date', '')::date, core.fn_today());
 
         SELECT id, hit_count, candidates INTO v_id, v_hit, v_cand
         FROM finance.fn_resolve_account(v_acct->>'account_name');
@@ -64,7 +64,6 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', format(
                 'Account %L is listed more than once; reconcile each account once per batch.', v_acct->>'account_name'));
         END IF;
-        v_date := COALESCE(NULLIF(v_acct->>'reconciliation_date','')::date, CURRENT_DATE);
         v_reason := finance.fn_reconcile_blocker(v_id, v_date);
         IF v_reason IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false, 'reason', v_reason);
@@ -83,6 +82,7 @@ BEGIN
             'db_balance', v_bal,
             'confirmed',  v_conf,
             'diff',       v_conf - v_bal,
+            'reconciliation_date', to_char(v_date, 'YYYY-MM-DD'),
             -- 2026-10-23: offene Vorkommen, die der Abgleich als erledigt markiert (dieselbe Menge wie fn_reconcile_account)
             'skip_count', (SELECT count(*) FROM finance.fn_reconcile_open_due(v_id, v_date))::int));
     END LOOP;

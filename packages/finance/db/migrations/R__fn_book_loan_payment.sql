@@ -44,7 +44,13 @@ DECLARE
     v_rest_after   NUMERIC;
     v_reason       TEXT;
     v_group        UUID := gen_random_uuid();   -- Multi-Leg: Giro-Bein + principal-Bein teilen eine group_id
+    v_dates        JSONB;
 BEGIN
+    -- relative Datumsangaben ("yesterday", "-3 days") -> ISO, bevor fn_get_loan_payment_split sie liest;
+    -- nicht aufloesbar -> {ok:false, code:'invalid_date'}. effective traegt sie fest in den Write nach der Karte.
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['payment_date', 'due_date', 'transaction_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
     -- Korrigierbar: eine genannte Rate muss positiv sein (vor dem Lock; die Split-fn prueft es ebenfalls).
     IF v_payment <= 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -140,7 +146,8 @@ BEGIN
         'principal_amount',   v_principal,
         'remaining_debt',     v_rest_after,
         'matched_due_date',   v_split->'matched_due_date',
-        'loan_status',        (SELECT status::text FROM finance.loans WHERE id = v_loan_id)
+        'loan_status',        (SELECT status::text FROM finance.loans WHERE id = v_loan_id),
+        'effective',          v_dates->'resolved'
     );
 END;
 $$;

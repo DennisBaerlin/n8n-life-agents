@@ -34,7 +34,7 @@ DECLARE
     v_fields   JSONB;
     v_reason   TEXT;
     v_status   finance.insurance_status;   -- Casts erst nach dem Enum-Guard (Import-Haertung)
-    v_valid_to DATE    := NULLIF(p->>'valid_to', '')::date;
+    v_valid_to DATE;
     v_interval SMALLINT := NULLIF(p->>'schedule_interval', '')::smallint;
     v_unit     finance.schedule_unit;
     v_dom      SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
@@ -42,7 +42,13 @@ DECLARE
     v_end      DATE;
     v_today    DATE    := core.fn_today();
     v_chg      JSONB   := '{}'::jsonb;
+    v_dates    JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_to', 'effective_from']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_valid_to := NULLIF(p->>'valid_to', '')::date;
     v_reason := COALESCE(finance.fn_enum_reason('finance.insurance_status'::regtype, p->>'status', 'status'),
                          finance.fn_enum_reason('finance.schedule_unit'::regtype, p->>'schedule_unit', 'schedule_unit'));
     IF v_reason IS NOT NULL THEN
@@ -149,6 +155,7 @@ BEGIN
     RETURN jsonb_build_object('ok', true, 'insurance_id', v_id, 'recurring_payment_id', v_head)
         || jsonb_strip_nulls(jsonb_build_object(
                'split', v_chg->'split', 'previous_id', v_chg->'previous_id', 'effective_from', v_chg->'effective_from',
-               'premium_amount', v_per, 'annual_premium', CASE WHEN v_per IS NOT NULL THEN v_fields->'annual_premium' END));
+               'premium_amount', v_per, 'annual_premium', CASE WHEN v_per IS NOT NULL THEN v_fields->'annual_premium' END))
+        || jsonb_build_object('effective', v_dates->'resolved');
 END;
 $$;

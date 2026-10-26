@@ -20,9 +20,10 @@ function Build-ReconcileAccount {
     # Saldo ZUM STICHTAG + Kontowaehrung + korrigierbare Ablehnung aus denselben fns wie die Buchung (Audit Paket 2,
     # Punkt 6/7): fn_get_balance_as_of (vorher heutiger Saldo -> eine spaetere Buchung galt als Differenz),
     # fn_reconcile_blocker (Depot-/Kreditkonto, Stichtag Zukunft / vor letztem Abgleich), bestaetigter Saldo auf die
-    # Waehrungseinheit gerundet, Differenz von der DB gerechnet. Fehlendes Datum = heute (wie die fn).
+    # Waehrungseinheit gerundet, Differenz von der DB gerechnet. Fehlendes Datum = heute (wie die fn); relative Angabe ("yesterday")
+    # rechnet core.fn_resolve_date, eine unlesbare lehnt der Probelauf (fn_reconcile_account) danach mit ok:false ab.
     $readBal = Build-Pg 'Read DB Balance' @(660, 0) `
-        "=WITH x AS (SELECT a.id, a.currency, c.minor_unit, COALESCE(NULLIF((`$1::jsonb)->>'reconciliation_date', '')::date, core.fn_today()) AS d FROM finance.accounts a JOIN finance.currencies c ON c.code = a.currency WHERE a.id = ((`$1::jsonb)->>'account_id')::int) SELECT finance.fn_get_balance_as_of(x.id, x.d) AS db_balance, x.currency, x.d::text AS reconciliation_date, finance.fn_reconcile_blocker(x.id, x.d) AS blocker, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) AS confirmed, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) - finance.fn_get_balance_as_of(x.id, x.d) AS diff, (SELECT count(*) FROM finance.fn_reconcile_open_due(x.id, x.d))::int AS skip_count FROM x;" `
+        "=WITH x AS (SELECT a.id, a.currency, c.minor_unit, COALESCE(core.fn_resolve_date(NULLIF((`$1::jsonb)->>'reconciliation_date', '')), core.fn_today()) AS d FROM finance.accounts a JOIN finance.currencies c ON c.code = a.currency WHERE a.id = ((`$1::jsonb)->>'account_id')::int) SELECT finance.fn_get_balance_as_of(x.id, x.d) AS db_balance, x.currency, x.d::text AS reconciliation_date, finance.fn_reconcile_blocker(x.id, x.d) AS blocker, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) AS confirmed, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) - finance.fn_get_balance_as_of(x.id, x.d) AS diff, (SELECT count(*) FROM finance.fn_reconcile_open_due(x.id, x.d))::int AS skip_count FROM x;" `
         ([ordered]@{
             account_id          = '$(''Resolve Account'').item.json.id'
             confirmed_balance   = '$(''Start'').item.json.confirmed_balance'

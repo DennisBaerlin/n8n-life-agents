@@ -44,7 +44,7 @@ DECLARE
     v_unit_new  finance.schedule_unit := NULLIF(p->>'schedule_unit', '')::finance.schedule_unit;     -- WS-B2: Kadenz editierbar
     v_interval_new SMALLINT       := NULLIF(p->>'schedule_interval', '')::smallint;                  -- WS-B2
     v_status    finance.payment_status := NULLIF(p->>'status', '')::finance.payment_status;
-    v_from      DATE              := COALESCE(NULLIF(p->>'valid_from', '')::date, CURRENT_DATE);
+    v_from      DATE;
     v_asset_cls TEXT              := NULLIF(p->>'asset_class', '');   -- WS-6: Anlageklasse korrigierbar (leer=unveraendert)
     v_plan      finance.savings_plans%ROWTYPE;
     v_rp        finance.recurring_payments%ROWTYPE;
@@ -58,7 +58,13 @@ DECLARE
     v_sched     JSONB;
     v_days      SMALLINT[];
     v_dom       SMALLINT;
+    v_dates     JSONB;
 BEGIN
+    -- relative Datumsangabe ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_from := COALESCE(NULLIF(p->>'valid_from', '')::date, core.fn_today());
     -- Plan aufloesen (inkl. paused, damit Pause/Resume auf paused Plans funktioniert)
     SELECT r.id, r.hit_count INTO v_resolve
     FROM finance.fn_resolve_savings_plan(v_name, FALSE) r;
@@ -187,6 +193,7 @@ BEGIN
 
         RETURN jsonb_build_object(
             'ok',                   true,
+            'effective',            v_dates->'resolved',
             'savings_plan_id',      v_plan.id,
             'recurring_payment_id', v_new_rp_id,
             'previous_rp_id',       v_rp.id,
@@ -211,6 +218,7 @@ BEGIN
             WHERE id = v_plan.id;
             RETURN jsonb_build_object(
                 'ok',                   true,
+                'effective',            v_dates->'resolved',
                 'savings_plan_id',      v_plan.id,
                 'recurring_payment_id', (v_split_res->>'recurring_payment_id')::int,
                 'previous_rp_id',       v_rp.id,
@@ -241,6 +249,7 @@ BEGIN
 
         RETURN jsonb_build_object(
             'ok',                   true,
+            'effective',            v_dates->'resolved',
             'savings_plan_id',      v_plan.id,
             'recurring_payment_id', v_plan.recurring_payment_id,
             'split',                false)

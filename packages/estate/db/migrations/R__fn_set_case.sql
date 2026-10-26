@@ -7,7 +7,7 @@
 --       zutreffende von open auf n.a. — nur vom SYSTEM gesetzte Status; Nutzer-Status (done, "trifft nicht zu")
 --       bleiben. fan_out zieht neu registrierte Sonderfall-Stubs nach.
 --   flags werden GEMERGT (bestehende || neue; ein null-Wert loescht die Aussage -> wieder Register-Ableitung),
---   knowledge_date (YYYY-MM-DD oder relativ, core.fn_resolve_date)/bundesland partiell (nicht gesendet bleibt
+--   knowledge_date (YYYY-MM-DD oder relativ, core.fn_resolve_input_dates)/bundesland partiell (nicht gesendet bleibt
 --   unveraendert). adults_only-DB-Backstop. Nur OFFENE Faelle. Eingabe jsonb: chat_id, case_id, knowledge_date,
 --   bundesland, flags (alle optional).
 --   RUECKGABE: {ok:true, case_id, phase_counts, total_open, case_status, effective?{knowledge_date}} | {ok:false, reason}.
@@ -25,6 +25,7 @@ DECLARE
     v_new_flags JSONB;
     v_counts    JSONB;
     v_total     INT;
+    v_dates     JSONB;
 BEGIN
     v_perm := core.fn_check_write_permission('adults_only', p->>'chat_id', NULL);
     IF v_perm IS NOT NULL THEN
@@ -45,12 +46,10 @@ BEGIN
 
     -- WP3: relative Angabe ("yesterday", "-3 days") rechnet die DB; der Probelauf meldet das Ergebnis als effective,
     -- New-FnWriteGate reicht es an den echten Write (Karte = Speicher, auch beim Tipp nach Mitternacht).
-    IF NULLIF(trim(COALESCE(p->>'knowledge_date', '')), '') IS NOT NULL THEN
-        v_new_know := core.fn_resolve_date(p->>'knowledge_date');
-        IF v_new_know IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'reason',
-                'knowledge_date must be YYYY-MM-DD or relative to today (e.g. yesterday, -3 days).');
-        END IF;
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['knowledge_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    v_new_know := NULLIF(v_dates->'resolved'->>'knowledge_date', '')::date;
+    IF v_new_know IS NOT NULL THEN
         IF v_new_know > core.fn_today() THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'knowledge_date cannot be in the future.');
         END IF;

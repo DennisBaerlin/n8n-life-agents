@@ -64,7 +64,7 @@ function Build-SetAccountInterest {
         (New-HitlLine 'finance.label.account'       "$S.account_name")
         (New-HitlLine 'finance.label.interest_rate' "'finance.tpl.percent_pa'" -Kind tpl -Params @{ value = "$S.annual_rate" })
         (New-HitlLine 'finance.label.valid_from'    "($S.valid_from ? 'finance.tpl.plain' : 'finance.value.today')" -Kind tpl -Params @{
-            value = (New-HitlValue -Kind date -Value "$S.valid_from") })
+            value = (New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'valid_from')) })
         (Get-FinanceInterestScheduleLines -Unit "$D.schedule_unit" -Interval "$D.schedule_interval" -Dom "$D.schedule_day_of_month" `
             -Pdom "$D.posting_day_of_month" -FirstCredit "$D.first_credit_date" -Conv "$D.conv" -ConvReason "$D.conv_reason")
         (New-HitlLine 'finance.label.auto_post'     "($D.auto_post ? 'finance.value.auto_post_yes' : 'finance.value.auto_post_no')" -Kind key)

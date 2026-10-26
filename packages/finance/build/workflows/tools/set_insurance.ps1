@@ -100,7 +100,7 @@ function Build-SetInsurance {
         (New-HitlLine 'core.label.status'                 "'finance.tpl.change'" -Kind tpl -If "$S.status" -Params @{
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.insurance_status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.insurance_status') })
-        (New-HitlLine 'finance.label.valid_to'            "$S.valid_to" -Kind date -If "$S.valid_to")
+        (New-HitlLine 'finance.label.valid_to'            (Get-DryEffectiveExpr 'valid_to') -Kind date -If "$S.valid_to")
         (New-HitlLine 'core.label.note'                   "$S.notes" -If "$S.notes")
         (New-HitlNote -Key 'finance.note.set_insurance_pause' -If "($S.status == 'cancelled' || $S.status == 'expired')")
     )

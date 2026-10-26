@@ -10,7 +10,7 @@
 --       (core.fn_household_persons, NIE agent.persons direkt, D10).
 --     * subject == Sender selbst -> {ok:false, subject_is_sender} (v1-Grenze; nur numerischer Pfad).
 --     * event_date Pflicht, nicht in der Zukunft; knowledge_date >= event_date (Default = event_date); beide
---       YYYY-MM-DD oder relativ (core.fn_resolve_date) — die Rueckgabe traegt die AUFGELOESTEN Daten, die der
+--       YYYY-MM-DD oder relativ (core.fn_resolve_input_dates) — die Rueckgabe traegt die AUFGELOESTEN Daten, die der
 --       Tool-Write danach unveraendert uebernimmt (Karte = Speicher).
 --     * intake_facts / unknown_flags: Intake-Merkmale des Falltyps, wirksam true bzw. unbekannt (Register via
 --       estate.fn_case_register_flags, ueberstimmt von p.flags).
@@ -42,6 +42,7 @@ DECLARE
     v_eff       JSONB;
     v_known     JSONB;
     v_unknown   JSONB;
+    v_dates     JSONB;
 BEGIN
     v_perm := core.fn_check_write_permission('adults_only', v_chat, NULL);
     IF v_perm IS NOT NULL THEN
@@ -70,23 +71,13 @@ BEGIN
     IF NULLIF(trim(COALESCE(p->>'event_date', '')), '') IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'event_date is required.');
     END IF;
-    v_event := core.fn_resolve_date(p->>'event_date');
-    IF v_event IS NULL THEN
-        RETURN jsonb_build_object('ok', false, 'reason',
-            'event_date must be YYYY-MM-DD or relative to today (e.g. yesterday, -3 days, last friday).');
-    END IF;
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['event_date', 'knowledge_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    v_event := (v_dates->'resolved'->>'event_date')::date;
     IF v_event > core.fn_today() THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'event_date cannot be in the future.');
     END IF;
-    IF NULLIF(trim(COALESCE(p->>'knowledge_date', '')), '') IS NULL THEN
-        v_know := v_event;
-    ELSE
-        v_know := core.fn_resolve_date(p->>'knowledge_date');
-        IF v_know IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'reason',
-                'knowledge_date must be YYYY-MM-DD or relative to today (e.g. yesterday, -3 days).');
-        END IF;
-    END IF;
+    v_know := COALESCE(NULLIF(v_dates->'resolved'->>'knowledge_date', '')::date, v_event);
     IF v_know < v_event THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'knowledge_date cannot be before event_date.');
     END IF;

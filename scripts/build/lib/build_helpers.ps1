@@ -239,6 +239,23 @@ function Build-ToolCancelled {
     )
 }
 
+# Datums-Hinweis fuer $fromAI-Parameter (Modell-Schicht -> englisch): das LLM gibt eine relative Angabe ROH weiter,
+#   die Write-fn rechnet sie (core.fn_resolve_input_dates -> core.fn_resolve_date). Nennt genau deren Grammatik
+#   (Ziffern, kein "a week"/"next month"); was nicht passt, fragt der Agent nach (Prompt-Regel des Agenten).
+#   Die EINE Adresse fuer den Text: Aufrufer setzen ihn per ('<Feld> (' + (Get-DateParamHint) + '), …') zusammen.
+function Get-DateParamHint {
+    'YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (digits, never words) - never compute a date yourself'
+}
+
+# Ausdruck fuer eine Karten-Zeile mit einem Datum, das die Write-fn aufgeloest hat: r.effective.<Key> aus dem Probelauf
+#   (New-FnWriteGate), sonst der Roh-Wert aus Start (fn ohne effective fuer diesen Key, z. B. leeres Feld).
+#   Karte = Write: der Gate-Write bekommt dasselbe effective (Post-State-Vertrag).
+function Get-DryEffectiveExpr {
+    param([Parameter(Mandatory)][string]$Key, [string]$DryName = 'Dry run', [string]$StartName = 'Start')
+    if ($Key -notmatch '^[a-z_]+$') { throw "Get-DryEffectiveExpr: -Key '$Key' muss snake_case sein" }
+    "((`$('$DryName').item.json.r.effective || {}).$Key || `$('$StartName').item.json.$Key)"
+}
+
 # New-FnWriteGate — "DB ist das Gesetz": Probelauf der Write-fn VOR der HITL-Karte + der echte Write, aus EINER
 #   Param-Map (Build-Pg-Form). Liefert vier Knoten + Namen fuer die Verdrahtung:
 #     Dry    'Dry run'          SELECT core.fn_dry_run('<Fn>(jsonb)'::regprocedure, $1) AS r   (immer zurueckgerollt)

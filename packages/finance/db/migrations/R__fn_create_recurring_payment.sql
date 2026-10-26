@@ -24,15 +24,23 @@ DECLARE
     v_reason   TEXT     := COALESCE(finance.fn_enum_reason('finance.schedule_unit'::regtype, p->>'schedule_unit', 'schedule_unit'),
                                     finance.fn_bookable_account_reason((p->>'account_id')::int));
     v_dom      SMALLINT := NULLIF(p->>'schedule_day_of_month','')::smallint;
-    v_first    DATE     := (p->>'first_payment_date')::date;
-    v_from     DATE     := COALESCE(NULLIF(p->>'valid_from','')::date, (p->>'first_payment_date')::date);
-    v_to       DATE     := NULLIF(p->>'valid_to','')::date + 1;   -- inklusiver letzter Tag -> exklusives Ende
+    v_first    DATE;
+    v_from     DATE;
+    v_to       DATE;
     v_signed   NUMERIC;
     v_rp_id    INT;
     v_me       NUMERIC;
     v_cf       JSONB := '{}'::jsonb;   -- Phase Notify: gefaltete cashflow_coverage-Note (nur bei Latch-Flanke)
     v_nc       JSONB;
+    v_dates    JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from', 'valid_to']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_first := (p->>'first_payment_date')::date;
+    v_from  := COALESCE(NULLIF(p->>'valid_from','')::date, (p->>'first_payment_date')::date);
+    v_to    := NULLIF(p->>'valid_to','')::date + 1;   -- inklusiver letzter Tag -> exklusives Ende
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
@@ -70,6 +78,6 @@ BEGIN
     v_cf := finance.fn_cashflow_coverage_fold();
 
     RETURN jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                              'card_lines', v_nc->'card_lines') || v_cf;
+                              'card_lines', v_nc->'card_lines', 'effective', v_dates->'resolved') || v_cf;
 END;
 $$;

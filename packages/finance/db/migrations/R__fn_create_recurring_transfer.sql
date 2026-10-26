@@ -26,13 +26,21 @@ DECLARE
     v_interval SMALLINT := COALESCE(NULLIF(p->>'schedule_interval','')::smallint, 1);
     v_unit     finance.schedule_unit := (p->>'schedule_unit')::finance.schedule_unit;
     v_dom      SMALLINT := NULLIF(p->>'schedule_day_of_month','')::smallint;
-    v_first    DATE     := (p->>'first_payment_date')::date;
-    v_from_dt  DATE     := COALESCE(NULLIF(p->>'valid_from','')::date, (p->>'first_payment_date')::date);
-    v_to_dt    DATE     := NULLIF(p->>'valid_to','')::date + 1;   -- inklusiver letzter Tag -> exklusives Ende
+    v_first    DATE;
+    v_from_dt  DATE;
+    v_to_dt    DATE;
     v_rp_id    INT;
     v_me       NUMERIC;
     v_nc       JSONB;
+    v_dates    JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from', 'valid_to']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_first   := (p->>'first_payment_date')::date;
+    v_from_dt := COALESCE(NULLIF(p->>'valid_from','')::date, (p->>'first_payment_date')::date);
+    v_to_dt   := NULLIF(p->>'valid_to','')::date + 1;   -- inklusiver letzter Tag -> exklusives Ende
     -- DB-ist-das-Gesetz S6: laufende freistehende Zahlung gleichen Namens -> ok:false; Entitaets-Zahlung -> Karten-Hinweis
     v_nc := finance.fn_recurring_name_check(p->>'name');
     IF (v_nc->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -64,6 +72,6 @@ BEGIN
     SELECT monthly_equivalent INTO v_me FROM finance.recurring_payments WHERE id = v_rp_id;
 
     RETURN jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                              'card_lines', v_nc->'card_lines');
+                              'card_lines', v_nc->'card_lines', 'effective', v_dates->'resolved');
 END;
 $$;

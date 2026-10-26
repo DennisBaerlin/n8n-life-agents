@@ -227,6 +227,18 @@ BEGIN
     RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> core.fn_resolve_date]'; END IF;
   RESET ROLE;
   RAISE NOTICE 'PASS [estate_rw/finance_ro -> core.fn_resolve_date]';
+  -- Payload-Einstieg der Write-fns (core.fn_resolve_input_dates) unter finance_rw und estate_rw
+  SET LOCAL ROLE finance_rw;
+  IF core.fn_resolve_input_dates('{"transaction_date":"yesterday"}'::jsonb, ARRAY['transaction_date'], DATE '2026-10-25')
+       ->'p'->>'transaction_date' IS DISTINCT FROM '2026-10-24' THEN
+    RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw -> core.fn_resolve_input_dates]'; END IF;
+  RESET ROLE;
+  SET LOCAL ROLE estate_rw;
+  IF (core.fn_resolve_input_dates('{"due_date":"in 3 days"}'::jsonb, ARRAY['due_date'])->'p'->>'due_date')::date
+       IS DISTINCT FROM core.fn_today() + 3 THEN
+    RESET ROLE; RAISE EXCEPTION 'FAIL [estate_rw -> core.fn_resolve_input_dates]'; END IF;
+  RESET ROLE;
+  RAISE NOTICE 'PASS [finance_rw/estate_rw -> core.fn_resolve_input_dates]';
 
   -- ===== (2a) finance_rw: Modell zur Laufzeit (Festwert-Phase 2) =====
   -- agent.finance.tool_extract_finance_document laeuft unter finance_rw; sein Knoten 'Load model config' liest
@@ -1297,7 +1309,7 @@ DECLARE
   v_published text[] := ARRAY['fn_core_api_version', 'fn_advisor_read_plan', 'fn_onboarding_status', 'fn_package_active',
                               'fn_config_get', 'fn_monitor_trigger_summary', 'fn_list_monitor_triggers',
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
-                              'fn_resolve_date'];
+                              'fn_resolve_date', 'fn_resolve_input_dates'];
   v_published_rw text[] := ARRAY['fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
                                  'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run'];
   v_n int := 0;

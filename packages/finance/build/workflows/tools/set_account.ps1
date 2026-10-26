@@ -56,7 +56,7 @@ function Build-SetAccount {
         (New-HitlLine 'finance.label.bank'               "$S.bank" -If "$S.bank")
         (New-HitlLine 'finance.label.iban_number' "$S.account_number" -If "$S.account_number")
         (New-HitlLine 'finance.label.owner_person'       "($P.full_name || $S.owner_person)" -If "$S.owner_person")
-        (New-HitlLine 'finance.label.maturity'           "$S.fixed_deposit_maturity_date" -Kind date -If "$S.fixed_deposit_maturity_date")
+        (New-HitlLine 'finance.label.maturity'           (Get-DryEffectiveExpr 'fixed_deposit_maturity_date') -Kind date -If "$S.fixed_deposit_maturity_date")
         (New-HitlLine 'finance.label.auto_renew'       "$S.fixed_deposit_auto_renew" -Kind bool -If "$S.fixed_deposit_auto_renew")
         (New-HitlLine 'finance.label.ownership'          "$S.ownership" -Kind enum -Enum 'finance.enum.ownership' -If "$S.ownership")
         (New-HitlLine 'finance.label.transmortal_poa'    "(['true','t','yes','y','on','1'].indexOf(String($S.has_transmortal_poa).toLowerCase().trim()) >= 0)" -Kind bool -If "$S.has_transmortal_poa")

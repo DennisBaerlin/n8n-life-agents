@@ -353,8 +353,8 @@ function Build-AgentEstateAdvisor {
         @(
             ,@('subject_person', 'The affected household member (the deceased or incapacitated person; a first name is fine). NOT you.', 'string')
             ,@('case_type', 'death (a member died) or incapacity (Vorsorgefall/Pflegefall - a member cannot act for themselves)', 'string')
-            ,@('event_date', 'Date of death or onset of incapacity: YYYY-MM-DD, or relative to today as the user said it (yesterday, -3 days, last friday) - never compute the date yourself', 'string')
-            ,@('knowledge_date', 'Date the household learned of it: YYYY-MM-DD or relative (yesterday, -2 days); leave empty if same as event_date', 'string', '')
+            ,@('event_date', ('Date of death or onset of incapacity: ' + (Get-DateParamHint)), 'string')
+            ,@('knowledge_date', ('Date the household learned of it: ' + (Get-DateParamHint) + '; leave empty if same as event_date'), 'string', '')
             ,@('bundesland', 'German state slug for deadline/holiday calculation: bayern, nordrhein_westfalen, berlin, hessen, sachsen, ... Leave empty ONLY if it is configured.', 'string', '')
             ,@('tenant', 'true or false only if the user said whether the affected person rented a home; empty = derive from the register', 'string', '')
             ,@('employed', 'true or false only if the user said whether the affected person was employed; empty = derive from the register', 'string', '')
@@ -368,7 +368,7 @@ function Build-AgentEstateAdvisor {
         'Correct or extend an OPEN event case: change the knowledge date or the German state, or correct intake facts (true = applies, false = does not apply, register = forget the earlier statement and use the register again). The database recomputes deadlines and re-checks the checklist; steps the user finished or marked as not applicable stay as they are. The result case_status tells you if the case is now complete. Identify the case by case_id (find it via a SELECT on estate.cases).' `
         @(
             ,@('case_id', 'The id of the open case (from estate.cases)', 'string')
-            ,@('knowledge_date', 'New knowledge date: YYYY-MM-DD or relative (yesterday, -2 days); empty to leave unchanged', 'string', '')
+            ,@('knowledge_date', ('New knowledge date: ' + (Get-DateParamHint) + '; empty to leave unchanged'), 'string', '')
             ,@('bundesland', 'New German state slug; empty to leave unchanged', 'string', '')
             ,@('tenant', 'true / false / register (forget the statement); empty = unchanged. The affected person rented a home', 'string', '')
             ,@('employed', 'true / false / register; empty = unchanged. The affected person was employed', 'string', '')
@@ -398,7 +398,7 @@ function Build-AgentEstateAdvisor {
             ,@('title', 'Short task title (German, shown to the user)', 'string')
             ,@('phase', 'immediate, first_week, first_month or later (default first_week)', 'string', '')
             ,@('detail', 'Optional detail/explanation', 'string', '')
-            ,@('due_date', 'Optional due date: YYYY-MM-DD or relative as the user said it (in 3 days, next friday) - never compute the date yourself', 'string', '')
+            ,@('due_date', ('Optional due date: ' + (Get-DateParamHint)), 'string', '')
         ) $null @(304, 880) -StartNode $START_NODE
 
     # =====================================================================================

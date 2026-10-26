@@ -62,10 +62,10 @@ function Build-CreateRecurringTransfer {
             interval = "($S.schedule_interval || '1')"
             unit     = (New-HitlValue -Kind enum -Value "$S.schedule_unit" -Enum 'finance.enum.schedule_unit') })
         (New-HitlLine 'finance.label.debit_day'    $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
-        (New-HitlLine 'finance.label.first_transfer' "$S.first_payment_date" -Kind date)
-        (New-HitlLine 'finance.label.valid_from'   "($S.valid_from || $S.first_payment_date)" -Kind date -IsDefault "!$S.valid_from")
+        (New-HitlLine 'finance.label.first_transfer' (Get-DryEffectiveExpr 'first_payment_date') -Kind date)
+        (New-HitlLine 'finance.label.valid_from'   ("(" + (Get-DryEffectiveExpr 'valid_from') + " || " + (Get-DryEffectiveExpr 'first_payment_date') + ")") -Kind date -IsDefault "!$S.valid_from")
         (New-HitlLine 'finance.label.valid_to'     "($S.valid_to ? 'finance.tpl.plain' : 'finance.value.unlimited')" -Kind tpl -Params @{
-            value = (New-HitlValue -Kind date -Value "$S.valid_to") })
+            value = (New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'valid_to')) })
         (New-HitlLine 'core.label.note'            "$S.notes" -If "$S.notes")
     )
 

@@ -49,13 +49,13 @@ DECLARE
     v_rp_id    INT;
     v_amount   NUMERIC  := NULLIF(p->>'original_amount', '')::numeric;
     v_current  NUMERIC  := COALESCE(NULLIF(p->>'current_balance', '')::numeric, NULLIF(p->>'original_amount', '')::numeric);
-    v_disb     DATE     := NULLIF(p->>'disbursement_date', '')::date;
+    v_disb     DATE;
     v_irate    NUMERIC  := NULLIF(p->>'interest_rate', '')::numeric;
-    v_fixed    DATE     := NULLIF(p->>'interest_rate_fixed_until', '')::date;
-    v_term_end DATE     := NULLIF(p->>'term_end_date', '')::date;
+    v_fixed    DATE;
+    v_term_end DATE;
     v_annuity  NUMERIC  := NULLIF(p->>'monthly_annuity', '')::numeric;
     v_dom      SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
-    v_first    DATE     := NULLIF(p->>'first_payment_date', '')::date;
+    v_first    DATE;
     v_debit    INT      := (p->>'debit_account_id')::int;
     v_disbursement_id INT := NULLIF(p->>'disbursement_account_id', '')::int;
     v_today     DATE    := core.fn_today();
@@ -67,7 +67,17 @@ DECLARE
     v_reason    TEXT;
     v_sim       TEXT;
     v_ov        RECORD;
+    v_dates     JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 2 weeks", "+10 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p,
+                   ARRAY['disbursement_date', 'interest_rate_fixed_until', 'term_end_date', 'first_payment_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_disb     := NULLIF(p->>'disbursement_date', '')::date;
+    v_fixed    := NULLIF(p->>'interest_rate_fixed_until', '')::date;
+    v_term_end := NULLIF(p->>'term_end_date', '')::date;
+    v_first    := NULLIF(p->>'first_payment_date', '')::date;
     -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
@@ -213,7 +223,8 @@ BEGIN
         'first_rate_principal', v_annuity - v_interest,
         'initial_principal_rate', v_ov.initial_principal_rate,
         'balance_at_fixed_until', v_ov.balance_at_fixed_until_projected,
-        'balance_at_term_end', v_ov.balance_at_term_end_projected
+        'balance_at_term_end', v_ov.balance_at_term_end_projected,
+        'effective', v_dates->'resolved'
     );
 END;
 $$;

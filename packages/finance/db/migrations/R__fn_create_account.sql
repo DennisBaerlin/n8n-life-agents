@@ -12,7 +12,8 @@
 --     interest_posting_day_of_month (optional; gesetzt = Arrears-Gutschrift im Folgemonat),
 --     interest_auto_post (optional Override; sonst Vorschlag aus fn_account_interest_defaults = Karten-Wert),
 --     interest_valid_from (optional -> core.fn_today()),
---     opening_balance_date (optional, YYYY-MM-DD, nicht in der Zukunft, nur mit opening_balance, nie auf Depots:
+--     Datumsfelder ISO oder relativ ("yesterday", "-3 days"; core.fn_resolve_input_dates, effective = aufgeloest).
+--     opening_balance_date (optional, nicht in der Zukunft, nur mit opening_balance, nie auf Depots:
 --     Stichtag des Saldos, z. B. das Ende des Kontoauszugs, aus dem ein neues Konto angelegt wird; leer = heute)
 --   Eroeffnungssaldo: EIGENE Buchung category='other' zum Stichtag (kein 'reconciliation', kein
 --   last_reconciled_* -> der erste echte Abgleich-Reminder bleibt unverfaelscht). 0/leer -> keine Buchung.
@@ -45,7 +46,7 @@ DECLARE
     v_similar    JSONB;
     v_opening    NUMERIC;
     v_open_date  DATE;
-    v_open_raw   TEXT    := NULLIF(btrim(p->>'opening_balance_date'), '');
+    v_open_raw   TEXT;
     -- Roh-Input normalisieren ('usd' -> 'USD'); NULL -> 'EUR' (STRICT-Helper gibt NULL bei NULL zurueck).
     v_currency   TEXT    := COALESCE(finance.fn_normalize_currency(NULLIF(p->>'currency', '')), 'EUR');
     v_acct_type  finance.account_type;   -- Cast erst nach dem Enum-Guard
@@ -58,7 +59,16 @@ DECLARE
     v_balance    NUMERIC;
     v_number     TEXT    := finance.fn_normalize_account_number(p->>'account_number');
     v_taken      TEXT;
+    v_dates      JSONB;
 BEGIN
+    -- relative Datumsangaben ("yesterday", "-3 days") -> ISO; nicht aufloesbar (auch "01.10.2026": ein
+    -- DateStyle-abhaengiger Cast machte das still zum 10. Januar) -> {ok:false, code:'invalid_date'}.
+    -- interest_valid_from liest fn_account_interest_defaults(p) aus demselben aufgeloesten p.
+    v_dates := core.fn_resolve_input_dates(p,
+                   ARRAY['opening_balance_date', 'fixed_deposit_maturity_date', 'interest_valid_from']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_open_raw := NULLIF(btrim(p->>'opening_balance_date'), '');
     IF NULLIF(p->>'account_type', '') IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'The account type (account_type) is required.');
     END IF;
@@ -76,17 +86,9 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'The balance "' || (p->>'opening_balance') || '" is not a number - give it as e.g. 1234.56 (negative if overdrawn).');
     END;
-    -- Stichtag nur als ISO-Datum: ein DateStyle-abhaengiger Cast machte "01.10.2026" still zum 10. Januar.
+    -- Stichtag: oben schon auf ISO aufgeloest (core.fn_resolve_input_dates)
     IF v_open_raw IS NOT NULL THEN
-        BEGIN
-            IF v_open_raw !~ '^\d{4}-\d{2}-\d{2}$' THEN
-                RAISE invalid_datetime_format;
-            END IF;
-            v_open_date := v_open_raw::date;
-        EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN
-            RETURN jsonb_build_object('ok', false,
-                'reason', 'The balance date "' || v_open_raw || '" is not a valid date - give it as YYYY-MM-DD.');
-        END;
+        v_open_date := v_open_raw::date;
         IF v_open_date > core.fn_today() THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'The balance date ' || v_open_date || ' is in the future - a balance can only be stated for today or an earlier day.');
@@ -276,6 +278,7 @@ BEGIN
         'interest_added', (v_rate IS NOT NULL AND v_rate <> 0),
         'balance', v_balance,
         'opening_balance_date', v_open_date,
+        'effective', v_dates->'resolved',
         'card_lines', COALESCE(v_similar, '[]'::jsonb)
     );
 END;

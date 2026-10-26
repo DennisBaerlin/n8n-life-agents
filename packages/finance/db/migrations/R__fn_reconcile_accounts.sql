@@ -11,7 +11,9 @@
 --             Ein RAISE dort (echte Ausnahme) rollt die ganze TX zurueck.
 --   Phase B: Eingaben kommen vom Modell -> Form-Guards in Pass 1 als {ok:false} statt Cast-RAISE (Absturz +
 --     Owner-Alert): accounts muss ein Array sein (NULL-sicher — vorher lieferte ein fehlender Key still
---     ok:true/count 0), confirmed_balance eine schlichte Zahl, reconciliation_date ein gueltiges Datum.
+--     ok:true/count 0), confirmed_balance eine schlichte Zahl, reconciliation_date ISO oder relativ ("yesterday";
+--     core.fn_resolve_input_dates je Zeile, leer = heute). effective.accounts = die Liste mit aufgeloestem Stichtag
+--     (der Gate-Write mischt sie ueber die Roh-Liste -> Karte und Abgleich zeigen denselben Tag).
 --   Audit Paket 2: Pass 1 lehnt zusaetzlich ein doppeltes Konto im Batch und die Gruende aus
 --     finance.fn_reconcile_blocker ab (Depot-/Kreditkonto, Stichtag Zukunft / vor letztem Abgleich) -- identisch
 --     mit fn_reconcile_accounts_preview -> Vorschau = Buchung.
@@ -29,6 +31,8 @@ DECLARE
     v_results JSONB := '[]'::jsonb;
     v_reason  TEXT;
     v_reject  JSONB;
+    v_dates   JSONB;
+    v_eff     JSONB := '[]'::jsonb;   -- accounts mit aufgeloestem Stichtag (effective -> der Write nach der Karte)
 BEGIN
     IF jsonb_typeof(p->'accounts') IS DISTINCT FROM 'array' OR jsonb_array_length(p->'accounts') = 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'No accounts provided to reconcile (accounts must be a JSON array).');
@@ -41,15 +45,16 @@ BEGIN
                 'confirmed_balance for %L must be a plain number like 1234.56, got %L',
                 v_acct->>'account_name', v_acct->>'confirmed_balance'));
         END IF;
-        IF NULLIF(v_acct->>'reconciliation_date', '') IS NOT NULL THEN
-            BEGIN
-                PERFORM (v_acct->>'reconciliation_date')::date;
-            EXCEPTION WHEN OTHERS THEN
-                RETURN jsonb_build_object('ok', false, 'reason', format(
-                    'reconciliation_date for %L must be a date YYYY-MM-DD, got %L',
-                    v_acct->>'account_name', v_acct->>'reconciliation_date'));
-            END;
+        -- Stichtag je Zeile: ISO oder relativ ("yesterday") -> ISO; leer = heute (Haushalts-Zeitzone, vorher
+        -- CURRENT_DATE). Der aufgeloeste Tag geht ueber effective.accounts fest in den Write nach der Karte.
+        v_dates := core.fn_resolve_input_dates(v_acct, ARRAY['reconciliation_date']);
+        IF NOT (v_dates->>'ok')::boolean THEN
+            RETURN v_dates || jsonb_build_object('reason', format('Account %L: %s',
+                v_acct->>'account_name', v_dates->>'reason'));
         END IF;
+        v_acct := (v_dates->'p') || jsonb_build_object('reconciliation_date',
+                      COALESCE(NULLIF(v_dates->'p'->>'reconciliation_date', ''), to_char(core.fn_today(), 'YYYY-MM-DD')));
+        v_eff := v_eff || jsonb_build_array(v_acct);
 
         SELECT id, hit_count INTO v_id, v_hit
         FROM finance.fn_resolve_account(v_acct->>'account_name');
@@ -65,8 +70,7 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', format(
                 'Account %L is listed more than once; reconcile each account once per batch.', v_acct->>'account_name'));
         END IF;
-        v_reason := finance.fn_reconcile_blocker(v_id,
-            COALESCE(NULLIF(v_acct->>'reconciliation_date','')::date, CURRENT_DATE));
+        v_reason := finance.fn_reconcile_blocker(v_id, (v_acct->>'reconciliation_date')::date);
         IF v_reason IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false, 'reason', v_reason);
         END IF;
@@ -75,7 +79,7 @@ BEGIN
             'account_id',          v_id,
             'account_name',        v_acct->>'account_name',
             'confirmed_balance',   (v_acct->>'confirmed_balance')::numeric,
-            'reconciliation_date', COALESCE(NULLIF(v_acct->>'reconciliation_date',''), CURRENT_DATE::text),
+            'reconciliation_date', v_acct->>'reconciliation_date',
             'notes',               v_acct->>'notes'));
     END LOOP;
 
@@ -106,6 +110,7 @@ BEGIN
         RETURN v_reject;
     END;
 
-    RETURN jsonb_build_object('ok', true, 'count', jsonb_array_length(v_results), 'results', v_results);
+    RETURN jsonb_build_object('ok', true, 'count', jsonb_array_length(v_results), 'results', v_results,
+        'effective', jsonb_build_object('accounts', v_eff));
 END;
 $$;

@@ -84,6 +84,10 @@
 #       packages/core/contexts/persona_styles.md und umgekehrt.
 #   (26) LLM-RECHNET-HINWEIS (Warnung): $fromAI-Descriptions mit Rechen-Verben (compute/calculate/convert/...) — das
 #       Modell soll Roh-Werte liefern, die fn rechnet (.claude/rules/sql.md "Keine ableitbaren Spalten").
+#   (27) ROHER DATUMS-CAST IM TOOL-SQL: kein Tool-Build (packages/*/build/workflows/**/*.ps1) castet ein Feld des
+#       Tool-Payloads ($1::jsonb->>'k') direkt nach date — das Feld kann relativ sein ("yesterday"); aufloesen ueber
+#       core.fn_resolve_date bzw. die Write-fn (core.fn_resolve_input_dates). Spiegel des DB-Guards
+#       tests/db/finance/test_fn_relative_dates.sql fuer Inline-SQL. Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -399,7 +403,8 @@ foreach ($id in $workflows.Keys) {
                     }
                     # (26) LLM-RECHNET-HINWEIS (nur Warnung, Ratchet-Kandidat): eine Description, die das Modell zum Rechnen/
                     # Umrechnen auffordert, verletzt "Das LLM rechnet nicht" (.claude/rules/sql.md) -> Roh-Wert nehmen, die fn rechnet.
-                    if ($desc -match '(?i)\b(compute|calculate|convert|multiply|annuali[sz]e|work out|sum up|add up)\b') {
+                    # Verneinte Form ("never compute a date yourself", Get-DateParamHint) ist das Gegenteil -> keine Warnung.
+                    if ($desc -match '(?i)(?<!\b(?:never|not|don''t|do not)\s+)\b(compute|calculate|convert|multiply|annuali[sz]e|work out|sum up|add up)\b') {
                         $warns.Add("LLM-RECHNET?: $wfName :: $($n.name) Feld '$key' -- Description fordert das Modell zum Rechnen auf ('$($Matches[1])'); Roh-Wert annehmen und in der fn ableiten.")
                     }
                     if ($key -match '_id$' -and $type -eq 'number') {
@@ -1745,6 +1750,25 @@ if (-not (Test-Path $styleFile)) {
         if ($personaCodes -notcontains $s) { $errors.Add("PERSONA-STIL: Abschnitt '### $s' in persona_styles.md ist keine Persona aus personas.list (neutral hat keinen Abschnitt).") }
     }
 }
+
+# ---------------------------------------------------------------
+# (27) ROHER DATUMS-CAST IM TOOL-SQL
+# ---------------------------------------------------------------
+$rawDateRe = '\$1::jsonb\)\s*->>\s*''([a-z_]+)''\s*(?:,\s*''''\s*\))?\)*\s*::\s*date\b'
+foreach ($sc in @(
+    @{ n = 'NULLIF-Cast';  t = 'NULLIF((`$1::jsonb)->>''reconciliation_date'', '''')::date'; want = 1 },
+    @{ n = 'nackter Cast'; t = '((`$1::jsonb)->>''due_date'')::date';                        want = 1 },
+    @{ n = 'aufgeloest';   t = 'core.fn_resolve_date(NULLIF((`$1::jsonb)->>''d'', ''''))';  want = 0 })) {
+    $got = [regex]::Matches($sc.t, $rawDateRe).Count
+    if ($got -ne $sc.want) { $errors.Add("ROHER-DATUMS-CAST SELBST-ASSERT '$($sc.n)': erwartet $($sc.want), gefunden $got -- Check 27 ist defekt.") }
+}
+Get-ChildItem -Path (Join-Path $RepoRoot 'packages') -Recurse -Filter '*.ps1' |
+    Where-Object { $_.FullName -match '[\\/]build[\\/]workflows[\\/]' } | ForEach-Object {
+        $rel = $_.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
+        foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom), $rawDateRe)) {
+            $errors.Add("ROHER-DATUMS-CAST: $rel castet das Tool-Feld '$($m.Groups[1].Value)' direkt nach date -- relative Angaben (""yesterday"") brechen; core.fn_resolve_date nutzen bzw. der Write-fn ueberlassen (core.fn_resolve_input_dates).")
+        }
+    }
 
 # ---------------------------------------------------------------
 # Report

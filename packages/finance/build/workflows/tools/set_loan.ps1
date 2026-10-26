@@ -74,9 +74,9 @@ function Build-SetLoan {
         # WP2: Stichtag der neuen Rate/des neuen Tags aus dem Probelauf (genannt oder naechster offener Termin)
         (New-HitlLine 'finance.label.effective_from'  "$D.effective_from" -Kind date -If "($S.monthly_annuity || $S.schedule_day_of_month)" -OmitEmpty)
         (New-HitlLine 'finance.label.loan_amount_original' "$S.original_amount" -Kind money -EurByModel -If "$S.original_amount")
-        (New-HitlLine 'finance.label.disbursement_date' "$S.disbursement_date" -Kind date -If "$S.disbursement_date")
-        (New-HitlLine 'finance.label.fixed_until'     "$S.interest_rate_fixed_until" -Kind date -If "$S.interest_rate_fixed_until")
-        (New-HitlLine 'finance.label.term_end'        "$S.term_end_date" -Kind date -If "$S.term_end_date")
+        (New-HitlLine 'finance.label.disbursement_date' (Get-DryEffectiveExpr 'disbursement_date') -Kind date -If "$S.disbursement_date")
+        (New-HitlLine 'finance.label.fixed_until'     (Get-DryEffectiveExpr 'interest_rate_fixed_until') -Kind date -If "$S.interest_rate_fixed_until")
+        (New-HitlLine 'finance.label.term_end'        (Get-DryEffectiveExpr 'term_end_date') -Kind date -If "$S.term_end_date")
         (New-HitlLine 'finance.label.balance_projected_fixed_until' "$D.balance_at_fixed_until" -Kind money -EurByModel -OmitEmpty)
         (New-HitlLine 'finance.label.balance_projected_term_end'    "$D.balance_at_term_end" -Kind money -EurByModel -OmitEmpty)
         (New-HitlLine 'core.label.status'             "'finance.tpl.change'" -Kind tpl -If "$S.status" -Params @{

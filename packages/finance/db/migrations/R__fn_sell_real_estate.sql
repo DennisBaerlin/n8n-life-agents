@@ -18,7 +18,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_name      TEXT := p->>'real_estate_name';
     v_acct      INT  := (p->>'proceeds_account_id')::int;
-    v_date      DATE := COALESCE(NULLIF(p->>'sale_date', '')::date, core.fn_today());
+    v_date      DATE;
     v_price     NUMERIC := NULLIF(p->>'sale_price', '')::numeric;
     v_resolve   RECORD;
     v_re        finance.real_estate%ROWTYPE;
@@ -26,7 +26,13 @@ DECLARE
     v_loans     JSONB;
     v_cnt       INT;
     v_note      TEXT;
+    v_dates     JSONB;
 BEGIN
+    -- relative Datumsangabe ("last friday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['sale_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'sale_date', '')::date, core.fn_today());
     SELECT r.id, r.hit_count, r.candidates INTO v_resolve
     FROM finance.fn_resolve_real_estate(v_name, FALSE) r;
 
@@ -84,6 +90,6 @@ BEGIN
     RETURN jsonb_build_object('ok', true,
         'real_estate_id', v_re.id, 'proceeds_tx_id', v_tx, 'sale_price', v_price,
         'linked_loan_count', v_cnt, 'linked_loans', v_loans, 'note', v_note,
-        'effective', jsonb_build_object('sale_date', v_date));
+        'effective', (v_dates->'resolved') || jsonb_build_object('sale_date', v_date));
 END;
 $$;

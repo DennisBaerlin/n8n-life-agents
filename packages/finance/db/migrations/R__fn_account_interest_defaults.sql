@@ -29,7 +29,9 @@ DECLARE
     v_dom  INT      := finance.fn_parse_small_int(p->>'interest_credit_day_of_month');
     v_pdom SMALLINT := finance.fn_parse_small_int(p->>'interest_posting_day_of_month');
     v_conv TEXT     := NULLIF(p->>'interest_day_count_convention', '');
-    v_from DATE     := COALESCE(NULLIF(p->>'interest_valid_from', '')::date, core.fn_today());
+    -- relative Angabe ("in 2 weeks") -> core.fn_resolve_date; unlesbar -> heute: dieser Vorschlags-Lookup wirft nie,
+    -- fn_create_account (Probelauf vor der Karte) lehnt dasselbe interest_valid_from mit {ok:false} ab.
+    v_from DATE     := COALESCE(core.fn_resolve_date(NULLIF(p->>'interest_valid_from', '')), core.fn_today());
     v_pe   DATE;
 BEGIN
     IF v_unit IS NOT NULL THEN

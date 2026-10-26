@@ -31,7 +31,7 @@ DECLARE
     v_unit      finance.schedule_unit;   -- Cast erst nach dem Guard (Import-Haertung)
     v_dom       SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
     v_pdom      SMALLINT := NULLIF(p->>'posting_day_of_month', '')::smallint;
-    v_from      DATE     := COALESCE(NULLIF(p->>'valid_from', '')::date, CURRENT_DATE);
+    v_from      DATE;
     v_acct_type finance.account_type;
     v_open      finance.account_interest_rates%ROWTYPE;
     v_same      BOOLEAN;
@@ -41,7 +41,14 @@ DECLARE
     v_regime_same BOOLEAN;
     v_anchor    DATE;
     v_first_pe  DATE;
+    v_dates     JSONB;
 BEGIN
+    -- relative Datumsangabe ("next monday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
+    -- Leer = heute in der Haushalts-Zeitzone (vorher CURRENT_DATE = Server-Zeitzone, Drift zu core.fn_today).
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_from := COALESCE(NULLIF(p->>'valid_from', '')::date, core.fn_today());
     -- Rhythmus, Buchungs-/Gutschrift-Tag, Konvention: EIN Guard mit fn_create_account (fn_interest_terms_reason).
     v_reason := finance.fn_interest_terms_reason(p->>'schedule_unit', v_dom, v_pdom, p->>'day_count_convention');
     IF v_reason IS NOT NULL THEN

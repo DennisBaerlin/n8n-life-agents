@@ -14,7 +14,12 @@ DECLARE
     v_id     INT;
     v_sim    TEXT;
     v_reason TEXT := finance.fn_enum_reason('finance.property_status'::regtype, p->>'status', 'status');
+    v_dates  JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['value_updated_at']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
@@ -31,6 +36,7 @@ BEGIN
             COALESCE(NULLIF(p->>'status', ''), 'active')::finance.property_status,
             NULLIF(p->>'notes', ''))
     RETURNING id INTO v_id;
-    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id, 'card_lines', finance.fn_similar_note(v_sim));
+    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id, 'card_lines', finance.fn_similar_note(v_sim),
+        'effective', v_dates->'resolved');
 END;
 $$;

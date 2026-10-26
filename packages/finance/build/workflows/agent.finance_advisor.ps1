@@ -214,7 +214,7 @@ function Build-AgentFinanceAdvisor {
             ,@('comparator', 'threshold only: gte (fires at or above) or lte (fires at or below)', 'string', '')
             ,@('threshold_value', 'threshold only: the numeric limit', 'string', '')
             ,@('drawdown_pct', 'drawdown only: percent drop from peak that fires, e.g. 20', 'string', '')
-            ,@('due_date', 'date only: YYYY-MM-DD', 'string', '')
+            ,@('due_date', ('date only: ' + (Get-DateParamHint)), 'string', '')
             ,@('warn_days_before', 'date only: advance warning this many days before due_date', 'string', '')
             ,@('expected_unit', 'Unit the value must be quoted in, e.g. USD/oz (REQUIRED for web_search)', 'string', '')
             ,@('min_plausible', 'Lower plausibility bound', 'string', '')

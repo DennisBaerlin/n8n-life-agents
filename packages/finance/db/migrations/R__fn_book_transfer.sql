@@ -7,7 +7,7 @@
 --       ueber das HITL-Gate; er ist die Kurs-Autoritaet). Soll = -from_amount (Quell-Wgr.),
 --       Haben = +to_amount (Ziel-Wgr.); realisierter Kurs fx_rate = to_amount/from_amount auf beiden Beinen.
 --   Eingabe jsonb: from_account_id, to_account_id (im n8n aufgeloest), from_amount (alias: amount),
---     to_amount (nur Cross-Currency), transaction_date, from_account_name, to_account_name, purpose.
+--     to_amount (nur Cross-Currency), transaction_date (ISO oder relativ, core.fn_resolve_input_dates), from_account_name, to_account_name, purpose.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, fx_rate, from_balance,
 --   to_balance} (Post-State: neue NATIVE Salden beider Konten, in derselben Transaktion gelesen).
 --   Korrigierbar (Konto==Konto / from_amount<=0 / Cross-Currency ohne gueltiges to_amount / Depot- oder
@@ -21,7 +21,7 @@ DECLARE
     v_to       INT     := (p->>'to_account_id')::int;
     v_from_amt NUMERIC := COALESCE(NULLIF(p->>'from_amount', '')::numeric, NULLIF(p->>'amount', '')::numeric);
     v_to_amt   NUMERIC := NULLIF(p->>'to_amount', '')::numeric;
-    v_date     DATE    := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
+    v_date     DATE;
     v_purpose  TEXT    := NULLIF(p->>'purpose', '');   -- optionaler Verwendungszweck (sonst Auto)
     v_from_ccy CHAR(3);
     v_to_ccy   CHAR(3);
@@ -38,7 +38,13 @@ DECLARE
                                                               -- ruft mit true -> kein Fold UND kein Latch-Touch. COALESCE:
                                                               -- ohne den Key waere (NULL = 'true') = NULL -> NOT NULL -> Block uebersprungen.
     v_group    UUID    := gen_random_uuid();           -- Multi-Leg: beide Beine teilen eine group_id
+    v_dates    JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
     -- Korrigierbare Input-Pruefungen -> {ok:false} (kein RAISE).
     IF v_from_amt IS NULL OR v_from_amt <= 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -110,7 +116,7 @@ BEGIN
 
     RETURN jsonb_build_object('ok', true, 'debit_tx_id', v_debit, 'credit_tx_id', v_credit_id,
         'fx_rate', v_fx, 'from_balance', v_bal_from, 'to_balance', v_bal_to,
-        'effective', jsonb_build_object('transaction_date', v_date),
+        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date),
         'card_lines', v_card)
         || CASE WHEN v_breach IS NOT NULL THEN jsonb_build_object('reserve_breach', v_breach) ELSE '{}'::jsonb END;
 END;

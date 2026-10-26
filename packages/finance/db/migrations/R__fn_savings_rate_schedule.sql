@@ -19,11 +19,19 @@ CREATE OR REPLACE FUNCTION finance.fn_savings_rate_schedule(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_target NUMERIC := NULLIF(p->>'target_amount', '')::numeric;
-    v_date   DATE    := NULLIF(p->>'target_date', '')::date;
+    v_date   DATE;
     v_rate   NUMERIC := NULLIF(p->>'monthly_savings_rate', '')::numeric;
-    v_first  DATE    := NULLIF(p->>'first_payment_date', '')::date;
+    v_first  DATE;
     v_months INT;
+    v_dates  JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}. Die Karte
+    -- (tool_create_savings_goal) liest die Termine aus dieser fn, fn_create_savings_goal ebenfalls -> Karte = Write.
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date', 'first_payment_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date  := NULLIF(p->>'target_date', '')::date;
+    v_first := NULLIF(p->>'first_payment_date', '')::date;
     IF v_target IS NULL OR v_target <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Target amount must be a positive number, got ' || COALESCE(v_target::text, 'null') || '.');

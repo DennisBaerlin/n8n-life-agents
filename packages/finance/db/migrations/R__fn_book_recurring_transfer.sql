@@ -23,7 +23,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_rp_id    INT  := (p->>'recurring_payment_id')::int;
     v_due      DATE := (p->>'due_date')::date;
-    v_date     DATE := COALESCE(NULLIF(p->>'transaction_date', '')::date, (p->>'due_date')::date);
+    v_date     DATE;
     v_override NUMERIC := NULLIF(p->>'amount', '')::numeric;
     v_from     INT;
     v_to       INT;
@@ -40,7 +40,14 @@ DECLARE
     v_goal     INT;
     v_reason   TEXT;
     v_group    UUID := gen_random_uuid();
+    v_dates    JSONB;
 BEGIN
+    -- relative Ist-Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
+    -- due_date kommt aus dem DB-Lookup (Vorkommen-Identitaet), nie vom LLM -> nicht aufgeloest.
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, (p->>'due_date')::date);
     SELECT account_id, target_account_id, amount, name
       INTO v_from, v_to, v_amount, v_name
       FROM finance.recurring_payments WHERE id = v_rp_id;
@@ -137,6 +144,7 @@ BEGIN
             v_name || ' <- Transfer (Recurring ' || v_due || ')', v_group, v_fx, v_rp_id, v_due, v_goal)
     RETURNING id INTO v_credit_id;
 
-    RETURN jsonb_build_object('ok', true, 'debit_tx_id', v_debit_id, 'credit_tx_id', v_credit_id, 'fx_rate', v_fx);
+    RETURN jsonb_build_object('ok', true, 'debit_tx_id', v_debit_id, 'credit_tx_id', v_credit_id, 'fx_rate', v_fx,
+        'effective', v_dates->'resolved');
 END;
 $$;

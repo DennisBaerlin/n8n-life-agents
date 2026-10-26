@@ -335,23 +335,23 @@ $nToolWebSearch = New-AdvisorToolNode 'web_search' (Resolve-CoreServiceAlias 'co
 # --- tool sub-workflows (CQRS write-tools) ---
 
 $nToolDividend = New-ToolWorkflowNode 'tool_book_dividend' `
-    'Book a dividend payment. The dividend is credited to the depot settlement account; the holding is auto-resolved from depot_name + isin (stocks/ETFs) or symbol (crypto, isin empty). Inputs: isin (ISIN for stocks/ETFs, empty for crypto), symbol (ticker or crypto symbol), depot_name, amount (positive, after withholding tax, in the settlement account currency), transaction_date (YYYY-MM-DD).' `
+    'Book a dividend payment. The dividend is credited to the depot settlement account; the holding is auto-resolved from depot_name + isin (stocks/ETFs) or symbol (crypto, isin empty). Inputs: isin (ISIN for stocks/ETFs, empty for crypto), symbol (ticker or crypto symbol), depot_name, amount (positive, after withholding tax, in the settlement account currency), transaction_date (optional, see its parameter).' `
     @(
         ,@('isin', 'ISIN of the holding (stocks/ETFs). Leave empty for crypto.', 'string', '')
         ,@('symbol', 'Ticker or crypto symbol (e.g. VWCE, BTC). Crypto: always provide. Stock/ETF: leave empty if no ticker is known (the ISIN identifies the position) - never guess one.', 'string', '')
         ,@('depot_name', 'Exact name of the depot account', 'string')
         ,@('amount', 'Dividend amount in the settlement account currency (positive, net of withholding tax)', 'number')
-        ,@('transaction_date', 'Booking date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
     ) @(160, 208)
 
 $nToolTransfer = New-ToolWorkflowNode 'tool_book_transfer' `
-    'Move money between TWO of the user''s OWN accounts. Creates two transactions (debit + credit). ONLY for own-account-to-own-account moves - for money going to or coming from an EXTERNAL party that is not one of the user''s accounts, use tool_book_transaction instead. CROSS-CURRENCY: if the two accounts use DIFFERENT currencies (e.g. a EUR account and a KRW account), the legs have different native amounts - you MUST also pass to_amount (the exact amount that ARRIVES in the destination account, in the destination currency). The user states/confirms BOTH amounts; never invent a rate. For same-currency transfers omit to_amount. Inputs: from_account_name, to_account_name, amount (amount LEAVING the source, in the source currency, positive), to_amount (only for cross-currency: amount ARRIVING in the destination currency), transaction_date (YYYY-MM-DD), purpose (optional).' `
+    'Move money between TWO of the user''s OWN accounts. Creates two transactions (debit + credit). ONLY for own-account-to-own-account moves - for money going to or coming from an EXTERNAL party that is not one of the user''s accounts, use tool_book_transaction instead. CROSS-CURRENCY: if the two accounts use DIFFERENT currencies (e.g. a EUR account and a KRW account), the legs have different native amounts - you MUST also pass to_amount (the exact amount that ARRIVES in the destination account, in the destination currency). The user states/confirms BOTH amounts; never invent a rate. For same-currency transfers omit to_amount. Inputs: from_account_name, to_account_name, amount (amount LEAVING the source, in the source currency, positive), to_amount (only for cross-currency: amount ARRIVING in the destination currency), transaction_date (optional, see its parameter), purpose (optional).' `
     @(
         ,@('from_account_name', 'Source account name (exact)', 'string')
         ,@('to_account_name', 'Destination account name (exact)', 'string')
         ,@('amount', 'Amount leaving the source account, in the SOURCE currency (positive)', 'number')
         ,@('to_amount', 'ONLY for cross-currency transfers: amount arriving in the destination account, in the DESTINATION currency (positive). Omit when both accounts use the same currency.', 'string', '')
-        ,@('transaction_date', 'Booking date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('purpose', 'Optional Verwendungszweck / free-text note; leave empty for an auto-generated description', 'string', '')
     ) @(320, 208)
 
@@ -365,7 +365,7 @@ $nToolStockBuy = New-ToolWorkflowNode 'tool_book_stock_buy' `
         ,@('price_per_share', 'Price per share or unit, in the depot/quote currency (the same currency you give as quote_currency; e.g. EUR for a EUR position, USD for a USD-listed one). NOT converted to EUR.', 'number')
         ,@('order_fee', 'Order fee in the same currency as price_per_share, only if the user mentions one (empty = 0; the card shows it)', 'string', '')
         ,@('depot_name', 'Exact name of the depot account (must match the correct type for the asset)', 'string')
-        ,@('transaction_date', 'Booking date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('asset_class', 'Optional allocation block key for rebalancing (lowercase letters/digits/underscore, e.g. sp500). Match a target_allocation block key from the financial plan; leave empty if unsure.', 'string', '')
         ,@('provider_symbol', 'Optional Yahoo Finance feed symbol override. Stocks/ETFs: ticker with exchange suffix (VWCE.DE for Xetra / AAPL for US / VWRL.L for London). Crypto: Yahoo TICKER-FIAT (e.g. BTC-EUR; for an ambiguous ticker give the exact one, e.g. UNI7083-USD for Uniswap). Only if the raw ticker is not found by the price feed; leave empty otherwise.', 'string', '')
         ,@('quote_currency', 'Currency of the purchase price (ISO 4217, uppercase). Take it from the currency the user states with the price (e.g. EUR for "165 EUR", USD for "293 dollars"). It picks the right Yahoo listing for the live price and is stored as the position quote currency; defaults to the depot currency if not stated.', 'string', '')
@@ -378,7 +378,7 @@ $nToolCreateAccount = New-ToolWorkflowNode 'tool_create_account' `
         ,@('name', 'Account display name (e.g. "DKB Giro")', 'string')
         ,@('account_type', 'One of: cash, p2p, stocks_depot, crypto_depot, fixed_deposit', 'string')
         ,@('opening_balance', 'The current balance the user states, as a plain number in the account currency (negative if overdrawn). Booked as the opening balance (not a reconciliation). Leave empty if not stated; never for depots.', 'string', '')
-        ,@('opening_balance_date', 'OPTIONAL, YYYY-MM-DD: the day opening_balance refers to - only the balance_date from a tool_reconcile_bank_statement account_unknown result. Empty = today.', 'string', '')
+        ,@('opening_balance_date', ('OPTIONAL, (' + (Get-DateParamHint) + '): the day opening_balance refers to - only the balance_date from a tool_reconcile_bank_statement account_unknown result. Empty = today.'), 'string', '')
         ,@('bank', 'Bank/broker name (optional)', 'string', '')
         ,@('account_number', 'IBAN, depot number, P2P account id exactly as the user gives it (spaces allowed; the database normalizes it)', 'string', '')
         ,@('settlement_account_name', 'MANDATORY for stocks_depot/crypto_depot (name of the existing cash settlement/Verrechnungs-account, must resolve uniquely); leave empty for all other account types', 'string', '')
@@ -391,8 +391,8 @@ $nToolCreateAccount = New-ToolWorkflowNode 'tool_create_account' `
         ,@('interest_day_count_convention', 'Day-count method, ONLY if the user explicitly overrides the proposal: 30E/360, ACT/365 or ACT/360. Leave EMPTY normally - it is proposed from the account type (cash->ACT/365, fixed_deposit->30E/360) and shown in the confirmation.', 'string', '')
         ,@('interest_posting_day_of_month', 'Arrears: if interest is credited in the month AFTER the period ends, the day of that following month (1-28). Leave empty = credited at period end (optional)', 'string', '')
         ,@('interest_auto_post', 'Whether the scheduler books interest automatically without confirmation (true/false). Leave EMPTY normally - proposed from cadence (daily/weekly->true, monthly/yearly->false) and shown in the confirmation.', 'string', '')
-        ,@('interest_valid_from', 'Interest valid-from date YYYY-MM-DD (optional, default today)', 'string', '')
-        ,@('fixed_deposit_maturity_date', 'Maturity date YYYY-MM-DD (Fälligkeitsdatum/Laufzeitende). REQUIRED for fixed_deposit; leave empty for all other account types.', 'string', '')
+        ,@('interest_valid_from', ('Interest valid-from date (' + (Get-DateParamHint) + ') (optional, default today)'), 'string', '')
+        ,@('fixed_deposit_maturity_date', ('Maturity date (' + (Get-DateParamHint) + ') (Fälligkeitsdatum/Laufzeitende). REQUIRED for fixed_deposit; leave empty for all other account types.'), 'string', '')
         ,@('fixed_deposit_auto_renew', 'Whether the fixed deposit auto-renews at maturity (true/false) - only if the user says it, do not ask; leave empty otherwise.', 'string', '')
     ) @(640, 208)
 
@@ -407,8 +407,8 @@ $nToolCreateInsurance = New-ToolWorkflowNode 'tool_create_insurance' `
         ,@('annual_premium', 'Annual premium (Jahresbeitrag) in EUR - only if the user states a yearly amount; leave empty otherwise.', 'string', '')
         ,@('schedule_interval', 'Schedule interval as integer (optional, default 1)', 'number', '1')
         ,@('schedule_unit', 'How often the premium is debited: day, week, month or year (required with premium_amount; default year with annual_premium)', 'string', '')
-        ,@('valid_from', 'Contract/policy start date YYYY-MM-DD (when the cover begins; distinct from the first debit). Optional, defaults to first_payment_date.', 'string', '')
-        ,@('first_payment_date', 'Date of the FIRST actual debit YYYY-MM-DD - the recurrence anchor. For yearly/quarterly this carries month+day (e.g. yearly, first debit 15 Nov -> 2026-11-15). Ask the user if only a contract start was given.', 'string')
+        ,@('valid_from', ('Contract/policy start date (' + (Get-DateParamHint) + ') (when the cover begins; distinct from the first debit). Optional, defaults to first_payment_date.'), 'string', '')
+        ,@('first_payment_date', ('Date of the FIRST actual debit (' + (Get-DateParamHint) + ') - the recurrence anchor. For yearly/quarterly this carries month+day (e.g. yearly, first debit 15 Nov -> 2026-11-15). Ask the user if only a contract start was given.'), 'string')
         ,@('schedule_day_of_month', 'ONLY set to -1 for "last day of month" or -2 for "second-to-last day of month", or to pin a monthly debit to a fixed day; otherwise leave empty (day comes from first_payment_date)', 'string', '')
         ,@('debit_account_name', 'Exact name of debit account', 'string')
         ,@('insurance_type', 'OPTIONAL insurance class, exactly one of: life, accident, disability, health, care, liability, household, residential_building, legal, vehicle, other. Leave empty if not stated.', 'string', '')
@@ -425,13 +425,13 @@ $nToolCreateLoan = New-ToolWorkflowNode 'tool_create_loan' `
         ,@('borrower_person', 'OPTIONAL: the single household member who is the borrower (as the user names them - a first name is enough; never ask for a surname). Leave EMPTY for a joint/household loan.', 'string', '')
         ,@('original_amount', 'ORIGINAL loan sum in EUR (positive) - REQUIRED for a fresh loan, OPTIONAL info for a running loan (only if the user states it). Loans are kept in EUR, debit and payout accounts must be EUR accounts.', 'string', '')
         ,@('current_balance', 'Remaining debt (Restschuld) TODAY in EUR - REQUIRED for an already-running loan, leave empty for a fresh loan. Above 0 and not above original_amount (if given). Becomes the loan account balance as of today.', 'string', '')
-        ,@('disbursement_date', 'Payout date YYYY-MM-DD - for a fresh loan if the user names it (empty = opened as of today), required with disbursement_account_name; OPTIONAL info for a running loan. Never in the future.', 'string', '')
+        ,@('disbursement_date', ('Payout date (' + (Get-DateParamHint) + ') - for a fresh loan if the user names it (empty = opened as of today), required with disbursement_account_name; OPTIONAL info for a running loan. Never in the future.'), 'string', '')
         ,@('interest_rate', 'Annual interest rate in percent (e.g. 3.5)', 'number')
-        ,@('interest_rate_fixed_until', 'Zinsbindungsende YYYY-MM-DD if the user states it (ask only together with another missing value, never on its own); empty if unknown.', 'string', '')
-        ,@('term_end_date', 'Laufzeitende YYYY-MM-DD = date of the last rate (for a balloon payment the date of that final payment). Ask only together with another missing value, never on its own; empty if unknown.', 'string', '')
+        ,@('interest_rate_fixed_until', ('Zinsbindungsende (' + (Get-DateParamHint) + ') if the user states it (ask only together with another missing value, never on its own); empty if unknown.'), 'string', '')
+        ,@('term_end_date', ('Laufzeitende (' + (Get-DateParamHint) + ') = date of the last rate (for a balloon payment the date of that final payment). Ask only together with another missing value, never on its own; empty if unknown.'), 'string', '')
         ,@('monthly_annuity', 'Monthly rate in EUR (Zins + Tilgung) - the amount actually debited; leave empty only for a paused/family loan without a rate. If given, first_payment_date is required.', 'string', '')
         ,@('schedule_day_of_month', 'Day of month 1-28, -1 for last day or -2 for second-to-last day; leave empty to use the day of first_payment_date', 'string', '')
-        ,@('first_payment_date', 'First/NEXT actual rate debit date YYYY-MM-DD - recurrence anchor for the monthly rate (for running loans the next upcoming rate). REQUIRED when monthly_annuity is given - ASK if unclear; leave empty only for a loan without a rate.', 'string', '')
+        ,@('first_payment_date', ('First/NEXT actual rate debit date (' + (Get-DateParamHint) + ') - recurrence anchor for the monthly rate (for running loans the next upcoming rate). REQUIRED when monthly_annuity is given - ASK if unclear; leave empty only for a loan without a rate.'), 'string', '')
         ,@('disbursement_account_name', 'Exact name of the cash account the loan was paid INTO, if it went to one of your OWN accounts (fresh loan) -> books +original_amount there and links it. Leave EMPTY for a mortgage paid to the seller / a third party, or an already-running loan (no disbursement booking, link stays NULL). Ask the user if unclear.', 'string', '')
         ,@('debit_account_name', 'Exact name of cash account from which the monthly rate is debited', 'string')
         ,@('real_estate_id', 'finance.real_estate.id if loan is mortgage (optional; lookup via postgres_select first)', 'string', '')
@@ -443,19 +443,19 @@ $nToolCreateRealEstate = New-ToolWorkflowNode 'tool_create_real_estate' `
     @(
         ,@('name', 'Display name (e.g. "Wohnung Hamburg")', 'string')
         ,@('current_value', 'Estimated current market value in EUR (optional)', 'string', '')
-        ,@('value_updated_at', 'Date of last valuation YYYY-MM-DD (optional)', 'string', '')
+        ,@('value_updated_at', ('Date of last valuation (' + (Get-DateParamHint) + ') (optional)'), 'string', '')
         ,@('owner_person', 'OPTIONAL: the single household member who owns this property (as the user names them - a first name is enough; never ask for a surname). Leave EMPTY for a joint/household asset.', 'string', '')
         ,@('status', 'active or sold (optional, default active)', 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
     ) @(1120, 208)
 
 $nToolBookTransaction = New-ToolWorkflowNode 'tool_book_transaction' `
-    'Book a SINGLE transaction on ONE of the user''s own accounts against an EXTERNAL party that is NOT one of their accounts - money going OUT (insurance debit, rent, an external fee, any expense) or coming IN (salary, refund, a received payment). This is NOT a transfer (only one leg, no counter-account); for moving money between two own accounts use tool_book_transfer instead. The direction sets the sign (the tool computes it - always pass a positive amount). Inputs: account_name (exact), direction ("inflow" or "outflow"), amount (positive, in the account currency), transaction_date (YYYY-MM-DD, only if the user names one - empty = today), description (optional Verwendungszweck), category (optional - default "other"; "fee" for an external fee on an outflow, "interest" for interest received).' `
+    'Book a SINGLE transaction on ONE of the user''s own accounts against an EXTERNAL party that is NOT one of their accounts - money going OUT (insurance debit, rent, an external fee, any expense) or coming IN (salary, refund, a received payment). This is NOT a transfer (only one leg, no counter-account); for moving money between two own accounts use tool_book_transfer instead. The direction sets the sign (the tool computes it - always pass a positive amount). Inputs: account_name (exact), direction ("inflow" or "outflow"), amount (positive, in the account currency), transaction_date (only if the user names one - empty = today), description (optional Verwendungszweck), category (optional - default "other"; "fee" for an external fee on an outflow, "interest" for interest received).' `
     @(
         ,@('account_name', 'Exact name of the own account on which the transaction is booked', 'string')
         ,@('direction', 'Either "outflow" (money leaves the account) or "inflow" (money arrives)', 'string')
         ,@('amount', 'Amount in the account currency, always positive - the direction sets the sign', 'number')
-        ,@('transaction_date', 'Booking date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('description', 'Optional Verwendungszweck / counterparty note; leave empty for an auto description', 'string', '')
         ,@('category', 'Optional: other (default), fee (external fee, outflow only), interest (interest received)', 'string', '')
     ) @(1280, 208)
@@ -469,29 +469,29 @@ $nToolBookStockSell = New-ToolWorkflowNode 'tool_book_stock_sell' `
         ,@('shares', 'Number of shares or units to sell (positive)', 'number')
         ,@('price_per_share', 'Sale price per share or unit in the position currency', 'number')
         ,@('order_fee', 'Order fee in the position currency, only if the user mentions one (empty = 0; the card shows it)', 'string', '')
-        ,@('transaction_date', 'Booking date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
     ) @(1440, 208)
 
 $nToolBookLoanPayment = New-ToolWorkflowNode 'tool_book_loan_payment' `
-    'Book a loan payment (Kreditrate) — two transactions atomically: full rate debit on the cash account + principal credit on the loan account. If principal_amount is omitted the tool derives it from the current Restschuld. Use this for both regular monthly rates (leave principal_amount empty) AND Sondertilgung (provide explicit principal_amount). A regular rate (amount = the planned monthly rate) is matched to its open due date from the recurring reminder and booked on that due date, so the reminder will not ask for it again. AMOUNT CHECK: the tool itself checks the amount before the approval card - if it returns ok:false because the rate would overpay (reason names the payoff amount = Restschuld + interest), ask whether to book the payoff via tool_settle_loan instead; if the rate does not even cover the interest, ask for a higher rate. Do not work out interest or principal yourself. If the user does not name an amount, leave payment_amount empty - the tool takes the installment that is due (the planned rate, or the payoff amount for the last rate) and shows it on the card. Inputs: loan_name, payment_amount (only if the user names one, positive), payment_date (YYYY-MM-DD), principal_amount (optional Tilgungsanteil; omit for normal rates).' `
+    'Book a loan payment (Kreditrate) — two transactions atomically: full rate debit on the cash account + principal credit on the loan account. If principal_amount is omitted the tool derives it from the current Restschuld. Use this for both regular monthly rates (leave principal_amount empty) AND Sondertilgung (provide explicit principal_amount). A regular rate (amount = the planned monthly rate) is matched to its open due date from the recurring reminder and booked on that due date, so the reminder will not ask for it again. AMOUNT CHECK: the tool itself checks the amount before the approval card - if it returns ok:false because the rate would overpay (reason names the payoff amount = Restschuld + interest), ask whether to book the payoff via tool_settle_loan instead; if the rate does not even cover the interest, ask for a higher rate. Do not work out interest or principal yourself. If the user does not name an amount, leave payment_amount empty - the tool takes the installment that is due (the planned rate, or the payoff amount for the last rate) and shows it on the card. Inputs: loan_name, payment_amount (only if the user names one, positive), payment_date (see its parameter), principal_amount (optional Tilgungsanteil; omit for normal rates).' `
     @(
         ,@('loan_name', 'Name of the loan (resolved to loan_id; use exact name from finance.loans)', 'string')
         ,@('payment_amount', 'Total payment amount in EUR (positive, Zins + Tilgung) - only if the user names an amount; empty = the installment that is due.', 'string', '')
-        ,@('payment_date', 'Payment date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('payment_date', ('Payment date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('principal_amount', 'Optional explicit Tilgungsanteil in EUR (positive). Omit for normal rates - the tool derives it from the Restschuld. Set only for Sondertilgung.', 'string', '')
     ) @(1600, 208)
 
 $nToolCreateSavingsGoal = New-ToolWorkflowNode 'tool_create_savings_goal' `
-    'Create a savings goal with a linked monthly recurring debit (Sparrate) atomically. Creates goal record + recurring_payment in one transaction. RATE/DATE ARE COMPUTED BY THE TOOL - DO NOT CALCULATE EITHER YOURSELF: pass target_amount plus EXACTLY ONE of {target_date, monthly_savings_rate}; the tool derives the missing one (target_date given -> monthly rate = amount / months; monthly_savings_rate given -> target_date = first payment + amount/rate months) and shows it in the approval summary. If the user gives BOTH, pass both (the target_date wins and the rate is recomputed). If the user gives NEITHER, ask them for a target date or a monthly amount. Pass first_payment_date (YYYY-MM-DD) only if the user names it - empty = the next debit day from today, shown on the card. target_amount must be positive. BENEFICIARY: leave EMPTY normally - the goal then belongs to the owner of the savings account (Topf; household for a joint account), shown on the card; only name a household member (beneficiary_person, a first name is enough) if the goal is FOR someone else, e.g. a child. Required: goal_name, target_amount, account_name (cash account for the monthly debit), reserve_account_name (first_payment_date and schedule_day_of_month are optional - empty = that day, -1 = last day of month, -2 = second-to-last day), and ONE of target_date / monthly_savings_rate. SAVINGS ACCOUNT IS REQUIRED: reserve_account_name = the savings account (Topf, e.g. a Tagesgeld or Festgeld) where the saved money is kept - the monthly rate is a TRANSFER into it and the goal progress tracks its tagged balance (only the tagged bookings count, not the whole account balance); it must differ from account_name. Without it the progress cannot be measured, so the tool rejects the goal: if the user has no such account yet, ask which account it is or offer to create one with tool_create_account first. Optional: goal_type, notes, beneficiary_person, priority (lower = more important, for bottleneck ordering).' `
+    'Create a savings goal with a linked monthly recurring debit (Sparrate) atomically. Creates goal record + recurring_payment in one transaction. RATE/DATE ARE COMPUTED BY THE TOOL - DO NOT CALCULATE EITHER YOURSELF: pass target_amount plus EXACTLY ONE of {target_date, monthly_savings_rate}; the tool derives the missing one (target_date given -> monthly rate = amount / months; monthly_savings_rate given -> target_date = first payment + amount/rate months) and shows it in the approval summary. If the user gives BOTH, pass both (the target_date wins and the rate is recomputed). If the user gives NEITHER, ask them for a target date or a monthly amount. Pass first_payment_date only if the user names it - empty = the next debit day from today, shown on the card. target_amount must be positive. BENEFICIARY: leave EMPTY normally - the goal then belongs to the owner of the savings account (Topf; household for a joint account), shown on the card; only name a household member (beneficiary_person, a first name is enough) if the goal is FOR someone else, e.g. a child. Required: goal_name, target_amount, account_name (cash account for the monthly debit), reserve_account_name (first_payment_date and schedule_day_of_month are optional - empty = that day, -1 = last day of month, -2 = second-to-last day), and ONE of target_date / monthly_savings_rate. SAVINGS ACCOUNT IS REQUIRED: reserve_account_name = the savings account (Topf, e.g. a Tagesgeld or Festgeld) where the saved money is kept - the monthly rate is a TRANSFER into it and the goal progress tracks its tagged balance (only the tagged bookings count, not the whole account balance); it must differ from account_name. Without it the progress cannot be measured, so the tool rejects the goal: if the user has no such account yet, ask which account it is or offer to create one with tool_create_account first. Optional: goal_type, notes, beneficiary_person, priority (lower = more important, for bottleneck ordering).' `
     @(
         ,@('goal_name', 'Savings goal display name (e.g. "Urlaub 2027")', 'string')
         ,@('goal_type', 'Goal type label (optional, free text e.g. vacation, emergency, car)', 'string', '')
         ,@('target_amount', 'Target savings amount in EUR (positive)', 'number')
-        ,@('target_date', 'Target date to reach the goal in YYYY-MM-DD. Give this OR monthly_savings_rate - the tool derives the other. Leave empty if the user stated a monthly amount instead.', 'string', '')
+        ,@('target_date', ('Target date to reach the goal in (' + (Get-DateParamHint) + '). Give this OR monthly_savings_rate - the tool derives the other. Leave empty if the user stated a monthly amount instead.'), 'string', '')
         ,@('monthly_savings_rate', 'Monthly savings amount in EUR (positive) exactly as the user states it. Give this OR target_date - the tool derives the other. Leave empty if the user stated a target date instead.', 'string', '')
         ,@('account_name', 'Exact name of the cash account from which the savings rate is debited', 'string')
         ,@('schedule_day_of_month', 'Day of month 1-28, -1 for last day or -2 for second-to-last day (when the savings rate is debited); leave empty to use the day of first_payment_date', 'string', '')
-        ,@('first_payment_date', 'Date of the FIRST savings debit YYYY-MM-DD - only if the user names it; empty = the next debit day from today (do not ask).', 'string', '')
+        ,@('first_payment_date', ('Date of the FIRST savings debit (' + (Get-DateParamHint) + ') - only if the user names it; empty = the next debit day from today (do not ask).'), 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
         ,@('beneficiary_person', 'OPTIONAL: only if the goal is FOR someone other than the owner of the savings account (e.g. a child), named as the user says it (a first name is enough). Leave EMPTY - the goal then belongs to the savings account owner.', 'string', '')
         ,@('reserve_account_name', 'REQUIRED: exact name of the savings account (Topf, e.g. a Tagesgeld or Festgeld) where the saved money is kept; the monthly rate becomes a transfer into this account. Must differ from account_name.', 'string')
@@ -506,7 +506,7 @@ $nToolBookSavingsGoalTransfer = New-ToolWorkflowNode 'tool_book_savings_goal_tra
         ,@('to_account_name', 'DESTINATION account (money arrives here), only if the user names it (empty = derived from the goal; required for a withdrawal or relocate the user describes)', 'string', '')
         ,@('amount', 'Amount moved, in the source account currency (positive magnitude)', 'number')
         ,@('direction', 'One of: deposit (put money INTO the goal), withdrawal (take money OUT of the goal), relocate (move money of the goal from one own account to another - total progress stays the same; moving all of it makes the new account the reserve of the goal)', 'string')
-        ,@('transaction_date', 'Booking date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('purpose', 'Optional free-text note for the booking', 'string', '')
         ,@('to_amount', 'Only for a cross-currency move: the amount that ARRIVES in the destination account, in its currency', 'string', '')
     ) @(1760, 360)
@@ -520,18 +520,18 @@ $nToolBookSavingsReservation = New-ToolWorkflowNode 'tool_book_savings_reservati
     ) @(1760, 512)
 
 $nToolReconcileAccount = New-ToolWorkflowNode 'tool_reconcile_account' `
-    'Reconcile a SINGLE account by confirming the real-world balance (Saldo-Abgleich). Updates last_reconciled_balance and last_reconciled_at on the account. If the confirmed_balance differs from the DB balance a reconciliation correction transaction is booked automatically. The confirmed_balance is in the account own currency (EUR, KRW, ...), not forced to EUR. Use this when the user gives ONE account balance. For SEVERAL balances at once (e.g. answering the monthly reconcile reminder), use tool_reconcile_accounts_batch instead. Inputs: account_name, confirmed_balance (signed - positive for credit, negative for an overdraft), reconciliation_date (YYYY-MM-DD), notes (optional). Only for an EXISTING account: the balance of a NEW account belongs into tool_create_account (opening_balance), never create + reconcile.' `
+    'Reconcile a SINGLE account by confirming the real-world balance (Saldo-Abgleich). Updates last_reconciled_balance and last_reconciled_at on the account. If the confirmed_balance differs from the DB balance a reconciliation correction transaction is booked automatically. The confirmed_balance is in the account own currency (EUR, KRW, ...), not forced to EUR. Use this when the user gives ONE account balance. For SEVERAL balances at once (e.g. answering the monthly reconcile reminder), use tool_reconcile_accounts_batch instead. Inputs: account_name, confirmed_balance (signed - positive for credit, negative for an overdraft), reconciliation_date (see its parameter), notes (optional). Only for an EXISTING account: the balance of a NEW account belongs into tool_create_account (opening_balance), never create + reconcile.' `
     @(
         ,@('account_name', 'Exact name of the account to reconcile', 'string')
         ,@('confirmed_balance', 'Real-world balance in the account own currency as seen in the bank app or statement (signed)', 'number')
-        ,@('reconciliation_date', 'Date of the confirmed balance YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('reconciliation_date', ('Date of the confirmed balance (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('notes', 'Optional reason for any drift (e.g. "bank fees pending")', 'string', '')
     ) @(1920, 208)
 
 $nToolReconcileAccountsBatch = New-ToolWorkflowNode 'tool_reconcile_accounts_batch' `
-    'Reconcile SEVERAL accounts in one go (the monthly Saldo-Abgleich reminder path). Use this when the user sends multiple account balances in one message. One combined approval covers the whole batch and all corrections are booked atomically. Each balance is in that account own currency. Pass accounts as a JSON array string; each item is {"account_name": exact name, "confirmed_balance": signed number, "reconciliation_date": "YYYY-MM-DD" (optional, defaults to today), "notes": optional}. Example: [{"account_name":"Girokonto","confirmed_balance":5230.11},{"account_name":"Bargeld","confirmed_balance":80}].' `
+    'Reconcile SEVERAL accounts in one go (the monthly Saldo-Abgleich reminder path). Use this when the user sends multiple account balances in one message. One combined approval covers the whole batch and all corrections are booked atomically. Each balance is in that account own currency. Pass accounts as a JSON array string; each item is {"account_name": exact name, "confirmed_balance": signed number, "reconciliation_date": date string (optional, defaults to today; forms as described in the accounts parameter), "notes": optional}. Example: [{"account_name":"Girokonto","confirmed_balance":5230.11},{"account_name":"Bargeld","confirmed_balance":80}].' `
     @(
-        ,@('accounts', 'JSON array string of accounts to reconcile, each {account_name, confirmed_balance, reconciliation_date?, notes?}', 'string')
+        ,@('accounts', ('JSON array string of accounts to reconcile, each {account_name, confirmed_balance, reconciliation_date? (' + (Get-DateParamHint) + '), notes?}'), 'string')
     ) @(2240, 360)
 
 # --- Bulk-Import-Pipeline (Phase 2 Onboarding-Plan): 3-Schritt stage -> fix -> commit ---
@@ -569,7 +569,7 @@ $nToolCloseAccount = New-ToolWorkflowNode 'tool_close_account' `
     'Close an account permanently — sets status to ''closed''. After closing the DB trigger blocks any new transactions on this account forever. Call this tool directly — do NOT ask the user for text confirmation yourself first. The tool internally reads the current balance and presents a full approval summary (balance, account type, closure date, ACHTUNG irreversibility warning) to the user via approve/decline buttons. The user confirms or declines via button — no free-text round-trip needed. BLOCKER CHECK: the tool checks before the approval card whether the account can be closed and returns ok:false with a reason if it still holds a balance, is the settlement account of an active depot, holds depot positions or an active savings plan, is used by a loan, or still has running/paused recurring payments as source or target. Relay the reason and the concrete next step (transfer the balance out, end or move the recurring payments, close/re-link the depot) - do not retry. Inputs: account_name; optional closure_date (empty = today) and notes (reason for closing).' `
     @(
         ,@('account_name', 'Exact name of the account to close', 'string')
-        ,@('closure_date', 'Closing date YYYY-MM-DD, only if the user names a date (empty = today)', 'string', '')
+        ,@('closure_date', ('Closing date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('notes', 'Optional reason for closing (e.g. "switched to Trade Republic")', 'string', '')
     ) @(2080, 208)
 
@@ -581,11 +581,11 @@ $nToolCreateRecurringPayment = New-ToolWorkflowNode 'tool_create_recurring_payme
         ,@('direction', 'income (money in, e.g. salary) or expense (money out, e.g. rent)', 'string')
         ,@('amount', 'Amount per occurrence in the account currency, always positive (the tool applies the sign from direction)', 'number')
         ,@('schedule_unit', 'day, week, month or year', 'string')
-        ,@('first_payment_date', 'Date of the first payment YYYY-MM-DD (recurrence anchor)', 'string')
+        ,@('first_payment_date', ('Date of the first payment (' + (Get-DateParamHint) + ') (recurrence anchor)'), 'string')
         ,@('schedule_interval', 'Every N units (e.g. 3 with unit month = quarterly). Default 1.', 'string', '')
         ,@('schedule_day_of_month', 'Day of month 1-28, -1 for last day or -2 for second-to-last day. Empty = relative to first payment.', 'string', '')
-        ,@('valid_from', 'Start of validity YYYY-MM-DD. Empty = first_payment_date.', 'string', '')
-        ,@('valid_to', 'Last day the payment is still valid (inclusive), YYYY-MM-DD. Empty = indefinite.', 'string', '')
+        ,@('valid_from', ('Start of validity (' + (Get-DateParamHint) + '). Empty = first_payment_date.'), 'string', '')
+        ,@('valid_to', ('Last day the payment is still valid (inclusive), (' + (Get-DateParamHint) + '). Empty = indefinite.'), 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
     ) @(2240, 208)
 
@@ -597,11 +597,11 @@ $nToolCreateRecurringTransfer = New-ToolWorkflowNode 'tool_create_recurring_tran
         ,@('to_account_name', 'Exact name of the DESTINATION account (money arrives here)', 'string')
         ,@('amount', 'Amount per occurrence in the source account currency, always positive (leaving the source account)', 'number')
         ,@('schedule_unit', 'day, week, month or year', 'string')
-        ,@('first_payment_date', 'Date of the first transfer YYYY-MM-DD (recurrence anchor)', 'string')
+        ,@('first_payment_date', ('Date of the first transfer (' + (Get-DateParamHint) + ') (recurrence anchor)'), 'string')
         ,@('schedule_interval', 'Every N units (e.g. 1 with unit month = monthly). Default 1.', 'string', '')
         ,@('schedule_day_of_month', 'Day of month 1-28, -1 for last day or -2 for second-to-last day. Empty = relative to first transfer.', 'string', '')
-        ,@('valid_from', 'Start of validity YYYY-MM-DD. Empty = first_payment_date.', 'string', '')
-        ,@('valid_to', 'Last day the payment is still valid (inclusive), YYYY-MM-DD. Empty = indefinite.', 'string', '')
+        ,@('valid_from', ('Start of validity (' + (Get-DateParamHint) + '). Empty = first_payment_date.'), 'string', '')
+        ,@('valid_to', ('Last day the payment is still valid (inclusive), (' + (Get-DateParamHint) + '). Empty = indefinite.'), 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
     ) @(2400, 208)
 
@@ -614,15 +614,15 @@ $nToolCreatePension = New-ToolWorkflowNode 'tool_create_pension' `
         ,@('contract_number', 'Contract or policy number', 'string', '')
         ,@('owner_person', 'OPTIONAL: the single household member this provision belongs to (as the user names them - a first name is enough; never ask for a surname). Leave EMPTY for a joint/household provision.', 'string', '')
         ,@('current_value', 'Current accumulated value in EUR (Rückkaufswert/Deckungskapital). Empty if unknown.', 'string', '')
-        ,@('value_updated_at', 'Date the value is as of, YYYY-MM-DD', 'string', '')
+        ,@('value_updated_at', ('Date the value is as of, (' + (Get-DateParamHint) + ')'), 'string', '')
         ,@('guaranteed_monthly_pension', 'Guaranteed monthly payout at retirement in EUR (optional)', 'string', '')
-        ,@('retirement_start_date', 'Expected start of payout YYYY-MM-DD (optional)', 'string', '')
+        ,@('retirement_start_date', ('Expected start of payout (' + (Get-DateParamHint) + ') (optional)'), 'string', '')
         ,@('contribution_amount', 'Contribution PER DEBIT in EUR as the user states it, positive. If set, debit_account_name is required.', 'string', '')
         ,@('schedule_unit', 'How often the contribution is debited: month (default), or year; quarterly = month with schedule_interval 3', 'string', '')
         ,@('schedule_interval', 'Every N units (optional, default 1)', 'string', '')
         ,@('debit_account_name', 'Cash account the contribution is paid from (required if contribution_amount set)', 'string', '')
         ,@('schedule_day_of_month', 'Contribution debit day 1-28, -1 for last day or -2 for second-to-last day (optional)', 'string', '')
-        ,@('first_payment_date', 'First contribution debit date YYYY-MM-DD (optional)', 'string', '')
+        ,@('first_payment_date', ('First contribution debit date (' + (Get-DateParamHint) + ') (optional)'), 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
     ) @(2400, 208)
 
@@ -637,7 +637,7 @@ $nToolSetAccount = New-ToolWorkflowNode 'tool_set_account' `
         ,@('account_number', 'New IBAN / depot number / P2P id', 'string', '')
         ,@('owner_person', 'Assign the single household member who owns this account (as the user names them - a first name is enough; never ask for a surname). Omit to leave unchanged.', 'string', '')
         ,@('notes', 'New free-text notes', 'string', '')
-        ,@('fixed_deposit_maturity_date', 'New maturity date YYYY-MM-DD (fixed_deposit only)', 'string', '')
+        ,@('fixed_deposit_maturity_date', ('New maturity date (' + (Get-DateParamHint) + ') (fixed_deposit only)'), 'string', '')
         ,@('fixed_deposit_auto_renew', 'Whether the fixed deposit auto-renews (true/false, fixed_deposit only)', 'string', '')
         ,@('ownership', 'OPTIONAL legal account ownership, exactly one of: single (Einzelkonto), joint_or (Oder-Konto - survivor keeps full access), joint_and (Und-Konto - restricted after death). Leave empty if not stated.', 'string', '')
         ,@('has_transmortal_poa', 'OPTIONAL whether a transmortal bank power of attorney (transmortale Bankvollmacht, valid beyond death) exists (true/false).', 'string', '')
@@ -654,7 +654,7 @@ $nToolSetAccountInterest = New-ToolWorkflowNode 'tool_set_account_interest' `
         ,@('posting_day_of_month', 'Arrears: if interest is credited in the month AFTER the period ends, the day of that following month (1-28). Leave empty = credited at period end (optional)', 'string', '')
         ,@('day_count_convention', 'Day-count method, ONLY if the user explicitly overrides: 30E/360, ACT/365 or ACT/360. Leave EMPTY normally - it carries the previous rate method, else is proposed from the account type, and is shown in the confirmation.', 'string', '')
         ,@('auto_post', 'Whether the scheduler books interest automatically without confirmation (true/false). Leave EMPTY normally - proposed from cadence and shown in the confirmation.', 'string', '')
-        ,@('valid_from', 'Date the new rate is valid from YYYY-MM-DD (optional, default today). Must be after the current rate start.', 'string', '')
+        ,@('valid_from', ('Date the new rate is valid from (' + (Get-DateParamHint) + ') (optional, default today). Must be after the current rate start.'), 'string', '')
     ) @(2720, 208)
 
 $nToolSetRealEstate = New-ToolWorkflowNode 'tool_set_real_estate' `
@@ -663,7 +663,7 @@ $nToolSetRealEstate = New-ToolWorkflowNode 'tool_set_real_estate' `
         ,@('real_estate_name', 'Exact name of the property to update', 'string')
         ,@('new_name', 'New display name (only if renaming)', 'string', '')
         ,@('current_value', 'New estimated market value in EUR', 'string', '')
-        ,@('value_updated_at', 'Valuation date YYYY-MM-DD (optional; defaults to today when current_value changes)', 'string', '')
+        ,@('value_updated_at', ('Valuation date (' + (Get-DateParamHint) + ') (optional; defaults to today when current_value changes)'), 'string', '')
         ,@('owner_person', 'Assign the single household member who owns this property (as the user names them - a first name is enough; never ask for a surname). Omit to leave unchanged.', 'string', '')
         ,@('status', 'active or sold', 'string', '')
         ,@('notes', 'New free-text notes', 'string', '')
@@ -675,9 +675,9 @@ $nToolSetPension = New-ToolWorkflowNode 'tool_set_pension' `
         ,@('pension_name', 'Exact name of the provision to update', 'string')
         ,@('new_name', 'New display name (only if renaming)', 'string', '')
         ,@('current_value', 'New accumulated value in EUR (Rückkaufswert/Deckungskapital)', 'string', '')
-        ,@('value_updated_at', 'Valuation date YYYY-MM-DD (optional; defaults to today when current_value changes)', 'string', '')
+        ,@('value_updated_at', ('Valuation date (' + (Get-DateParamHint) + ') (optional; defaults to today when current_value changes)'), 'string', '')
         ,@('guaranteed_monthly_pension', 'Guaranteed monthly payout at retirement in EUR', 'string', '')
-        ,@('retirement_start_date', 'Expected start of payout YYYY-MM-DD', 'string', '')
+        ,@('retirement_start_date', ('Expected start of payout (' + (Get-DateParamHint) + ')'), 'string', '')
         ,@('provider', 'Provider/insurer (Anbieter/Versorgungsträger)', 'string', '')
         ,@('contract_number', 'Contract or policy number', 'string', '')
         ,@('owner_person', 'Assign the single household member this provision belongs to (as the user names them - a first name is enough; never ask for a surname). Omit to leave unchanged.', 'string', '')
@@ -695,8 +695,8 @@ $nToolSetInsurance = New-ToolWorkflowNode 'tool_set_insurance' `
         ,@('schedule_interval', 'Every N units (optional)', 'string', '')
         ,@('schedule_unit', 'day, week, month or year (only together with the new amount per debit)', 'string', '')
         ,@('schedule_day_of_month', 'Debit day 1-28, -1 for last day or -2 for second-to-last day', 'string', '')
-        ,@('effective_from', 'First debit with the new premium YYYY-MM-DD - only if the user names it (empty = next due debit)', 'string', '')
-        ,@('valid_to', 'Last day the contract is still valid (inclusive), YYYY-MM-DD (set when cancelling)', 'string', '')
+        ,@('effective_from', ('First debit with the new premium (' + (Get-DateParamHint) + ') - only if the user names it (empty = next due debit)'), 'string', '')
+        ,@('valid_to', ('Last day the contract is still valid (inclusive), (' + (Get-DateParamHint) + ') (set when cancelling)'), 'string', '')
         ,@('status', 'active, cancelled or expired', 'string', '')
         ,@('insurance_company', 'New insurance company', 'string', '')
         ,@('policy_number', 'New policy number', 'string', '')
@@ -716,13 +716,13 @@ $nToolSetLoan = New-ToolWorkflowNode 'tool_set_loan' `
         ,@('lender', 'New lender', 'string', '')
         ,@('borrower_person', 'Assign the single household member who is the borrower (as the user names them - a first name is enough; never ask for a surname). Omit to leave unchanged.', 'string', '')
         ,@('interest_rate', 'New annual interest rate in percent (e.g. 3.5)', 'string', '')
-        ,@('interest_rate_fixed_until', 'New Zinsbindungsende YYYY-MM-DD', 'string', '')
-        ,@('term_end_date', 'Laufzeitende YYYY-MM-DD = date of the last rate', 'string', '')
+        ,@('interest_rate_fixed_until', ('New Zinsbindungsende (' + (Get-DateParamHint) + ')'), 'string', '')
+        ,@('term_end_date', ('Laufzeitende (' + (Get-DateParamHint) + ') = date of the last rate'), 'string', '')
         ,@('monthly_annuity', 'New monthly rate in EUR (Zins + Tilgung) as the user states it', 'string', '')
         ,@('schedule_day_of_month', 'New debit day 1-28, -1 for last day or -2 for second-to-last day', 'string', '')
-        ,@('effective_from', 'First debit with the new rate/day YYYY-MM-DD - only if the user names it (empty = next due rate); required when the loan has no rate yet', 'string', '')
+        ,@('effective_from', ('First debit with the new rate/day (' + (Get-DateParamHint) + ') - only if the user names it (empty = next due rate); required when the loan has no rate yet'), 'string', '')
         ,@('original_amount', 'Original loan sum in EUR - only to add it to a loan recorded with its remaining debt', 'string', '')
-        ,@('disbursement_date', 'Payout date YYYY-MM-DD - only to add it to a loan recorded with its remaining debt', 'string', '')
+        ,@('disbursement_date', ('Payout date (' + (Get-DateParamHint) + ') - only to add it to a loan recorded with its remaining debt'), 'string', '')
         ,@('status', 'active, paused, paid_off or refinanced', 'string', '')
         ,@('notes', 'New free-text notes', 'string', '')
     ) @(3360, 208)
@@ -732,9 +732,9 @@ $nToolSetRecurringPayment = New-ToolWorkflowNode 'tool_set_recurring_payment' `
     @(
         ,@('payment_name', 'Exact name of the recurring payment to update', 'string')
         ,@('amount', 'New amount per occurrence in the account currency (positive magnitude); applies from valid_from on. Leave empty for pause/resume/end/rename.', 'string', '')
-        ,@('valid_from', 'Effective date of the amount change YYYY-MM-DD (default today). Must be after the current entry start.', 'string', '')
+        ,@('valid_from', ('Effective date of the amount change (' + (Get-DateParamHint) + ') (default today). Must be after the current entry start.'), 'string', '')
         ,@('status', 'active or paused (pause/resume)', 'string', '')
-        ,@('valid_to', 'Last day the payment is still valid (inclusive), YYYY-MM-DD - pass the date the user names, e.g. runs until 2026-12-31 -> 2026-12-31', 'string', '')
+        ,@('valid_to', ('Last day the payment is still valid (inclusive), (' + (Get-DateParamHint) + ') - pass the date the user names, e.g. runs until 2026-12-31 -> 2026-12-31'), 'string', '')
         ,@('schedule_day_of_month', 'New debit day 1-28, -1 for last day or -2 for second-to-last day', 'string', '')
         ,@('new_name', 'New display name (only if renaming)', 'string', '')
         ,@('notes', 'New free-text notes', 'string', '')
@@ -746,7 +746,7 @@ $nToolSetSavingsGoal = New-ToolWorkflowNode 'tool_set_savings_goal' `
         ,@('goal_name', 'Exact name of the savings goal to update', 'string')
         ,@('new_name', 'New display name (only if renaming)', 'string', '')
         ,@('target_amount', 'New target amount in EUR', 'string', '')
-        ,@('target_date', 'New target date YYYY-MM-DD', 'string', '')
+        ,@('target_date', ('New target date (' + (Get-DateParamHint) + ')'), 'string', '')
         ,@('status', 'Set to active to RE-OPEN a previously closed goal. To complete (reserve spent) or cancel a goal, use tool_close_savings_goal instead - do not set those here.', 'string', '')
         ,@('notes', 'New free-text notes', 'string', '')
         ,@('beneficiary_person', 'Assign the household member this goal is FOR (the beneficiary, named as the user says it (a first name is enough)). Omit to leave unchanged.', 'string', '')
@@ -794,7 +794,7 @@ $nToolVoidTransaction = New-ToolWorkflowNode 'tool_void_transaction' `
     ) @(4000, 208)
 
 $nToolCreateSavingsPlan = New-ToolWorkflowNode 'tool_create_savings_plan' `
-    'Create a new savings plan (Sparplan): links a depot to a recurring cash debit on the depot settlement account. Each broker execution is later recorded via tool_book_savings_plan_execution. DEPOT TYPE: stocks_depot requires an isin; crypto_depot has no isin (leave empty and use symbol only). Capture first_payment_date = the date of the FIRST broker execution (YYYY-MM-DD). RHYTHM: pass the rhythm exactly as the user names it - weekly = week/1, every two weeks or twice a month = week/2, monthly = month/1, quarterly = month/3 - and NEVER work out execution days yourself: the database knows the bank execution calendar of the depot (e.g. a bank that runs weekly plans on 4 fixed days of the month) and derives the stored schedule and the monthly amount; the approval card shows the result. Always create ONE plan and call this tool directly, also when the user describes the bank pattern (e.g. weekly on 4 fixed days a month): never split it into several plans per day and never ask beforehand whether every 7 days or fixed days are meant. If the tool answers needs_calendar, ask the user ONCE which next execution dates their bank app shows and call again with depot_execution_days (the days of the month, or "none" if the plan really runs every 7 days); it is remembered for the depot. If it rejects the first date and names the next possible date, ask the user. BENEFICIARY: leave EMPTY normally - the plan then belongs to the depot owner (household for a joint depot), shown on the card; only name a household member (beneficiary_person, a first name is enough) if the plan is FOR someone else, e.g. a child. Required: plan_name, depot_name, symbol, security_name, amount (per execution, positive), first_payment_date. Optional for stocks/ETFs: isin. Optional: schedule_interval (default 1), schedule_unit (default month), schedule_day_of_month (1-28, -1 for last day or -2 for second-to-last day), depot_execution_days, notes, beneficiary_person, asset_class (allocation block key; every execution tags the position with it).' `
+    'Create a new savings plan (Sparplan): links a depot to a recurring cash debit on the depot settlement account. Each broker execution is later recorded via tool_book_savings_plan_execution. DEPOT TYPE: stocks_depot requires an isin; crypto_depot has no isin (leave empty and use symbol only). Capture first_payment_date = the date of the FIRST broker execution (see its parameter). RHYTHM: pass the rhythm exactly as the user names it - weekly = week/1, every two weeks or twice a month = week/2, monthly = month/1, quarterly = month/3 - and NEVER work out execution days yourself: the database knows the bank execution calendar of the depot (e.g. a bank that runs weekly plans on 4 fixed days of the month) and derives the stored schedule and the monthly amount; the approval card shows the result. Always create ONE plan and call this tool directly, also when the user describes the bank pattern (e.g. weekly on 4 fixed days a month): never split it into several plans per day and never ask beforehand whether every 7 days or fixed days are meant. If the tool answers needs_calendar, ask the user ONCE which next execution dates their bank app shows and call again with depot_execution_days (the days of the month, or "none" if the plan really runs every 7 days); it is remembered for the depot. If it rejects the first date and names the next possible date, ask the user. BENEFICIARY: leave EMPTY normally - the plan then belongs to the depot owner (household for a joint depot), shown on the card; only name a household member (beneficiary_person, a first name is enough) if the plan is FOR someone else, e.g. a child. Required: plan_name, depot_name, symbol, security_name, amount (per execution, positive), first_payment_date. Optional for stocks/ETFs: isin. Optional: schedule_interval (default 1), schedule_unit (default month), schedule_day_of_month (1-28, -1 for last day or -2 for second-to-last day), depot_execution_days, notes, beneficiary_person, asset_class (allocation block key; every execution tags the position with it).' `
     @(
         ,@('plan_name', 'Unique display name for the savings plan (e.g. "VWCE Monatsplan")', 'string')
         ,@('depot_name', 'Exact name of the depot account (stocks_depot or crypto_depot)', 'string')
@@ -805,7 +805,7 @@ $nToolCreateSavingsPlan = New-ToolWorkflowNode 'tool_create_savings_plan' `
         ,@('schedule_interval', 'Every N units (optional, default 1)', 'string', '')
         ,@('schedule_unit', 'Recurrence unit: day/week/month/year (optional, default month)', 'string', '')
         ,@('schedule_day_of_month', 'Fixed debit day 1-28, -1 for last day or -2 for second-to-last day (optional; leave empty to anchor to first_payment_date)', 'string', '')
-        ,@('first_payment_date', 'Date of the FIRST broker execution YYYY-MM-DD - recurrence anchor', 'string')
+        ,@('first_payment_date', ('Date of the FIRST broker execution (' + (Get-DateParamHint) + ') - recurrence anchor'), 'string')
         ,@('depot_execution_days', 'ONLY after a needs_calendar answer: the raw answer of the user which days of the month the bank executes savings plans (e.g. "2,9,16,23"), or "none" if it runs every 7 days. Leave EMPTY otherwise.', 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
         ,@('beneficiary_person', 'OPTIONAL: only if the plan is FOR someone other than the depot owner (e.g. a child), named as the user says it (a first name is enough). Leave EMPTY - the plan then belongs to the depot owner.', 'string', '')
@@ -844,7 +844,7 @@ $nToolSetSavingsPlan = New-ToolWorkflowNode 'tool_set_savings_plan' `
         ,@('schedule_interval', 'New cadence interval, a positive integer (e.g. 2 with unit week = every two weeks). Leave empty to keep it.', 'string', '')
         ,@('depot_execution_days', 'ONLY after needs_calendar or when the user corrects the bank execution days: the raw answer of the user which days of the month the bank executes savings plans (e.g. "2,9,16,23"), or "none" if it runs every 7 days. Requires schedule_unit. Leave EMPTY otherwise.', 'string', '')
         ,@('status', 'active (resume) or paused (pause execution)', 'string', '')
-        ,@('valid_from', 'Effective date of amount/cadence change YYYY-MM-DD (default today). Must be after current entry start.', 'string', '')
+        ,@('valid_from', ('Effective date of amount/cadence change (' + (Get-DateParamHint) + ') (default today). Must be after current entry start.'), 'string', '')
         ,@('notes', 'New free-text notes', 'string', '')
         ,@('beneficiary_person', 'Assign the household member this plan is FOR (the beneficiary, named as the user says it (a first name is enough)). Omit to leave unchanged.', 'string', '')
         ,@('asset_class', 'Allocation block key for rebalancing (lowercase letters/digits/underscore, e.g. sp500). Match a target_allocation block key from the financial plan. Omit to leave unchanged.', 'string', '')
@@ -914,7 +914,7 @@ $nToolSettleLoan = New-ToolWorkflowNode 'tool_settle_loan' `
     @(
         ,@('loan_name', 'Exact name of the loan to settle', 'string')
         ,@('debit_account_name', 'Exact name of the cash account the payoff is debited from', 'string')
-        ,@('settlement_date', 'Settlement date YYYY-MM-DD (default today)', 'string', '')
+        ,@('settlement_date', ('Settlement date (' + (Get-DateParamHint) + ') (default today)'), 'string', '')
         ,@('settlement_amount', 'Total amount paid (EUR). Omit to settle exactly the remaining debt; higher = includes early-repayment interest/fee.', 'string', '')
     ) @(6080, 208)
 
@@ -923,7 +923,7 @@ $nToolSellRealEstate = New-ToolWorkflowNode 'tool_sell_real_estate' `
     @(
         ,@('real_estate_name', 'Exact name of the property being sold', 'string')
         ,@('proceeds_account_name', 'Exact name of the cash account the sale proceeds are credited to', 'string')
-        ,@('sale_date', 'Sale date YYYY-MM-DD, only if the user names one (empty = today)', 'string', '')
+        ,@('sale_date', ('Sale date (' + (Get-DateParamHint) + '), only if the user names one (empty = today)'), 'string', '')
         ,@('sale_price', 'Sale price in EUR (positive)', 'number')
     ) @(6240, 208)
 
@@ -979,6 +979,7 @@ Set (Update bestehender Entitaeten): set_account/set_account_interest/set_real_e
 Reconcile: reconcile_account (ein Konto) / reconcile_accounts_batch (mehrere Staende auf einmal -> Monats-Reminder, ein Sammel-Approval). Close: close_account
 Void: void_transaction (Hard-DELETE einer Fehlbuchung; Kredit-Paar zusammen; Holding-Zeile bleibt)
 Sparplan: create_savings_plan/book_savings_plan_execution/set_savings_plan/close_savings_plan (Depot + monatlicher Cash-Debit + Broker-Ausfuehrung; Cron fn_recurring_due_open erkennt Ausfuehrung via rp_id+due_date auf buy-Tx automatisch)
+Datumsfelder: das Modell gibt relative Angaben roh weiter ("yesterday", "in 2 weeks"; Text = Get-DateParamHint), die Write-fn rechnet sie (core.fn_resolve_input_dates), unlesbar -> ok:false invalid_date, keine Karte. Die Karte zeigt das aufgeloeste Datum aus dem Probelauf (effective).
 Write-Logik in agent.fn_*. transfer = nur zwischen EIGENEN Konten; book_transaction = externe Ausgabe/Einnahme (1 Bein). set_* aendert NUR Bestehendes (partielles UPDATE, Resolve per Name); set_insurance synct den verknuepften Beitrag, set_pension kaskadiert Status auf den Beitrag, set_account_interest schliesst die offene Zinszeile. Reads: postgres_select (Views bevorzugt) + load_context (lazy) + web_search (nur oeffentliche Produkt-Konditionen nachschlagen, z. B. Kontozins; eintragen erst nach Chat-Ja via set_account_interest).
 
 postgres_select (geteilter Builder New-PostgresSelectToolNode): onError=continueRegularOutput -> fehlerhafte SELECT gibt DB-Fehler an Agent zurueck (selbst korrigieren); fehlt das query-Argument, liefert der Guard {ok:false, error} statt eines n8n-Absturzes. Views sind stabiles Schema-Interface.

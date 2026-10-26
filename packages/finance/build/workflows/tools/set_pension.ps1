@@ -62,9 +62,9 @@ function Build-SetPension {
         (New-HitlLine 'finance.label.value'         "'finance.tpl.change'" -Kind tpl -If "$S.current_value" -Params @{
             from = (New-HitlValue -Kind money -Value "$R.current_value" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$S.current_value" -EurByModel) })
-        (New-HitlLine 'finance.label.valuation_date' "$S.value_updated_at" -Kind date -If "$S.value_updated_at")
+        (New-HitlLine 'finance.label.valuation_date' (Get-DryEffectiveExpr 'value_updated_at') -Kind date -If "$S.value_updated_at")
         (New-HitlLine 'finance.label.guaranteed_monthly_pension' "$S.guaranteed_monthly_pension" -Kind money -EurByModel -If "$S.guaranteed_monthly_pension")
-        (New-HitlLine 'finance.label.retirement_start' "$S.retirement_start_date" -Kind date -If "$S.retirement_start_date")
+        (New-HitlLine 'finance.label.retirement_start' (Get-DryEffectiveExpr 'retirement_start_date') -Kind date -If "$S.retirement_start_date")
         (New-HitlLine 'finance.label.provider'      "$S.provider" -If "$S.provider")
         (New-HitlLine 'finance.label.contract_number' "$S.contract_number" -If "$S.contract_number")
         (New-HitlLine 'finance.label.owner_person'  "($P.full_name || $S.owner_person)" -If "$S.owner_person")

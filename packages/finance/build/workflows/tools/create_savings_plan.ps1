@@ -68,7 +68,7 @@ function Build-CreateSavingsPlan {
             end      = (New-HitlValue -Kind key -Value (Get-FinanceMonthEndKey "$Y.schedule_day_of_month")) })
         (New-HitlLine 'finance.label.monthly_equivalent' "$Y.monthly_amount" -Kind money -Currency "$D.currency")
         (New-HitlLine 'finance.label.bank_calendar'      "$Y.calendar_learned" -If "$Y.calendar_learned")
-        (New-HitlLine 'finance.label.first_execution'    "$S.first_payment_date" -Kind date)
+        (New-HitlLine 'finance.label.first_execution'    (Get-DryEffectiveExpr 'first_payment_date') -Kind date)
         (New-HitlLine 'finance.label.beneficiary_person' "($Y.beneficiary_name ? 'finance.tpl.plain' : 'finance.value.household')" -Kind tpl -Params @{ value = "$Y.beneficiary_name" })
         (New-HitlLine 'finance.label.asset_class'        "'finance.tpl.asset_class_inherited'" -Kind tpl -Params @{ value = "$S.asset_class" } -If "$S.asset_class")
         (New-HitlLine 'core.label.note'                  "$S.notes")

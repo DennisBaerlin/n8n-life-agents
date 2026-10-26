@@ -18,7 +18,7 @@
 --   des naechstgelegenen offenen Vorkommens der Raten-Kette im selben Fenster (bzw. am expliziten due_date), bei der
 --   letzten Rate der Abloesebetrag (Restschuld + Zins), wenn die volle Rate ueberzahlen wuerde. Ohne Raten-Kette oder
 --   ohne offenes Vorkommen -> {ok:false} (Betrag nennen).
---   Eingabe jsonb: loan_id, payment_amount (opt), payment_date, principal_amount (opt), due_date (opt),
+--   Eingabe jsonb: loan_id, payment_amount (opt), payment_date (ISO oder relativ, leer = heute), principal_amount (opt), due_date (opt),
 --   recurring_payment_id (opt, Scheduler-Stempel).
 --   RUECKGABE: {ok:true, payment_amount (gegeben oder abgeleitet), remaining_debt (vor der Rate), interest_portion,
 --   principal_amount, matched_due_date, booking_date, recurring_payment_id (nur bei Zuordnung)} | korrigierbar
@@ -30,16 +30,23 @@ RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_loan_id    INT     := (p->>'loan_id')::int;
     v_payment    NUMERIC := NULLIF(p->>'payment_amount', '')::numeric;
-    v_date       DATE    := COALESCE(NULLIF(p->>'payment_date', '')::date, core.fn_today());
+    v_date       DATE;
     v_principal  NUMERIC := NULLIF(p->>'principal_amount', '')::numeric;
-    v_due        DATE    := NULLIF(p->>'due_date', '')::date;
+    v_due        DATE;
     v_stamp_rp   INT     := NULLIF(p->>'recurring_payment_id', '')::int;
     v_loan       finance.loans%ROWTYPE;
     v_months     NUMERIC := 1;
     v_restschuld NUMERIC;
     v_interest   NUMERIC;
     v_def_rp     INT;
+    v_dates      JSONB;
 BEGIN
+    -- relative Datumsangaben ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['payment_date', 'due_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'payment_date', '')::date, core.fn_today());
+    v_due  := NULLIF(p->>'due_date', '')::date;
     SELECT * INTO v_loan FROM finance.loans WHERE id = v_loan_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Loan % not found.', v_loan_id;

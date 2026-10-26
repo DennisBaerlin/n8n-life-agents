@@ -5,7 +5,7 @@
 --   gespeichert; shares-Delta ist negativ (-verkaufte Stuecke). avg-Trigger
 --   liest nur buy -> Sell-Gebuehr verfaelscht avg nie.
 --   Eingabe jsonb: settlement_id, holding_id, shares (positiver Eingabewert),
---   price_per_share, order_fee, transaction_date, symbol (fuer description).
+--   price_per_share, order_fee, transaction_date (ISO oder relativ, leer = heute), symbol (fuer description).
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, sell_tx_id, settlement_balance, proceeds,
 --   remaining_shares} (Post-State aus der fn: neuer Verrechnungskonto-Saldo + Netto-Erloes
 --   + Trigger-gepflegte Rest-Stuecke, in derselben Transaktion gelesen). Korrigierbarer Fall
@@ -22,14 +22,20 @@ DECLARE
     v_shares  NUMERIC := (p->>'shares')::numeric;           -- positiver Eingabewert
     v_price   NUMERIC := (p->>'price_per_share')::numeric;
     v_fee     NUMERIC := COALESCE(NULLIF(p->>'order_fee', '')::numeric, 0);
-    v_date    DATE    := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
+    v_date    DATE;
     v_avail   NUMERIC;
     v_sell    INT;
     v_bal     NUMERIC;
     v_remain  NUMERIC;
     v_reason  TEXT;
     v_proceeds NUMERIC;
+    v_dates   JSONB;
 BEGIN
+    -- relative Datumsangabe ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
     -- Gebuehr auf Cent (order_fee numeric(12,2)): Betrag und order_fee entstehen aus demselben Wert (Rundungs-Paket).
     v_fee := round(v_fee, 2);
     -- Korrigierbare Input-Pruefungen -> {ok:false} (kein RAISE).
@@ -94,6 +100,6 @@ BEGIN
         'settlement_balance', v_bal,
         'proceeds', v_proceeds,
         'remaining_shares', v_remain,
-        'effective', jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee));
+        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee));
 END;
 $$;

@@ -21,7 +21,12 @@ DECLARE
     v_id     INT  := (p->>'account_id')::int;
     v_number TEXT := finance.fn_normalize_account_number(p->>'account_number');
     v_taken  TEXT;
+    v_dates  JSONB;
 BEGIN
+    -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['fixed_deposit_maturity_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
     IF NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_id) THEN
         RAISE EXCEPTION 'Account % not found.', v_id;
     END IF;
@@ -56,6 +61,6 @@ BEGIN
         has_transmortal_poa         = COALESCE(NULLIF(p->>'has_transmortal_poa', '')::boolean, has_transmortal_poa)
     WHERE id = v_id;
 
-    RETURN jsonb_build_object('ok', true, 'account_id', v_id);
+    RETURN jsonb_build_object('ok', true, 'account_id', v_id, 'effective', v_dates->'resolved');
 END;
 $$;

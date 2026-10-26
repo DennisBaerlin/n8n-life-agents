@@ -33,9 +33,9 @@ DECLARE
     v_irate       NUMERIC  := NULLIF(p->>'interest_rate', '')::numeric;
     v_annuity     NUMERIC  := NULLIF(p->>'monthly_annuity', '')::numeric;
     v_dom         SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
-    v_eff_from    DATE     := NULLIF(p->>'effective_from', '')::date;
+    v_eff_from    DATE;
     v_amount      NUMERIC  := NULLIF(p->>'original_amount', '')::numeric;
-    v_disb        DATE     := NULLIF(p->>'disbursement_date', '')::date;
+    v_disb        DATE;
     v_status      finance.loan_status;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
     v_reason      TEXT     := finance.fn_enum_reason('finance.loan_status'::regtype, p->>'status', 'status');
     v_today       DATE     := core.fn_today();
@@ -52,7 +52,16 @@ DECLARE
     v_rp          INT;
     v_chg         JSONB    := '{}'::jsonb;
     v_ov          RECORD;
+    v_dates       JSONB;
 BEGIN
+    -- relative Datumsangaben ("in 1 month", "+10 years") -> ISO; nicht aufloesbar -> {ok:false,
+    -- code:'invalid_date'}. Vor der no_change-Pruefung: ein aufgeloestes Datum vergleicht wie ein ISO-Datum.
+    v_dates := core.fn_resolve_input_dates(p,
+                   ARRAY['effective_from', 'disbursement_date', 'interest_rate_fixed_until', 'term_end_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_eff_from := NULLIF(p->>'effective_from', '')::date;
+    v_disb     := NULLIF(p->>'disbursement_date', '')::date;
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
@@ -225,6 +234,7 @@ BEGIN
         || jsonb_strip_nulls(jsonb_build_object(
                'split', v_chg->'split', 'previous_id', v_chg->'previous_id', 'effective_from', v_chg->'effective_from'))
         || jsonb_build_object('balance_at_fixed_until', v_ov.balance_at_fixed_until_projected,
-                              'balance_at_term_end', v_ov.balance_at_term_end_projected);
+                              'balance_at_term_end', v_ov.balance_at_term_end_projected,
+                              'effective', v_dates->'resolved');
 END;
 $$;

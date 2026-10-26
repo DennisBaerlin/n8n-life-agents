@@ -877,5 +877,40 @@
                                },
         "expected_behavior":  "Ruft tool_extract_finance_document mit file_id=mock_photo_070 auf. Die Auslesung liefert die gesetzliche Rente und eine datierte Renteninformation (erreichter Anspruch, Hochrechnung, 1-%- und 2-%-Szenario, Erwerbsminderungsrente, Entgeltpunkte, Regelaltersrente); sind alle Zeilen gueltig, schickt das Tool die Karte selbst. Der Agent rechnet keine Rentenwerte um und fragt nicht im Text nach.",
         "notes":  "Renteninformation-Plan 2026-10-26 (Werte erfunden). Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_070.pdf (make_doc_fixtures.ps1); Mock-Tier: Vision-Antwort aus dem Szenario Renteninformation der Testrentenkasse. Echtes LLM: die Vision liest die PDF (gleiche Werte)."
+    },
+    {
+        "id":  "tc76",
+        "name":  "Relatives Buchungsdatum: gestern roh weitergeben, die DB rechnet",
+        "task":  "Ich habe gestern 12,50 Euro beim Baecker mit dem DKB Giro bezahlt. Bitte als Ausgabe buchen.",
+        "chat_id":  "test_tc76",
+        "expected_tool":  "tool_book_transaction",
+        "expected_tool_args":  {
+                                   "amount":  12.5,
+                                   "transaction_date":  "yesterday"
+                               },
+        "expected_behavior":  "Ruft tool_book_transaction mit transaction_date=yesterday auf. Rechnet das Datum NICHT selbst aus (kein YYYY-MM-DD fuer gestern); die Datenbank loest es auf, die Karte zeigt den Tag.",
+        "notes":  "Relative Datumsangaben 2026-10-26 (core.fn_resolve_input_dates). Mock-Tier: Szenario 12,50 Euro beim Baecker."
+    },
+    {
+        "id":  "tc77",
+        "name":  "Relatives Startdatum: in einer Woche als Ziffern-Form",
+        "task":  "Richte einen Dauerauftrag ein: 50 Euro monatlich vom DKB Giro an den Sportverein, erste Zahlung in einer Woche.",
+        "chat_id":  "test_tc77",
+        "expected_tool":  "tool_create_recurring_payment",
+        "expected_tool_args":  {
+                                   "amount":  50,
+                                   "schedule_unit":  "month"
+                               },
+        "expected_behavior":  "Ruft tool_create_recurring_payment auf und gibt first_payment_date relativ in Ziffern-Form weiter (z. B. in 1 week oder +7 days), nicht als selbst ausgerechnetes Datum und nicht in Worten (in a week).",
+        "notes":  "Relative Datumsangaben 2026-10-26: die Grammatik von core.fn_resolve_date kennt nur Ziffern. Mock-Tier: Szenario Dauerauftrag Sportverein."
+    },
+    {
+        "id":  "tc78",
+        "name":  "Unklares Datum (Mitte letzten Monats): nachfragen statt raten",
+        "task":  "Buche 30 Euro Ausgabe vom DKB Giro fuer den Friseur, das war Mitte letzten Monats.",
+        "chat_id":  "test_tc78",
+        "expected_tool":  null,
+        "expected_behavior":  "Fragt nach dem genauen Tag, weil Mitte letzten Monats in keine der Datumsformen passt. Bucht nicht und setzt kein selbst gewaehltes Datum ein.",
+        "notes":  "Relative Datumsangaben 2026-10-26 (Prompt-Regel 1). Deterministisch: kein Tool. Mock-Tier: kein Szenario (kein Match -> Text)."
     }
 ]

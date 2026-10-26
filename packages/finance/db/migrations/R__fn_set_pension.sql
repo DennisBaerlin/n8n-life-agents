@@ -22,7 +22,12 @@ DECLARE
     v_reason TEXT    := finance.fn_enum_reason('finance.pension_status'::regtype, p->>'status', 'status');
     v_rp     INT;
     v_old    TEXT;
+    v_dates  JSONB;
 BEGIN
+    -- relative Datumsangaben ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['value_updated_at', 'retirement_start_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
     SELECT recurring_payment_id, name INTO v_rp, v_old FROM finance.pension WHERE id = v_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Pension % not found.', v_id;
@@ -63,7 +68,7 @@ BEGIN
         current_value              = COALESCE(v_cv, current_value),
         value_updated_at           = CASE
                                          WHEN v_cv IS NOT NULL
-                                         THEN COALESCE(NULLIF(p->>'value_updated_at', '')::date, CURRENT_DATE)
+                                         THEN COALESCE(NULLIF(p->>'value_updated_at', '')::date, core.fn_today())
                                          ELSE COALESCE(NULLIF(p->>'value_updated_at', '')::date, value_updated_at)
                                      END,
         guaranteed_monthly_pension = COALESCE(NULLIF(p->>'guaranteed_monthly_pension', '')::numeric, guaranteed_monthly_pension),
@@ -82,6 +87,7 @@ BEGIN
         WHERE id = v_rp;
     END IF;
 
-    RETURN jsonb_build_object('ok', true, 'pension_id', v_id, 'recurring_payment_id', v_rp);
+    RETURN jsonb_build_object('ok', true, 'pension_id', v_id, 'recurring_payment_id', v_rp,
+        'effective', v_dates->'resolved');
 END;
 $$;

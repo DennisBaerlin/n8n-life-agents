@@ -5,7 +5,7 @@
 --   und average_purchase_price pflegt die DB per Trigger (avg nur aus buy-Zeilen). Eingabe jsonb:
 --   depot_id, settlement_id (im n8n aufgeloest), isin, symbol (opt bei ISIN -- fn_holding_symbol: ohne Ticker ist die
 --   ISIN die Kennung), name (opt, Default = Kennung), shares, price_per_share,
---   order_fee, transaction_date, asset_class (opt -- Allokations-Block-key, lowercase snake; Auto-Tag,
+--   order_fee, transaction_date (ISO oder relativ, leer = heute), asset_class (opt -- Allokations-Block-key, lowercase snake; Auto-Tag,
 --   nur beim ANLEGEN der Holding gesetzt, Format-Verstoss -> {ok:false}),
 --   provider_symbol (opt -- Phase M: Markt-Daten-Feed-Symbol-Override, z. B. VWCE.DE; nur beim ANLEGEN),
 --   quote_currency (opt -- Phase M: native Quote-Waehrung; via fn_ensure_currency validiert -> {ok:false}; nur beim ANLEGEN),
@@ -54,8 +54,8 @@ DECLARE
     v_shares     NUMERIC           := (p->>'shares')::numeric;
     v_price      NUMERIC           := (p->>'price_per_share')::numeric;
     v_fee        NUMERIC           := COALESCE(NULLIF(p->>'order_fee', '')::numeric, 0);
-    v_date       DATE              := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
-    v_due        DATE              := COALESCE(NULLIF(p->>'due_date', '')::date, v_date);
+    v_date       DATE;
+    v_due        DATE;
     v_reason     TEXT;
     v_asset_cls  TEXT              := NULLIF(p->>'asset_class', '');  -- WS2b: Allokations-Block-key (Auto-Tag, optional)
     v_provider_sym TEXT            := NULLIF(p->>'provider_symbol', '');  -- Phase M: optionaler Feed-Symbol-Override (nur beim Anlegen)
@@ -75,7 +75,14 @@ DECLARE
     v_existing   BOOLEAN           := COALESCE(NULLIF(p->>'existing_position', '')::boolean, false);
     v_group      UUID;             -- nur bei Bestandsuebernahme: Kauf + Gegenbuchung = eine group_id = ein Void
     v_held       NUMERIC;
+    v_dates      JSONB;
 BEGIN
+    -- relative Datumsangaben ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date', 'due_date']);
+    IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates->'p';
+    v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
+    v_due  := COALESCE(NULLIF(p->>'due_date', '')::date, v_date);
     -- Korrigierbare Input-Pruefungen -> {ok:false} (analog fn_book_stock_sell).
     -- Kennung: Ticker ODER ISIN (fn_holding_symbol); ohne beides -> {ok:false} statt NOT-NULL-RAISE (Backstop bleibt).
     IF v_symbol IS NULL THEN
@@ -281,7 +288,7 @@ BEGIN
     -- NICHT nagen). Nicht-blockierend (advisory); der Bookkeeper relayed die Note (nur interaktiv).
     RETURN jsonb_build_object('ok', true, 'holding_id', v_holding, 'buy_tx_id', v_buy,
         'settlement_balance', v_bal, 'total_shares', v_shares_tot, 'avg_purchase_price', v_avg,
-        'effective', jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee))
+        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee))
         || CASE WHEN v_holding_cls IS NULL
                 THEN jsonb_build_object('null_tag', jsonb_build_object(
                     'symbol', v_symbol,

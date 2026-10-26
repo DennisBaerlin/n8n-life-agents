@@ -283,6 +283,22 @@
     "final": "Kreditrate gebucht."
   },
   {
+    "_comment": "tc76 relative Datumsangaben: gestern roh weiterreichen (transaction_date=yesterday), die DB rechnet den Tag.",
+    "match": "12,50 Euro beim Baecker",
+    "calls": [
+      { "tool": "tool_book_transaction", "args": { "account_name": "DKB Giro", "direction": "outflow", "amount": 12.5, "transaction_date": "yesterday", "description": "Baecker" } }
+    ],
+    "final": "Ausgabe gebucht."
+  },
+  {
+    "_comment": "tc77 relative Datumsangaben: erste Zahlung in einer Woche -> Ziffern-Form in 1 week.",
+    "match": "an den Sportverein, erste Zahlung in einer Woche",
+    "calls": [
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Sportverein", "account_name": "DKB Giro", "direction": "expense", "amount": 50, "schedule_unit": "month", "first_payment_date": "in 1 week" } }
+    ],
+    "final": "Dauerauftrag angelegt."
+  },
+  {
     "_comment": "tc58 Versicherung fuer Kind per Vorname.",
     "match": "Lege eine Unfallversicherung 'Kinder-Unfall Lisa'",
     "calls": [

@@ -49,12 +49,12 @@ function Build-SetRecurringPayment {
         (New-HitlLine 'finance.label.payment'    "$S.payment_name")
         (New-HitlLine 'finance.label.new_amount' "($S.valid_from ? 'finance.tpl.new_amount_from_date' : 'finance.tpl.new_amount_from_today')" -Kind tpl -If "$S.amount" -Params @{
             amount = (New-HitlValue -Kind money -Value "$S.amount" -Currency "$R.currency")
-            date   = (New-HitlValue -Kind date -Value "$S.valid_from") })
+            date   = (New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'valid_from')) })
         (New-HitlLine 'finance.label.new_name'   "$S.new_name" -If "$S.new_name")
         (New-HitlLine 'core.label.status'        "'finance.tpl.change'" -Kind tpl -If "$S.status" -Params @{
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.status') })
-        (New-HitlLine 'finance.label.valid_to'   "$S.valid_to" -Kind date -If "$S.valid_to")
+        (New-HitlLine 'finance.label.valid_to'   (Get-DryEffectiveExpr 'valid_to') -Kind date -If "$S.valid_to")
         (New-HitlLine 'finance.label.debit_day'  $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.schedule_day_of_month")
         (New-HitlLine 'core.label.note'          "$S.notes" -If "$S.notes")
     )

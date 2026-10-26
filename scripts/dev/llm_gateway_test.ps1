@@ -97,10 +97,16 @@ function Send-Gw([int]$Port, [string]$Path, [string]$RawBody, [string]$ApiKey = 
     return [pscustomobject]@{ Status = (($r.Output -join '').Trim()); Body = $body }
 }
 function Clear-MockLog { Invoke-InC @('sh', '-c', ": > $MockLog") | Out-Null }
+# Letzte echte Anfrage am Stub: Keep-Alive-Anstupser (max_tokens 0) der Unit aus Fall (k) laufen im Hintergrund weiter
+# und landen im selben Log -> auslassen, sonst liest ein spaeterer Fall den Anstupser statt seiner Anfrage.
+function Get-MockEntries {
+    @((Invoke-InC @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' } |
+        ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.max_tokens -ne 0 })
+}
 function Get-LastMockEntry {
-    $lines = @((Invoke-InC @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' })
-    if ($lines.Count -eq 0) { return $null }
-    return ($lines[-1] | ConvertFrom-Json)
+    $e = @(Get-MockEntries)
+    if ($e.Count -eq 0) { return $null }
+    return $e[-1]
 }
 function Get-UnitJournal([string]$Unit) { (Invoke-InC @('journalctl', '-u', $Unit, '-o', 'cat', '--no-pager')).Output }
 function Get-LastUsage([string]$Unit) {
@@ -250,7 +256,7 @@ try {
     if (-not ($m.wf_header_seen -eq $false -and $u.wf -eq 'agent.tool_web_search')) { $lOk = $false; $lWhy += "header mock=$($m | ConvertTo-Json -Compress -Depth 4) wf=$($u.wf)" }
     Clear-MockLog
     $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = "<<la-wf:agent.demo_agent>>`nSYS"; tools = @($tool1); messages = @(@{ role = 'user'; content = '__mock_400_cache_control__' }) }))
-    $all = @((Invoke-InC @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' } | ForEach-Object { $_ | ConvertFrom-Json })
+    $all = @(Get-MockEntries)
     $u = Get-LastUsage $Units.gw
     if (-not ($res.Status -eq '200' -and $all.Count -eq 2 -and @($all | Where-Object { $_.wf_tag_seen }).Count -eq 0 -and $u.fallback -eq $true -and $u.wf -eq 'agent.demo_agent')) { $lOk = $false; $lWhy += "400 n=$($all.Count) fallback=$($u.fallback)" }
     # usage.jsonl + /__usage (Seite 1 von 2, dann der Rest)

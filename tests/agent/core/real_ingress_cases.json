@@ -902,5 +902,31 @@
     "expect_texts": ["Dein Sparkonto steht bei 500,00 EUR."],
     "forbid_texts": ["Sehr wohl", "FRAME"],
     "notes": "Persona neutral (Setup entfernt den Key): das Signal FRAME wird ignoriert, gesendet wird nur der woertliche Spezialisten-Text."
+  },
+  {
+    "id": "ri64",
+    "name": "/costs (Owner) -> KI-Kostenuebersicht aus der Gateway-Mitschrift (Import + DB-Rechnung, kein LLM)",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "/costs",
+    "expected_node": "Send cost report",
+    "expect_texts": ["KI-Kosten (Claude)"],
+    "forbid_texts": ["core.cost.", "Nur der Haushalts-Owner", "konnte gerade nicht geladen werden"],
+    "notes": "Command router [costs] -> core.sub_send_cost_report: Read cursor -> Owner? -> Fetch usage (GET 127.0.0.1:8090/__usage) -> Import usage -> Read report (core.fn_get_llm_cost_report unter core_ro) -> Send cost report (HTML). Die Mock-Laeufe der Faelle davor erzeugen Gateway-Zeilen; ohne Zeilen kaeme core.cost.empty (enthaelt den Titel ebenfalls)."
+  },
+  {
+    "id": "ri65",
+    "name": "/kosten (verstecktes Kuerzel) von Mitglied Lena -> nur der Owner-only-Hinweis in ihrer Sprache, kein Abruf",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055200,
+    "from_uid": 880055200,
+    "text": "/kosten",
+    "expected_node": "Send cost report",
+    "expect_texts": ["가구주만 할 수 있어요"],
+    "forbid_texts": ["AI 비용", "core.cost."],
+    "notes": "Owner-Gate in der DB (core.fn_get_llm_cost_report -> owner_only); der Sub ueberspringt Abruf + Import fuer Nicht-Owner (Owner? false -> Read report)."
   }
 ]

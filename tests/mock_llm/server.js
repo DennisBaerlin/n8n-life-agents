@@ -156,10 +156,33 @@ function fromSchema(s) {
 }
 
 // ---- Response-Builder ---------------------------------------------------------------------------
-function anthropicToolUse(call, k) {
+// thinking (Default an, Szenario `thinking: false` schaltet ab): ein Denkblock VOR jedem tool_use, wie ihn die
+// 5.5-Modelle von sich aus senden. n8n spielt den Aufruf danach ueber einen anderen Weg zurueck (buildSteps:
+// Anthropic-Inhaltsbloecke statt tool_calls) -- genau dort gingen die Angaben verloren (n8n-Korrektur
+// thinking-tool-args, provisioning/lib/n8n_patches.sh). Default an = jeder Mock-Tier faehrt den Live-Weg.
+function anthropicToolUse(call, k, thinking) {
+  const blocks = [{ type: 'tool_use', id: 'toolu_' + k, name: call.tool, input: call.args || {} }];
+  if (thinking) blocks.unshift({ type: 'thinking', thinking: '', signature: 'mock-signature-' + k });
   return { id: 'msg_' + k, type: 'message', role: 'assistant', model: 'claude-mock',
-    content: [{ type: 'tool_use', id: 'toolu_' + k, name: call.tool, input: call.args || {} }],
-    stop_reason: 'tool_use', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+    content: blocks, stop_reason: 'tool_use', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+}
+// Zurueckgespielte Aufrufe ohne ihre Angaben: das j-te assistant-tool_use der Historie gegen die Angaben, die der Mock
+// selbst emittiert hat (eligible[j].args). Treffer = n8n hat sie verloren (Live-Befund 2026-10-26: das Modell
+// wiederholte den "leeren" Aufruf mit neuer Karte) -> mock_route_test schlaegt fehl.
+function replayLostInputs(messages, eligible) {
+  const lost = [];
+  let j = 0;
+  for (const m of messages) {
+    if (!m || m.role !== 'assistant' || !Array.isArray(m.content)) continue;
+    const uses = m.content.filter((p) => p && p.type === 'tool_use');
+    if (!uses.length) continue;
+    const want = eligible[j] && eligible[j].args ? eligible[j].args : {};
+    for (const u of uses) {
+      if (Object.keys(want).length && (!u.input || typeof u.input !== 'object' || !Object.keys(u.input).length)) lost.push(u.name);
+    }
+    j++;
+  }
+  return lost;
 }
 function anthropicText(text) {
   return { id: 'msg_final', type: 'message', role: 'assistant', model: 'claude-mock',
@@ -180,6 +203,9 @@ function sseFrames(p) {
     if (b.type === 'tool_use') {
       ev('content_block_start', { index: i, content_block: { type: 'tool_use', id: b.id, name: b.name, input: {} } });
       ev('content_block_delta', { index: i, delta: { type: 'input_json_delta', partial_json: JSON.stringify(b.input || {}) } });
+    } else if (b.type === 'thinking') {
+      ev('content_block_start', { index: i, content_block: { type: 'thinking', thinking: '', signature: '' } });
+      ev('content_block_delta', { index: i, delta: { type: 'signature_delta', signature: b.signature || '' } });
     } else {
       ev('content_block_start', { index: i, content_block: { type: 'text', text: '' } });
       ev('content_block_delta', { index: i, delta: { type: 'text_delta', text: b.text || '' } });
@@ -211,17 +237,19 @@ function decide(body) {
   }
   // Nur die Calls, deren Tool im Request ANGEBOTEN wird (Namespace-Filter Orchestrator vs Agent).
   const eligible = scenario.calls.filter((c) => offered.indexOf(c.tool) !== -1);
+  const replay_lost = replayLostInputs(messages, eligible);
   if (k < eligible.length) {
-    return { payload: anthropicToolUse(eligible[k], k), why: 'tool-call:' + eligible[k].tool + ' turn=' + k, offered, task, delay };
+    return { payload: anthropicToolUse(eligible[k], k, scenario.thinking !== false), why: 'tool-call:' + eligible[k].tool + ' turn=' + k,
+      offered, task, delay, replay_lost };
   }
   // Woertliches Weiterreichen (Orchestrator-Relay): nach einem Spezialisten-Aufruf antwortet der Router nur mit dem
   // Signal FRAME/NOFRAME (Prompt-Regel 6) — der Workflow haengt die Spezialisten-Antwort selbst an. Der Router ist der
   // Request, der Call_*-Tools anbietet; final_router (optional) ersetzt dort das Spezialisten-final, Default NOFRAME.
   const isRouter = offered.some((t) => /^Call_/.test(t));
   if (isRouter && eligible.length > 0) {
-    return { payload: anthropicText(scenario.final_router || 'NOFRAME'), why: 'router-signal-after-' + eligible.length + '-calls', offered, task, delay };
+    return { payload: anthropicText(scenario.final_router || 'NOFRAME'), why: 'router-signal-after-' + eligible.length + '-calls', offered, task, delay, replay_lost };
   }
-  return { payload: anthropicText(scenario.final), why: 'final-after-' + eligible.length + '-calls', offered, task, delay };
+  return { payload: anthropicText(scenario.final), why: 'final-after-' + eligible.length + '-calls', offered, task, delay, replay_lost };
 }
 
 function logLine(entry) {
@@ -277,6 +305,7 @@ const server = http.createServer((req, res) => {
     const sysText = !body ? '' : (typeof body.system === 'string' ? body.system
       : (Array.isArray(body.system) ? body.system.map((s) => (s && s.text) || '').join('\n') : ''));
     logLine({ url: req.url, dialect: 'anthropic', offered: out.offered, task: out.task, decision: out.why, markers,
+      replay_lost: out.replay_lost || [],                   // mock_route_test: zurueckgespielte Aufrufe ohne Angaben
       system_tail: sysText.slice(-300),
       // Workflow-Kennung des Gateways (Kosten-Report): darf upstream NIE ankommen, weder als Kennzeile im Body noch
       // als Header -> llm_gateway_test + die Mock-Tiers pruefen beide Felder.

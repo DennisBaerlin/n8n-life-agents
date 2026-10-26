@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 368 fn-Dateien.
+Umfang: 369 fn-Dateien.
 
 ## finance.fn_account_interest_defaults (READ, STABLE) -- die vorgeschlagenen Zins-Werte eines NEUEN Kontos
 - `finance.fn_account_interest_defaults(p jsonb) -> jsonb`
@@ -1616,6 +1616,11 @@ Umfang: 368 fn-Dateien.
 - `core.fn_set_reminder_pref(p jsonb) -> jsonb`
 - jsonb-Keys: chat_id, enabled, key, person_id
 - core.fn_set_reminder_pref(p) — eine Person schaltet IHRE Zustellung eines Person-Reminders (Roter Faden 2026-10-23) p: { chat_id (vom Callback, nie LLM), key, enabled } - Person NUR aus agent.fn_resolve_sender(chat_id); unaufgeloest -> {ok:false, reason:'unresolved_sender'}. - key muss in core.cron_labels mit scope='person' stehen; Haushalts-Keys schaltet der Owner ueber core.fn_set_cron_enable -> {ok:false, reason:'not_person_scoped'}; unbekannt -> {ok:false, reason:'unknown_key'}. - Upsert in agent.reminder_prefs (idempotent). RUECKGABE: {ok:true, key, enabled, person_id} | {ok:false, reason}. Nie RAISE (Callback-Pfad). INVOKER: gerufen von core.fn_handle_reminder_cb unter der Host-Cred des Dispatchers. search_path gepinnt. Tests: tests/db/core/test_fn_reminder_prefs.sql
+
+## agent.fn_set_router_memory_signal (ATOMIC WRITE — Router-Gedaechtnis nach woertlichem Weiterreichen)
+- `agent.fn_set_router_memory_signal(p jsonb) -> jsonb`
+- jsonb-Keys: chat_id, content, raw, signal, type
+- Der Orchestrator reicht Spezialisten-Antworten woertlich weiter (Relay compose); vom Router verlangt er danach nur das Signal FRAME/NOFRAME. Schreibt der Router doch eine eigene Fassung, sieht der Nutzer sie nie -- das memoryPostgresChat-Gedaechtnis speichert aber genau sie, und die Folge-Turns ahmen sie nach (Live-Befund 2026-10-26: Umformulierung statt Signal, selbstverstaerkend). Diese fn ersetzt sie durch das Signal; die Antwort, die der Nutzer sah, steht direkt davor woertlich als tool-Zeile im Gedaechtnis. Nur die JUENGSTE ai-Zeile des Chats, deren Text exakt dem Router-Output entspricht (keine fremde Zeile bei parallelen Laeufen). Tabelle fehlt (frische DB, n8n legt sie beim ersten Gebrauch an) / Signal ungueltig / Text leer = no-op. Idempotent. p: { chat_id, raw (Router-Output dieses Laufs), signal ('FRAME' | 'NOFRAME') } RUECKGABE: {ok:true, updated} Tests: tests/db/core/test_fn_set_router_memory_signal.sql
 
 ## finance.fn_set_savings_goal (ATOMIC WRITE)
 - `finance.fn_set_savings_goal(p jsonb) -> jsonb`

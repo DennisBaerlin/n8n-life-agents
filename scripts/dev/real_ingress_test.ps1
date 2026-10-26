@@ -380,6 +380,12 @@ Write-Host "Real-Ingress-Test (echter Telegram-Webhook des Orchestrators) -- $($
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0
 
+# Zurueckgespielte Werkzeugaufrufe ohne Angaben (Mock-Feld replay_lost; n8n-Korrektur thinking-tool-args): ueber den
+# ganzen Lauf gesammelt -- auch vor jedem Leeren des Mock-Protokolls (Persona-Faelle) -- und am Ende als ein Fall gewertet.
+$replayLost = @()
+function Save-ReplayLost { $script:replayLost += @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ }) }
+Clear-MockLlmRequests -Container $Container
+
 $personaDirty = $null   # Person, deren Persona der vorige Fall gesetzt hat (ein fruehes continue ueberspringt den Reset)
 foreach ($tc in $cases) {
     if ($personaDirty) { [void](Set-TestPersonaFact -Container $Container -PersonId $personaDirty -Code ''); $personaDirty = $null }
@@ -717,7 +723,7 @@ foreach ($tc in $cases) {
         if ($tc.persona_person -and -not (Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code "$($tc.persona_before)")) {
             Write-Host "    [FAIL] DB-Vorbereitung (persona) fehlgeschlagen" -ForegroundColor Red; $failed++; continue
         }
-        if ($tc.expect_system_tail) { Clear-MockLlmRequests -Container $Container }
+        if ($tc.expect_system_tail) { Save-ReplayLost; Clear-MockLlmRequests -Container $Container }
 
         $orchBase = Get-MaxExecId $OrchWfId
         if ("$($tc.update)" -eq 'callback') {
@@ -768,6 +774,15 @@ foreach ($tc in $cases) {
             $tails = @(Get-MockLlmRequests -Container $Container | ForEach-Object { [string]$_.system_tail })
             if (-not ($tails | Where-Object { $_.Contains("$($tc.expect_system_tail)") })) {
                 $outOk = $false; Write-Host "    System-Prompt-Ende ohne '$($tc.expect_system_tail)' ($($tails.Count) LLM-Aufruf(e))" -ForegroundColor Red
+            }
+        }
+        # expect_router_memory: die juengste ai-Zeile des Router-Gedaechtnisses dieses Chats (Router memory signal setzt
+        # eine eigene Router-Fassung nach einem Spezialisten aufs Signal zurueck).
+        if ($tc.expect_router_memory) {
+            $memSql = "SELECT message->>'content' FROM agent.orchestrator_chat_memory WHERE session_id = '$([long]$tc.chat_id)' AND message->>'type' = 'ai' ORDER BY id DESC LIMIT 1;"
+            $mem = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $memSql)).Output | Select-Object -First 1)".Trim()
+            if ($mem -ne "$($tc.expect_router_memory)") {
+                $outOk = $false; Write-Host "    Router-Gedaechtnis: erwartet '$($tc.expect_router_memory)', got '$mem'" -ForegroundColor Red
             }
         }
         if ($tc.persona_person) { [void](Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code '') }   # self-contained: neutral hinterlassen
@@ -872,9 +887,15 @@ try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").
 Clear-HitlPending -Container $Container
 Clear-ThinkingLease -Container $Container
 
+Save-ReplayLost
+Write-Host ""
+Write-Host "  [replay] Werkzeugaufrufe behalten beim Zurueckspielen ihre Angaben"
+if ($replayLost.Count -gt 0) { $failed++; Write-Host "    [FAIL] ohne Angaben zurueckgespielt: $(($replayLost | Sort-Object -Unique) -join ', ')" -ForegroundColor Red }
+else { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }
+
 Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
-Write-Host "$passed/$($cases.Count) Faelle bestanden, $failed fehlgeschlagen." -ForegroundColor $color
+Write-Host "$passed/$($cases.Count + 1) Faelle bestanden, $failed fehlgeschlagen." -ForegroundColor $color
 Write-Host ""
 exit $failed

@@ -928,5 +928,19 @@
     "expect_texts": ["가구주만 할 수 있어요"],
     "forbid_texts": ["AI 비용", "core.cost."],
     "notes": "Owner-Gate in der DB (core.fn_get_llm_cost_report -> owner_only); der Sub ueberspringt Abruf + Import fuer Nicht-Owner (Owner? false -> Read report)."
+  },
+  {
+    "id": "ri66",
+    "name": "Router schreibt eigene Fassung statt Signal -> Chat bekommt den Spezialisten-Text woertlich, Router-Gedaechtnis das Signal",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Relay-Test Umformulierung: wie ist der Stand?",
+    "expected_node": "Router memory signal",
+    "expect_texts": ["Dein Tagesgeld steht bei 700,00 EUR."],
+    "forbid_texts": ["Der Buchhalter meint"],
+    "expect_router_memory": "NOFRAME",
+    "notes": "Live-Befund 2026-10-26: Haiku schrieb nach dem Spezialisten eine Umformulierung (Mock final_router), die der Nutzer nie sah, die aber im Gedaechtnis stand und nachgeahmt wurde. Relay compose sendet woertlich; agent.fn_set_router_memory_signal ersetzt die Router-Zeile durch NOFRAME."
   }
 ]

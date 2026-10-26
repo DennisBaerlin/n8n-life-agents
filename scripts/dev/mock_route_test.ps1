@@ -299,6 +299,13 @@ foreach ($tc in $cases) {
     # ist nach der Antwort weg und kein Draft kam NACH ihr.
     if ($pass -and $isOrch) { $pass = Test-ThinkingAfterAnswer $chatId }
 
+    # Zurueckgespielte Werkzeugaufrufe muessen ihre Angaben behalten (der Mock schickt vor jedem Aufruf einen Denkblock;
+    # n8n-Korrektur thinking-tool-args). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
+    if ($pass) {
+        $lost = @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ })
+        if ($lost.Count -gt 0) { $pass = $false; Write-Host "    FEHLER: Aufruf ohne Angaben zurueckgespielt: $($lost -join ', ')" -ForegroundColor Red }
+    }
+
     if ($pass) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }
     else {
         $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red

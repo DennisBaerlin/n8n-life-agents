@@ -9,6 +9,15 @@
     "final_router": "FRAME"
   },
   {
+    "_comment": "Router memory signal (ri66, Live-Befund 2026-10-26): der Router schreibt nach dem Spezialisten eine EIGENE Fassung statt des Signals -> gesendet wird trotzdem der Spezialisten-Text woertlich, im Router-Gedaechtnis steht danach NOFRAME.",
+    "match": "Relay-Test Umformulierung",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Relay-Test Umformulierung" } }
+    ],
+    "final": "Dein Tagesgeld steht bei 700,00 EUR.",
+    "final_router": "Der Buchhalter meint, das Tagesgeld liegt bei etwa 700 Euro."
+  },
+  {
     "_comment": "Bot-Persona (oc29): Kontostand auf Englisch -> Call_agent_finance_ (Persona Sportreporter setzt der Harness; der Mock prueft nur das Routing).",
     "match": "current balance of my DKB Giro",
     "calls": [

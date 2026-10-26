@@ -9,13 +9,14 @@
 #                      Keys (Grundtext in Empfaenger-Sprache) und die Sprachangabe '<code> (' (Mock antwortet 'done').
 #   * taps           — Bestaetigungs-Fragen: Tipp simulieren (Invoke-HitlResume), Folge-Frage/Ergebnis-Zeile pruefen.
 # Paket-neutral: Faelle aus tests/agent/<pkg>/cron_text_cases.json (kind cron_text). Je Fall NACHEINANDER: reset_sql ->
-# seed_sql -> ggf. cron_enable an -> Zeitplan '* * * * *' (die CLI spielt die Paket-Workflows neu ein) -> auf die neue
-# Execution warten -> Zeitplan zurueck -> pruefen -> finally: wartende Executions stoppen, cron_enable zurueck, reset_sql.
+# seed_sql -> ggf. cron_enable an -> Cron sofort starten (Start-TestCron: Test-Eingang core.cron_run.test_harness ->
+# 'Test run'-Einstieg) -> auf die neue Execution warten -> pruefen -> finally: wartende Executions stoppen, cron_enable zurueck, reset_sql.
 # So laufen nie zwei Crons gleichzeitig (die Berater-Crons teilen Latches) und kein Netz-Cron wird angefasst.
 # Zusaetzlich (einmal): Datums-Paritaet core.fn_fmt_date (SQL-Dokumente) == Intl (Workflows) je Katalogsprache.
 #
 # Voraussetzung: Substrat (bootstrap_test_n8n.ps1 -Reset -HitlChatApproval) + enable_mock_llm.ps1 + enable_mock_telegram.ps1.
-# Dauer ~2 Min je Fall (Umplanen = Workflow-Neueinspielung + Warten auf die naechste Minute) -> gezielt, nicht im Pre-Push.
+# Dauer ~3 Min gesamt (je Fall Sekunden; vorab einmal Pairing + Redeploy je Paket). Rueckfall auf einem Substrat ohne den
+# Test-Eingang: Zeitplan '* * * * *' (CLI-Redeploy) + Warten auf die Minute (~2 Min je Fall). Gezielt, nicht im Pre-Push.
 # Usage:  .\scripts\dev\cron_text_test.ps1 [-Id ctf01] [-Timeout 150] [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param(
@@ -156,7 +157,7 @@ $wfList = Invoke-N8nGet 'workflows?limit=250'
 # (__OWNER_CHAT_ID__ -> DB-Owner nach dem Pairing, sonst die .env). Der alte Weg spielte je Fall neu ein und trug so den
 # gepairten Test-Owner nach; der Schnellweg spielt nichts ein -> EINMAL vorab: Test-Owner pairen + je betroffenem Paket
 # ein Redeploy (config reset schedule <ein Key des Pakets>), statt zwei Redeploys je Fall.
-$viaHarnessAll = $null -ne ($wfList.data | Where-Object { $_.name -eq 'core.cron_run.test_harness' -and $_.active })
+$viaHarnessAll = Test-TestCronHarness -BridgeUrl $N8nUrl -ApiKey $ApiKey
 if ($viaHarnessAll) {
     Set-OwnerTelegramPairing -Container $Container
     $keyPkg = @{}
@@ -228,11 +229,9 @@ try {
                 # 2 Redeploys + Warten) nur auf einem Substrat ohne diesen Eingang.
                 $viaHarness = $viaHarnessAll
                 if ($viaHarness) {
-                    # responseMode=lastNode: der POST kehrt erst nach dem Lauf zurueck; ein waitender Cron (HITL-Frage)
-                    # antwortet trotzdem (Execute Workflow wartet nicht auf die Freigabe).
-                    Invoke-RestMethod -Uri "$N8nUrl/webhook/cron-run-test" -Method Post -Headers @{ 'X-Test-Auth' = $TEST_HARNESS_SECRET } `
-                        -ContentType 'application/json; charset=utf-8' -TimeoutSec $Timeout `
-                        -Body ([System.Text.Encoding]::UTF8.GetBytes((@{ workflow_id = $wfId } | ConvertTo-Json))) | Out-Null
+                    # Der POST kehrt direkt nach dem Start zurueck (waitForSubWorkflow=false); das Warten auf die Execution
+                    # unten ist der Sync-Punkt. Ein Startfehler wirft in Start-TestCron.
+                    Start-TestCron -BridgeUrl $N8nUrl -Secret $TEST_HARNESS_SECRET -WorkflowId $wfId -TimeoutSec $Timeout | Out-Null
                 } else {
                     Invoke-LifeagentsConfig @('set', 'schedule', [string]$c.schedule_key, '* * * * *')
                 }

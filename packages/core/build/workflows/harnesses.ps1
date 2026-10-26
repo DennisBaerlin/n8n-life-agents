@@ -29,4 +29,8 @@ $script:Harnesses += @(
     [ordered]@{ name='core.sub_onboarding_progress.test_harness'; targetName='core.sub_onboarding_progress'; path='onboarding-progress-test'; inputMap=[ordered]@{ chat_id='body.chat_id'; package='body.package'; area_completed_now='body.area_completed_now'; area_all_skipped='body.area_all_skipped' } }
     # Roter Faden Paket B: das /reminders-Menue deterministisch testbar (cron_text_test ctk09/ctk10: Owner- und Mitglieder-Sicht).
     [ordered]@{ name='core.sub_send_reminders_menu.test_harness'; targetName='core.sub_send_reminders_menu'; path='reminders-menu-test'; inputMap=[ordered]@{ chat_id='body.chat_id' } }
+    # Schnellere freie Gates: startet einen Cron sofort ueber seinen 'Test run'-Einstieg (Build-Workflow), statt den Zeitplan
+    # auf jede Minute zu stellen (cron_text_test, hitl_gate_test hitlC4). Ziel = workflow_id aus dem Body; nicht warten, weil
+    # ein Cron mit Bestaetigungs-Frage den POST bis zum Tipp festhielte.
+    [ordered]@{ name='core.cron_run.test_harness'; targetIdField='body.workflow_id'; path='cron-run-test'; inputMap=[ordered]@{}; noWait=$true }
 )

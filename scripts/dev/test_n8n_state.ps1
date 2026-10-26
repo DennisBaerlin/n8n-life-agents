@@ -510,6 +510,26 @@ function Get-MaxExecId {
     return 0
 }
 
+# Einen Cron SOFORT starten (schnellere freie Gates 2026-10-26): core.cron_run.test_harness ruft den Workflow ueber seinen
+# 'Test run'-Einstieg (Build-Workflow) auf, statt den Zeitplan auf jede Minute zu stellen. Der POST kehrt direkt nach dem
+# Start zurueck (waitForSubWorkflow=false) -> der Aufrufer wartet selbst auf die neue Execution (Get-MaxExecId vorher).
+# Ein Startfehler (kein Einstieg, unbekannte id) kommt als 'error' der Antwort und wirft hier, statt als stiller Timeout.
+# Test-TestCronHarness: $true, wenn das Substrat den Eingang hat (aelteres Substrat -> Zeitplan-Weg des Aufrufers).
+function Test-TestCronHarness {
+    param([Parameter(Mandatory)][string]$BridgeUrl, [Parameter(Mandatory)][string]$ApiKey)
+    $wf = (Invoke-RestMethod -Uri "$BridgeUrl/api/v1/workflows?limit=250" -Headers @{ 'X-N8N-API-KEY' = $ApiKey } -Method Get).data
+    return $null -ne ($wf | Where-Object { $_.name -eq 'core.cron_run.test_harness' -and $_.active })
+}
+function Start-TestCron {
+    param([Parameter(Mandatory)][string]$BridgeUrl, [Parameter(Mandatory)][string]$Secret, [Parameter(Mandatory)][string]$WorkflowId,
+          [int]$TimeoutSec = 60)
+    $r = Invoke-RestMethod -Uri "$BridgeUrl/webhook/cron-run-test" -Method Post -Headers @{ 'X-Test-Auth' = $Secret } `
+        -ContentType 'application/json; charset=utf-8' -TimeoutSec $TimeoutSec `
+        -Body ([System.Text.Encoding]::UTF8.GetBytes((@{ workflow_id = $WorkflowId } | ConvertTo-Json)))
+    if ($r.error) { throw "Cron $WorkflowId nicht gestartet: $(($r.error | ConvertTo-Json -Depth 4 -Compress))" }
+    return $r
+}
+
 # Deterministische, numerische Test-chat_id je Case (Memory-Isolation ohne test_-Prefix). Stabiler
 # FNV-1a-Hash des Case-id-Seeds -> 9-stellige positive Zahl (Bereich ~900000000..999999999); kollidiert
 # praktisch nicht mit dem gepairten Owner-uid und wird vor jedem Case ohnehin frisch geleert.

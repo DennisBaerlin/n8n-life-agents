@@ -404,7 +404,13 @@
                   },
                   {
                       "parameters":  {
-                                         "inputSource":  "passthrough"
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
                                      },
                       "type":  "n8n-nodes-base.executeWorkflowTrigger",
                       "typeVersion":  1.1,

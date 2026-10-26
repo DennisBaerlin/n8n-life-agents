@@ -381,7 +381,7 @@ upgrade_rollback() {
   choice="$(printf '%s\t%s\n%s\t%s\n' "Ja, zurück auf ${from_rel}" yes 'Abbrechen' no | ui_choose 'Wirklich zurücksetzen?')"
   [ "$choice" = yes ] || die "Abgebrochen — es wurde nichts geändert (der Rückweg braucht ein Terminal für die Bestätigung)."
 
-  update_lock_acquire || die_because locked "Gerade läuft ein Update oder eine Einrichtung — danach erneut starten."
+  update_lock_acquire 30 || die_because locked "Gerade läuft ein Update oder eine Einrichtung — danach erneut starten."
   case "$ktab" in core.secret) ;; *) ktab=core.backup_key ;; esac
   key="$(backup_key_read "$ktab" 2>/dev/null || true)"
   [ -n "$key" ] || die "Sicherungsschlüssel nicht lesbar (${ktab}) — Rückweg abgebrochen, es wurde nichts geändert."

@@ -59,13 +59,13 @@
                                        280,
                                        0
                                    ],
-                      "id":  "57bcf2eb-03cf-57b6-ac0a-a88d85753e7f",
-                      "name":  "Run cron",
+                      "id":  "915fb0aa-d55f-58cf-9653-43f8fb762998",
+                      "name":  "Run target",
                       "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id, error: $json.error ?? null } };",
                                          "mode":  "runOnceForEachItem"
                                      },
                       "type":  "n8n-nodes-base.code",
@@ -79,7 +79,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## core.cron_run.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow (nur Test-Instanzen).\n\nWebhook (POST, Header-Auth, responseMode=lastNode) mit Body {workflow_id} -\u003e Execute Workflow startet diesen Cron ueber\nseinen \u0027Test run\u0027-Einstieg (passthrough, Build-Workflow) -\u003e Run Info antwortet mit der Harness-Execution-ID. Ersetzt in\ncron_text_test das Umstellen des Zeitplans auf jede Minute (2 Redeploys + Warten je Fall).",
+                                         "content":  "## core.cron_run.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft den Workflow mit der id aus body.workflow_id\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: workflow_id.\nwaitForSubWorkflow=false: antwortet sofort nach dem Start; das Skript verfolgt die Ziel-Execution.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
                                          "height":  250,
                                          "width":  480,
                                          "color":  7
@@ -100,23 +100,23 @@
                                                           [
                                                               {
                                                                   "index":  0,
-                                                                  "node":  "Run cron",
+                                                                  "node":  "Run target",
                                                                   "type":  "main"
                                                               }
                                                           ]
                                                       ]
                                          },
-                        "Run cron":  {
-                                         "main":  [
-                                                      [
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Run Info",
-                                                              "type":  "main"
-                                                          }
-                                                      ]
-                                                  ]
-                                     }
+                        "Run target":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Run Info",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       }
                     },
     "settings":  {
                      "executionOrder":  "v1"

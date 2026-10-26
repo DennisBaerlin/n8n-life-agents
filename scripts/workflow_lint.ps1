@@ -447,12 +447,16 @@ foreach ($wfFile in (Get-AllWfFiles)) {
             }
         }
     }
-    # (Test-Startpunkt) Jeder Cron mit Zeitplan traegt GENAU einen 'Test run' (executeWorkflowTrigger, passthrough) mit
-    # denselben Kanten wie der Zeitplan (Build-Workflow) -> cron_text_test startet ihn ueber core.cron_run.test_harness.
-    if ($nodeNames -contains 'Schedule (cron from config)') {
+    # (Test-Startpunkt) Jeder Cron (Name *.cron_* oder Zeitplan-Knoten) traegt GENAU einen 'Test run' (executeWorkflowTrigger
+    # ueber Build-Trigger, nie passthrough) mit denselben Kanten wie der Zeitplan (Build-Workflow) -> cron_text_test und
+    # hitl_gate_test starten ihn ueber core.cron_run.test_harness. Ein Cron mit anders benanntem Zeitplan-Knoten bekaeme
+    # keinen Einstieg und fiele sonst erst als Timeout im Test auf.
+    if (($w.name -match '\.cron_' -and $w.name -notlike '*.test_harness') -or $nodeNames -contains 'Schedule (cron from config)') {
         $tr = @($w.nodes | Where-Object { $_.name -eq 'Test run' })
-        if ($tr.Count -ne 1 -or $tr[0].type -ne 'n8n-nodes-base.executeWorkflowTrigger' -or $tr[0].parameters.inputSource -ne 'passthrough') {
-            $vCronTestRun += "$($w.name) :: 'Test run' fehlt oder ist kein passthrough-executeWorkflowTrigger"
+        if ($nodeNames -notcontains 'Schedule (cron from config)') {
+            $vCronTestRun += "$($w.name) :: Cron ohne Zeitplan-Knoten 'Schedule (cron from config)' (Build-ScheduleTrigger)"
+        } elseif ($tr.Count -ne 1 -or $tr[0].type -ne 'n8n-nodes-base.executeWorkflowTrigger' -or $tr[0].parameters.inputSource -eq 'passthrough') {
+            $vCronTestRun += "$($w.name) :: 'Test run' fehlt oder ist kein executeWorkflowTrigger mit workflowInputs"
         } elseif (($w.connections.'Test run' | ConvertTo-Json -Depth 8 -Compress) -ne ($w.connections.'Schedule (cron from config)' | ConvertTo-Json -Depth 8 -Compress)) {
             $vCronTestRun += "$($w.name) :: 'Test run' hat andere Kanten als der Zeitplan"
         }
@@ -480,7 +484,7 @@ Check 'Telegram: sendAndWait-Wartegrenze unter options (top-level limitWaitTime 
 Check "Telegram: kein leeres parse_mode (n8n macht daraus 'Markdown'; Plain = HTML + Escape)" { $vTgEmptyParse.Count -eq 0 }
 Check 'Connections: jede Quelle/jedes Ziel referenziert einen Node'     { $vConnRef.Count -eq 0 }
 Check 'Connections: main = Array von Arrays (n8n-Import-Form)'           { $vConnShape.Count -eq 0 }
-Check 'Crons: Test-Startpunkt Test run (passthrough, Kanten wie der Zeitplan)' { $vCronTestRun.Count -eq 0 }
+Check 'Crons: Test-Startpunkt Test run (Build-Trigger, Kanten wie der Zeitplan)' { $vCronTestRun.Count -eq 0 }
 
 # (Naht) Paket-Modularitaet (Install-UX-Phase 4): KEIN Core-Workflow traegt eine LITERALE Workflow-ID eines
 # Paket-Workflows (executeWorkflow ODER toolWorkflow). n8n (geprueft 2.21.7 + 2.44.4) aktiviert einen Workflow nur, wenn alle literal

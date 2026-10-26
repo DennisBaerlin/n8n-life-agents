@@ -688,8 +688,9 @@ if (-not $chatMode) {
     # hitlC4: Doppel-Tipp im Cron-Dialog (New-StaleTapGuard). agent.finance.cron_remind_interest fragt je offener
     # Zinsgutschrift "so gutgeschrieben?" und nach Ablehnen "morgen erneut?" — in EINER Execution. Ein zweiter Tipp auf
     # "Ablehnen" der ersten Frage darf die zweite NICHT beantworten (sonst: ungesehen uebersprungen). Fixture:
-    # offene Zins-Vorkommen aus util_seed_test_fixtures (Tagesgeld Plus; die erste Frage zaehlt; seit dem Monats-Check gibt es keine taegliche Dauerauftrags-Frage mehr). Der Zeitplan
-    # wird kurz auf jede Minute gestellt und danach zurueckgesetzt (die CLI spielt die finance-Workflows dabei neu
+    # offene Zins-Vorkommen aus util_seed_test_fixtures (Tagesgeld Plus; die erste Frage zaehlt; seit dem Monats-Check gibt es keine taegliche Dauerauftrags-Frage mehr). Der Cron
+    # startet sofort ueber den Test-Eingang (Start-TestCron, wie cron_text_test). Rueckfall auf einem Substrat ohne ihn: der
+    # Zeitplan wird kurz auf jede Minute gestellt und danach zurueckgesetzt (die CLI spielt die finance-Workflows dabei neu
     # ein -> Chat-Knoepfe per Env erzwingen, wie bootstrap_test_n8n -HitlChatApproval).
     $chatCases += 'hitlC4'; Write-Host ""; Write-Host "  [hitlC4] Chat: Doppel-Tipp im Cron-Dialog beantwortet die Folgefrage nicht"
     $cronWf = ($wfList.data | Where-Object { $_.name -eq 'agent.finance.cron_remind_interest' } | Select-Object -First 1).id
@@ -703,15 +704,17 @@ if (-not $chatMode) {
     function Get-SkipCount { [int]("$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', 'SELECT count(*) FROM finance.interest_skips;')).Output | Select-Object -First 1)".Trim()) }
     $ok = $false; $detail = ''; $skipsBefore = Get-SkipCount
     Clear-MockTelegramRequests -Container $Container
-    Set-CronSchedule 'set' '* * * * *'
+    $viaHarness = Test-TestCronHarness -BridgeUrl $N8nUrl -ApiKey $ApiKey
     try {
+        if ($viaHarness) { Start-TestCron -BridgeUrl $N8nUrl -Secret $TEST_HARNESS_SECRET -WorkflowId $cronWf | Out-Null }
+        else { Set-CronSchedule 'set' '* * * * *' }
         $start = Get-Date; $ask = $null
         while (-not $ask -and ((Get-Date) - $start).TotalSeconds -lt 150) {
             $ask = Get-MockTelegramRequests -Container $Container | Where-Object {
                 $_.method -eq 'sendMessage' -and $_.body.reply_markup -and (Test-TextHasKey -Text ([string]$_.body.text) -Key 'finance.dialog.interest_ask') } | Select-Object -First 1
             if (-not $ask) { Start-Sleep -Seconds 2 }
         }
-        Set-CronSchedule 'reset' ''   # keine weiteren Laeufe; die wartende Execution laeuft mit ihrem Stand weiter
+        if (-not $viaHarness) { Set-CronSchedule 'reset' '' }   # keine weiteren Laeufe; die wartende Execution laeuft weiter
         if (-not $ask) { $detail = 'keine Zins-Frage abgefangen' }
         else {
             $dec = Get-HitlResumeUrl -Request $ask -Approved $false -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $dec
@@ -731,7 +734,7 @@ if (-not $chatMode) {
             Start-Sleep -Seconds 2
         }
     } finally {
-        Set-CronSchedule 'reset' ''
+        if (-not $viaHarness) { Set-CronSchedule 'reset' '' }
         if ($cronWf) { try { (Invoke-N8nGet "executions?workflowId=$cronWf&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { } }
     }
     if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC4 ($detail)" -ForegroundColor Red }

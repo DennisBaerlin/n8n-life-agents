@@ -46,15 +46,17 @@ result_set() {
 
 # --- Update-Sperre: EINE fuer alle Wege, die das System umbauen ----------------------------------------------------
 # provision.sh main (Installer, `lifeagents update`, `reconfigure`, `package install`) und der Chat-Runner nehmen sie;
-# zwei gleichzeitige Laeufe (Terminal-Update waehrend eines Chat-Updates) sind so ausgeschlossen. fd 9 + flock -n
-# (nie warten). Ein Kind-Lauf erbt die Sperre ueber den offenen fd und LIFEAGENTS_UPDATE_LOCK_HELD=1 (exec-fest).
+# zwei gleichzeitige Laeufe (Terminal-Update waehrend eines Chat-Updates) sind so ausgeschlossen. fd 9 + flock; der
+# Runner nie wartend (-n, naechste Minute), Terminal-Laeufe bis 30 s: der minuetliche Runner haelt die Sperre zur
+# vollen Minute fuer Sekundenbruchteile auch ohne Auftrag (CI-Befund 2026-10-26: Update zur Minute :00 brach ab).
+# Ein Kind-Lauf erbt die Sperre ueber den offenen fd und LIFEAGENTS_UPDATE_LOCK_HELD=1 (exec-fest).
 LIFEAGENTS_UPDATE_LOCK="${LIFEAGENTS_UPDATE_LOCK:-/run/lifeagents-update.lock}"
-# update_lock_acquire — 0 = Sperre gehalten (oder geerbt), 1 = belegt.
+# update_lock_acquire [wait_s] — 0 = Sperre gehalten (oder geerbt), 1 = belegt (ohne wait_s sofort, sonst nach wait_s).
 update_lock_acquire() {
   [ "${LIFEAGENTS_UPDATE_LOCK_HELD:-0}" = 1 ] && return 0
   need_cmd flock || return 0   # util-linux ist auf Debian immer da; fehlt es, lieber ohne Sperre als nie
   exec 9>>"$LIFEAGENTS_UPDATE_LOCK" || return 0
-  flock -n 9 || return 1
+  if [ -n "${1:-}" ]; then flock -w "$1" 9 || return 1; else flock -n 9 || return 1; fi
   export LIFEAGENTS_UPDATE_LOCK_HELD=1
 }
 # update_lock_free — 0, wenn gerade niemand die Sperre haelt (read-only Probe fuer doctor).

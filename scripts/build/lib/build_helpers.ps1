@@ -1638,18 +1638,15 @@ function Build-Workflow {
     # ($ErrorNotifyId) — KEIN ID-Literal mehr. core.sub_error_notify selbst ueberschreibt settings (kein
     # Self-Verweis -> keine Endlos-Alert-Schleife).
     # TEST-STARTPUNKT JE CRON (2026-10-26, schnellere freie Gates): ein Workflow mit dem Zeitplan-Trigger bekommt
-    # GENERISCH einen zweiten Einstieg 'Test run' (executeWorkflowTrigger, passthrough) mit denselben Kanten. Der
+    # GENERISCH einen zweiten Einstieg 'Test run' (Build-Trigger, Eingaben leer bis auf chat_id) mit denselben Kanten. Der
     # Test-Eingang core.cron_run.test_harness (nur Test-Instanzen) startet den Cron darueber sofort, statt den Zeitplan
     # auf jede Minute zu stellen und zu warten (cron_text_test). Nur aus n8n selbst erreichbar; kein Cron liest seinen
     # Trigger-Knoten, der Lauf ist mit jedem Start-Item identisch.
     $sched = @($Nodes | Where-Object { $_.name -eq 'Schedule (cron from config)' })
     if ($sched.Count -eq 1 -and -not ($Nodes | Where-Object { $_.name -eq 'Test run' })) {
-        $Nodes = @($Nodes) + [ordered]@{
-            parameters = [ordered]@{ inputSource = 'passthrough' }
-            type = 'n8n-nodes-base.executeWorkflowTrigger'; typeVersion = 1.1
-            position = @([int]$sched[0].position[0], ([int]$sched[0].position[1] + 180))
-            id = (New-Id); name = 'Test run'
-        }
+        $testRun = Build-Trigger @() -Pos @([int]$sched[0].position[0], ([int]$sched[0].position[1] + 180))
+        $testRun.name = 'Test run'
+        $Nodes = @($Nodes) + $testRun
         $Nodes = @($Nodes) + (Build-Sticky 'Test run (Doc)' @(([int]$sched[0].position[0] - 40), ([int]$sched[0].position[1] + 300)) `
             'Test-Startpunkt (nur Tests)' `
             'Zweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).' 220 300 'Test')

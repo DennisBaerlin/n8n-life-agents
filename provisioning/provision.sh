@@ -349,7 +349,7 @@ main() {
   require_root
   # Update-Sperre (common.sh): nie zwei Umbau-Laeufe gleichzeitig (z. B. Terminal-Update waehrend eines Chat-Updates);
   # ein vom Chat-Runner gestarteter Lauf erbt sie. Danach traegt die Ergebnis-Datei (falls gesetzt) den Fortschritt.
-  update_lock_acquire \
+  update_lock_acquire 30 \
     || die_because locked "Gerade läuft schon ein Update oder eine Einrichtung (Sperre ${LIFEAGENTS_UPDATE_LOCK}) — danach erneut starten."
   result_set status running
   result_set stage preflight

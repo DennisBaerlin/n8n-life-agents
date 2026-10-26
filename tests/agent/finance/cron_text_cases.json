@@ -38,5 +38,20 @@
     "reset_sql": ["UPDATE finance.accounts SET created_at = now() WHERE name = 'DKB Giro';"],
     "seed_sql": ["UPDATE finance.accounts SET created_at = now() - interval '400 days' WHERE name = 'DKB Giro' AND last_reconciled_at IS NULL;"],
     "expect_keys": ["finance.dialog.monthly_check_intro", "finance.dialog.monthly_check_howto"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf05",
+    "name": "Renten-Check-Erinnerung an den Owner (ko): gesetzliche Rente ohne Renteninformation + bAV mit veralteter -> Kopf, Zeilen, Anleitung",
+    "workflow": "agent.finance.cron_remind_pension_statement",
+    "schedule_key": "remind_pension_statement",
+    "recipient": "owner",
+    "reset_sql": ["DELETE FROM finance.pension WHERE name IN ('__ctf05 Gesetzliche Rente', '__ctf05 bAV');"],
+    "seed_sql": [
+      "INSERT INTO finance.pension (name, pension_type) VALUES ('__ctf05 Gesetzliche Rente', 'statutory');",
+      "INSERT INTO finance.pension (name, pension_type) VALUES ('__ctf05 bAV', 'occupational');",
+      "INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim) SELECT id, current_date - 500, 120 FROM finance.pension WHERE name = '__ctf05 bAV';"
+    ],
+    "expect_keys": ["finance.dialog.pension_statement_intro", "finance.dialog.pension_statement_line", "finance.dialog.pension_statement_howto"]
   }
 ]

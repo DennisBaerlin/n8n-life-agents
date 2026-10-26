@@ -12,7 +12,8 @@
 --   (opt), notes.
 --   RUECKGABE: Erfolg -> {ok:true, pension_id, recurring_payment_id}. Korrigierbar
 --   (unbekannter pension_type/Rhythmus, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
---   debit_account [Depot/Kredit]) -> {ok:false, reason}.
+--   debit_account [Depot/Kredit], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
+--   -> {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_pension(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -51,6 +52,22 @@ BEGIN
     IF v_current IS NOT NULL AND v_current < 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Current value must not be negative, got ' || v_current || '.');
+    END IF;
+    -- Gesetzliche Rente (Spiegel CHECK finance_pension_statutory_no_amounts + UNIQUE finance_pension_statutory_uq):
+    -- Monatsrente/Wert stehen in der Renteninformation; je Person hoechstens eine aktive.
+    IF v_type = 'statutory' AND (v_current IS NOT NULL OR NULLIF(p->>'guaranteed_monthly_pension','') IS NOT NULL) THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'A statutory pension stores no monthly pension or value of its own - those figures belong to its '
+                   || 'Renteninformation (send the statement as a PDF, or leave both fields empty).');
+    END IF;
+    IF v_type = 'statutory' AND EXISTS (SELECT 1 FROM finance.pension
+            WHERE pension_type = 'statutory' AND status = 'active'
+              AND owner_person_id IS NOT DISTINCT FROM NULLIF(p->>'owner_person_id','')) THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'This person already has an active statutory pension ("'
+                   || (SELECT name FROM finance.pension WHERE pension_type = 'statutory' AND status = 'active'
+                         AND owner_person_id IS NOT DISTINCT FROM NULLIF(p->>'owner_person_id','') LIMIT 1)
+                   || '") - add the new Renteninformation to it instead of creating a second one.');
     END IF;
     IF v_contrib IS NOT NULL AND v_contrib < 0 THEN
         RETURN jsonb_build_object('ok', false,

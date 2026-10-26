@@ -75,6 +75,17 @@ function Build-Pg {
     }
 }
 
+# Personen-Feld eines Write-Tools aufloesen (Name/Vorname/Alias -> person_id-Slug) — der EINE Baustein aller
+# 'Resolve Person'-Knoten (Finanz + Nachlass). chat_id des Absenders geht immer mit: ein Selbstbezug ("ich", "mein",
+# "me", "나") meint die Person, die gerade chattet (core.fn_resolve_person, core:V033). Ausgang wie bisher
+# {person_id, full_name, hit_count, candidates}; leeres Feld = kein Name (Haushalt/unveraendert).
+function Build-ResolvePerson {
+    param([string]$Name, [int[]]$Pos, [string]$Field, [string]$StartNode = 'Start')
+    Build-Pg $Name $Pos `
+        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'$Field', ''), (`$1::jsonb)->>'chat_id');" `
+        ([ordered]@{ $Field = "`$('$StartNode').item.json.$Field"; chat_id = "String(`$('$StartNode').item.json.chat_id || '')" })
+}
+
 # IF node — comparison with strict typing.
 # rightValue MUST be emitted with the operator's real type: under strict typeValidation n8n rejects a
 # string '1'/'true' against a number/boolean leftValue ("Wrong type: 'true' is a string ...").

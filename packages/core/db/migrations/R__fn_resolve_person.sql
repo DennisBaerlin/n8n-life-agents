@@ -14,10 +14,16 @@
 --
 --   SECURITY DEFINER + gepinnter search_path + REVOKE ALL FROM PUBLIC + EXECUTE nur an die Paket-Rollen
 --   (erteilt in core.fn_provision_package_roles). READ-ONLY (nur SELECT).
+--   SELBSTBEZUG (Renteninformation-Plan 2026-10-26): ist p_name GENAU ein Selbstbezug (de ich/mich/mir/mein/meine/
+--   selbst, en i/me/my/myself, ko 나/저/내/제), meint er die Person, die gerade chattet: p_chat_id (numerisch, privater
+--   Chat = telegram_user_id) -> agent.fn_resolve_sender. Nur der ganze Wert ("meine Frau" bleibt Name/Alias); ohne,
+--   kaputte oder unbekannte chat_id -> 0 Treffer wie ein unbekannter Name. In einer Frei-SQL-Sitzung
+--   (core.fn_is_free_sql_session) setzt das LLM die chat_id selbst -> dort nie der Absender (fail closed).
 --   Anwenden via: db_apply.ps1 -File packages\core\db\migrations\R__fn_resolve_person.sql
---   (Vorgaenger agent.fn_resolve_member wird von core:V010 gedroppt — Rename, kein CREATE-OR-REPLACE.)
+--   (Vorgaenger agent.fn_resolve_member wird von core:V010 gedroppt — Rename, kein CREATE-OR-REPLACE; die 1-Arg-Form
+--   droppt core:V033.)
 -- ============================================================
-CREATE OR REPLACE FUNCTION core.fn_resolve_person(p_name text)
+CREATE OR REPLACE FUNCTION core.fn_resolve_person(p_name text, p_chat_id text DEFAULT NULL)
 RETURNS TABLE (
     person_id  text,
     full_name  text,
@@ -35,7 +41,18 @@ DECLARE
     v_id         TEXT;
     v_full       TEXT;
     v_q          TEXT := lower(trim(COALESCE(p_name, '')));
+    v_sender     JSONB;
 BEGIN
+    IF v_q IN ('ich', 'mich', 'mir', 'mein', 'meine', 'selbst', 'i', 'me', 'my', 'myself', '나', '저', '내', '제') THEN
+        IF COALESCE(p_chat_id, '') ~ '^[0-9]{1,18}$' AND NOT core.fn_is_free_sql_session() THEN
+            v_sender := agent.fn_resolve_sender(p_chat_id::bigint);
+        END IF;
+        IF COALESCE((v_sender->>'found')::boolean, false) THEN
+            RETURN QUERY SELECT v_sender->>'person_id', v_sender->>'full_name', 1, '[]'::jsonb;
+            RETURN;
+        END IF;
+    END IF;
+
     SELECT
         jsonb_agg(jsonb_build_object(
             'person_id', p.person_id,
@@ -85,6 +102,6 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION core.fn_resolve_person(text) FROM public;
+REVOKE ALL ON FUNCTION core.fn_resolve_person(text, text) FROM public;
 -- EXECUTE-GRANT an die Paket-Rollen erteilt core.fn_provision_package_roles (idempotent,
 -- to_regprocedure-geguardet) — hier nur der PUBLIC-REVOKE als Default-Schutz.

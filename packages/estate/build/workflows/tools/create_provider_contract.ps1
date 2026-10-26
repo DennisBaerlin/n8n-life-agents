@@ -18,9 +18,7 @@ function Build-EstateCreateProviderContract {
     $errExists = Build-ToolError 'Contract exists' @(660, -300) `
         "=A provider contract for '{{ `$('Start').item.json.provider }}' in this category already exists. I will NOT create a duplicate. Use the update tool to change it, or a different category."
 
-    $resPerson = Build-Pg 'Resolve Person' @(220, 180) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'owner_person', ''));" `
-        ([ordered]@{ owner_person = '$(''Start'').item.json.owner_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 180) 'owner_person'
     $ifPersonBad = Build-If 'Person invalid?' @(440, 180) `
         "={{ !!`$('Start').item.json.owner_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'
     $errPerson = Build-ToolError 'Person unresolved' @(660, 320) `

@@ -35,13 +35,14 @@ BEGIN
         WHEN 'real_estate'       THEN ARRAY['current_value']
         WHEN 'savings_goal'      THEN ARRAY['target_amount','monthly_savings_rate']
         WHEN 'loan'              THEN ARRAY['original_amount','current_balance','monthly_annuity']
-        WHEN 'pension_statement' THEN ARRAY['reached_claim','projection','em_monthly']
+        WHEN 'pension_statement' THEN ARRAY['reached_claim','projection','scenario_1pct','scenario_2pct','em_monthly']
         ELSE ARRAY[]::TEXT[]
     END;
     v_plain := CASE p_type
         WHEN 'account'           THEN ARRAY['interest_rate']
         WHEN 'stock_buy'         THEN ARRAY['shares','price_per_share','average_purchase_price']
         WHEN 'loan'              THEN ARRAY['interest_rate']
+        WHEN 'pension_statement' THEN ARRAY['earning_points']   -- Entgeltpunkte "9,1234": rein dezimal, kein Tausenderpunkt
         ELSE ARRAY[]::TEXT[]
     END;
 

@@ -333,12 +333,17 @@ BEGIN
                 END IF;
                 BEGIN
                     INSERT INTO finance.pension_statements
-                        (pension_id, statement_date, reached_claim, projection, em_monthly, is_nominal, notes)
+                        (pension_id, statement_date, reached_claim, projection, scenario_1pct, scenario_2pct, em_monthly,
+                         earning_points, regular_retirement_date, is_nominal, notes)
                     VALUES (v_id,
                             (v_payload->>'statement_date')::date,
                             NULLIF(v_payload->>'reached_claim','')::numeric,
                             NULLIF(v_payload->>'projection','')::numeric,
+                            NULLIF(v_payload->>'scenario_1pct','')::numeric,
+                            NULLIF(v_payload->>'scenario_2pct','')::numeric,
                             NULLIF(v_payload->>'em_monthly','')::numeric,
+                            NULLIF(v_payload->>'earning_points','')::numeric,
+                            NULLIF(v_payload->>'regular_retirement_date','')::date,
                             COALESCE(NULLIF(v_payload->>'is_nominal','')::boolean, TRUE),
                             NULLIF(v_payload->>'notes',''))
                     RETURNING id INTO v_ref_id;

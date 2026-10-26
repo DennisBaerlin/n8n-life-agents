@@ -865,5 +865,17 @@
                                },
         "expected_behavior":  "Ruft tool_book_loan_payment mit loan_name=Baufinanzierung ING auf, ohne nach dem Betrag zu fragen und ohne selbst einen Betrag einzusetzen; die faellige Rate zeigt die Karte.",
         "notes":  "WP2 Finanzen schlank (weniger Rueckfragen): payment_amount optional, Default = faellige Rate. Mock-Tier: Szenario Buche die Kreditrate fuer die Baufinanzierung."
+    },
+    {
+        "id":  "tc75",
+        "name":  "Renteninformation als PDF: Rente + datierte Information mit Szenarien auf einer Karte",
+        "task":  "Hier ist meine Renteninformation der Testrentenkasse [attachment file_id=mock_photo_070 type=document]",
+        "chat_id":  "test_tc75",
+        "expected_tool":  "tool_extract_finance_document",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_070"
+                               },
+        "expected_behavior":  "Ruft tool_extract_finance_document mit file_id=mock_photo_070 auf. Die Auslesung liefert die gesetzliche Rente und eine datierte Renteninformation (erreichter Anspruch, Hochrechnung, 1-%- und 2-%-Szenario, Erwerbsminderungsrente, Entgeltpunkte, Regelaltersrente); sind alle Zeilen gueltig, schickt das Tool die Karte selbst. Der Agent rechnet keine Rentenwerte um und fragt nicht im Text nach.",
+        "notes":  "Renteninformation-Plan 2026-10-26 (Werte erfunden). Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_070.pdf (make_doc_fixtures.ps1); Mock-Tier: Vision-Antwort aus dem Szenario Renteninformation der Testrentenkasse. Echtes LLM: die Vision liest die PDF (gleiche Werte)."
     }
 ]

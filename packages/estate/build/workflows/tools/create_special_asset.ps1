@@ -17,9 +17,7 @@ function Build-EstateCreateSpecialAsset {
     $errExists = Build-ToolError 'Asset exists' @(660, -300) `
         "=A special asset with this exact description already exists. I will NOT create a duplicate. Use the delete tool to remove it if it no longer applies, or a distinct description."
 
-    $resPerson = Build-Pg 'Resolve Person' @(220, 180) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'owner_person', ''));" `
-        ([ordered]@{ owner_person = '$(''Start'').item.json.owner_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 180) 'owner_person'
     $ifPersonBad = Build-If 'Person invalid?' @(440, 180) `
         "={{ !!`$('Start').item.json.owner_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'
     $errPerson = Build-ToolError 'Person unresolved' @(660, 320) `

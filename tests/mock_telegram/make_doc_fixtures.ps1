@@ -14,6 +14,8 @@
 #                       IBAN gehoert KEINEM Fixture-Konto (account_unknown); Saldo-Probe 100 + 100 - 50 = 150.
 #   mock_photo_063.pdf  Vermoegensuebersicht TR (tc63)      = Szenario "Vermoegensuebersicht Trade Republic Depot": je
 #                       Position nur ISIN + Stueck + aktueller Kurs, KEIN Ticker, KEIN Einstand (Owner-Befund 2026-10-23).
+#   mock_photo_070.pdf  Renteninformation DRV (tc75, Werte erfunden) = Szenario "Renteninformation der Testrentenkasse":
+#                       erreichter Anspruch, Hochrechnung, 1-%/2-%-Szenario, EM-Rente, Entgeltpunkte, Regelaltersrente.
 #
 # Usage:  .\tests\mock_telegram\make_doc_fixtures.ps1     (danach enable_mock_telegram.ps1 kopiert docs/ in den Container)
 $ErrorActionPreference = 'Stop'
@@ -112,6 +114,20 @@ Write-TextPdf 'mock_photo_063.pdf' @(
     @(50, 616, 11, 'Anzahl Positionen: 2                                                       2.891,71 EUR'),
     @(50, 590, 11, 'Cash (Verrechnungskonto) zum 31.01.2000                                   1.234,56 EUR'),
     @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Keine Einstandskurse aufgefuehrt.')
+)
+
+Write-TextPdf 'mock_photo_070.pdf' @(
+    @(50, 790, 18, 'Deutsche Rentenversicherung (Testdokument)'),
+    @(50, 765, 13, 'Ihre Renteninformation  -  01. Juli 2026'),
+    @(50, 740, 11, 'Herrn/Frau Erika Mustermann'),
+    @(50, 712, 11, 'Ihre Regelaltersrente wuerde am 01.06.2047 beginnen.'),
+    @(50, 684, 11, 'Rente wegen voller Erwerbsminderung (monatlich):                    905,12 EUR'),
+    @(50, 664, 11, 'Bislang erreichte Rentenanwartschaft (monatlich):                   412,35 EUR'),
+    @(50, 644, 11, 'Hochrechnung bei Beitraegen wie bisher, ohne Rentenanpassungen:   1.987,60 EUR'),
+    @(50, 616, 11, 'Bei einem jaehrlichen Anpassungssatz von 1 Prozent: etwa 2.780 EUR monatlich.'),
+    @(50, 600, 11, 'Bei einem jaehrlichen Anpassungssatz von 2 Prozent: etwa 3.890 EUR monatlich.'),
+    @(50, 572, 11, 'Bisher erworbene Entgeltpunkte:                                       11,4567'),
+    @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Alle Werte erfunden.')
 )
 
 Get-ChildItem $Out | ForEach-Object { "{0,-22} {1,8} Bytes" -f $_.Name, $_.Length }

@@ -18,9 +18,9 @@ BEGIN
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 
-  -- TEST 1: Pension OHNE Beitrag (z.B. gesetzliche Rente, current_value optional)
+  -- TEST 1: Pension OHNE Beitrag (z.B. bAV mit Deckungskapital, current_value optional)
   SELECT finance.fn_create_pension(jsonb_build_object(
-    'name','DRV gesetzlich','pension_type','statutory','provider','Deutsche Rentenversicherung',
+    'name','bAV Direktversicherung','pension_type','occupational','provider','Allianz',
     'current_value',45000,'value_updated_at','2026-01-01'
   )) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -77,6 +77,18 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_pension [contribution ohne debit]: erwartet ok=false, got %', v_result;
   END IF;
   RAISE NOTICE 'PASS fn_create_pension [contribution ohne debit -> ok:false]';
+
+  -- TEST 5 (Renteninformation, 2026-10-26): gesetzliche Rente ohne eigene Betraege; je Person nur eine aktive
+  SELECT finance.fn_create_pension('{"name":"DRV","pension_type":"statutory","guaranteed_monthly_pension":2000}'::jsonb) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL fn_create_pension [statutory mit Monatsrente]: erwartet ok=false, got %', v_result; END IF;
+  SELECT finance.fn_create_pension('{"name":"DRV","pension_type":"statutory","provider":"DRV Bund"}'::jsonb) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL fn_create_pension [statutory ohne Betraege]: erwartet ok=true, got %', v_result; END IF;
+  SELECT finance.fn_create_pension('{"name":"Gesetzliche Rente","pension_type":"statutory"}'::jsonb) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR position('DRV' IN v_result->>'reason') = 0 THEN
+    RAISE EXCEPTION 'FAIL fn_create_pension [zweite statutory]: erwartet ok=false mit Name der vorhandenen, got %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_create_pension [statutory ohne Betraege, keine zweite aktive]';
 
 END $$;
 

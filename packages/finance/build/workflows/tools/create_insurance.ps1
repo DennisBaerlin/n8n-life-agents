@@ -41,9 +41,7 @@ function Build-CreateInsurance {
     $errFields = Build-ToolError 'Invalid values' @(1320, -240) "={{ `$('Preview Rate').item.json.reason }}"
 
     # WS-4: typisierten Versicherungsnehmer aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
-    $resPerson = Build-Pg 'Resolve Person' @(880, 360) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'policyholder_person', ''));" `
-        ([ordered]@{ policyholder_person = '$(''Start'').item.json.policyholder_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'policyholder_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
         "={{ !!`$('Start').item.json.policyholder_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

@@ -28,6 +28,8 @@ Der Buchhalter ist der Agent, mit dem du ganz normal per Chat deine Finanzen fü
 
 **Foto-Import.** Ein Kontoauszug läuft über den [Monats-Check](monats-check.html). Für einen Depotauszug, eine Police oder eine Renteninformation genügt ein Foto oder PDF — der Buchhalter liest die Werte heraus, zeigt sie dir zur Prüfung und übernimmt nur, was du bestätigst.
 
+**Renteninformation.** Bei der gesetzlichen Rente und bei Betriebsrenten schickst du einfach die jährliche Renteninformation bzw. Standmitteilung. Der Buchhalter liest die gedruckten Werte aus: bisher erreichter Anspruch, Hochrechnung, die beiden Szenarien mit 1 % und 2 % Rentenanpassung, Erwerbsminderungsrente, Entgeltpunkte und Beginn der Regelaltersrente. Jede Renteninformation wird mit ihrem Datum gespeichert und nie überschrieben, so siehst du die Entwicklung über die Jahre. Je Person gibt es eine gesetzliche Rente; der Bescheid des nächsten Jahres hängt sich automatisch an. Ist die letzte Renteninformation älter als 13 Monate oder fehlt sie noch, erinnert dich der Bot daran (abschaltbar unter `/reminders` oder mit dem Knopf an der Nachricht).
+
 ## Wie ein Eintrag entsteht: auflösen → bestätigen → buchen
 
 Jede Änderung läuft in drei Schritten ab, egal ob du eine 5-Euro-Ausgabe oder einen ganzen Kredit anlegst:

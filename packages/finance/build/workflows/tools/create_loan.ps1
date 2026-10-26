@@ -49,9 +49,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
         "=Disbursement account '{{ `$('Start').item.json.disbursement_account_name }}' resolves to {{ `$('Resolve Disbursement Account').item.json.disbursement_hits }} matches. Candidates: {{ JSON.stringify(`$('Resolve Disbursement Account').item.json.disbursement_candidates) }}. Ask the user the exact account (or confirm the loan was NOT paid into one of their own accounts)."
 
     # WS-4: typisierten Kreditnehmer aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
-    $resPerson = Build-Pg 'Resolve Person' @(880, 360) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'borrower_person', ''));" `
-        ([ordered]@{ borrower_person = '$(''Start'').item.json.borrower_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'borrower_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
         "={{ !!`$('Start').item.json.borrower_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

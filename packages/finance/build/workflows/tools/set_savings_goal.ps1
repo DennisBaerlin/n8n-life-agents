@@ -22,9 +22,7 @@ function Build-SetSavingsGoal {
         ([ordered]@{ id = '$(''Resolve Goal'').item.json.id' })
 
     # WS-4: optionale beguenstigte Person aufloesen (Name -> Slug; leer = unveraendert).
-    $resPerson = Build-Pg 'Resolve Person' @(880, 360) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'beneficiary_person', ''));" `
-        ([ordered]@{ beneficiary_person = '$(''Start'').item.json.beneficiary_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'beneficiary_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
         "={{ !!`$('Start').item.json.beneficiary_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

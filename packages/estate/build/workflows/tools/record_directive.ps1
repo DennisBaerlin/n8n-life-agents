@@ -13,9 +13,7 @@ function Build-EstateRecordDirective {
                             'storage_place_name','location_note','authorized_person','notes')
 
     # Person aufloesen (optional; leer = gemeinschaftliche Haushalts-Urkunde -> owner_person_id NULL).
-    $resPerson = Build-Pg 'Resolve Person' @(220, 180) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'owner_person', ''));" `
-        ([ordered]@{ owner_person = '$(''Start'').item.json.owner_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 180) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(440, 180) `
         "={{ !!`$('Start').item.json.owner_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

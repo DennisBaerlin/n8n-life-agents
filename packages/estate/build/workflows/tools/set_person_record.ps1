@@ -12,9 +12,7 @@ function Build-EstateSetPersonRecord {
                             'health_insurance_name','health_insurance_no','employer',
                             'certificates_location','notes')
 
-    $resPerson = Build-Pg 'Resolve Person' @(220, 0) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'person', ''));" `
-        ([ordered]@{ person = '$(''Start'').item.json.person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 0) 'person'
     $ifBad = Build-If 'Person unique?' @(440, 0) "={{ `$('Resolve Person').item.json.hit_count }}" '1'
     $errBad = Build-ToolError 'Person unresolved' @(660, 200) `
         "=The person '{{ `$('Start').item.json.person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Name the household member clearly."

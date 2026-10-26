@@ -20,9 +20,7 @@ function Build-SetAccount {
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
     # WS-4: optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
-    $resPerson = Build-Pg 'Resolve Person' @(660, 360) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'owner_person', ''));" `
-        ([ordered]@{ owner_person = '$(''Start'').item.json.owner_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(660, 360) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(880, 360) `
         "={{ !!`$('Start').item.json.owner_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

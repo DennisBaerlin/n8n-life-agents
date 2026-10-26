@@ -32,9 +32,7 @@ function Build-EstateCreateCase {
     $writeParams['event_date']     = '$(''Preview'').item.json.event_date'
     $writeParams['knowledge_date'] = '$(''Preview'').item.json.knowledge_date'
 
-    $resSubj = Build-Pg 'Resolve Subject' @(220, 0) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'subject_person', ''));" `
-        ([ordered]@{ subject_person = '$(''Start'').item.json.subject_person' })
+    $resSubj = Build-ResolvePerson 'Resolve Subject' @(220, 0) 'subject_person'
     $ifSubjBad = Build-If 'Subject invalid?' @(440, 0) `
         "={{ `$('Resolve Subject').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'
     $errSubj = Build-ToolError 'Subject unresolved' @(660, 200) `

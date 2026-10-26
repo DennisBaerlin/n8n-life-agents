@@ -507,6 +507,19 @@
     "final": "Die Karte zur Kontenübersicht ist unterwegs."
   },
   {
+    "_comment": "tc75 Renteninformation (Plan 2026-10-26, Werte erfunden): der Agent ruft tool_extract_finance_document mit der PDF; die Vision-Antwort liefert das Szenario darunter.",
+    "match": "Hier ist meine Renteninformation der Testrentenkasse",
+    "calls": [
+      { "tool": "tool_extract_finance_document", "args": { "file_id": "mock_photo_070", "doc_hint": "Renteninformation der Testrentenkasse" } }
+    ],
+    "final": "Die Karte zur Renteninformation ist unterwegs."
+  },
+  {
+    "_comment": "tc75 Vision-Aufruf: Rente + Renteninformation mit allen neuen Feldern (Szenarien, Entgeltpunkte, Regelaltersrente) -> alle Zeilen gueltig, das Tool schickt die Karte selbst.",
+    "match": "Renteninformation der Testrentenkasse",
+    "final": "[{\"entity_type\":\"pension\",\"name\":\"Gesetzliche Rente Mock\",\"pension_type\":\"statutory\",\"provider\":\"Deutsche Rentenversicherung\"},{\"entity_type\":\"pension_statement\",\"pension\":\"Gesetzliche Rente Mock\",\"statement_date\":\"2026-07-01\",\"reached_claim\":412.35,\"projection\":1987.60,\"scenario_1pct\":2780,\"scenario_2pct\":3890,\"em_monthly\":905.12,\"earning_points\":11.4567,\"regular_retirement_date\":\"2047-06-01\"}]"
+  },
+  {
     "_comment": "tc49 Vision-Aufruf (direkter Messages-Call aus tool_extract_finance_document, Kontext-Text traegt den doc_hint): finaler Text = das JSON-Array der Rohzeilen (alle gueltig).",
     "match": "Kontenübersicht der Testbank",
     "final": "[{\"entity_type\":\"account\",\"name\":\"Testbank Giro Mock\",\"account_type\":\"cash\",\"bank\":\"Testbank AG\",\"account_number\":\"DE02100100100006820101\",\"opening_balance\":1234.56,\"currency\":\"EUR\"}]"

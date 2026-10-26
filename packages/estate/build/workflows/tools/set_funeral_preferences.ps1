@@ -9,9 +9,7 @@ function Build-EstateSetFuneralPreferences {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('person','burial_type','has_prepaid_contract','prepaid_contract_provider','wishes')
 
-    $resPerson = Build-Pg 'Resolve Person' @(220, 0) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'person', ''));" `
-        ([ordered]@{ person = '$(''Start'').item.json.person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 0) 'person'
     $ifBad = Build-If 'Person unique?' @(440, 0) "={{ `$('Resolve Person').item.json.hit_count }}" '1'
     $errBad = Build-ToolError 'Person unresolved' @(660, 200) `
         "=The person '{{ `$('Start').item.json.person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Name the household member clearly."

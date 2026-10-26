@@ -1,0 +1,42 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 1042 >>
+stream
+BT /F1 18 Tf 50 790 Td (Deutsche Rentenversicherung \(Testdokument\)) Tj ET
+BT /F1 13 Tf 50 765 Td (Ihre Renteninformation  -  01. Juli 2026) Tj ET
+BT /F1 11 Tf 50 740 Td (Herrn/Frau Erika Mustermann) Tj ET
+BT /F1 11 Tf 50 712 Td (Ihre Regelaltersrente wuerde am 01.06.2047 beginnen.) Tj ET
+BT /F1 11 Tf 50 684 Td (Rente wegen voller Erwerbsminderung \(monatlich\):                    905,12 EUR) Tj ET
+BT /F1 11 Tf 50 664 Td (Bislang erreichte Rentenanwartschaft \(monatlich\):                   412,35 EUR) Tj ET
+BT /F1 11 Tf 50 644 Td (Hochrechnung bei Beitraegen wie bisher, ohne Rentenanpassungen:   1.987,60 EUR) Tj ET
+BT /F1 11 Tf 50 616 Td (Bei einem jaehrlichen Anpassungssatz von 1 Prozent: etwa 2.780 EUR monatlich.) Tj ET
+BT /F1 11 Tf 50 600 Td (Bei einem jaehrlichen Anpassungssatz von 2 Prozent: etwa 3.890 EUR monatlich.) Tj ET
+BT /F1 11 Tf 50 572 Td (Bisher erworbene Entgeltpunkte:                                       11,4567) Tj ET
+BT /F1 9 Tf 50 540 Td (Testdokument fuer automatisierte Tests. Alle Werte erfunden.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000338 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1432
+%%EOF

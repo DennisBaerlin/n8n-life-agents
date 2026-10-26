@@ -9,9 +9,7 @@ function Build-CreateSavingsPlan {
     $trig = Build-Trigger @('plan_name','depot_name','isin','symbol','security_name','amount','schedule_interval','schedule_unit','schedule_day_of_month','first_payment_date','notes','beneficiary_person','asset_class','depot_execution_days')
 
     # WS-4: beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
-    $resPerson = Build-Pg 'Resolve Person' @(-220, 0) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'beneficiary_person', ''));" `
-        ([ordered]@{ beneficiary_person = '$(''Start'').item.json.beneficiary_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(-220, 0) 'beneficiary_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(0, 0) `
         "={{ !!`$('Start').item.json.beneficiary_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

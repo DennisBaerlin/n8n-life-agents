@@ -26,9 +26,7 @@ function Build-SetLoan {
         ([ordered]@{ id = '$(''Resolve Loan'').item.json.id' })
 
     # WS-4: optionalen Kreditnehmer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
-    $resPerson = Build-Pg 'Resolve Person' @(880, 360) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'borrower_person', ''));" `
-        ([ordered]@{ borrower_person = '$(''Start'').item.json.borrower_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'borrower_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
         "={{ !!`$('Start').item.json.borrower_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

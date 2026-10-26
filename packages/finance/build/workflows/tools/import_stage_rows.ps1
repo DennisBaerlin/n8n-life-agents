@@ -20,6 +20,7 @@ function Build-ImportStageRows {
             rows     = (Get-GuardedJsonExpr 'JSON.parse($(''Start'').item.json.rows)')
             batch_id = '$(''Start'').item.json.batch_id || null'
             source   = '$(''Start'').item.json.source || null'
+            chat_id  = 'String($(''Start'').item.json.chat_id || '''')'   # Selbstbezug "ich" -> wer chattet (fn_import_stage)
         })
 
     $ifOk = Build-If 'Stage ok?' @(440, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'

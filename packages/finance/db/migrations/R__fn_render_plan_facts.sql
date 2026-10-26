@@ -187,6 +187,30 @@ BEGIN
         END IF;
     END IF;
 
+    -- ---------- Renten (Renteninformation-Plan 2026-10-26) ----------
+    -- Je aktiver Altersvorsorge die juengste Renteninformation aus finance.fn_pension_outlook (EINE Rechen-Adresse),
+    -- mit der Plan-Inflation fuer die Kaufkraft der DRV-Szenarien. Der Berater zitiert diese Werte als Spanne.
+    FOR v_ph IN SELECT * FROM jsonb_array_elements(
+                    finance.fn_pension_outlook(jsonb_build_object('inflation_pct', to_jsonb(v_infl)))->'pensions') LOOP
+        v_lines := v_lines || (
+            'Rente ' || (v_ph->>'name') || ' (' || COALESCE(v_ph->>'owner', 'Haushalt') || '): '
+            || CASE WHEN (v_ph->>'never')::boolean THEN 'noch keine Renteninformation'
+                    ELSE 'Stand ' || (v_ph->>'statement_date')
+                         || CASE WHEN (v_ph->>'stale')::boolean THEN ' (älter als 13 Monate)' ELSE '' END
+                         || CASE WHEN v_ph ? 'reached_claim' THEN ', erreicht ' || (v_ph->>'reached_claim') || ' €' ELSE '' END
+                         || CASE WHEN v_ph ? 'projection' THEN ', Hochrechnung ' || (v_ph->>'projection') || ' €' ELSE '' END
+                         || CASE WHEN v_ph ? 'scenario_1pct' THEN ', 1 %: ' || (v_ph->>'scenario_1pct') || ' €'
+                                 || CASE WHEN v_ph ? 'scenario_1pct_real' THEN ' (Kaufkraft ≈ ' || (v_ph->>'scenario_1pct_real') || ' €)' ELSE '' END
+                                 ELSE '' END
+                         || CASE WHEN v_ph ? 'scenario_2pct' THEN ', 2 %: ' || (v_ph->>'scenario_2pct') || ' €'
+                                 || CASE WHEN v_ph ? 'scenario_2pct_real' THEN ' (Kaufkraft ≈ ' || (v_ph->>'scenario_2pct_real') || ' €)' ELSE '' END
+                                 ELSE '' END
+                         || CASE WHEN v_ph ? 'em_monthly' THEN ', EM-Rente ' || (v_ph->>'em_monthly') || ' €' ELSE '' END
+                         || CASE WHEN v_ph ? 'regular_retirement_date' THEN ', Regelaltersrente ab ' || (v_ph->>'regular_retirement_date') ELSE '' END
+                         || '; alles monatlich brutto'
+               END);
+    END LOOP;
+
     IF array_length(v_lines, 1) IS NULL THEN
         RETURN NULL;  -- facts vorhanden, aber leer/ohne bekannte Bloecke -> nur Prosa
     END IF;

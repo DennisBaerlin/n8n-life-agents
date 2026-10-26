@@ -49,9 +49,7 @@ function Build-CreateAccount {
     # WS-4: typisierte Eigentuemer-Person aufloesen (Name -> Slug via core.fn_resolve_person, dem
     # publizierten DEFINER-Fenster; finance_rw erreicht agent.* sonst nicht, D10). Leer = Haushalt
     # (kein Resolve, person_id NULL). Provided-but-ambiguous/unknown -> sauberer Block VOR dem Gate.
-    $resPerson = Build-Pg 'Resolve Person' @(220, 360) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'owner_person', ''));" `
-        ([ordered]@{ owner_person = '$(''Start'').item.json.owner_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 360) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(440, 360) `
         "={{ !!`$('Start').item.json.owner_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

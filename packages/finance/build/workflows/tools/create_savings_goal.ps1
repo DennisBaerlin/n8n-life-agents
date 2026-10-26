@@ -53,9 +53,7 @@ function Build-CreateSavingsGoal {
 
     # WS-4: beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
     # Beim Sparziel ist die Person der BEGUENSTIGTE (z. B. Kind), unabhaengig vom Abbuchungskonto.
-    $resPerson = Build-Pg 'Resolve Person' @(880, 360) `
-        "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF((`$1::jsonb)->>'beneficiary_person', ''));" `
-        ([ordered]@{ beneficiary_person = '$(''Start'').item.json.beneficiary_person' })
+    $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'beneficiary_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
         "={{ !!`$('Start').item.json.beneficiary_person && `$('Resolve Person').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'

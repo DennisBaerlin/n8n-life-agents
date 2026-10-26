@@ -217,6 +217,11 @@ BEGIN
             RETURN format('pension_type "%s" invalid (statutory|occupational|riester|ruerup|private)', p->>'pension_type');
         END;
         IF p->>'pension_type' IS NULL THEN RETURN 'pension_type is required'; END IF;
+        -- Spiegel CHECK finance_pension_statutory_no_amounts: die Betraege gehoeren in die Renteninformation
+        IF p->>'pension_type' = 'statutory' AND (NULLIF(p->>'guaranteed_monthly_pension','') IS NOT NULL
+                                                 OR NULLIF(p->>'current_value','') IS NOT NULL) THEN
+            RETURN 'a statutory pension stores no monthly pension or value of its own - put the figures into a pension_statement row';
+        END IF;
         -- WP2: Beitrags-Rhythmus roh (Spiegel fn_create_pension, Default monatlich)
         IF NULLIF(p->>'schedule_unit','') IS NOT NULL THEN
             BEGIN PERFORM (p->>'schedule_unit')::finance.schedule_unit;
@@ -377,8 +382,21 @@ BEGIN
         END IF;
         IF NULLIF(p->>'statement_date','') IS NULL THEN RETURN 'statement_date is required'; END IF;
         IF NULLIF(p->>'reached_claim','') IS NULL AND NULLIF(p->>'projection','') IS NULL
-           AND NULLIF(p->>'em_monthly','') IS NULL THEN
-            RETURN 'at least one of reached_claim, projection, em_monthly is required';
+           AND NULLIF(p->>'em_monthly','') IS NULL AND NULLIF(p->>'scenario_1pct','') IS NULL
+           AND NULLIF(p->>'scenario_2pct','') IS NULL THEN
+            RETURN 'at least one of reached_claim, projection, scenario_1pct, scenario_2pct, em_monthly is required';
+        END IF;
+        PERFORM (p->>'statement_date')::date, NULLIF(p->>'regular_retirement_date','')::date;
+        -- Spiegel der CHECKs finance_pension_statements_nonneg/_scenarios_rise (vertauschte Werte aus der Auslesung)
+        IF LEAST(COALESCE(NULLIF(p->>'reached_claim','')::numeric, 0), COALESCE(NULLIF(p->>'projection','')::numeric, 0),
+                 COALESCE(NULLIF(p->>'scenario_1pct','')::numeric, 0), COALESCE(NULLIF(p->>'scenario_2pct','')::numeric, 0),
+                 COALESCE(NULLIF(p->>'em_monthly','')::numeric, 0), COALESCE(NULLIF(p->>'earning_points','')::numeric, 0)) < 0 THEN
+            RETURN 'amounts and earning points of a pension statement must not be negative';
+        END IF;
+        IF NULLIF(p->>'scenario_1pct','')::numeric < NULLIF(p->>'projection','')::numeric
+           OR NULLIF(p->>'scenario_2pct','')::numeric < NULLIF(p->>'scenario_1pct','')::numeric
+           OR NULLIF(p->>'scenario_2pct','')::numeric < NULLIF(p->>'projection','')::numeric THEN
+            RETURN 'the scenarios must rise with the adjustment rate (projection <= 1 % scenario <= 2 % scenario) - check the printed values';
         END IF;
     END IF;
 

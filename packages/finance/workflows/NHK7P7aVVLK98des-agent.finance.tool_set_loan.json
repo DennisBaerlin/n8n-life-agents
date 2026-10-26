@@ -177,9 +177,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027borrower_person\u0027, \u0027\u0027));",
+                                         "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027borrower_person\u0027, \u0027\u0027), ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027);",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ borrower_person: $(\u0027Start\u0027).item.json.borrower_person }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ borrower_person: $(\u0027Start\u0027).item.json.borrower_person, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

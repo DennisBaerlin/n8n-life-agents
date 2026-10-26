@@ -206,6 +206,42 @@
                       "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
                   },
                   {
+                      "where":  "packages/core/db/migrations/R__fn_resolve_person.sql",
+                      "literal":  "ich",
+                      "count":  1,
+                      "reason":  "data:Selbstbezug-Eingabewort (vergleicht die Nutzer-Eingabe, kein Ausgabetext)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_resolve_person.sql",
+                      "literal":  "mich",
+                      "count":  1,
+                      "reason":  "data:Selbstbezug-Eingabewort (vergleicht die Nutzer-Eingabe, kein Ausgabetext)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_resolve_person.sql",
+                      "literal":  "mir",
+                      "count":  1,
+                      "reason":  "data:Selbstbezug-Eingabewort (vergleicht die Nutzer-Eingabe, kein Ausgabetext)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_render_plan_facts.sql",
+                      "literal":  " (älter als 13 Monate)",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_render_plan_facts.sql",
+                      "literal":  "Haushalt",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_render_plan_facts.sql",
+                      "literal":  "noch keine Renteninformation",
+                      "count":  1,
+                      "reason":  "model:kontext-render (Header der Kontexte fuer die Agenten)"
+                  },
+                  {
                       "where":  "packages/finance/db/migrations/R__fn_render_plan_facts.sql",
                       "literal":  " % Inflation über ",
                       "count":  1,

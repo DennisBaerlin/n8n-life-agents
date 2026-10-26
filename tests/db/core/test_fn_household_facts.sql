@@ -352,6 +352,30 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_resolve_person [vorname/alias/fullname/ambig/none + Haushalt-Kandidaten]';
 
+  -- ---------- TEST 12b (Renteninformation-Plan 2026-10-26): Selbstbezug = wer gerade chattet ----------
+  SELECT person_id INTO v_id FROM core.fn_resolve_person('ich', '111');          -- Owner erika chattet
+  IF v_id IS DISTINCT FROM 'erika' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [ich @111]: got %', v_id; END IF;
+  SELECT person_id INTO v_id FROM core.fn_resolve_person(' Mein ', '222');       -- lena chattet
+  IF v_id IS DISTINCT FROM 'lena' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [mein @222]: got %', v_id; END IF;
+  SELECT person_id INTO v_id FROM core.fn_resolve_person('myself', '222');
+  IF v_id IS DISTINCT FROM 'lena' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [myself @222]: got %', v_id; END IF;
+  SELECT person_id INTO v_id FROM core.fn_resolve_person('나', '111');
+  IF v_id IS DISTINCT FROM 'erika' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [나 @111]: got %', v_id; END IF;
+  -- nur der GANZE Wert: "meine Frau" bleibt der Alias von lena, auch wenn erika chattet
+  SELECT person_id INTO v_id FROM core.fn_resolve_person('meine Frau', '111');
+  IF v_id IS DISTINCT FROM 'lena' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [meine Frau @111]: got %', v_id; END IF;
+  -- ohne/kaputte/unbekannte chat_id: Selbstbezug bleibt unaufgeloest (0 Treffer, kein Fehler)
+  SELECT hit_count INTO v_cnt FROM core.fn_resolve_person('ich', 'test_9999');
+  IF v_cnt IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL fn_resolve_person [ich @test_9999]: %', v_cnt; END IF;
+  SELECT hit_count INTO v_cnt FROM core.fn_resolve_person('ich', '999');
+  IF v_cnt IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL fn_resolve_person [ich @999 unbekannt]: %', v_cnt; END IF;
+  SELECT hit_count INTO v_cnt FROM core.fn_resolve_person('ich');
+  IF v_cnt IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL fn_resolve_person [ich ohne chat_id]: %', v_cnt; END IF;
+  -- normale Namen unveraendert, auch mit chat_id
+  SELECT person_id INTO v_id FROM core.fn_resolve_person('Lena Beispiel', '111');
+  IF v_id IS DISTINCT FROM 'lena' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [Name @111]: got %', v_id; END IF;
+  RAISE NOTICE 'PASS fn_resolve_person [Selbstbezug = Absender, nur ganzer Wert, kaputte chat_id -> 0 Treffer]';
+
   -- ---------- TEST 13 (fn_resolve_sender): telegram_user_id -> Person ----------
   SELECT agent.fn_resolve_sender(222) INTO v_result;
   IF (v_result->>'found')::boolean IS DISTINCT FROM true

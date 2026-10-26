@@ -85,6 +85,20 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [risk_profile eigene Header-Zeile; goal-interne Risiko-Klausel entfernt]';
 
+  -- ---------- Renteninformation (Plan 2026-10-26): eine Zeile je Rente aus fn_pension_outlook mit Plan-Inflation ----------
+  INSERT INTO finance.pension (name, pension_type) VALUES ('__t_fc DRV', 'statutory');
+  INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim, projection, scenario_1pct, scenario_2pct,
+      em_monthly, regular_retirement_date)
+  SELECT id, core.fn_today() - 30, 300, 2100, 2800, 3900, 800, core.fn_today() - 30 + 12418
+  FROM finance.pension WHERE name = '__t_fc DRV';
+  INSERT INTO finance.pension (name, pension_type) VALUES ('__t_fc bAV', 'occupational');
+  SELECT content INTO v_out FROM core.fn_fetch_context('financial_planning');
+  IF v_out NOT LIKE '%Rente __t_fc DRV%Hochrechnung 2100.00 €%2 %%: 3900.00 € (Kaufkraft ≈ 19%brutto%'
+     OR v_out NOT LIKE '%Rente __t_fc bAV%noch keine Renteninformation%' THEN
+    RAISE EXCEPTION 'FAIL [Renten-Zeilen]: got %', replace(substr(v_out, position('Rente' IN v_out), 700), E'\n', ' | ');
+  END IF;
+  RAISE NOTICE 'PASS [Renteninformation als Plan-Fakt: Szenarien + Kaufkraft + brutto, fehlende Info benannt]';
+
   -- ---------- TEST 3: keine family -> Glidepath ohne Jahr, kein Crash (defensiv) ----------
   DELETE FROM agent.core_contexts WHERE name = 'family';
   SELECT content INTO v_out FROM core.fn_fetch_context('financial_planning');

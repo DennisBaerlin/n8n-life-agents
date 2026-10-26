@@ -35,7 +35,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027batch_id\u0027 AS batch_id, (r-\u003e\u003e\u0027staged\u0027)::int AS staged, (r-\u003e\u003e\u0027total\u0027)::int AS total, (r-\u003e\u003e\u0027valid\u0027)::int AS valid, (r-\u003e\u003e\u0027invalid\u0027)::int AS invalid, r-\u003e\u0027errors\u0027 AS errors FROM finance.fn_import_stage($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ rows: (() =\u003e { try { return JSON.parse($(\u0027Start\u0027).item.json.rows); } catch (e) { return \u0027__invalid_json__\u0027; } })(), batch_id: $(\u0027Start\u0027).item.json.batch_id || null, source: $(\u0027Start\u0027).item.json.source || null }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ rows: (() =\u003e { try { return JSON.parse($(\u0027Start\u0027).item.json.rows); } catch (e) { return \u0027__invalid_json__\u0027; } })(), batch_id: $(\u0027Start\u0027).item.json.batch_id || null, source: $(\u0027Start\u0027).item.json.source || null, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

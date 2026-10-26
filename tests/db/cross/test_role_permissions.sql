@@ -796,6 +796,8 @@ BEGIN
   BEGIN
     SET LOCAL ROLE finance_rw;
     PERFORM hit_count FROM core.fn_resolve_person('__rp_irgendwer__');
+    -- Selbstbezug-Pfad (core:V033): liest agent.fn_resolve_sender im DEFINER-Kontext, nie direkt unter finance_rw
+    PERFORM hit_count FROM core.fn_resolve_person('ich', '4242');
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
@@ -804,6 +806,10 @@ BEGIN
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM hit_count FROM core.fn_resolve_person('__rp_irgendwer__');
+    -- Renteninformation (Plan 2026-10-26): Berater-Fenster + Erinnerungs-Faelligkeit laufen unter finance_ro
+    -- (Advisor-postgres_select, cron_remind_pension_statement) -- ohne agent.*-Zugriff (Inflation kommt als Argument).
+    PERFORM finance.fn_pension_outlook('{"inflation_pct":2}'::jsonb);
+    PERFORM finance.fn_pension_statements_due();
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;

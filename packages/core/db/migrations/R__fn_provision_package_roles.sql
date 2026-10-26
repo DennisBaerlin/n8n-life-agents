@@ -231,8 +231,9 @@ BEGIN
     -- zu einem person_id-Slug auf (fuer den *_person_id-FK + die HITL-Summary), bevor sie schreiben. Die
     -- engen Paket-Rollen erreichen agent.core_contexts NICHT direkt (D10) -> ueber dieses core-Fenster.
     -- Read an beide Rollen (finance_ro nutzt es auch lesend).
-    IF to_regprocedure('core.fn_resolve_person(text)') IS NOT NULL THEN
-        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_resolve_person(text) TO %I, %I', v_rw, v_ro);
+    -- (text, text): zweites Argument = chat_id des Absenders fuer Selbstbezuege (core:V033).
+    IF to_regprocedure('core.fn_resolve_person(text, text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_resolve_person(text, text) TO %I, %I', v_rw, v_ro);
     END IF;
     -- Textkatalog Phase C: publiziertes Empfaenger-Text-Fenster. Paket-Crons (finance_rw/_ro, estate_rw) und die
     -- Agent-Eingangs-Gates (<pkg>_ro) laden Sprache/Locale/Texte des Empfaengers; agent.* + core.ui_texts sind per

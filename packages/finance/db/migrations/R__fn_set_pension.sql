@@ -10,8 +10,8 @@
 --   Eingabe jsonb: pension_id (im n8n via fn_resolve_pension aufgeloest), name, provider,
 --   contract_number, owner_person_id (Slug; leer=unveraendert), current_value, value_updated_at, guaranteed_monthly_pension,
 --   retirement_start_date, status ('active'|'paused'|'paid_out'), notes.
---   RUECKGABE: {ok:true, pension_id, recurring_payment_id}. Korrigierbar (current_value<0, unbekannter status)
---   -> {ok:false}.
+--   RUECKGABE: {ok:true, pension_id, recurring_payment_id}. Korrigierbar (current_value<0, unbekannter status,
+--   gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_pension(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -36,6 +36,22 @@ BEGIN
     IF v_cv IS NOT NULL AND v_cv < 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Current value must not be negative, got ' || v_cv || '.');
+    END IF;
+    -- Gesetzliche Rente (Spiegel CHECK finance_pension_statutory_no_amounts / UNIQUE finance_pension_statutory_uq).
+    IF (SELECT pension_type FROM finance.pension WHERE id = v_id) = 'statutory' THEN
+        IF v_cv IS NOT NULL OR NULLIF(p->>'guaranteed_monthly_pension', '') IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'A statutory pension stores no monthly pension or value of its own - those figures belong to its '
+                       || 'Renteninformation (send the new statement as a PDF).');
+        END IF;
+        IF COALESCE(v_status, (SELECT status FROM finance.pension WHERE id = v_id)) = 'active' AND EXISTS (
+               SELECT 1 FROM finance.pension o
+                WHERE o.id <> v_id AND o.pension_type = 'statutory' AND o.status = 'active'
+                  AND o.owner_person_id IS NOT DISTINCT FROM COALESCE(NULLIF(p->>'owner_person_id', ''),
+                        (SELECT owner_person_id FROM finance.pension WHERE id = v_id))) THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'This person already has another active statutory pension - only one is possible.');
+        END IF;
     END IF;
 
     UPDATE finance.pension SET

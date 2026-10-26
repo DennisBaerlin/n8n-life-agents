@@ -320,8 +320,9 @@ BEGIN
                     FROM finance.depot_holdings h WHERE h.id = (v_r->>'holding_id')::int);
 
             ELSIF v_row.entity_type = 'pension_statement' THEN
-                -- Pension aufloesen: In-Batch zuerst, sonst Bestand (fn_resolve_pension)
-                v_id := NULLIF(v_pen_map->>lower(v_payload->>'pension'),'')::int;
+                -- Pension aufloesen: die von fn_import_stage gesetzte pension_id (Folgebescheid), sonst In-Batch, sonst
+                -- Bestand (fn_resolve_pension)
+                v_id := COALESCE(NULLIF(v_payload->>'pension_id','')::int, NULLIF(v_pen_map->>lower(v_payload->>'pension'),'')::int);
                 IF v_id IS NULL THEN
                     SELECT r.id INTO v_id FROM finance.fn_resolve_pension(v_payload->>'pension', FALSE) r
                     WHERE r.hit_count = 1;
@@ -334,7 +335,7 @@ BEGIN
                 BEGIN
                     INSERT INTO finance.pension_statements
                         (pension_id, statement_date, reached_claim, projection, scenario_1pct, scenario_2pct, em_monthly,
-                         earning_points, regular_retirement_date, is_nominal, notes)
+                         earning_points, regular_retirement_date, notes)
                     VALUES (v_id,
                             (v_payload->>'statement_date')::date,
                             NULLIF(v_payload->>'reached_claim','')::numeric,
@@ -344,7 +345,6 @@ BEGIN
                             NULLIF(v_payload->>'em_monthly','')::numeric,
                             NULLIF(v_payload->>'earning_points','')::numeric,
                             NULLIF(v_payload->>'regular_retirement_date','')::date,
-                            COALESCE(NULLIF(v_payload->>'is_nominal','')::boolean, TRUE),
                             NULLIF(v_payload->>'notes',''))
                     RETURNING id INTO v_ref_id;
                 EXCEPTION WHEN unique_violation THEN

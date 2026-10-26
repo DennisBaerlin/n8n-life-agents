@@ -37,8 +37,9 @@ FROM (SELECT finance.fn_pension_statements_due() AS d) x;
 const m = $('Find due pensions').first().json;
 const U = uiRender(m.ui || {});
 const rows = Array.isArray(m.pensions) ? m.pensions : [];
+// Person in Klammern, wenn die Rente einer Person gehoert (zwei gleichnamige gesetzliche Renten sonst ununterscheidbar)
 const lines = rows.map((r) => U.fill(U.t('finance.dialog.pension_statement_line'), {
-  name: r.name, date: r.last_statement_date ? { kind: 'date', value: r.last_statement_date } : U.t('finance.dialog.pension_statement_never') }));
+  name: r.owner_person_id ? r.name + ' (' + r.owner + ')' : r.name, date: r.last_statement_date ? { kind: 'date', value: r.last_statement_date } : U.t('finance.dialog.pension_statement_never') }));
 return [{ json: { message: U.t('finance.dialog.pension_statement_intro') + '\n\n' + lines.join('\n') + '\n\n'
                            + U.t('finance.dialog.pension_statement_howto'),
                   btn_off: U.t('core.reminders.btn_off') } }];

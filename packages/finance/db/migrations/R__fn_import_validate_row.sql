@@ -59,7 +59,7 @@ BEGIN
     -- generische Ja/Nein-, Ganzzahl-, Zahl- und Kadenz-Casts der erlaubten Felder (sonst bestuende eine Zeile die
     -- Pruefung und braeche erst beim Kartenbau/Commit an einem Cast: fn_import_card_rows, fn_create_*)
     FOR v_key IN SELECT k FROM jsonb_object_keys(p) k
-                 WHERE k IN ('interest_auto_post','fixed_deposit_auto_renew','is_nominal')
+                 WHERE k IN ('interest_auto_post','fixed_deposit_auto_renew')
     LOOP
         IF NULLIF(p->>v_key,'') IS NOT NULL AND lower(p->>v_key) NOT IN ('true','false') THEN
             RETURN format('%s "%s" must be true or false', v_key, p->>v_key);
@@ -373,7 +373,15 @@ BEGIN
         -- datierter Standmitteilungs-Snapshot (Renteninformation/bAV/NPS) -> finance_pension_statements
         v_ref := NULLIF(trim(COALESCE(p->>'pension','')), '');
         IF v_ref IS NULL THEN RETURN 'pension (name of the pension entity) is required'; END IF;
-        SELECT hit_count INTO v_hits FROM finance.fn_resolve_pension(v_ref, FALSE);
+        -- pension_id setzt fn_import_stage, wenn sich ein Folgebescheid an die vorhandene gesetzliche Rente haengt
+        IF NULLIF(p->>'pension_id','') IS NOT NULL THEN
+            IF NOT EXISTS (SELECT 1 FROM finance.pension WHERE id = (p->>'pension_id')::int AND status = 'active') THEN
+                RETURN format('pension_id %s is not an active pension', p->>'pension_id');
+            END IF;
+            v_hits := 1;
+        ELSE
+            SELECT hit_count INTO v_hits FROM finance.fn_resolve_pension(v_ref, FALSE);
+        END IF;
         IF v_hits <> 1 AND NOT EXISTS (
             SELECT 1 FROM finance.import_staging s
             WHERE s.batch_id = p_batch_id AND s.entity_type = 'pension'

@@ -80,6 +80,33 @@ BEGIN
          jsonb_build_object('entity_type','pension','name','__t_ips bAV','pension_type','occupational','owner_person','ich'))));
   IF (v->>'invalid')::int <> 1 THEN RAISE EXCEPTION 'FAIL import_pension [ich ohne chat_id]: %', v; END IF;
   RAISE NOTICE 'PASS import_pension [ich ohne chat_id -> Zeilenfehler]';
+
+  -- TEST 5 (Review 2026-10-26): Rente frueher OHNE Person erfasst (Haushalt), der Bescheid nennt die Person ->
+  --         haengt sich an die Haushalts-Rente, keine zweite gesetzliche Rente
+  INSERT INTO finance.pension (name, pension_type) VALUES ('Gesetzliche Rente', 'statutory');
+  v := finance.fn_import_stage(jsonb_build_object('source','vision','chat_id','7700001','rows', jsonb_build_array(
+         jsonb_build_object('entity_type','pension','name','Gesetzliche Rente','pension_type','statutory','owner_person','Ipso Rentner'),
+         jsonb_build_object('entity_type','pension_statement','pension','Gesetzliche Rente','statement_date','2026-08-01','reached_claim',200))));
+  v_batch := (v->>'batch_id')::uuid;
+  IF (v->>'invalid')::int <> 0 OR EXISTS (SELECT 1 FROM finance.import_staging WHERE batch_id = v_batch AND entity_type = 'pension')
+     OR (SELECT (payload->>'pension_id')::int FROM finance.import_staging WHERE batch_id = v_batch AND entity_type = 'pension_statement')
+        IS DISTINCT FROM (SELECT id FROM finance.pension WHERE name = 'Gesetzliche Rente' AND owner_person_id IS NULL) THEN
+    RAISE EXCEPTION 'FAIL import_pension [Haushalts-Rente]: % / %', v, (SELECT jsonb_agg(payload) FROM finance.import_staging WHERE batch_id = v_batch); END IF;
+  v := finance.fn_import_bundle(jsonb_build_object('batch_id', v_batch));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL import_pension [Haushalts-Rente bundle]: %', v; END IF;
+  RAISE NOTICE 'PASS import_pension [Bescheid mit Namen haengt an die ohne Person erfasste Rente]';
+
+  -- TEST 6: gleichnamige gesetzliche Renten zweier Personen -> Zuordnung per id an die der Person, kein "mehrdeutig"
+  UPDATE finance.pension SET name = 'Gesetzliche Rente' WHERE id = v_pen;   -- Partnerin: jetzt gleicher Name wie Haushalt
+  v := finance.fn_import_stage(jsonb_build_object('source','vision','chat_id','7700002','rows', jsonb_build_array(
+         jsonb_build_object('entity_type','pension','name','Gesetzliche Rente','pension_type','statutory','owner_person','ich'),
+         jsonb_build_object('entity_type','pension_statement','pension','Gesetzliche Rente','statement_date','2027-07-01','reached_claim',360))));
+  v_batch := (v->>'batch_id')::uuid;
+  v := finance.fn_import_bundle(jsonb_build_object('batch_id', v_batch));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true
+     OR NOT EXISTS (SELECT 1 FROM finance.pension_statements WHERE pension_id = v_pen AND statement_date = '2027-07-01') THEN
+    RAISE EXCEPTION 'FAIL import_pension [gleichnamig per id]: %', v; END IF;
+  RAISE NOTICE 'PASS import_pension [gleichnamige Renten zweier Personen: Bescheid landet bei der richtigen]';
 END $$;
 
 ROLLBACK;

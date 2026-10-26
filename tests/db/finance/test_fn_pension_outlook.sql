@@ -36,13 +36,21 @@ BEGIN
     RAISE EXCEPTION 'FAIL pension_outlook [ohne Inflation]: %', v_r; END IF;
   RAISE NOTICE 'PASS pension_outlook [ohne Inflation keine Realwerte]';
 
-  -- TEST 3: bAV ohne Information -> never; Erinnerung nennt sie, die frische DRV nicht
+  -- TEST 3: bAV ohne Information -> never im Fenster, aber KEINE Erinnerung (viele Arbeitgeber schicken keine);
+  --         die frische DRV ist nicht faellig
   SELECT e INTO v_r FROM jsonb_array_elements(v->'pensions') e WHERE e->>'name' = '__t_po bAV';
   IF (v_r->>'never')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL pension_outlook [never]: %', v_r; END IF;
   v_due := finance.fn_pension_statements_due();
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_due) e WHERE e->>'name' = '__t_po bAV' AND (e->>'never')::boolean)
-     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_due) e WHERE e->>'name' = '__t_po DRV') THEN
-    RAISE EXCEPTION 'FAIL pension_due [never/frisch]: %', v_due; END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_due) e WHERE e->>'name' IN ('__t_po bAV', '__t_po DRV')) THEN
+    RAISE EXCEPTION 'FAIL pension_due [bAV never / DRV frisch nicht faellig]: %', v_due; END IF;
+  -- gesetzliche Rente ohne Information -> faellig (never)
+  DELETE FROM finance.pension_statements WHERE pension_id = v_drv;
+  v_due := finance.fn_pension_statements_due();
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_due) e WHERE e->>'name' = '__t_po DRV' AND (e->>'never')::boolean) THEN
+    RAISE EXCEPTION 'FAIL pension_due [DRV never]: %', v_due; END IF;
+  INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim, regular_retirement_date)
+  VALUES (v_drv, core.fn_today() - 400, 250, (core.fn_today() - 400) + 12418),
+         (v_drv, core.fn_today() - 30, 300, (core.fn_today() - 30) + 12418);
 
   -- TEST 4: Info aelter als 13 Monate -> stale + faellig; pausierte Rente nie faellig
   DELETE FROM finance.pension_statements WHERE pension_id = v_drv AND statement_date = core.fn_today() - 30;

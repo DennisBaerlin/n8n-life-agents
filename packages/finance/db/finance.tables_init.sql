@@ -1860,21 +1860,30 @@ DO $$ BEGIN
     ALTER TABLE finance.real_estate   ADD  CONSTRAINT finance_real_estate_value_nonneg CHECK (current_value IS NULL OR current_value >= 0);
     ALTER TABLE finance.pension       DROP CONSTRAINT IF EXISTS finance_pension_value_nonneg;
     ALTER TABLE finance.pension       ADD  CONSTRAINT finance_pension_value_nonneg CHECK (current_value IS NULL OR current_value >= 0);
+END $$;
+
+-- Renteninformation-Gesetze (Plan 2026-10-26). NOT VALID nur beim ersten Anlegen (Altbestand: eine gesetzliche Rente mit
+-- eigener Monatsrente, ein negativer Altwert): finance:V030 traegt nach und VALIDATEt. KEIN DROP+ADD je Apply (das setzte
+-- den Constraint jedes Mal wieder auf NOT VALID; Muster finance_transactions_transfer_grouped).
+DO $$ BEGIN
     -- Gesetzliche Rente: Monatsrente/Wert stehen in der Renteninformation (pension_statements), nie doppelt am Parent.
-    ALTER TABLE finance.pension       DROP CONSTRAINT IF EXISTS finance_pension_statutory_no_amounts;
-    ALTER TABLE finance.pension       ADD  CONSTRAINT finance_pension_statutory_no_amounts
-        CHECK (pension_type <> 'statutory' OR (guaranteed_monthly_pension IS NULL AND current_value IS NULL));
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'finance_pension_statutory_no_amounts') THEN
+        ALTER TABLE finance.pension ADD CONSTRAINT finance_pension_statutory_no_amounts
+            CHECK (pension_type <> 'statutory' OR (guaranteed_monthly_pension IS NULL AND current_value IS NULL)) NOT VALID;
+    END IF;
     -- Renteninformation: gedruckte Betraege >= 0, DRV-Szenarien steigen mit dem Anpassungssatz (NULL-tolerant;
     -- faengt vertauschte Werte aus der Auslesung).
-    ALTER TABLE finance.pension_statements DROP CONSTRAINT IF EXISTS finance_pension_statements_nonneg;
-    ALTER TABLE finance.pension_statements ADD  CONSTRAINT finance_pension_statements_nonneg CHECK (
-        COALESCE(reached_claim, 0) >= 0 AND COALESCE(projection, 0) >= 0 AND COALESCE(em_monthly, 0) >= 0
-        AND COALESCE(scenario_1pct, 0) >= 0 AND COALESCE(scenario_2pct, 0) >= 0 AND COALESCE(earning_points, 0) >= 0);
-    ALTER TABLE finance.pension_statements DROP CONSTRAINT IF EXISTS finance_pension_statements_scenarios_rise;
-    ALTER TABLE finance.pension_statements ADD  CONSTRAINT finance_pension_statements_scenarios_rise CHECK (
-        (scenario_1pct IS NULL OR projection IS NULL OR scenario_1pct >= projection)
-        AND (scenario_2pct IS NULL OR scenario_1pct IS NULL OR scenario_2pct >= scenario_1pct)
-        AND (scenario_2pct IS NULL OR projection IS NULL OR scenario_2pct >= projection));
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'finance_pension_statements_nonneg') THEN
+        ALTER TABLE finance.pension_statements ADD CONSTRAINT finance_pension_statements_nonneg CHECK (
+            COALESCE(reached_claim, 0) >= 0 AND COALESCE(projection, 0) >= 0 AND COALESCE(em_monthly, 0) >= 0
+            AND COALESCE(scenario_1pct, 0) >= 0 AND COALESCE(scenario_2pct, 0) >= 0 AND COALESCE(earning_points, 0) >= 0) NOT VALID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'finance_pension_statements_scenarios_rise') THEN
+        ALTER TABLE finance.pension_statements ADD CONSTRAINT finance_pension_statements_scenarios_rise CHECK (
+            (scenario_1pct IS NULL OR projection IS NULL OR scenario_1pct >= projection)
+            AND (scenario_2pct IS NULL OR scenario_1pct IS NULL OR scenario_2pct >= scenario_1pct)
+            AND (scenario_2pct IS NULL OR projection IS NULL OR scenario_2pct >= projection)) NOT VALID;
+    END IF;
 END $$;
 
 -- Multi-Waehrung: currency-Spalten an die Waehrungs-Dimension binden (FK = Tippfehler-Schutz).
@@ -1937,10 +1946,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS finance_loans_rp_uq
     ON finance.loans (recurring_payment_id) WHERE recurring_payment_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS finance_pension_rp_uq
     ON finance.pension (recurring_payment_id) WHERE recurring_payment_id IS NOT NULL;
--- Hoechstens EINE aktive gesetzliche Rente je Person (NULL = Haushalt zaehlt als eine): ein neuer Bescheid haengt
--- sich an die vorhandene (fn_import_validate_row/_bundle), eine zweite Zeile zaehlte das Net-Worth doppelt.
-CREATE UNIQUE INDEX IF NOT EXISTS finance_pension_statutory_uq
-    ON finance.pension (owner_person_id) NULLS NOT DISTINCT WHERE pension_type = 'statutory' AND status = 'active';
+-- Hoechstens EINE aktive gesetzliche Rente je Person (NULL = Haushalt zaehlt als eine): Index finance_pension_statutory_uq
+-- legt finance:V030 an (nach dem Aufraeumen des Altbestands; ein Init-CREATE scheiterte vor der V-Phase an Dubletten).
 CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_goals_rp_uq
     ON finance.savings_goals (recurring_payment_id) WHERE recurring_payment_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_plans_rp_uq

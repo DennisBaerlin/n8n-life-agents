@@ -231,9 +231,8 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.scenario_1pct'   "$S.scenario_1pct" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.scenario_2pct'   "$S.scenario_2pct" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.em_monthly'      "$S.em_monthly" -Kind money -EurByModel -OmitEmpty)
-                (New-HitlLine 'finance.label.earning_points'  "$S.earning_points" -OmitEmpty)
+                (New-HitlLine 'finance.label.earning_points'  "$S.earning_points" -Kind number -Digits -1 -OmitEmpty)
                 (New-HitlLine 'finance.label.regular_retirement_date' "$S.regular_retirement_date" -Kind date -OmitEmpty)
-                (New-HitlLine 'finance.label.is_nominal'      (& $need 'IsNominal') -Kind bool -IsDefault "($S.is_nominal === undefined || $S.is_nominal === null || $S.is_nominal === '')")
                 (New-HitlLine 'finance.label.notes'           "$S.notes" -OmitEmpty)
             )
         }
@@ -346,8 +345,10 @@ $script:FIN_IMPORT_CARD = [ordered]@{
                            Covered = @('premium_amount', 'annual_premium') }
     pension           = @{ Heading = 'finance.label.pension'; Alias = @{ debit_account = 'debit_account_name' }
                            D = @{ Person = 'X.person' }; Covered = @() }
+    # pension_id = interner Griff von fn_import_stage (Folgebescheid an die vorhandene gesetzliche Rente); die Karte
+    # zeigt dieselbe Rente ueber die Zeile finance.label.pension (S.pension).
     pension_statement = @{ Heading = 'finance.label.pension_statement'; Alias = @{}
-                           D = @{ IsNominal = 'X.is_nominal' }; Covered = @() }
+                           D = @{}; Covered = @('pension_id') }
     recurring_payment = @{ Heading = 'finance.label.recurring_payment'; Alias = @{ account = 'account_name' }
                            D = @{ Ccy = 'X.ccy' }; Covered = @() }
     real_estate       = @{ Heading = 'finance.label.real_estate'; Alias = @{}

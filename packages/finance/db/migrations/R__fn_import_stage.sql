@@ -34,6 +34,7 @@ DECLARE
     v_owner   TEXT;
     v_hits    INT;
     v_exist   TEXT;
+    v_exist_id INT;
 BEGIN
     IF jsonb_typeof(p->'rows') IS DISTINCT FROM 'array' OR jsonb_array_length(p->'rows') = 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'rows must be a non-empty array');
@@ -122,11 +123,19 @@ BEGIN
             SELECT r.person_id, r.hit_count INTO v_owner, v_hits FROM core.fn_resolve_person(v_srow.payload->>'owner_person') r;
         END IF;
         CONTINUE WHEN v_hits IS DISTINCT FROM 1;   -- unklare Person: validate_row meldet es
-        SELECT name INTO v_exist FROM finance.pension
+        -- vorhandene Rente: die der Person, sonst (Bescheid mit Namen, Rente ohne Person erfasst) die EINE des Haushalts
+        v_exist := NULL; v_exist_id := NULL;
+        SELECT id, name INTO v_exist_id, v_exist FROM finance.pension
         WHERE pension_type = 'statutory' AND status = 'active' AND owner_person_id IS NOT DISTINCT FROM v_owner;
-        CONTINUE WHEN v_exist IS NULL;
-        UPDATE finance.import_staging SET payload = jsonb_set(payload, '{pension}', to_jsonb(v_exist))
-        WHERE batch_id = v_batch AND entity_type = 'pension_statement'
+        IF v_exist_id IS NULL AND v_owner IS NOT NULL THEN
+            SELECT id, name INTO v_exist_id, v_exist FROM finance.pension
+            WHERE pension_type = 'statutory' AND status = 'active' AND owner_person_id IS NULL;
+        END IF;
+        CONTINUE WHEN v_exist_id IS NULL;
+        -- per id statt Name: zwei Personen duerfen gleichnamige gesetzliche Renten haben (fn_resolve_pension waere mehrdeutig)
+        UPDATE finance.import_staging
+           SET payload = payload || jsonb_build_object('pension', v_exist, 'pension_id', v_exist_id)
+        WHERE batch_id = v_batch AND entity_type = 'pension_statement' AND row_no >= v_first
           AND lower(trim(payload->>'pension')) = lower(trim(v_srow.payload->>'name'));
         DELETE FROM finance.import_staging WHERE id = v_srow.id;
         v_staged := v_staged - 1;

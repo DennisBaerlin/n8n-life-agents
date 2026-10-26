@@ -130,9 +130,9 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_card_rows [insurance Rate + savings_goal Plan aus denselben fn wie der Write]';
 
-  -- Standmitteilung: nominal-Default ja, Name = referenzierte Rente
+  -- Standmitteilung: Name = referenzierte Rente
   v_r := v_rows->7;
-  IF (v_r->'x'->>'is_nominal')::boolean IS DISTINCT FROM true OR v_r->>'name' IS DISTINCT FROM '__test_icr Rente' THEN
+  IF v_r->>'name' IS DISTINCT FROM '__test_icr Rente' THEN
     RAISE EXCEPTION 'FAIL [pension_statement]: %', v_r;
   END IF;
   -- Dauerauftrag: Waehrung des Kontos

@@ -15,7 +15,6 @@
 --                     (fn_import_depot_number_to_store, dieselbe Bedingung wie fn_import_bundle), sonst NULL
 --     period_amount   Versicherung: Rate je Abbuchung (fn_insurance_period_amount, wie fn_create_insurance)
 --     schedule        Sparziel: fn_savings_rate_schedule (wie fn_create_savings_goal)
---     is_nominal      Standmitteilung: genannt, sonst ja (Default von fn_import_bundle)
 --     running         Kredit: laufend (Restschuld zum Stichtag heute) wie fn_create_loan, sonst frisch
 --     rate_split      Kredit mit Rate: {interest, principal} der 1. Rate aus der Restschuld (fn_loan_monthly_interest,
 --                     wie fn_create_loan first_rate_interest/_principal)
@@ -98,8 +97,6 @@ BEGIN
                 END IF;
                 v_x := v_x || jsonb_build_object('person', v_person);
             END IF;
-        ELSIF v_row.entity_type = 'pension_statement' THEN
-            v_x := v_x || jsonb_build_object('is_nominal', COALESCE(NULLIF(v_p->>'is_nominal', '')::boolean, TRUE));
         ELSIF v_row.entity_type = 'loan' THEN
             -- dieselbe Regel wie fn_create_loan: laufend = Restschuld genannt und (kein Betrag oder kleiner)
             v_x := v_x || jsonb_build_object('running',

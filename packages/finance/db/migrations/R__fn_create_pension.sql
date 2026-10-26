@@ -60,14 +60,15 @@ BEGIN
             'reason', 'A statutory pension stores no monthly pension or value of its own - those figures belong to its '
                    || 'Renteninformation (send the statement as a PDF, or leave both fields empty).');
     END IF;
-    IF v_type = 'statutory' AND EXISTS (SELECT 1 FROM finance.pension
-            WHERE pension_type = 'statutory' AND status = 'active'
-              AND owner_person_id IS NOT DISTINCT FROM NULLIF(p->>'owner_person_id','')) THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'This person already has an active statutory pension ("'
-                   || (SELECT name FROM finance.pension WHERE pension_type = 'statutory' AND status = 'active'
-                         AND owner_person_id IS NOT DISTINCT FROM NULLIF(p->>'owner_person_id','') LIMIT 1)
-                   || '") - add the new Renteninformation to it instead of creating a second one.');
+    IF v_type = 'statutory' THEN
+        SELECT name INTO v_reason FROM finance.pension
+         WHERE pension_type = 'statutory' AND status = 'active'
+           AND owner_person_id IS NOT DISTINCT FROM NULLIF(p->>'owner_person_id','');
+        IF FOUND THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'This person already has an active statutory pension ("' || v_reason
+                       || '") - add the new Renteninformation to it instead of creating a second one.');
+        END IF;
     END IF;
     IF v_contrib IS NOT NULL AND v_contrib < 0 THEN
         RETURN jsonb_build_object('ok', false,

@@ -46,7 +46,7 @@ Each area, what belongs to it, and when it is done (every item belongs to exactl
 |---|---|---|
 | `accounts` | every bank/cash account with today's balance: current/checking, savings (Tagesgeld), fixed deposit, P2P | the user says no account is missing |
 | `investments` | depots (with their settlement account), the positions held today, savings plans | the user says no depot/position/plan is missing |
-| `liabilities` | loans with today's remaining debt, and every regular payment in or out (salary, rent, subscriptions, standing transfers) | the user says nothing is missing |
+| `liabilities` | loans with today's remaining debt, and every regular payment in or out (salary, rent, subscriptions, standing transfers). NOT here: savings-goal rates (`goals` — the goal books its own rate; a second recurring payment would count it twice), savings-plan rates (`investments`), insurance premiums (`protection`). When you open this area, say in one short clause that savings goals follow later in their own area | the user says nothing is missing |
 | `protection` | insurances, pensions, real estate | the user says nothing is missing |
 | `goals` | savings goals | the user says no goal is missing |
 | `monthly_check` | nothing to capture — explain the monthly check (Monats-Check) once in plain words, as `tool_reconcile_bank_statement` describes it: the monthly bank statement keeps balances and regular payments right without daily questions | explained once (mark `completed` right after explaining) |

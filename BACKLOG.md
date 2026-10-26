@@ -2,7 +2,7 @@
 
 Sammelort fuer ausgeklammerte Items aus aktuellen + vergangenen Sessions. **Beim Session-Start scannen** ("was sollten wir als naechstes angehen?"); bei jeder Session, in der wir etwas Scoped-Out beschliessen, hier ergaenzen. **Erledigte Punkte werden komplett geloescht** (nicht durchgestrichen) — kein Ballast.
 
-**Roadmap KOMPLETT (2026-06-27):** alle Phasen `0 Hygiene → A → M → S → B → C → Z → D → L → Backup → Knock/Notify` geshippt; danach die Domänen-Pakete **career** (WS-0..5) UND **estate** (WS-0a..5 + Doku) vollständig gebaut + gepusht. Per-Phasen-Historie liegt in den Memory-Topic-Files (nicht hier spiegeln). **Nächste Richtung (Owner-Entscheid 2026-07-05):** die zwei durch das 3. Domänen-Paket getriggerten Genericity-Punkte — **(1) ERLEDIGT** (Staleness-Alarm-Familie via `core.fn_staleness_alert` vereinheitlicht + `metric_key`-Naming harmonisiert; die *volle* Registry bleibt bewusst REJECT-„bei uns anders", s. `packages/finance/CLAUDE.md`), **(2) OFFEN** = Multi-Paket-Lifecycle-Tooling (SC1-Lint aus Manifest + n8n-Restart-Härtung; PARKED-Block unten) = die nächste Phase. **Release v0.2.0** bleibt owner-gegatete Option (letzter Tag `v0.1.0`). Open-Items unten: **DEFER** (trigger-gated/YAGNI, erst bei realem Bedarf) · **PARKED** (größere trigger-gatete Blöcke) · **Owner-Proben** (manuell).
+**Stand:** Roadmap-Phasen und Domänen-Pakete sind gebaut, Releases laufen fortlaufend (Versionen → `git tag`, Per-Phasen-Historie → Memory-Topic-Files; hier nicht spiegeln). Open-Items unten: **DEFER** (trigger-gated/YAGNI, erst bei realem Bedarf) · **PARKED** (größere trigger-gatete Blöcke) · **Owner-Proben** (manuell).
 
 ---
 
@@ -153,7 +153,7 @@ Sammelort fuer ausgeklammerte Items aus aktuellen + vergangenen Sessions. **Beim
 
 ### Backup
 - **Geplanter Auto-Backup als systemd-Timer** (heute `--notify-telegram` + dokumentierte root-crontab-Zeile). systemd-Standard (`.timer`+`.service`, `Persistent=true`) zieht Retention/Rotation + `doctor`-Check + `--purge`-Teardown nach. Bauen bei Owner-Signal.
-- **Versions-übergreifende Restore-Daten-Migration:** der harte Version-Gate IST Branchen-Standard (pg_restore/Borg/restic verweigern Cross-Version ebenso). Echtes Forward-Migrate braucht ≥2 Versionen → **Re-Eval ab v0.2.0 + echtem Mismatch**.
+- **Versions-übergreifende Restore-Daten-Migration:** der harte Version-Gate IST Branchen-Standard (pg_restore/Borg/restic verweigern Cross-Version ebenso). Echtes Forward-Migrate erst bauen, wenn ein Restore real an der Versionssperre scheitert (Trigger).
 
 ---
 
@@ -173,10 +173,6 @@ Sammelort fuer ausgeklammerte Items aus aktuellen + vergangenen Sessions. **Beim
 - **Deutsche Modell-Marker an den LLM englisch** *(Textkatalog Phase C 2026-10-21 bewusst vertagt)*: die 5 `model:agent-eingabe`-Einträge in `scripts/build/ui_literal_allowlist.json` (agent.finance „Onboarding ausstehend"-Abschnitt, agent.guide-Hinweis, Orchestrator „Der Nutzer hat ein Foto/Dokument ohne Bildunterschrift gesendet."). Laut Sprachpolitik Modell-Schicht = englisch, ABER der Foto-/Dokument-Marker ist die Nutzer-Runde, aus der das LLM seine Antwortsprache ableitet → englisch hieße englische Antworten an deutsche Nutzer; nur zusammen mit einer ausdrücklichen „antworte in <Absender-Sprache>"-Anweisung. Mitziehen: `tests/agent/core/orch_cases.json` (165, 173), `tests/mock_llm/scenarios.json` (518, 526), `packages/finance/contexts/finance_agent_instructions.md` (Abschnitt-Überschrift). Trigger: Owner-Freigabe + bezahlter `orch_test`.
 - **Credential-Update via REST `PATCH /credentials/{id}` (PR #18082)** — gleichwertige Alternative zur geshippten id-stabilen CLI-`import:credentials`-Injektion, **bewusst nicht gebaut** (CLI empirisch auf 2.21.7 bewiesen + Parität zu `import:workflow`; PATCH früher wegen per-Typ-Validator-Quirks abgelehnt). Nur re-evaluieren, falls der CLI-Upsert-auf-id-Match-Pfad je bricht (der doctor-Dubletten-Check schlägt dann an).
 
-### Multi-Paket-Lifecycle (Trigger: 2. Domänen-Paket)
-- **SC1-Lint Paket-Klassifikation generisch fürs 3. Paket** (heute per Dateiname; aus Manifest-Ownership ziehen).
-- **Phase H1 — Multi-Paket-Provisioning-Härtung:** verzögerter n8n-Restart NACH der Paket-Schleife (D5). *(Owner-/core_ro-`search_path` generisch + bare-core-CI-Generizitäts-Gate sind erledigt — `core.fn_sync_role_search_paths` + `.github/workflows/genericity.yml`.)*
-
 ### Security-/Credential-Härtung (Trigger: wachsendes Rollenmodell / Multi-Tenant)
 - **Rollen-Permission-Härtung:** voller 5-Punkt-DEFINER-Lint (heute nur search_path-Pin + REVOKE PUBLIC; offen: schema-qualifizierte Refs, guarded dynamic SQL, owner-Check + Header-Marker + INVOKER-Fremdschema-Warnung).
 - **Phase H2 — Secret-/Credential-Härtung:** At-Rest-Verschlüsselung der `/etc/lifeagents/*.env` via systemd `LoadCredentialEncrypted` (heute 640 root:n8n Klartext); Credential-Registry-Tabelle `core.credentials(role, env_file, last_rotated)` + doctor-Drift-Check.
@@ -186,7 +182,6 @@ Sammelort fuer ausgeklammerte Items aus aktuellen + vergangenen Sessions. **Beim
 - **`http_json`-Beschaffungsmethode** (deterministischer Endpoint+JSONPath); **Batched Web-Search** (ein Call für mehrere Web-Trigger); **Text-Observations**; **Auto-Re-Arm/Hysterese**; **Snooze** für recurring_info; **Trigger-fired → Auto-Advisor-Invoke**; **Observation-Charts**; per-Trigger `fail_alert_streak`-Override; **recurring_info-Zero-Suppression** (Count 0 → keine Nachricht); **dynamischer Monitor-Message-Builder**. (Trigger-Persistenz-Sink = bewusstes Nicht-Ziel per Cron-vs-Trigger-Gesetz.)
 
 ### Advisor-Zukunft
-- **Advisor-Template-Extraktion → WS-1 Schritt 0 (preparatory refactor):** beim Bau des Career-Advisors `Build-AdvisorAgent` aus `agent.finance_advisor.ps1` extrahieren — unmittelbar davor, NICHT in WS-0. **arch-challenge 2026-06-28 (DEFER, nicht re-litigieren):** WS-0 baut keinen Agenten → Extraktion gegen GENAU 1 Aufrufer = premature abstraction (Rule of Three / Metz); bestätigt durch die dokumentierte Clone-and-Trim-YAGNI-Regel in `packages/core/CLAUDE.md` + den „Backlog, NICHT Factory in v1"-Kopf von `agent.finance_advisor.ps1`. Ziel-Ort entscheidet sich an 2 konkreten Instanzen (shared `scripts/build/lib/` vs. package-lokal).
 - **Web-Search-Provider diversifizieren** (Tavily/Perplexity) nur falls die Claude-Websuche für deutsche Steuer-Themen schwächelt (Kill: 2× schlechte Eval in Folge).
 - **`advisor_plan_targets`-Tabelle** — eigene Tabelle erst wenn per-Ziel-Drift-Historie (Zeitreihe Soll↔Ist je Ziel) gebraucht wird.
 - **Erbschafts-Deployment ~2028** als Panel-Session vorplanen (date-Trigger mit `warn_days_before`).

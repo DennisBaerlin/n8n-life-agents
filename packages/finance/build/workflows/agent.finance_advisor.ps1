@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance_advisor -> Build-AgentFinanceAdvisor. Dot-gesourct von build.ps1.
-# Schlanker Klon des agent.finance-Templates — KONKRET, aber extraktionsbereit: die Domaenen-
-# Konstanten stehen am Funktionskopf; ein kuenftiger Career-Advisor wird daraus per Template-
-# Extraktion gebaut (Backlog), NICHT per Factory in v1.
+# Schlanker Klon des agent.finance-Templates und Vorlage der weiteren Advisor (Clone-and-Trim, bewusst
+# KEINE Factory — build-CLAUDE.md "Agent-Generatoren sind Clone-and-Trim"); die Domaenen-Konstanten stehen
+# am Funktionskopf, Geteiltes liegt in lib/build_helpers.ps1 (New-AdvisorGateChain/-ToolNode/-PhrasingTail).
 # Der Advisor bucht nie: keine Buchungs-/Stammdaten-Tools gebunden; seine Writes sind Plan-Persistenz
 # (tool_save_plan_section/tool_publish_plan), Plan-Trigger und als einzige Daten-Ausnahme
 # tool_set_asset_classes (nur Anlageklassen, Owner 2026-10-23) - alle HITL-gegatet.

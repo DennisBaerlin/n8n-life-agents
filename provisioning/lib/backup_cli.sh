@@ -357,7 +357,7 @@ backup_cmd_restore() {
       # Versions-Gate (fail-closed VOR jedem Wipe): pg_restore -a passt Daten NICHT an ein per Migration
       # veraendertes Ziel-Schema an -> bewusst KEIN Cross-Version-Restore (Branchen-Standard: pg_restore/
       # Borg/restic verweigern Cross-Version ebenso). Echtes Forward-Migrate braeuchte eine Migrationskette
-      # zwischen >=2 Versionen (BACKLOG, Re-Eval ab v0.2.0 + echtem Mismatch).
+      # zwischen >=2 Versionen (BACKLOG, Trigger: ein Restore scheitert real an der Versionssperre).
       die "Versions-Konflikt fuer '$pkg': Bundle=$ver, installiert=$inst_ver. Versions-uebergreifender Restore wird (wie pg_restore/Borg/restic) bewusst NICHT unterstuetzt — installierte Version an die Bundle-Version angleichen ('lifeagents update'), dann erneut restoren."
     fi
   done < <(jq -r '.packages[]? | [.name, .version] | @tsv' "$tmp/manifest.json")

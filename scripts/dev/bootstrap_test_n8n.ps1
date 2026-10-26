@@ -24,7 +24,7 @@
 # senden den Header `X-Test-Auth`. inject_credentials.sh defaultet auf `x-harness-secret` -> ohne den
 # Override wuerde die Credential mit falschem Header-Namen angelegt -> infra_test bekaeme 403.
 #
-# Verbindungswerte (URL + frisch geminteter N8N_API_KEY) landen in .local/n8ntest_state.json; die
+# Verbindungswerte (URL + frisch geminteter N8N_API_KEY) landen in .local/n8ntest_state.<container>.json; die
 # Tier-Skripte lesen sie ueber scripts/dev/test_n8n_state.ps1 (Prod-.env-Keys werden nicht mehr gelesen).
 #
 # Usage:
@@ -93,7 +93,8 @@ $UseBase    = -not ($Cold -or $Version)
 $BridgePort = 5680                       # socat-Listener IM Container (0.0.0.0) -> 127.0.0.1:5678
 $HostPort   = if ($env:N8NTEST_PORT) { $env:N8NTEST_PORT } else { '5680' }
 $N8nUrl     = "http://127.0.0.1:$HostPort"
-$StateFile  = Join-Path $RepoRoot '.local\n8ntest_state.json'
+. "$PSScriptRoot\test_n8n_state.ps1"     # Get-TestN8nStateFile: Zustandsdatei JE Container (zweites Substrat ueberschreibt nichts)
+$StateFile  = Get-TestN8nStateFile -Container $Container
 $ContainerRoot = '/opt/n8n-life-agents'   # provisioning/ + packages/ als Geschwister (REPO_ROOT)
 $EnvFileInC = '/root/.n8ntest_install.env'
 
@@ -661,7 +662,7 @@ Write-Host "============================================================"
 Write-Host "  Test-n8n-Instanz bereit (Docker, systemd)"
 Write-Host "  Container:  $Container"
 Write-Host "  n8n:        $N8nUrl   (REST + Webhooks ueber socat-Bruecke)"
-Write-Host "  API-Key:    $(if ($apiKey) { '(geminted, in .local/n8ntest_state.json)' } else { '(FEHLT — s. Warnung oben)' })"
+Write-Host "  API-Key:    $(if ($apiKey) { "(geminted, in $StateFile)" } else { '(FEHLT — s. Warnung oben)' })"
 Write-Host ""
 Write-Host "  Tiers gegen diese Instanz:  .\scripts\infra_test.ps1"
 Write-Host "  zum Abbauen:                .\scripts\dev\bootstrap_test_n8n.ps1 -Down"

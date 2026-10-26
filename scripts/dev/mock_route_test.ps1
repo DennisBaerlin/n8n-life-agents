@@ -70,7 +70,7 @@ $Headers     = @{ 'X-N8N-API-KEY' = $N8N_API_KEY }
 $AuthHeader  = 'X-Test-Auth'
 
 # --- Beide Mocks aktiv? (mock_llm fuer das Routing, mock_telegram fuer die Gate-Aufloesung) ----------
-$stateFile = Join-Path $RepoRoot '.local\n8ntest_state.json'
+$stateFile = Get-TestN8nStateFile
 $state = [System.IO.File]::ReadAllText($stateFile, $Utf8NoBom) | ConvertFrom-Json
 if (-not $state.mock_llm) { throw "Mock-LLM nicht aktiv (kein mock_llm-Block im State). Zuerst: .\scripts\dev\enable_mock_llm.ps1" }
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (Gate-Aufloesung). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }

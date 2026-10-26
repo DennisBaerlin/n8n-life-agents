@@ -2,7 +2,7 @@
 # test_n8n_state.ps1 — gemeinsamer Verbindungs-Resolver fuer die n8n-Integrations-Tiers.
 #
 # Die ephemere Test-n8n-Instanz (scripts/dev/bootstrap_test_n8n.ps1) schreibt ihre Verbindungsdaten
-# (URL der socat-Bruecke + frisch geminteter N8N_API_KEY) nach .local/n8ntest_state.json. Die Tier-
+# (URL der socat-Bruecke + frisch geminteter N8N_API_KEY) nach .local/n8ntest_state.<container>.json. Die Tier-
 # Skripte (infra_test/n8n_test/orch_test/e2e_test/multiturn_test) lesen sie hierueber, statt die
 # (abgeschaltete) Prod-Instanz aus .env zu nehmen — strukturell sauber raus aus Prod.
 #
@@ -12,13 +12,32 @@
 #
 # Throw (kein Silent-Fallback): laeuft kein Test-Substrat, soll der Tier-Lauf mit klarer Anweisung
 # abbrechen statt versehentlich gegen eine fremde Instanz zu feuern.
+# Get-TestN8nStateFile — DIE eine Adresse der Zustandsdatei: je Container eine eigene
+# (.local/n8ntest_state.<container>.json; Container = $env:N8NTEST_CONTAINER, sonst der Bootstrap-Default). Vorher teilten
+# sich alle Substrate einer Arbeitskopie EINE Datei -> ein zweites Substrat ueberschrieb URL/API-Key des ersten (2026-10-26:
+# 403 in cron_text waehrend einer parallelen Update-Probe). Jeder Leser/Schreiber (Bootstrap, enable_mock_*, Tier-Skripte)
+# holt den Pfad hier.
+function Get-TestN8nStateFile {
+    param([string]$Container = $(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }))
+    $repoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
+    return (Join-Path $repoRoot ".local\n8ntest_state.$Container.json")
+}
+
+# Get-TestN8nState — der rohe Zustand (url, api_key, container, mock_*) des aktuellen Substrats; Throw mit Hinweis, wenn keins.
+function Get-TestN8nState {
+    $f = Get-TestN8nStateFile
+    if (-not (Test-Path $f)) {
+        throw "Kein Test-Substrat fuer Container '$(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' })' ($f fehlt). Zuerst hochfahren: .\scripts\dev\bootstrap_test_n8n.ps1"
+    }
+    return ([System.IO.File]::ReadAllText($f, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json)
+}
+
 function Get-TestN8nConnection {
     param([switch]$AllowMissing)
-    $repoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
-    $stateFile = Join-Path $repoRoot '.local\n8ntest_state.json'
+    $stateFile = Get-TestN8nStateFile
     if (-not (Test-Path $stateFile)) {
         if ($AllowMissing) { return $null }
-        throw "Kein Test-Substrat gefunden (.local/n8ntest_state.json fehlt). Zuerst hochfahren: .\scripts\dev\bootstrap_test_n8n.ps1"
+        throw "Kein Test-Substrat gefunden ($stateFile fehlt). Zuerst hochfahren: .\scripts\dev\bootstrap_test_n8n.ps1"
     }
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     try {

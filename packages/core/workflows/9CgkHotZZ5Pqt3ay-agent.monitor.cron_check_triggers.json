@@ -401,6 +401,35 @@
                                    ],
                       "id":  "8ab0e1da-cb24-55e8-82b5-b74288735d7b",
                       "name":  "Doc Evaluate"
+                  },
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1100,
+                                       180
+                                   ],
+                      "id":  "0e5e7a97-5f3b-5f63-ba3a-59b1d6ff2453",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       300
+                                   ],
+                      "id":  "ac32eb58-4e18-5604-b9db-ef6610894a93",
+                      "name":  "Test run (Doc)"
                   }
               ],
     "connections":  {
@@ -556,7 +585,18 @@
                                                                }
                                                            ]
                                                        ]
-                                          }
+                                          },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Read feature flag",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
                     },
     "settings":  {
                      "executionOrder":  "v1",

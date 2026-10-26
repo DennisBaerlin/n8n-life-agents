@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 # infra_test nur wenn das Docker-Test-Substrat laeuft + erreichbar ist (gratis, aber substrat-abhaengig
-# -> nur Warnung). Verbindung aus .local/n8ntest_state.json (raus aus Prod; -AllowMissing = $null statt Throw).
+# -> nur Warnung). Verbindung aus .local/n8ntest_state.<container>.json (raus aus Prod; -AllowMissing = $null statt Throw).
 Write-Host "Infra-Tests (wenn das Test-Substrat laeuft; nur Warnung) ..." -ForegroundColor Cyan
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $conn = Get-TestN8nConnection -AllowMissing

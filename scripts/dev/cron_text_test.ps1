@@ -37,7 +37,7 @@ $ApiKey    = $conn.ApiKey
 $Container = $conn.Container
 $Headers   = @{ 'X-N8N-API-KEY' = $ApiKey }
 
-$state = [System.IO.File]::ReadAllText((Join-Path $RepoRoot '.local\n8ntest_state.json'), $Utf8NoBom) | ConvertFrom-Json
+$state = Get-TestN8nState
 if (-not $state.mock_llm)      { throw "Mock-LLM nicht aktiv. Zuerst: .\scripts\dev\enable_mock_llm.ps1" }
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv. Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
@@ -201,15 +201,27 @@ try {
                 $wfId = ($wfList.data | Where-Object { $_.name -eq $c.workflow } | Select-Object -First 1).id
                 if (-not $wfId) { throw "Workflow '$($c.workflow)' nicht gefunden." }
                 $maxId = Get-MaxExecId -WfId $wfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-                Invoke-LifeagentsConfig @('set', 'schedule', [string]$c.schedule_key, '* * * * *')
+                # Schnellweg (2026-10-26): der Test-Eingang core.cron_run.test_harness startet den Cron sofort ueber
+                # seinen 'Test run'-Einstieg (Build-Workflow). Rueckfall auf den alten Weg (Zeitplan auf jede Minute,
+                # 2 Redeploys + Warten) nur auf einem Substrat ohne diesen Eingang.
+                $viaHarness = $null -ne ($wfList.data | Where-Object { $_.name -eq 'core.cron_run.test_harness' -and $_.active })
+                if ($viaHarness) {
+                    # responseMode=lastNode: der POST kehrt erst nach dem Lauf zurueck; ein waitender Cron (HITL-Frage)
+                    # antwortet trotzdem (Execute Workflow wartet nicht auf die Freigabe).
+                    Invoke-RestMethod -Uri "$N8nUrl/webhook/cron-run-test" -Method Post -Headers @{ 'X-Test-Auth' = $TEST_HARNESS_SECRET } `
+                        -ContentType 'application/json; charset=utf-8' -TimeoutSec $Timeout `
+                        -Body ([System.Text.Encoding]::UTF8.GetBytes((@{ workflow_id = $wfId } | ConvertTo-Json))) | Out-Null
+                } else {
+                    Invoke-LifeagentsConfig @('set', 'schedule', [string]$c.schedule_key, '* * * * *')
+                }
                 $ex = $null; $start = Get-Date
                 try {
                     while (((Get-Date) - $start).TotalSeconds -lt $Timeout) {
                         try { $ex = @((Invoke-N8nGet "executions?workflowId=$wfId&limit=10").data | Where-Object { [int]$_.id -gt $maxId -and $_.status -in @('success', 'waiting', 'error', 'crashed') } | Sort-Object { [int]$_.id } | Select-Object -First 1) } catch { $ex = @() }
                         if ($ex.Count) { break }
-                        Start-Sleep -Seconds 3
+                        Start-Sleep -Seconds $(if ($viaHarness) { 1 } else { 3 })
                     }
-                } finally { Invoke-LifeagentsConfig @('reset', 'schedule', [string]$c.schedule_key) }
+                } finally { if (-not $viaHarness) { Invoke-LifeagentsConfig @('reset', 'schedule', [string]$c.schedule_key) } }
                 if (-not $ex -or $ex.Count -eq 0) { throw "keine neue Execution von $($c.workflow) binnen $Timeout s" }
                 if ($ex[0].status -in @('error', 'crashed')) { $errs += "Execution $($ex[0].id) endete mit $($ex[0].status)" }
                 Start-Sleep -Seconds 3

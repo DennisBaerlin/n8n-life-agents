@@ -55,7 +55,7 @@ $Headers     = @{ 'X-N8N-API-KEY' = $N8N_API_KEY }
 $AuthHeader  = 'X-Test-Auth'
 $WebhookUrl  = "$N8N_URL/webhook/$WebhookPath"
 
-$state = [System.IO.File]::ReadAllText((Join-Path $RepoRoot '.local\n8ntest_state.json'), $Utf8NoBom) | ConvertFrom-Json
+$state = Get-TestN8nState
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate-Aufloesung noetig). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
 # Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock) + Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real

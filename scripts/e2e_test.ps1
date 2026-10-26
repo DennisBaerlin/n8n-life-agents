@@ -82,7 +82,7 @@ $WebhookUrl = "$N8N_URL/webhook/$WebhookPath"
 # Routing-/Gate-Zweig haengt mehr daran): er schaltet nur noch den Advisor/Monitor-Sentinel-Domain-Switch
 # (__e2e_finance__/__e2e_monitor__) -> die echte Plan-/Trigger-Kette wird nie beruehrt. Finance isoliert
 # ueber den __E2E__-Namens-Sentinel. Mock-Telegram muss aktiv sein.
-$state = [System.IO.File]::ReadAllText((Join-Path $RepoRoot '.local\n8ntest_state.json'), $Utf8NoBom) | ConvertFrom-Json
+$state = Get-TestN8nState
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate-Approve-Mechanik noetig). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
 # Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock) + Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real

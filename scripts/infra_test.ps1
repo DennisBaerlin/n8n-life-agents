@@ -82,7 +82,7 @@ $wfMap  = @{}
 foreach ($wf in $wfList.data) { $wfMap[$wf.name] = $wf.id }
 
 $PairedOwnerUid = $TestOwnerTelegramUid   # gepairter Fixture-Owner-Sender (scripts/dev/test_n8n_state.ps1)
-$stateFile = Join-Path $RepoRoot '.local\n8ntest_state.json'
+$stateFile = Get-TestN8nStateFile
 $substrateState = if (Test-Path $stateFile) { [System.IO.File]::ReadAllText($stateFile, $Utf8NoBom) | ConvertFrom-Json } else { $null }
 
 $tcFile   = Join-Path $RepoRoot 'tests\agent\core\infra_cases.json'

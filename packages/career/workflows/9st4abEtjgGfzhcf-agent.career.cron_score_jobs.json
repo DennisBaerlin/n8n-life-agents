@@ -595,6 +595,35 @@
                                    ],
                       "id":  "d1f27d31-d518-59df-8f6f-cada8a5e35d1",
                       "name":  "Treffer-Karte (Feedback-Loop, per-Person)"
+                  },
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1780,
+                                       180
+                                   ],
+                      "id":  "b6251e4b-ee45-5fea-a561-90adca3d4368",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1820,
+                                       300
+                                   ],
+                      "id":  "2c2799f6-8e05-56c8-a3cf-8815b2af9033",
+                      "name":  "Test run (Doc)"
                   }
               ],
     "connections":  {
@@ -830,7 +859,18 @@
                                                            }
                                                        ]
                                                    ]
-                                      }
+                                      },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
                     },
     "settings":  {
                      "executionOrder":  "v1",

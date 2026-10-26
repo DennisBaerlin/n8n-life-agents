@@ -53,7 +53,7 @@ $Container = $conn.Container
 if ([string]::IsNullOrWhiteSpace($TEST_HARNESS_SECRET)) { throw "TEST_HARNESS_SECRET fehlt in .env." }
 
 # Mock-Telegram muss aktiv sein (State-Block von enable_mock_telegram.ps1).
-$state = [System.IO.File]::ReadAllText((Join-Path $RepoRoot '.local\n8ntest_state.json'), $Utf8NoBom) | ConvertFrom-Json
+$state = Get-TestN8nState
 if (-not $state.mock_telegram) {
     throw "Mock-Telegram nicht aktiv (kein mock_telegram-Block im State). Zuerst: .\scripts\dev\enable_mock_telegram.ps1"
 }

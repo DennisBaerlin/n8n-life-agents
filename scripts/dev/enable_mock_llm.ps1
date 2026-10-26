@@ -25,7 +25,7 @@
 #   (falls gepatcht) Gemini-host zurueck auf https://generativelanguage.googleapis.com + State-Block entfernen.
 # -UpdateScenarios: NUR scenarios.json neu kopieren (der Stub liest sie pro Request frisch -> kein Neustart).
 #
-# Vorbedingung: laufendes Substrat (.local/n8ntest_state.json). TEST_GOOGLE_API_KEY ist optional (nur fuer 3b).
+# Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json). TEST_GOOGLE_API_KEY ist optional (nur fuer 3b).
 param(
     [switch]$Down,
     [switch]$UpdateScenarios,
@@ -57,7 +57,7 @@ $ServerHost = Join-Path $RepoRoot 'tests\mock_llm\server.js'
 $ScnHost    = Join-Path $RepoRoot 'tests\mock_llm\scenarios.json'
 $ServerInC  = '/opt/mock_llm/server.js'
 $ScnInC     = '/opt/mock_llm/scenarios.json'
-$StateFile  = Join-Path $RepoRoot '.local\n8ntest_state.json'
+$StateFile  = Get-TestN8nStateFile
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
 
 # Invoke-Native — natives Tool, stdout+stderr + Exit-Code (EAP-Quirk wie die uebrigen dev-Treiber).

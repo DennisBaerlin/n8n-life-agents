@@ -43,7 +43,7 @@ $MockLog    = '/tmp/mock_paperless.jsonl'
 $Unit       = 'n8ntest-mock-paperless'
 $ServerHost = Join-Path $RepoRoot 'tests\mock_paperless\server.js'
 $ServerInC  = '/opt/mock_paperless/server.js'
-$StateFile  = Join-Path $RepoRoot '.local\n8ntest_state.json'
+$StateFile  = Get-TestN8nStateFile
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
 $CredName   = 'Paperless-NGX API'
 

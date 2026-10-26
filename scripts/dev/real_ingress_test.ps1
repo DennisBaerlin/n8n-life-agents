@@ -44,7 +44,7 @@ $Container = $conn.Container
 $Headers   = @{ 'X-N8N-API-KEY' = $ApiKey }
 
 # --- Beide Mocks muessen aktiv sein (State-Bloecke) --------------------------------------------------
-$state = [System.IO.File]::ReadAllText((Join-Path $RepoRoot '.local\n8ntest_state.json'), $Utf8NoBom) | ConvertFrom-Json
+$state = Get-TestN8nState
 if (-not $state.mock_llm) {
     throw "Mock-LLM nicht aktiv (kein mock_llm-Block im State). Zuerst: .\scripts\dev\enable_mock_llm.ps1"
 }

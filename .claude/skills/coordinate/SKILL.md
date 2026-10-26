@@ -35,7 +35,7 @@ Owner-Regel (2026-10-23): Es gibt immer **genau eine leitende Session** mit Merg
   - nach dem Tag mit `CronDelete` beenden
 - **Release-Umfang:** Vor dem Zusammenführen fragt die Leitung den Owner (`AskUserQuestion`), welche fertigen Arbeiten in das gemeinsame Release kommen. Nicht selbst festlegen.
 - **Engpässe lösen:** Wartet eine Session auf eine andere, bringt die Leitung beide direkt zusammen. Belegt die Leitung einen Substrat-Platz, den sie gerade nicht braucht (Parallel-Limit in `scripts/dev/bootstrap_test_n8n.ps1`), gibt sie ihn frei.
-- Ablauf danach wie gewohnt: Merge-Kette → freie Gates auf dem Gesamtstand (EIN Befehl: `scripts/dev/run_free_gates.ps1 -Reset -Cold` mit eigenen Containern; vorher per `docker ps` prüfen, ob ein Substrat-Platz frei ist, sonst den Halter direkt um Freigabe bitten) → bezahlte Suiten im Owner-Fenster → annotierter Tag mit englischen Release-Notes (öffentlich: was sich geändert hat, keine Live-Werte; `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`) → alle Sessions benachrichtigen → Aufräumen.
+- Ablauf danach wie gewohnt: Merge-Kette → freie Gates auf dem Gesamtstand (EIN Befehl: `scripts/dev/run_free_gates.ps1 -Reset -Parallel` mit eigenen Containern, `-Cold` nur bei geändertem Install-Kern; vorher per `docker ps` prüfen, ob ein Substrat-Platz frei ist, sonst den Halter direkt um Freigabe bitten) → bezahlte Suiten im Owner-Fenster → annotierter Tag mit englischen Release-Notes (öffentlich: was sich geändert hat, keine Live-Werte; `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`) → alle Sessions benachrichtigen → Aufräumen.
 
 ## 4. Pflichten der übrigen Sessions
 

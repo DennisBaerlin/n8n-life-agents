@@ -38,7 +38,7 @@ $Container   = $conn.Container
 $Headers     = @{ 'X-N8N-API-KEY' = $N8N_API_KEY }
 
 # Mock-Telegram muss aktiv sein (fuer die Gate-Aufloesung); Mock-LLM darf NICHT aktiv sein (echtes Routing).
-$state = [System.IO.File]::ReadAllText((Join-Path $RepoRoot '.local\n8ntest_state.json'), $Utf8NoBom) | ConvertFrom-Json
+$state = Get-TestN8nState
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate-Aufloesung noetig). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
 # Mock-LLM aktiv = gescriptetes statt echtes Routing -> hart abbrechen (vorher nur Warnung; der Waechter prueft den
 # tatsaechlichen Gateway-Upstream, nicht nur den State-Block). Dazu die Start-Marke fuer die Kostenuebersicht.

@@ -330,6 +330,35 @@
                                    ],
                       "id":  "4e0fe572-5f59-585f-9cfc-2d5a87f5ba07",
                       "name":  "F9 Cron-Gate (WS4a)"
+                  },
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -820,
+                                       180
+                                   ],
+                      "id":  "2ffc937a-e19a-5aa7-a63f-e58f9f650734",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -860,
+                                       300
+                                   ],
+                      "id":  "cf9b4fd6-60a7-52eb-a1b6-db08cffaa358",
+                      "name":  "Test run (Doc)"
                   }
               ],
     "connections":  {
@@ -448,7 +477,18 @@
                                                                  }
                                                              ]
                                                          ]
-                                            }
+                                            },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
                     },
     "settings":  {
                      "executionOrder":  "v1",

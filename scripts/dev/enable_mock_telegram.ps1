@@ -16,7 +16,7 @@
 #
 # -Down: Mock-Unit stoppen + baseUrl zurueck auf https://api.telegram.org patchen + State-Block entfernen.
 #
-# Vorbedingung: laufendes Substrat (.local/n8ntest_state.json) + TEST_TELEGRAM_BOT_TOKEN in .env
+# Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json) + TEST_TELEGRAM_BOT_TOKEN in .env
 # (die Credential muss existieren — inject_credentials legt sie nur bei vorhandenem Token an; der Mock
 # selbst ignoriert den Token, aber der Telegram-Node braucht eine gebundene Credential).
 param(
@@ -44,7 +44,7 @@ $MockLog    = '/tmp/mock_telegram.jsonl'
 $Unit       = 'n8ntest-mock-telegram'
 $ServerHost = Join-Path $RepoRoot 'tests\mock_telegram\server.js'
 $ServerInC  = '/opt/mock_telegram/server.js'
-$StateFile  = Join-Path $RepoRoot '.local\n8ntest_state.json'
+$StateFile  = Get-TestN8nStateFile
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
 
 # Invoke-Native — natives Tool, stdout+stderr + Exit-Code (EAP-Quirk wie die uebrigen dev-Treiber).

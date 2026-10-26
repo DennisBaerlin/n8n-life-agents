@@ -14,7 +14,7 @@
 # -StopWaiting is safe: only touches executions with status=waiting. Useful when a gate
 # (sendAndWait) was never clicked and blocks n8n resources / slows down the web UI.
 #
-# Connection from the ephemeral Docker test substrate (Get-TestN8nConnection -> .local/n8ntest_state.json),
+# Connection from the ephemeral Docker test substrate (Get-TestN8nConnection -> .local/n8ntest_state.<container>.json),
 # NOT from .env: there is no live prod anymore. Throws with a hint if no substrate is running.
 
 param(

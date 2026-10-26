@@ -90,7 +90,59 @@ Bei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).
     return [ordered]@{ name = $H.name; nodes = $nodes; connections = $conns; settings = [ordered]@{ executionOrder = 'v1' } }
 }
 
+# Generischer Cron-Test-Eingang (2026-10-26, schnellere freie Gates): startet den Workflow mit der workflow_id aus dem
+# Body ueber dessen 'Test run'-Einstieg (Build-Workflow ergaenzt ihn an jedem Cron). cron_text_test wartet damit nicht
+# mehr auf die volle Minute eines umgestellten Zeitplans (vorher je Fall 2 Redeploys + bis zu 60 s Warten).
+function Build-CronRunHarness {
+    $webhook = [ordered]@{
+        parameters = [ordered]@{
+            httpMethod = 'POST'; path = 'cron-run-test'; authentication = 'headerAuth'; responseMode = 'lastNode'; options = @{}
+        }
+        type = 'n8n-nodes-base.webhook'; typeVersion = 2; position = @(0, 0); id = (New-Id); name = 'Test Webhook'
+        webhookId = (New-Id); credentials = @{ httpHeaderAuth = $CRED_HARNESS }
+    }
+    $run = [ordered]@{
+        parameters = [ordered]@{
+            workflowId = [ordered]@{ __rl = $true; value = "={{ `$('Test Webhook').item.json.body.workflow_id }}"; mode = 'id' }
+            workflowInputs = [ordered]@{
+                mappingMode = 'defineBelow'; value = [ordered]@{}
+                matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true
+            }
+            # nicht auf den Cron warten: ein Cron mit Bestaetigungs-Frage (sendAndWait) hielte den POST sonst bis zum Tipp
+            # fest; cron_text_test verfolgt die Ziel-Execution selbst (monotone Exec-id).
+            options = [ordered]@{ waitForSubWorkflow = $false }
+        }
+        type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.2; position = @(280, 0); id = (New-Id); name = 'Run cron'
+        onError = 'continueRegularOutput'   # Ziel-Fehler liest das Skript aus der Ziel-Execution selbst
+    }
+    $runInfo = [ordered]@{
+        parameters = [ordered]@{ jsCode = 'return { json: { harness_execution_id: $execution.id } };'; mode = 'runOnceForEachItem' }
+        type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(560, 0); id = (New-Id); name = 'Run Info'
+    }
+    $sticky = [ordered]@{
+        parameters = [ordered]@{
+            content = @"
+## core.cron_run.test_harness
+**Test-Eingang.** Kein Produktiv-Workflow (nur Test-Instanzen).
+
+Webhook (POST, Header-Auth, responseMode=lastNode) mit Body {workflow_id} -> Execute Workflow startet diesen Cron ueber
+seinen 'Test run'-Einstieg (passthrough, Build-Workflow) -> Run Info antwortet mit der Harness-Execution-ID. Ersetzt in
+cron_text_test das Umstellen des Zeitplans auf jede Minute (2 Redeploys + Warten je Fall).
+"@
+            height = 250; width = 480; color = 7
+        }
+        type = 'n8n-nodes-base.stickyNote'; typeVersion = 1; position = @(-40, -260); id = (New-Id); name = 'Doc Overview'
+    }
+    $conns = [ordered]@{
+        'Test Webhook' = @{ main = @( ,@( E 'Run cron' ) ) }
+        'Run cron'     = @{ main = @( ,@( E 'Run Info' ) ) }
+    }
+    return [ordered]@{ name = 'core.cron_run.test_harness'; nodes = @($webhook, $run, $runInfo, $sticky); connections = $conns
+                       settings = [ordered]@{ executionOrder = 'v1' } }
+}
+
 # Liefert alle Harness-Workflow-Objekte (ohne id) als Array -- die Union aller Paket-Beitraege.
 function Get-HarnessWorkflow {
     foreach ($H in $script:Harnesses) { Build-Harness $H }
+    Build-CronRunHarness
 }

@@ -23,8 +23,9 @@ try {
     $ids = @(docker ps -a -q --filter 'label=lifeagents.substrate=n8n' --filter "label=lifeagents.worktree=$repo" 2>$null)
     foreach ($id in ($ids | Where-Object { $_ })) { docker rm -f $id 2>$null | Out-Null }
     if ($ids.Count -gt 0) {
-        $state = Join-Path $repo '.local/n8ntest_state.json'
-        if (Test-Path $state) { Remove-Item $state -Force }
+        # Zustandsdateien je Container (.local/n8ntest_state.<container>.json) + die alte gemeinsame Datei
+        Get-ChildItem (Join-Path $repo '.local') -Filter 'n8ntest_state*.json' -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
     }
 } catch { }
 exit 0

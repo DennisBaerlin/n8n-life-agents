@@ -247,7 +247,7 @@ function Test-RawMoneyDate([string]$Text) {
 
 $ORCH_ID = 'A6iPk9ezRzKzLbTj'
 $vChatCond = @(); $vChatExpr = @(); $vExprProto = @(); $vCodeShape = @(); $vSrcBind = @()
-$vTgAttr = @(); $vTgRetry = @(); $vTgEscape = @(); $vConnRef = @(); $vConnShape = @(); $vTgFmt = @(); $vNoSticky = @(); $vTgApprover = @(); $vStaleTap = @(); $vHitlStruct = @(); $vUmlaut = @(); $vTgWaitLimit = @(); $vTgEmptyParse = @()
+$vTgAttr = @(); $vTgRetry = @(); $vTgEscape = @(); $vConnRef = @(); $vConnShape = @(); $vCronTestRun = @(); $vTgFmt = @(); $vNoSticky = @(); $vTgApprover = @(); $vStaleTap = @(); $vHitlStruct = @(); $vUmlaut = @(); $vTgWaitLimit = @(); $vTgEmptyParse = @()
 # Ausnahmen vom Stale-Tap-Guard (10), je mit Grund:
 $staleTapExempt = @(
     # HITL-Gate: je Empfaenger genau EIN Warte-Node pro Execution; die Owner-Stufe des Vier-Augen-Pfads hat andere
@@ -447,9 +447,19 @@ foreach ($wfFile in (Get-AllWfFiles)) {
             }
         }
     }
+    # (Test-Startpunkt) Jeder Cron mit Zeitplan traegt GENAU einen 'Test run' (executeWorkflowTrigger, passthrough) mit
+    # denselben Kanten wie der Zeitplan (Build-Workflow) -> cron_text_test startet ihn ueber core.cron_run.test_harness.
+    if ($nodeNames -contains 'Schedule (cron from config)') {
+        $tr = @($w.nodes | Where-Object { $_.name -eq 'Test run' })
+        if ($tr.Count -ne 1 -or $tr[0].type -ne 'n8n-nodes-base.executeWorkflowTrigger' -or $tr[0].parameters.inputSource -ne 'passthrough') {
+            $vCronTestRun += "$($w.name) :: 'Test run' fehlt oder ist kein passthrough-executeWorkflowTrigger"
+        } elseif (($w.connections.'Test run' | ConvertTo-Json -Depth 8 -Compress) -ne ($w.connections.'Schedule (cron from config)' | ConvertTo-Json -Depth 8 -Compress)) {
+            $vCronTestRun += "$($w.name) :: 'Test run' hat andere Kanten als der Zeitplan"
+        }
+    }
 }
 
-foreach ($v in ($vChatCond + $vChatExpr + $vExprProto + $vCodeShape + $vSrcBind + $vTgAttr + $vTgRetry + $vTgEscape + $vConnRef + $vConnShape + $vTgFmt + $vNoSticky + $vTgApprover + $vStaleTap + $vHitlStruct + $vUmlaut + $vTgWaitLimit + $vTgEmptyParse | Sort-Object -Unique)) {
+foreach ($v in ($vChatCond + $vChatExpr + $vExprProto + $vCodeShape + $vSrcBind + $vTgAttr + $vTgRetry + $vTgEscape + $vConnRef + $vConnShape + $vTgFmt + $vNoSticky + $vTgApprover + $vStaleTap + $vHitlStruct + $vUmlaut + $vTgWaitLimit + $vTgEmptyParse + $vCronTestRun | Sort-Object -Unique)) {
     Write-Host "    OFFENDER: $v" -ForegroundColor Yellow
 }
 Check 'Stickies: jeder Workflow traegt >= 1 Sticky-Note (Workflows sind die Doku)' { $vNoSticky.Count -eq 0 }
@@ -470,6 +480,7 @@ Check 'Telegram: sendAndWait-Wartegrenze unter options (top-level limitWaitTime 
 Check "Telegram: kein leeres parse_mode (n8n macht daraus 'Markdown'; Plain = HTML + Escape)" { $vTgEmptyParse.Count -eq 0 }
 Check 'Connections: jede Quelle/jedes Ziel referenziert einen Node'     { $vConnRef.Count -eq 0 }
 Check 'Connections: main = Array von Arrays (n8n-Import-Form)'           { $vConnShape.Count -eq 0 }
+Check 'Crons: Test-Startpunkt Test run (passthrough, Kanten wie der Zeitplan)' { $vCronTestRun.Count -eq 0 }
 
 # (Naht) Paket-Modularitaet (Install-UX-Phase 4): KEIN Core-Workflow traegt eine LITERALE Workflow-ID eines
 # Paket-Workflows (executeWorkflow ODER toolWorkflow). n8n (geprueft 2.21.7 + 2.44.4) aktiviert einen Workflow nur, wenn alle literal

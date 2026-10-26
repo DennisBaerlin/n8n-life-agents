@@ -233,6 +233,35 @@
                                    ],
                       "id":  "0c47c4fe-0065-523b-b981-916b378ba85d",
                       "name":  "Trend braucht Historie"
+                  },
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1120,
+                                       180
+                                   ],
+                      "id":  "07e917be-a794-52c5-a71a-c293eaf06351",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1160,
+                                       300
+                                   ],
+                      "id":  "ee75a92c-d627-5cfe-9574-25d7c9478c50",
+                      "name":  "Test run (Doc)"
                   }
               ],
     "connections":  {
@@ -315,7 +344,18 @@
                                                                    }
                                                                ]
                                                            ]
-                                              }
+                                              },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
                     },
     "settings":  {
                      "executionOrder":  "v1",

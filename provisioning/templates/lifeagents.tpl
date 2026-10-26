@@ -100,6 +100,8 @@ MENU
 fi
 
 cmd="${1:-help}"
+# Befehle unabhaengig von der Schreibweise (Owner-Fall 2026-10-26: "lifeagents Update" vom Handy -> nur die Befehlsliste).
+cmd="${cmd,,}"
 [ "$#" -gt 0 ] && shift || true
 
 case "$cmd" in
@@ -258,8 +260,9 @@ case "$cmd" in
     usage
     ;;
   *)
-    printf 'lifeagents: unbekannter Befehl: %s\n' "$cmd" >&2
+    # Hinweis NACH der (langen) Liste: davor scrollte er aus dem Bild und es sah aus, als zeige der Befehl nur die Hilfe.
     usage
+    printf '\nlifeagents: unbekannter Befehl: %s (siehe Liste oben)\n' "$cmd" >&2
     exit 1
     ;;
 esac

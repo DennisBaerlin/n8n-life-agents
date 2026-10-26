@@ -96,7 +96,8 @@ if ($push.Success) {
       $env:PRE_COMMIT_REMOTE_NAME = $remote
       $env:PRE_COMMIT_TO_REF = (& git ($gitC + @('rev-parse', '--verify', '-q', "$src^{commit}")))
       Remove-Item Env:PRE_COMMIT_FROM_REF -ErrorAction SilentlyContinue
-      if (-not $env:PRE_COMMIT_TO_REF) { $fails += "[FAIL] Refspec '$spec' nicht aufloesbar"; continue }
+      # Der Hook laeuft VOR dem Befehl: ein im selben Aufruf erst angelegter Tag/Commit existiert noch nicht.
+      if (-not $env:PRE_COMMIT_TO_REF) { $fails += "[FAIL] Refspec '$spec' nicht aufloesbar (im selben Aufruf erst angelegt? Tag/Commit zuerst in einem eigenen Aufruf anlegen, dann pushen)"; continue }
       $lintArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $lint, '-Outgoing') + $(if ($allTags) { @('-AllTags') } else { @() })
       $res = @(& powershell $lintArgs)
       if ($LASTEXITCODE -ne 0) { $fails += @($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) }

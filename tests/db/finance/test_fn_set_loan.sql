@@ -166,6 +166,23 @@ BEGIN
      OR (SELECT monthly_annuity FROM finance.loan_overview WHERE id = v_run) IS DISTINCT FROM 450.00 THEN
     RAISE EXCEPTION 'FAIL set_loan [Korrektur in place]: got %', v_res; END IF;
   RAISE NOTICE 'PASS set_loan [Korrektur ohne faellige Rate -> in place]';
+
+  -- TEST 11 (Live-Befund 2026-10-26): dieselben Werte noch einmal -> ok:false no_change ohne Write (keine zweite Karte);
+  --   ein leerer Aufruf ebenso. Ein echter Unterschied in nur einem Feld bleibt ein Write.
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_run, 'interest_rate_fixed_until', (core.fn_today() + 365)::text,
+    'term_end_date', (core.fn_today() + 3650)::text, 'disbursement_date', '2019-03-01', 'original_amount', '60000',
+    'monthly_annuity', '450', 'name', (SELECT name FROM finance.loans WHERE id = v_run))) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'no_change')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL set_loan [gleiche Werte]: erwartet ok=false no_change, got %', v_res; END IF;
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_run)) INTO v_res;
+  IF (v_res->>'no_change')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL set_loan [leerer Aufruf]: erwartet no_change, got %', v_res; END IF;
+  SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_run, 'term_end_date', (core.fn_today() + 3650)::text,
+    'notes', 'Schlussrate 1000')) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT notes FROM finance.loans WHERE id = v_run) IS DISTINCT FROM 'Schlussrate 1000' THEN
+    RAISE EXCEPTION 'FAIL set_loan [ein Feld neu]: got %', v_res; END IF;
+  RAISE NOTICE 'PASS set_loan [gleiche Werte -> no_change ohne Write, ein neues Feld -> Write]';
 END $$;
 
 ROLLBACK;

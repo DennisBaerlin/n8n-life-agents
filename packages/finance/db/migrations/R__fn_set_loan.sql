@@ -23,7 +23,8 @@
 --   bei Raten-/Tagesaenderung), balance_at_fixed_until, balance_at_term_end (voraussichtliche Restschuld, loan_overview)}.
 --   Korrigierbar (neg. Zins, Rate<=0, aktiv ohne Rate, Rate ohne ersten Termin, unbekannter status, wirksame Rate unter
 --   dem Monatszins der Restschuld -> {interest, payment}, Ursprungswerte bei frischem Kredit / Datum in der Zukunft /
---   Betrag unter der Eroeffnungs-Restschuld, Laufzeit-Widerspruch, Split-Guards) -> {ok:false} OHNE Write.
+--   Betrag unter der Eroeffnungs-Restschuld, Laufzeit-Widerspruch, Split-Guards, kein Wert weicht vom Bestand ab ->
+--   {no_change:true}) -> {ok:false} OHNE Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_loan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -148,6 +149,26 @@ BEGIN
                        || ' on the remaining debt - check the rate and the interest rate.',
                 'interest', v_interest, 'payment', v_eff_annuity);
         END IF;
+    END IF;
+
+    -- Korrigierbar (Live-Befund 2026-10-26): nichts weicht vom Bestand ab -> {ok:false, no_change} OHNE Write. Der
+    -- Probelauf meldet das vor der Karte; ein wiederholter Aufruf mit denselben Werten zeigt keine zweite Karte.
+    IF NOT (COALESCE(NULLIF(p->>'name', ''), v_loan.name) IS DISTINCT FROM v_loan.name
+         OR COALESCE(NULLIF(p->>'lender', ''), v_loan.lender) IS DISTINCT FROM v_loan.lender
+         OR COALESCE(NULLIF(p->>'borrower_person_id', ''), v_loan.borrower_person_id) IS DISTINCT FROM v_loan.borrower_person_id
+         OR COALESCE(v_irate, v_loan.interest_rate) IS DISTINCT FROM v_loan.interest_rate
+         OR v_fixed IS DISTINCT FROM v_loan.interest_rate_fixed_until
+         OR v_term_end IS DISTINCT FROM v_loan.term_end_date
+         OR COALESCE(v_amount, v_loan.original_amount) IS DISTINCT FROM v_loan.original_amount
+         OR COALESCE(v_disb, v_loan.disbursement_date) IS DISTINCT FROM v_loan.disbursement_date
+         OR v_eff_status IS DISTINCT FROM v_loan.status
+         OR COALESCE(NULLIF(p->>'notes', ''), v_loan.notes) IS DISTINCT FROM v_loan.notes
+         OR (v_annuity IS NOT NULL AND v_annuity IS DISTINCT FROM v_cur_amount)
+         OR (v_dom IS NOT NULL AND v_dom IS DISTINCT FROM (SELECT schedule_day_of_month FROM finance.recurring_payments
+                                                            WHERE id = finance.fn_recurring_current(v_rp, v_today)))) THEN
+        RETURN jsonb_build_object('ok', false, 'no_change', true,
+            'reason', 'Nothing to change: the loan already has exactly these values - the earlier change is saved. '
+                   || 'Do not call tool_set_loan again for it.');
     END IF;
 
     -- Rate / Abbuchungstag: neue Kette bzw. Aenderung ueber die Kette (Historie)

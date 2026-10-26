@@ -179,9 +179,13 @@ if [ "${o%%|*}" = succeeded ] && [ "$(cat "$VER")" = v9.9.10 ]; then pass run_re
 # 10 Sperre belegt (anderes Update laeuft) -> Auftrag bleibt unangetastet
 installed v9.9.8; reset_db; tg_clear; id="$(request v9.9.10)"
 # Halter laeuft von selbst ab (kill traefe nur flock, das Kind `sleep` hielte die Sperre weiter).
-flock /run/lifeagents-update.lock sleep 6 & LOCKER=$!
-for _ in $(seq 1 50); do flock -n /run/lifeagents-update.lock true 2>/dev/null || break; sleep 0.1; done   # erst wenn wirklich gehalten
+# Erst weiter, wenn UNSER Halter die Sperre hat (Marker aus dem Kind): eine Probe "Sperre belegt" sah sonst den
+# minuetlichen Runner, der sie zur vollen Minute kurz haelt -> cli startete vor dem Halter und uebernahm (Flake 2026-10-26).
+LKMARK="/tmp/upd_lock_held.$$"; rm -f "$LKMARK"
+flock /run/lifeagents-update.lock sh -c "touch '$LKMARK'; sleep 6" & LOCKER=$!
+for _ in $(seq 1 100); do [ -e "$LKMARK" ] && break; sleep 0.1; done
 cli --run-requested
+rm -f "$LKMARK"
 claimed="$(sql "SELECT claimed_at IS NOT NULL FROM core.update_requests WHERE id = $id")"
 wait "$LOCKER" 2>/dev/null
 if [ "$claimed" = f ] && [ "$(tg_n)" = 0 ]; then pass run_lock_busy; else fail run_lock_busy "claimed=$claimed sends=$(tg_n)"; fi

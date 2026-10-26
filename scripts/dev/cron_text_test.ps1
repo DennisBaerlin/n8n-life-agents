@@ -152,6 +152,28 @@ if ($Id) { $cases = @($cases | Where-Object { $_.id -eq $Id }) }
 if ($cases.Count -eq 0) { throw "Keine cron_text-Faelle gefunden (Filter '$Id')." }
 $wfList = Invoke-N8nGet 'workflows?limit=250'
 
+# Schnellweg-Vorbereitung (2026-10-26): Crons senden an die Owner-chat_id, die der Deploy beim Einspielen einsetzt
+# (__OWNER_CHAT_ID__ -> DB-Owner nach dem Pairing, sonst die .env). Der alte Weg spielte je Fall neu ein und trug so den
+# gepairten Test-Owner nach; der Schnellweg spielt nichts ein -> EINMAL vorab: Test-Owner pairen + je betroffenem Paket
+# ein Redeploy (config reset schedule <ein Key des Pakets>), statt zwei Redeploys je Fall.
+$viaHarnessAll = $null -ne ($wfList.data | Where-Object { $_.name -eq 'core.cron_run.test_harness' -and $_.active })
+if ($viaHarnessAll) {
+    Set-OwnerTelegramPairing -Container $Container
+    $keyPkg = @{}
+    foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
+        $m = [System.IO.File]::ReadAllText($mf.FullName, $Utf8NoBom) | ConvertFrom-Json
+        if ($m.config -and $m.config.schedule) {
+            foreach ($k in $m.config.schedule.PSObject.Properties.Name) { if ($k -notlike '_*') { $keyPkg[$k] = $mf.Directory.Name } }
+        }
+    }
+    $redeployKeys = @{}
+    foreach ($c in $cases) {
+        $k = [string]$c.schedule_key
+        if ($k -and $keyPkg.ContainsKey($k) -and -not $redeployKeys.ContainsKey($keyPkg[$k])) { $redeployKeys[$keyPkg[$k]] = $k }
+    }
+    foreach ($pkg in $redeployKeys.Keys) { Invoke-LifeagentsConfig @('reset', 'schedule', $redeployKeys[$pkg]) }
+}
+
 $passed = 0; $failed = 0
 Write-Host ''
 Write-Host "cron_text_test — $($cases.Count) Fall/Faelle gegen $N8nUrl"
@@ -204,7 +226,7 @@ try {
                 # Schnellweg (2026-10-26): der Test-Eingang core.cron_run.test_harness startet den Cron sofort ueber
                 # seinen 'Test run'-Einstieg (Build-Workflow). Rueckfall auf den alten Weg (Zeitplan auf jede Minute,
                 # 2 Redeploys + Warten) nur auf einem Substrat ohne diesen Eingang.
-                $viaHarness = $null -ne ($wfList.data | Where-Object { $_.name -eq 'core.cron_run.test_harness' -and $_.active })
+                $viaHarness = $viaHarnessAll
                 if ($viaHarness) {
                     # responseMode=lastNode: der POST kehrt erst nach dem Lauf zurueck; ein waitender Cron (HITL-Frage)
                     # antwortet trotzdem (Execute Workflow wartet nicht auf die Freigabe).

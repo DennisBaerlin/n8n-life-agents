@@ -162,7 +162,10 @@ if ($Parallel) {
     foreach ($c in $children) {
         $c.Proc.WaitForExit()
         if (Test-Path $c.Result) {
-            foreach ($r in @([System.IO.File]::ReadAllText($c.Result, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json)) { $results.Add($r) }
+            # PS 5.1: ConvertFrom-Json gibt ein JSON-Array als EIN Objekt in die Pipeline -> erst zuweisen, dann iterieren
+            # (sonst landete das ganze Array als ein Ergebnis und rote Suiten zaehlten nicht; 2026-10-26).
+            $parsed = [System.IO.File]::ReadAllText($c.Result, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
+            foreach ($r in $parsed) { $results.Add($r) }
         } else {
             $results.Add([pscustomobject]@{ Suite = 'kind'; Substrat = $c.Container; Ok = $false; Exit = 99; Minuten = 0; Ergebnis = "kein Ergebnis -- Log: $($c.Log)" })
         }
@@ -179,6 +182,14 @@ if ($Parallel) {
 }
 
 Remove-Item $lock -Force -ErrorAction SilentlyContinue
+
+# Vollstaendigkeit: jede Suite hat genau ein Ergebnis (ein fehlendes Kind-Ergebnis oder ein verschlucktes rotes darf nie
+# als "alles gruen" durchgehen).
+foreach ($n in @($Gates.Keys) + 'db') {
+    if (-not ($results | Where-Object { $_.Suite -eq $n })) {
+        $results.Add([pscustomobject]@{ Suite = $n; Substrat = '-'; Ok = $false; Exit = 98; Minuten = 0; Ergebnis = 'kein Ergebnis (nicht gelaufen?)' })
+    }
+}
 
 Write-Host ""
 Write-Host "================ Freie Gates ================"

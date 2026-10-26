@@ -536,6 +536,14 @@
     "final": "[{\"entity_type\":\"pension\",\"name\":\"Gesetzliche Rente Mock\",\"pension_type\":\"statutory\",\"provider\":\"Deutsche Rentenversicherung\"},{\"entity_type\":\"pension_statement\",\"pension\":\"Gesetzliche Rente Mock\",\"statement_date\":\"2026-07-01\",\"reached_claim\":412.35,\"projection\":1987.60,\"scenario_1pct\":2780,\"scenario_2pct\":3890,\"em_monthly\":905.12,\"earning_points\":11.4567,\"regular_retirement_date\":\"2047-06-01\"}]"
   },
   {
+    "_comment": "tc79 Live-Befund 2026-10-26 (Werte erfunden): eingefuegter Betriebsrenten-Stand -> pension + datierte pension_statement-Zeile ueber den Import, nie guaranteed_monthly_pension.",
+    "match": "meiner Betriebsrente Testversorgung Mock",
+    "calls": [
+      { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"pension\",\"name\":\"Testversorgung Mock\",\"pension_type\":\"occupational\",\"provider\":\"Testversorgungskasse\",\"contract_number\":\"TV-4711-K\"},{\"entity_type\":\"pension_statement\",\"pension\":\"Testversorgung Mock\",\"statement_date\":\"2025-12-31\",\"reached_claim\":74,\"notes\":\"18,50 Versorgungspunkte\"}]" } }
+    ],
+    "final": "Betriebsrente und Stand zum 31.12.2025 gestaged, die Karte folgt."
+  },
+  {
     "_comment": "tc49 Vision-Aufruf (direkter Messages-Call aus tool_extract_finance_document, Kontext-Text traegt den doc_hint): finaler Text = das JSON-Array der Rohzeilen (alle gueltig).",
     "match": "Kontenübersicht der Testbank",
     "final": "[{\"entity_type\":\"account\",\"name\":\"Testbank Giro Mock\",\"account_type\":\"cash\",\"bank\":\"Testbank AG\",\"account_number\":\"DE02100100100006820101\",\"opening_balance\":1234.56,\"currency\":\"EUR\"}]"

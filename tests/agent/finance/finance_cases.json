@@ -912,5 +912,14 @@
         "expected_tool":  null,
         "expected_behavior":  "Fragt nach dem genauen Tag, weil Mitte letzten Monats in keine der Datumsformen passt. Bucht nicht und setzt kein selbst gewaehltes Datum ein.",
         "notes":  "Relative Datumsangaben 2026-10-26 (Prompt-Regel 1). Deterministisch: kein Tool. Mock-Tier: kein Szenario (kein Match -> Text)."
+    },
+    {
+        "id":  "tc79",
+        "name":  "Betriebsrente als eingefuegter Text: Stand zum Stichtag wird Standmitteilung, keine garantierte Rente",
+        "task":  "Hier sind die Daten meiner Betriebsrente Testversorgung Mock bei der Testversorgungskasse, Vertragsnummer TV-4711-K: Stand Ihres Versorgungskontos zum 31.12.2025: 18,50 Versorgungspunkte. Anwartschaft auf eine monatliche Betriebsrente wegen Alters: 74,00 Euro.",
+        "chat_id":  "test_tc79",
+        "expected_tool":  "tool_import_stage_rows",
+        "expected_behavior":  "Stagt ueber tool_import_stage_rows eine pension-Zeile (Testversorgung Mock, pension_type occupational, provider Testversorgungskasse, contract_number TV-4711-K) UND eine pension_statement-Zeile (pension = Testversorgung Mock, statement_date 2025-12-31, reached_claim 74, Versorgungspunkte hoechstens in notes). Ruft NICHT tool_create_pension und setzt die 74 Euro NIE als guaranteed_monthly_pension: die Anwartschaft ist der bisher erreichte Anspruch zum Stichtag, keine garantierte Rente bei Rentenbeginn. Rechnet nichts um.",
+        "notes":  "Live-Befund 2026-10-26 (Werte hier erfunden): eine eingefuegte Betriebsrenten-Uebersicht landete per tool_create_pension als guaranteed_monthly_pension + Notiz statt als datierte Standmitteilung -> Berater-Fenster fn_pension_outlook sah never=true, keine Jahres-Erinnerung. Fix: Tool-Descriptions create_/set_pension. Judge: die Staging-Zeilen enthalten pension_statement mit statement_date 2025-12-31 und reached_claim 74; kein guaranteed_monthly_pension."
     }
 ]

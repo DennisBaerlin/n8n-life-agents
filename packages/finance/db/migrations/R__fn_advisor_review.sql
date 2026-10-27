@@ -337,6 +337,33 @@ BEGIN
                                    WHEN r.has_fx        THEN core.fn_ui_tpl('finance.advisor.depot_reserve_fx_note') END));
     END LOOP;
 
+    -- ---------- (2b') Umschicht-Hilfe vor dem Zieldatum (Glide Path, Sparziel-Zweckbindung 2026-10-27) ----------
+    -- Je aktivem Ziel, das im Fenster (Owner: 60 Monate) mehr Depot-Geld traegt als der Pfad erlaubt (+ Toleranz):
+    -- Vorschlagsbetrag (drift = Ueberschuss) zum Umschichten aufs Konto, bei aktivem Sparplan zusaetzlich "pausieren oder
+    -- umleiten" (sonst kauft er weiter ins Depot), dazu der Steuer-Hinweis. Die Rechnung lebt allein in
+    -- finance.fn_savings_goal_derisk_status (das LLM rechnet nicht). latch_keys = Restjahr: der Edge-Latch meldet
+    -- einmal je verbleibendem Jahr erneut, solange ein Ueberschuss besteht (der Vorschlag bleibt aktuell).
+    FOR r IN
+        SELECT * FROM finance.fn_savings_goal_derisk_status() s WHERE s.breach
+    LOOP
+        v_alerts := v_alerts || jsonb_build_object(
+            'metric_key', 'savings_goal_derisk:' || r.goal_id,
+            'kind',       'savings_goal_derisk',
+            'label',      r.name,
+            'value',      r.depot_share_eur,
+            'target',     r.allowed_depot_eur,
+            'drift',      r.excess_eur,
+            'latch_keys', jsonb_build_array('y' || ceil(r.months_left / 12.0)::int),
+            'msg',        jsonb_build_array(
+                              core.fn_ui_tpl('finance.advisor.goal_derisk', jsonb_build_object(
+                                  'name', r.name, 'date', core.fn_ui_date(r.target_date),
+                                  'depot', core.fn_ui_money(r.depot_share_eur),
+                                  'allowed', core.fn_ui_money(r.allowed_depot_eur),
+                                  'excess', core.fn_ui_money(r.excess_eur))),
+                              CASE WHEN r.active_plan THEN core.fn_ui_tpl('finance.advisor.goal_derisk_plan') END,
+                              core.fn_ui_tpl('finance.advisor.goal_derisk_tax')));
+    END LOOP;
+
     -- ---------- (2c) Monats-Check: Konto-Deckung bis zum naechsten Geldeingang ----------
     -- Nur Konten mit >= 1 eingespieltem Kontoauszug (ohne Auszug fehlt die Alltags-Schaetzung -> keine Warnung auf
     -- Halbwissen). Die Rechnung lebt allein in finance.fn_account_outlook (eine Adresse, auch fuer die Tool-Antwort).

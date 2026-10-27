@@ -13,6 +13,8 @@
 --     * savings_plan (opt, Name): der Sparplan finanziert das Ziel (seine Kaeufe fuettern die Depot-Reserve); dann KEINE
 --       eigene Rate, die Karte zeigt Sparplan-Betrag vs. noetige Rate.
 --     Rest <= 0 -> Rate 0, keine recurring_payment, kein Abbuchungskonto noetig (target_date Pflicht).
+--   Karten-Hinweise (card_lines): aehnliches Ziel, "gedeckt, Rate 0", Sparplan-Betrag vs. noetige Rate, und bei
+--   Depot-Topf/Sparplan ein Ziel im Umschicht-Fenster (advisor.derisk_window_months) -> Kursrisiko-Hinweis.
 --   Eingabe jsonb: name, goal_type, target_amount, target_date (opt), monthly_savings_rate (opt), already_saved (opt),
 --   savings_plan (opt), account_id (Abbuchungskonto, in n8n aufgeloest; nur fuer eine Rate), reserve_account_id
 --   (PFLICHT: Topf = Konto des Ziel-Geldes; saldo-basiert (fn_goal_pot_account_types) oder ein Depot, Depot nur mit
@@ -204,6 +206,14 @@ BEGIN
                     'kind', 'note', 'value', 'finance.note.goal_plan_rate',
                     'params', jsonb_build_object('plan', v_plan_name, 'monthly', core.fn_ui_money(COALESCE(v_plan_monthly, 0)),
                                                  'needed', core.fn_ui_money(v_rate))))
+                ELSE '[]'::jsonb END
+        -- Umschicht-Fenster (2026-10-27): Depot-Geld oder Sparplan fuer ein Ziel, das schon im Glide-Path-Fenster liegt
+        -- (Config advisor.derisk_window_months, wie fn_savings_goal_derisk_status) -> Hinweis auf das Kursrisiko.
+        || CASE WHEN (v_depot OR v_plan_id IS NOT NULL)
+                     AND v_date <= (current_date + make_interval(months =>
+                         GREATEST(COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'derisk_window_months'), '')::int, 60), 1)))::date
+                THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_derisk_window',
+                         'params', jsonb_build_object('date', core.fn_ui_date(v_date))))
                 ELSE '[]'::jsonb END;
 
     -- Phase L WS-4: Ueber-Spar-Sofort-Hinweis (Event-Fold, geteilter Helfer fn_savings_squeeze_fold). ERST HIER —

@@ -382,8 +382,9 @@ BEGIN
   v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgc Auto__','target_amount',4000,
            'target_date',(core.fn_today() + 900)::text,'reserve_account_id',v_depot,'already_saved',5000));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'recurring_payment_id' IS NOT NULL
-     OR (SELECT currency FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = (v_r->>'goal_id')::int) IS DISTINCT FROM 'EUR' THEN
-    RAISE EXCEPTION 'FAIL create [C5 Depot gedeckt]: %', v_r; END IF;
+     OR (SELECT currency FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = (v_r->>'goal_id')::int) IS DISTINCT FROM 'EUR'
+     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_derisk_window"}]'::jsonb) THEN
+    RAISE EXCEPTION 'FAIL create [C5 Depot gedeckt + Umschicht-Hinweis im Fenster]: %', v_r; END IF;
   v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgc Haus__','target_amount',40000,
            'target_date',(core.fn_today() + 900)::text,'account_id',v_giro,'reserve_account_id',v_depot,'already_saved',1000));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL create [C6 Depot ohne Sparplan]: %', v_r; END IF;
@@ -401,7 +402,8 @@ BEGIN
      OR (v_r->>'required_monthly_rate')::numeric IS DISTINCT FROM v_exp OR (v_r->>'plan_monthly_amount')::numeric IS DISTINCT FROM 50
      OR (v_r->>'savings_plan_id')::int IS DISTINCT FROM v_plan
      OR (SELECT savings_goal_id FROM finance.savings_plans WHERE id = v_plan) IS DISTINCT FROM (v_r->>'goal_id')::int
-     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_plan_rate"}]'::jsonb) THEN
+     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_plan_rate"}]'::jsonb)
+     OR v_r->'card_lines' @> '[{"value":"finance.note.goal_derisk_window"}]'::jsonb THEN
     RAISE EXCEPTION 'FAIL create [C7 Sparplan]: % (erwartet required %)', v_r, v_exp; END IF;
   RAISE NOTICE 'PASS create [C7: Sparplan verknuepft, keine eigene Rate, Plan 50 vs noetig %]', v_exp;
 

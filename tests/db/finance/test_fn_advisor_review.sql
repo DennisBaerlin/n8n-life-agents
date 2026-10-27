@@ -1014,4 +1014,59 @@ END $$;
 
 ROLLBACK TO SAVEPOINT paket3;
 
+-- ============================================================
+-- Umschicht-Hilfe (Glide Path, Sparziel-Zweckbindung 2026-10-27; Owner: Fenster 60 Monate, Toleranz 10 pp):
+--   erlaubt im Depot = Ziel * Restmonate / Fenster; mehr als erlaubt + Toleranz -> savings_goal_derisk mit
+--   Vorschlagsbetrag (drift) und latch_keys je Restjahr; mit aktivem Sparplan zusaetzlich der Pausieren-Satz.
+--   (D1) 12 Monate vor dem Ziel, 10000 im Depot -> Alert, drift = excess aus der View, latch y1, Plan-Satz
+--   (D2) Ziel in 7 Jahren -> ausserhalb des Fensters, kein Alert
+--   (D3) nur knapp ueber erlaubt (unter Toleranz) -> kein Alert
+--   (D4) Fenster per Config 12 Monate -> erlaubt = Ziel, kein Alert fuer D1
+-- ============================================================
+SAVEPOINT derisk;
+DO $$
+DECLARE r jsonb; a jsonb; v_settle int; v_depot int; v_g1 int; v_g2 int; v_g3 int; v_months int; v_allowed numeric; v_excess numeric;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__dr_settle__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__dr_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__dr_reise__', 10000, current_date + 365, 'active') RETURNING id INTO v_g1;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__dr_rente__', 10000, current_date + 2600, 'active') RETURNING id INTO v_g2;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__dr_knapp__', 10000, current_date + 365, 'active') RETURNING id INTO v_g3;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g1, 'account_id', v_depot, 'amount', 10000));
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g2, 'account_id', v_depot, 'amount', 10000));
+  SELECT months_left, allowed_depot_eur INTO v_months, v_allowed FROM finance.fn_savings_goal_derisk_status() WHERE goal_id = v_g3;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g3, 'account_id', v_depot, 'amount', v_allowed + 500));
+  PERFORM finance.fn_create_savings_plan(jsonb_build_object('name','__dr_plan__','depot_name','__dr_depot__','isin','IE00B4L5Y983',
+            'symbol','IUSQ','security_name','iShares MSCI World','amount',100,'schedule_interval',1,'schedule_unit','month',
+            'first_payment_date',CURRENT_DATE::text));
+  PERFORM finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g1, 'link_savings_plan_name', '__dr_plan__'));
+
+  -- View-Mathematik
+  SELECT months_left, allowed_depot_eur, excess_eur INTO v_months, v_allowed, v_excess FROM finance.fn_savings_goal_derisk_status() WHERE goal_id = v_g1;
+  IF v_allowed IS DISTINCT FROM round(10000.0 * v_months / 60, 2) OR v_excess IS DISTINCT FROM 10000 - v_allowed THEN
+    RAISE EXCEPTION 'FAIL [D view]: months % allowed % excess %', v_months, v_allowed, v_excess; END IF;
+
+  r := finance.fn_advisor_review('finance');
+  -- (D1)
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'savings_goal_derisk:' || v_g1;
+  IF a IS NULL OR a->>'kind' IS DISTINCT FROM 'savings_goal_derisk' OR (a->>'drift')::numeric IS DISTINCT FROM v_excess
+     OR (a->>'value')::numeric IS DISTINCT FROM 10000 OR (a->>'target')::numeric IS DISTINCT FROM v_allowed
+     OR a->'latch_keys' IS DISTINCT FROM jsonb_build_array('y' || ceil(v_months / 12.0)::int)
+     OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk"%' OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_plan%'
+     OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_tax%' THEN
+    RAISE EXCEPTION 'FAIL [D1 derisk-Alert]: %', a; END IF;
+  -- (D2)/(D3)
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' IN ('savings_goal_derisk:' || v_g2, 'savings_goal_derisk:' || v_g3)) THEN
+    RAISE EXCEPTION 'FAIL [D2/D3]: Alert ausserhalb des Fensters bzw. unter der Toleranz'; END IF;
+  -- (D4)
+  INSERT INTO core.config (package, category, key, value) VALUES ('core','advisor','derisk_window_months','12')
+    ON CONFLICT (category, key) DO UPDATE SET value = '12', package = 'core';
+  r := finance.fn_advisor_review('finance');
+  -- 12-Monats-Fenster: bei 12 Restmonaten darf alles im Depot liegen, bei 13 liegt das Ziel ausserhalb -> kein Alert
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'savings_goal_derisk:' || v_g1) THEN
+    RAISE EXCEPTION 'FAIL [D4 Config-Fenster]: %', r->'alerts'; END IF;
+  RAISE NOTICE 'PASS [D1-D4: Umschicht-Alert im Fenster mit Vorschlag + Plan-Satz; ausserhalb/unter Toleranz still; Fenster per Config]';
+END $$;
+ROLLBACK TO SAVEPOINT derisk;
+
 ROLLBACK;

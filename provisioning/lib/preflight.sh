@@ -18,9 +18,10 @@ PREFLIGHT_PG_MB=200
 
 # _preflight_n8n_mb -> MB fuer ein (neues) n8n-Paket: Pauschale, oder das installierte Paket + 10 %, wenn groesser.
 _preflight_n8n_mb() {
-  local cur=''
-  if need_cmd npm && [ -d "$(npm root -g 2>/dev/null)/n8n" ]; then
-    cur="$(du -sm "$(npm root -g)/n8n" 2>/dev/null | cut -f1)"
+  local cur='' root=''
+  need_cmd npm && root="$(npm root -g 2>/dev/null || true)"
+  if [ -n "$root" ] && [ -d "$root/n8n" ]; then
+    cur="$(du -sm "$root/n8n" 2>/dev/null | cut -f1 || true)"
   fi
   if [ -n "$cur" ] && [ "$((cur * 11 / 10))" -gt "$PREFLIGHT_N8N_MB" ]; then
     printf '%s' "$((cur * 11 / 10))"
@@ -85,7 +86,9 @@ preflight() {
     log "Bootstrap-Tools fehlen (${missing[*]}) — werden in packages.sh nachinstalliert."
   fi
 
-  # Disk space.
+  # Disk space. Vorher Reste frueherer Laeufe freigeben (npm-Cache, beiseitegelegte n8n-Kopien bei funktionierendem
+  # n8n; install_n8n.sh n8n_cleanup_leftovers) — sonst blockieren sie ein Update, das sie ohnehin wegraeumt.
+  if declare -F n8n_cleanup_leftovers >/dev/null; then n8n_cleanup_leftovers; fi
   local avail_mb need_mb
   avail_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
   need_mb="$(_preflight_disk_need)"

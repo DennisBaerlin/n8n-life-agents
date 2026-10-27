@@ -149,4 +149,29 @@ BEGIN
   RAISE NOTICE 'PASS [G: negativer Reserve-Stand -200 -> observed_monthly_rate NULL (kein negatives Tempo)]';
 END $$;
 
+-- (H) Hand-Zuordnung ist kein Spartempo (Sparziel-Zweckbindung 2026-10-27): Ziel 6000 seit 2 Monaten, 2000 als
+--     Startbestand zugeordnet + 400 gespart (getaggt) -> current 2400, observed_monthly_rate = 400/2 = 200 (nicht 1200),
+--     projected aus dem Tempo 200. Nur Zuordnung -> observed NULL (kein Tempo).
+DO $$
+DECLARE v_p2p int; v_g int; v_g2 int; v_cur numeric; v_obs numeric; v_proj date;
+BEGIN
+  v_p2p := (finance.fn_create_account('{"name":"__sgp_h_p2p__","account_type":"p2p","opening_balance":8000}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__sgp_h__', 6000, current_date + 600, 'active', now() - interval '60 days') RETURNING id INTO v_g;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g, 'account_id', v_p2p, 'amount', 2000));
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_p2p, 400, current_date - 5, 'transfer', v_g, gen_random_uuid());
+  SELECT current_amount, observed_monthly_rate, projected_completion_date INTO v_cur, v_obs, v_proj
+    FROM finance.savings_goal_progress WHERE id = v_g;
+  IF v_cur IS DISTINCT FROM 2400 OR v_obs IS DISTINCT FROM 200.00
+     OR v_proj IS DISTINCT FROM (current_date + (round(3600 / 200.0 * finance.fn_days_per_month())::int))::date THEN
+    RAISE EXCEPTION 'FAIL [H Tempo ohne Zuordnung]: cur % obs % proj %', v_cur, v_obs, v_proj; END IF;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__sgp_h2__', 6000, current_date + 600, 'active', now() - interval '60 days') RETURNING id INTO v_g2;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g2, 'account_id', v_p2p, 'amount', 1000));
+  IF (SELECT observed_monthly_rate FROM finance.savings_goal_progress WHERE id = v_g2) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [H nur Zuordnung -> kein Tempo]'; END IF;
+  RAISE NOTICE 'PASS [H: Hand-Zuordnung zaehlt zum Stand, nicht zum Spartempo]';
+END $$;
+
 ROLLBACK;

@@ -33,7 +33,7 @@ BEGIN
         WHEN 'pension'           THEN ARRAY['current_value','contribution_amount','guaranteed_monthly_pension']
         WHEN 'recurring_payment' THEN ARRAY['amount']
         WHEN 'real_estate'       THEN ARRAY['current_value']
-        WHEN 'savings_goal'      THEN ARRAY['target_amount','monthly_savings_rate']
+        WHEN 'savings_goal'      THEN ARRAY['target_amount','monthly_savings_rate','already_saved']
         WHEN 'loan'              THEN ARRAY['original_amount','current_balance','monthly_annuity']
         WHEN 'pension_statement' THEN ARRAY['reached_claim','projection','scenario_1pct','scenario_2pct','em_monthly']
         ELSE ARRAY[]::TEXT[]

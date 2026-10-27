@@ -196,6 +196,21 @@
         "notes":  "Neues tool_create_savings_goal, ziel-getrieben. Testet die Regel \u0027LLM rechnet nicht\u0027: nur target_date gegeben, die Rate berechnet die DB. Judge: actual_tool_input enthaelt target_amount=10000 + target_date=\u00272027-12-31\u0027, KEINE selbst-errechnete monthly_savings_rate."
     },
     {
+        "id":  "tc80",
+        "name":  "Sparziel mit vorhandenem Geld, ohne Sparrate",
+        "task":  "Neues Sparziel 'Sommerreise 2027': 3000 Euro bis 31.07.2027. Das Geld liegt schon komplett auf dem Tagesgeld Plus, also keine Sparrate.",
+        "chat_id":  "test_tc80",
+        "expected_tool":  "tool_create_savings_goal",
+        "expected_tool_args":  {
+                                   "target_amount":  3000,
+                                   "target_date":  "2027-07-31",
+                                   "reserve_account_name":  "Tagesgeld Plus",
+                                   "already_saved":  3000
+                               },
+        "expected_behavior":  "Ruft tool_create_savings_goal sofort auf: goal_name='Sommerreise 2027', target_amount=3000, target_date='2027-07-31', reserve_account_name='Tagesgeld Plus', already_saved=3000. KEIN account_name und KEINE monthly_savings_rate; der Agent fragt NICHT nach einem Abbuchungskonto oder einer Rate (das Ziel ist mit dem vorhandenen Geld gedeckt, Rate 0).",
+        "notes":  "Sparziel-Zweckbindung 2026-10-27, nachgebaut aus einem Live-Befund mit erfundenen Werten: das Geld liegt schon auf dem Topf, der Nutzer will keine Rate. Vorher fragte der Agent nach einer Rate und lehnte ein P2P-Konto ab. Judge: actual_tool_input enthaelt already_saved=3000 und kein account_name."
+    },
+    {
         "id":  "tc19",
         "name":  "Kontoabgleich (Saldo-Abgleich)",
         "task":  "Gleiche mein DKB Giro ab: laut Banking-App beträgt der Saldo heute genau 1.234,56 Euro.",

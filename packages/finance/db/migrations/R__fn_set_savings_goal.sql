@@ -20,13 +20,19 @@
 --   EIN Plan ver-/entknuepft. Die Quellen-Validierung laeuft VOR jedem Write -> {ok:false} bleibt write-frei.
 --   stop_funders (opt bool, WS-B Stufe 3: Lebenszyklus "ERREICHT" -> ALLE Beitraege stoppen via
 --   fn_stop_savings_goal_funders; Cash-Rate + verknuepfte Sparplaene paused, Ziel + Reserve UNBERUEHRT).
---   RUECKGABE: {ok:true, goal_id, recurring_payment_id, new_monthly_rate, linked_savings_plan_id,
---   paused_cash_rate, paused_plan_count} + optional savings_squeeze (fn_savings_squeeze_fold, nur bei Raten-
---   Aenderung: neu gerechnet, reaktiviert, Topf gewechselt, Beitraege gestoppt) (Post-State-Vertrag: kein Echo der Eingabe
---   reserve_account_id). Korrigierbar (target<=0, Zieldatum nicht in
---   der Zukunft, Ziel bereits gedeckt, reserve==funding, Reserve-Konto kein aktives cash/fixed_deposit-Konto,
---   Status completed/cancelled (-> close_savings_goal), Sparplan nicht gefunden/mehrdeutig, unlink eines
---   nicht-gebundenen Plans, unbekannter status) -> {ok:false}.
+--   ZIELE OHNE RATE (Sparziel-Zweckbindung 2026-10-27): ein gedecktes Ziel (Rest <= 0) darf Datum/Betrag aendern ->
+--   ok, covered=true, die Rate bleibt unveraendert (kein Rest, nichts neu zu rechnen). Laeuft KEINE Rate und bleibt
+--   ein Rest: mit account_id (Abbuchungskonto) legt die fn die Rate an (Umbuchung in reserve_account_id bzw. den
+--   abgeleiteten Topf = saldo-basiertes Konto mit dem groessten Anteil des Ziels); ohne -> ok mit code no_rate_running
+--   + required_monthly_rate (frueher: new_monthly_rate gerechnet, aber still nicht gespeichert). Finanziert ein aktiver
+--   Sparplan das Ziel, gibt es nur required_monthly_rate (keine eigene Rate).
+--   RUECKGABE: {ok:true, goal_id, recurring_payment_id, new_monthly_rate (nur wenn eine Rate gesetzt/angelegt wurde),
+--   covered?, required_monthly_rate?, code?, linked_savings_plan_id, paused_cash_rate, paused_plan_count} + optional
+--   savings_squeeze (fn_savings_squeeze_fold, nur bei Raten-Aenderung: neu gerechnet, angelegt, reaktiviert, Topf
+--   gewechselt, Beitraege gestoppt) (Post-State-Vertrag: kein Echo der Eingabe reserve_account_id). Korrigierbar
+--   (target<=0, Zieldatum nicht in der Zukunft, reserve==funding, Reserve-Konto kein aktives saldo-basiertes Konto,
+--   Topf fuer eine neue Rate fehlt, Status completed/cancelled (-> close_savings_goal), Sparplan nicht gefunden/
+--   mehrdeutig, unlink eines nicht-gebundenen Plans, unbekannter status) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_savings_goal(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -55,6 +61,14 @@ DECLARE
     v_stop_res    jsonb;
     v_reopen      jsonb;   -- Audit Paket 2: Folge-rp bei Reaktivierung einer beendeten Rate
     v_dates       JSONB;
+    v_new_acct    INT     := NULLIF(p->>'account_id', '')::int;   -- 2026-10-27: Abbuchungskonto fuer eine NEUE Rate
+    v_covered     BOOLEAN := false;
+    v_need        NUMERIC;   -- noetige Rate auf dem Rest (auch ohne laufende Rate)
+    v_new_pot     INT;       -- Topf einer neu angelegten Rate
+    v_new_rp      INT;
+    v_first       DATE;
+    v_code        TEXT;
+    v_has_plan    BOOLEAN;
 BEGIN
     -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date']);
@@ -86,8 +100,11 @@ BEGIN
     -- Alte getaggte Buchungen bleiben unberuehrt (nur kuenftiges Routing der Rate aendert sich).
     IF v_reserve IS NOT NULL THEN
         -- Gleiche Regel wie fn_create_savings_goal und das Umschichten (fn_goal_reserve_reason, die eine Adresse):
-        -- aktives cash-/Festgeld-Konto, Ziel mit Sparrate, Topf <> Abbuchungskonto.
-        v_funding_reason := finance.fn_goal_reserve_reason(v_id, v_reserve);
+        -- aktives saldo-basiertes Konto, Ziel mit Sparrate, Topf <> Abbuchungskonto. Ohne laufende Rate, aber mit
+        -- account_id (die Rate entsteht hier): nur die Konto-Regel gegen das neue Abbuchungskonto.
+        v_funding_reason := CASE WHEN v_row.recurring_payment_id IS NULL AND v_new_acct IS NOT NULL
+                                 THEN finance.fn_goal_reserve_account_reason(v_reserve, v_new_acct)
+                                 ELSE finance.fn_goal_reserve_reason(v_id, v_reserve) END;
         IF v_funding_reason IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false, 'reason', v_funding_reason);
         END IF;
@@ -98,7 +115,7 @@ BEGIN
     v_eff_tdate  := COALESCE(v_tdate, v_row.target_date);
     v_rate := NULL;
 
-    IF v_recompute THEN
+    IF v_recompute OR (v_row.recurring_payment_id IS NULL AND v_new_acct IS NOT NULL) THEN
         IF v_eff_tdate <= CURRENT_DATE THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'Target date (' || v_eff_tdate || ') must be in the future to recompute a monthly rate.');
@@ -106,13 +123,42 @@ BEGIN
         SELECT current_amount INTO v_saved FROM finance.savings_goal_progress WHERE id = v_id;
         v_saved := COALESCE(v_saved, 0);
         IF v_eff_target - v_saved <= 0 THEN
-            RETURN jsonb_build_object('ok', false,
-                'reason', 'Goal is already funded (saved ' || v_saved || ' >= target ' || v_eff_target || '). Consider completing it instead.',
-                'current_amount', v_saved);
+            v_covered := true;   -- gedeckt: Datum/Betrag aendern ist ok, eine Rate gibt es nicht neu zu rechnen
+        ELSE
+            -- Rest-Betrag / Rest-Monate (Best Practice: NICHT Gesamt/Gesamt).
+            v_months := GREATEST(1, CEIL((v_eff_tdate - CURRENT_DATE) / finance.fn_days_per_month())::int);
+            v_need   := CEIL((v_eff_target - v_saved) / v_months * 100) / 100;
         END IF;
-        -- Rest-Betrag / Rest-Monate (Best Practice: NICHT Gesamt/Gesamt).
-        v_months := GREATEST(1, CEIL((v_eff_tdate - CURRENT_DATE) / finance.fn_days_per_month())::int);
-        v_rate   := CEIL((v_eff_target - v_saved) / v_months * 100) / 100;
+    END IF;
+
+    -- Wer bezahlt den Rest? Laufende Rate -> sie wird angepasst. Keine Rate: Sparplan (nur Info), neues Abbuchungskonto
+    -- (Rate anlegen; Topf vorab validieren -> {ok:false} bleibt write-frei) oder Hinweis no_rate_running.
+    IF v_need IS NOT NULL THEN
+        IF v_row.recurring_payment_id IS NOT NULL THEN
+            v_rate := v_need;
+        ELSE
+            v_has_plan := EXISTS (SELECT 1 FROM finance.savings_plans WHERE savings_goal_id = v_id AND status = 'active');
+            IF NOT v_has_plan AND v_new_acct IS NOT NULL THEN
+                v_new_pot := COALESCE(v_reserve,
+                    (SELECT r.account_id FROM finance.fn_goal_reserve_accounts(v_id) r
+                      ORDER BY r.share DESC, r.account_id LIMIT 1));
+                IF v_new_pot IS NULL THEN
+                    RETURN jsonb_build_object('ok', false,
+                        'reason', 'Name the savings account the new monthly rate goes to (reserve_account_name: a cash/Tagesgeld, '
+                               || 'fixed-deposit or P2P account) - this goal has no money on such an account yet.');
+                END IF;
+                v_funding_reason := finance.fn_goal_reserve_account_reason(v_new_pot, v_new_acct);
+                IF v_funding_reason IS NULL AND NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_new_acct AND status = 'active') THEN
+                    v_funding_reason := 'The funding (debit) account must be an active account.';
+                END IF;
+                IF v_funding_reason IS NOT NULL THEN
+                    RETURN jsonb_build_object('ok', false, 'reason', v_funding_reason);
+                END IF;
+                v_rate := v_need;
+            ELSIF NOT v_has_plan THEN
+                v_code := 'no_rate_running';
+            END IF;
+        END IF;
     END IF;
 
     -- WS-B Stufe 2: Quellen-Verknuepfung VALIDIEREN (vor jedem Write -> {ok:false} bleibt write-frei/atomar).
@@ -191,6 +237,19 @@ BEGIN
                 UPDATE finance.recurring_payments SET status = 'active' WHERE id = v_row.recurring_payment_id;
             END IF;
         END IF;
+    ELSIF v_new_pot IS NOT NULL THEN
+        -- Neue Rate fuer ein Ziel ohne Rate (oben validiert): wie fn_create_savings_goal ein Transfer in den Topf, erste
+        -- Rate am naechsten Termin des Abbuchungstags ab heute (Raster des Schedulers).
+        SELECT min(d) INTO v_first
+        FROM finance.fn_schedule_occurrences(core.fn_today(), 1, 'month', NULLIF(p->>'schedule_day_of_month', '')::smallint,
+                                             NULL, core.fn_today(), core.fn_today() + 62) d;
+        v_new_rp := finance.fn_add_recurring_payment(
+            v_new_acct, -v_rate, left('Sparrate ' || COALESCE(NULLIF(p->>'name', ''), v_row.name), 100),
+            1::smallint, 'month'::finance.schedule_unit, NULLIF(p->>'schedule_day_of_month', '')::smallint, v_first,
+            finance.fn_recurring_valid_from(v_new_acct, v_first), NULL, NULL, NULL);
+        UPDATE finance.recurring_payments SET target_account_id = v_new_pot WHERE id = v_new_rp;
+        UPDATE finance.savings_goals SET recurring_payment_id = v_new_rp WHERE id = v_id;
+        v_row.recurring_payment_id := v_new_rp;
     END IF;
 
     -- WS-B Stufe 2: Quellen-Verknuepfung ANWENDEN (oben validiert). link -> savings_goal_id=Ziel; unlink -> NULL.
@@ -217,7 +276,14 @@ BEGIN
         -- ist v_stop_res NULL -> COALESCE auf false/0 (nichts gestoppt), nie SQL-NULL im Return-Vertrag.
         'paused_cash_rate',  COALESCE((v_stop_res->>'paused_cash_rate')::boolean, false),
         'paused_plan_count', COALESCE((v_stop_res->>'paused_plan_count')::int, 0))
-        -- nur wenn sich die Sparrate aendert (neu gerechnet, reaktiviert, Topf gewechselt, Beitraege gestoppt);
+        || CASE WHEN v_covered THEN jsonb_build_object('covered', true) ELSE '{}'::jsonb END
+        || CASE WHEN v_need IS NOT NULL AND v_rate IS NULL
+                THEN jsonb_build_object('required_monthly_rate', v_need) ELSE '{}'::jsonb END
+        || CASE WHEN v_code IS NOT NULL THEN jsonb_build_object('code', v_code,
+                    'note', 'No monthly rate is running for this goal; it still needs ' || to_char(v_need, 'FM999999990D00')
+                            || ' EUR per month. To start one, call again with the account the rate is debited from (account_name).')
+                ELSE '{}'::jsonb END
+        -- nur wenn sich die Sparrate aendert (neu gerechnet, angelegt, reaktiviert, Topf gewechselt, Beitraege gestoppt);
         -- reine Stammdaten-/Notiz-/Sparplan-Link-Edits falten nichts
         || CASE WHEN v_rate IS NOT NULL OR v_status = 'active' OR v_reserve IS NOT NULL OR v_stop_funders
                 THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;

@@ -184,4 +184,29 @@ BEGIN
   RAISE NOTICE 'PASS close [6: cancelled soft -> status=cancelled + Cash-Tag SET NULL (reassignbar, Historie bleibt)]';
 END $$;
 
+-- (7) Ziel nur mit Zuordnung (Journal, keine Buchung; Sparziel-Zweckbindung 2026-10-27): completed mit force schliesst
+--     WEICH (Erfuellungs-Historie bleibt sichtbar); cancelled bleibt Hard-DELETE (kein Geld floss, Journal CASCADE).
+--     Beide Zuordnungen zaehlen danach nicht mehr gegen den Saldo.
+DO $$
+DECLARE v_p2p int; v_ga int; v_gb int; v_r jsonb; v_res numeric;
+BEGIN
+  v_p2p := (finance.fn_create_account('{"name":"__cl7_p2p__","account_type":"p2p","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__cl7 a__', 2000, current_date + 100, 'active') RETURNING id INTO v_ga;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__cl7 b__', 1000, current_date + 100, 'active') RETURNING id INTO v_gb;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_ga, 'account_id', v_p2p, 'amount', 2000));
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_gb, 'account_id', v_p2p, 'amount', 1000));
+
+  v_r := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__cl7 a__', 'outcome', 'completed', 'force', true));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'action' IS DISTINCT FROM 'closed'
+     OR (SELECT status::text FROM finance.savings_goals WHERE id = v_ga) IS DISTINCT FROM 'completed' THEN
+    RAISE EXCEPTION 'FAIL close [7 completed weich]: %', v_r; END IF;
+  v_r := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__cl7 b__', 'outcome', 'cancelled'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'action' IS DISTINCT FROM 'deleted'
+     OR EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_gb) THEN
+    RAISE EXCEPTION 'FAIL close [7 cancelled hart]: %', v_r; END IF;
+  SELECT reserved INTO v_res FROM finance.account_reserve_status WHERE account_id = v_p2p;
+  IF v_res IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL close [7 Zuordnung frei]: reserved %', v_res; END IF;
+  RAISE NOTICE 'PASS close [7: nur Zuordnung -> erfuellt weich, abgebrochen hart; Saldo wieder frei]';
+END $$;
+
 ROLLBACK;

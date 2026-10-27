@@ -1,26 +1,34 @@
 -- ============================================================
 -- fn_create_savings_goal (ATOMIC WRITE)
---   Legt in EINER Transaktion an: (1) Sparziel, (2) recurring_payment
---   fuer die monatliche Sparrate + FK-Link. Invariante: recurring_payment_id
---   wird immer gesetzt (sonst fehlt der Posten im Cashflow).
---   RATE/ZIELDATUM RECHNET DIE DB (nicht das LLM, Root-CLAUDE.md *Das LLM rechnet NICHT*):
---   der Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate};
---   fn_savings_rate_schedule leitet die fehlende Groesse deterministisch ab (eine Quelle,
---   auch read-only fuer den HITL-Preview im Tool).
---   Eingabe jsonb: name, goal_type, target_amount, target_date (opt), monthly_savings_rate (opt),
---   account_id (Abbuchungskonto, in n8n aufgeloest), reserve_account_id (PFLICHT: Sparkonto/Topf, cash oder
---   fixed_deposit), schedule_day_of_month, first_payment_date (opt, WP2: leer = naechster Termin ab heute laut
+--   Legt in EINER Transaktion an: (1) Sparziel, (2) optional die Zuordnung eines Startbestands (Journal, kind manual,
+--   ueber fn_book_savings_reservation), (3) optional die monatliche Sparrate als recurring_payment (Umbuchung in den
+--   Topf) ODER die Verknuepfung mit einem Sparplan.
+--   RATE/ZIELDATUM RECHNET DIE DB (nicht das LLM, Root-CLAUDE.md *Das LLM rechnet NICHT*): der Nutzer nennt
+--   target_amount + GENAU EINES von {target_date, monthly_savings_rate}; fn_savings_rate_schedule leitet die fehlende
+--   Groesse auf dem REST ab (Ziel - Startbestand; eine Quelle, auch read-only fuer den HITL-Preview im Tool).
+--   MITTELVERWENDUNG ZUERST (Sparziel-Zweckbindung 2026-10-27): ein Ziel braucht nicht zwingend eine Rate. Quellen:
+--     * already_saved (opt): Geld, das schon auf dem Topf liegt -> Zuordnung ohne Ueberweisung (saldo-basiert in
+--       Kontowaehrung, hoechstens der freie Saldo; Depot in EUR).
+--     * Rate (nur fuer den Rest > 0, ohne Sparplan, Topf saldo-basiert): account_id (Abbuchungskonto) ist dann Pflicht.
+--     * savings_plan (opt, Name): der Sparplan finanziert das Ziel (seine Kaeufe fuettern die Depot-Reserve); dann KEINE
+--       eigene Rate, die Karte zeigt Sparplan-Betrag vs. noetige Rate.
+--     Rest <= 0 -> Rate 0, keine recurring_payment, kein Abbuchungskonto noetig (target_date Pflicht).
+--   Eingabe jsonb: name, goal_type, target_amount, target_date (opt), monthly_savings_rate (opt), already_saved (opt),
+--   savings_plan (opt), account_id (Abbuchungskonto, in n8n aufgeloest; nur fuer eine Rate), reserve_account_id
+--   (PFLICHT: Topf = Konto des Ziel-Geldes; saldo-basiert (fn_goal_pot_account_types) oder ein Depot, Depot nur mit
+--   Startbestand/Sparplan), schedule_day_of_month, first_payment_date (opt, WP2: leer = naechster Termin ab heute laut
 --   fn_savings_rate_schedule), priority (opt, WS-C1: kleiner = wichtiger), notes,
 --   beneficiary_person_id (opt, Slug; leer = Inhaber des Spartopfs, fn_default_beneficiary; Topf ohne Inhaber -> NULL).
---   SPARKONTO-PFLICHT (Audit Paket 3): ohne Topf liefe die Rate als nackte Abbuchung ins Leere -> Fortschritt 0,
---   Dauer-"hinter Plan", "erreicht" nie. Deshalb ist der Topf Gesetz in der fn (auch fuer den Import-Pfad), nicht
---   nur im Tool: fehlt / existiert nicht / nicht aktiv / nicht cash-fixed_deposit / gleich Abbuchungskonto -> {ok:false}.
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, goal_id, recurring_payment_id, monthly_rate, target_date, first_payment_date, card_lines,
+--   SPARKONTO-PFLICHT (Audit Paket 3): ohne Topf liefe eine Rate als nackte Abbuchung ins Leere -> Fortschritt 0. Der
+--   Topf ist Gesetz in der fn (auch fuer den Import-Pfad), nicht nur im Tool.
+--   RUECKGABE-VERTRAG: Erfolg -> {ok:true, goal_id, recurring_payment_id (NULL ohne Rate), monthly_rate (eigene Rate,
+--   0 ohne), target_date, first_payment_date, current_amount (Stand nach dem Startbestand, EUR), savings_plan_id
+--   (verknuepft, sonst NULL), required_monthly_rate + plan_monthly_amount (nur mit Sparplan), card_lines,
 --   beneficiary_person_id, beneficiary_name (ueber core.fn_household_persons, D10), effective {beneficiary_person_id}}
---   + optional savings_squeeze (fn_savings_squeeze_fold) (monthly_rate/target_date = die berechnete bzw. uebernommene Groesse = Post-State; kein Echo der Eingabe
---   reserve_account_id).
---   Korrigierbar (Sparkonto fehlt/ungeeignet, Zielbetrag<=0, weder Datum noch Rate, Datum vor first_payment)
---   -> {ok:false, reason} OHNE Write (kein RAISE -> kein Owner-Alert).
+--   + optional savings_squeeze (fn_savings_squeeze_fold).
+--   Korrigierbar (Topf fehlt/ungeeignet, Zielbetrag<=0, Startbestand<0 oder mehr als frei, weder Datum noch Rate,
+--   Datum vor first_payment, Rate ohne Abbuchungskonto, Rate in ein Depot, Sparplan nicht gefunden/mehrdeutig/schon
+--   gebunden) -> {ok:false, reason} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_savings_goal(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -31,13 +39,27 @@ DECLARE
     v_sim     TEXT;
     v_rate    NUMERIC;
     v_date    DATE;
-    v_acct    INT      := (p->>'account_id')::int;
+    v_acct    INT      := NULLIF(p->>'account_id', '')::int;
     v_reserve INT      := NULLIF(p->>'reserve_account_id', '')::int;   -- WS-A: Ziel-Topf (Reserve-Konto)
+    v_saved   NUMERIC  := COALESCE(NULLIF(p->>'already_saved', '')::numeric, 0);
+    v_saved_eur NUMERIC;
+    v_plan_name TEXT   := NULLIF(btrim(p->>'savings_plan'), '');
+    v_plan    RECORD;
+    v_plan_id INT;
+    v_plan_monthly NUMERIC;
+    v_rtype   finance.account_type;
+    v_rccy    TEXT;
+    v_rstatus finance.account_status;
+    v_depot   BOOLEAN;
+    v_free    NUMERIC;
+    v_ear     JSONB;
     v_first   DATE;      -- erste Rate: genannt oder Default aus fn_savings_rate_schedule (WP2)
     v_dom     SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
     v_why     TEXT;      -- fn_goal_reserve_account_reason
     v_benef   TEXT     := finance.fn_default_beneficiary(p->>'beneficiary_person_id', v_reserve);  -- genannt > Topf-Inhaber
     v_dates   JSONB;
+    v_cur     NUMERIC;
+    v_lines   JSONB;
 BEGIN
     -- relative Datumsangaben ("in 2 years") -> ISO, damit effective sie fest in den Write nach der Karte traegt
     -- (fn_savings_rate_schedule loest dieselben Keys fuer die Karte auf); nicht aufloesbar -> {ok:false, code:'invalid_date'}
@@ -48,34 +70,83 @@ BEGIN
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
+    IF v_saved < 0 THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'already_saved cannot be negative, got ' || v_saved || '.');
+    END IF;
     -- Audit Paket 3: Sparkonto-Pflicht (Gesetz in der fn; Tool + Import pruefen vorab nur als Komfort).
     IF v_reserve IS NULL THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A savings goal needs a savings account (reserve) where the money is kept - otherwise the '
-                   || 'progress cannot be measured. Ask the user which savings/Tagesgeld account the rate goes to, '
-                   || 'or offer to create one with tool_create_account first.');
+                   || 'progress cannot be measured. Ask the user which account holds or receives the money '
+                   || '(cash/Tagesgeld, fixed deposit, P2P, or a depot with a savings plan), or offer to create one with '
+                   || 'tool_create_account first.');
     END IF;
-    -- Konto-Regel des Topfs (eine Adresse mit set/relocate): aktives cash-/Festgeld-Konto, nicht das Abbuchungskonto.
-    v_why := finance.fn_goal_reserve_account_reason(v_reserve, v_acct);
-    IF v_why IS NOT NULL THEN
-        RETURN jsonb_build_object('ok', false, 'reason', v_why);
+    SELECT account_type, currency, status INTO v_rtype, v_rccy, v_rstatus FROM finance.accounts WHERE id = v_reserve;
+    v_depot := v_rtype IN ('stocks_depot', 'crypto_depot');
+    IF v_depot THEN
+        IF v_rstatus IS DISTINCT FROM 'active' THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'The depot of the goal must be an active account.');
+        END IF;
+    ELSE
+        -- Konto-Regel des Topfs (eine Adresse mit set/relocate): aktives saldo-basiertes Konto, nicht das Abbuchungskonto.
+        v_why := finance.fn_goal_reserve_account_reason(v_reserve, v_acct);
+        IF v_why IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason', v_why);
+        END IF;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_acct AND status = 'active') THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'The funding (debit) account must be an active account.');
+
+    -- Sparplan als Quelle: aufloesen (auch pausierte), ein Plan gehoert zu EINEM Ziel (wie fn_set_savings_goal).
+    IF v_plan_name IS NOT NULL THEN
+        SELECT r.id, r.hit_count INTO v_plan FROM finance.fn_resolve_savings_plan(v_plan_name, FALSE) r;
+        IF v_plan.hit_count IS DISTINCT FROM 1 THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', CASE WHEN COALESCE(v_plan.hit_count, 0) = 0 THEN 'No savings plan found matching "' || v_plan_name || '".'
+                               ELSE 'Multiple savings plans match "' || v_plan_name || '" - ask the user which one.' END);
+        END IF;
+        IF EXISTS (SELECT 1 FROM finance.savings_plans WHERE id = v_plan.id AND savings_goal_id IS NOT NULL) THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'Savings plan "' || v_plan_name || '" already funds another goal. Unlink it there first.');
+        END IF;
+        v_plan_id := v_plan.id;
     END IF;
-    -- Rate ODER Zieldatum deterministisch ableiten (kein LLM-Rechnen). Korrigierbare Faelle
-    -- (Zielbetrag<=0, weder Datum noch Rate, Datum vor first_payment) kommen als {ok:false} zurueck.
-    v_sched := finance.fn_savings_rate_schedule(p);
+
+    -- Startbestand: hoechstens der freie Saldo des Topfs (saldo-basiert; eine Adresse fn_account_free_balance).
+    IF v_saved > 0 AND NOT v_depot THEN
+        v_free := finance.fn_account_free_balance(v_reserve);
+        IF v_saved > COALESCE(v_free, 0) THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'insufficient_free_balance',
+                'free', round(GREATEST(COALESCE(v_free, 0), 0), 2),
+                'reason', 'Only ' || to_char(GREATEST(COALESCE(v_free, 0), 0), 'FM999999990D00') || ' ' || v_rccy
+                       || ' on the savings account are not yet earmarked for savings goals - the money already saved '
+                       || 'cannot be more than that.');
+        END IF;
+    END IF;
+    -- Sparziele rechnen in EUR: ein Startbestand auf einem Fremdwaehrungs-Topf zaehlt mit seinem EUR-Wert.
+    v_saved_eur := CASE WHEN v_depot THEN v_saved ELSE COALESCE(finance.fn_to_eur(v_saved, v_rccy), v_saved) END;
+
+    -- Rate ODER Zieldatum deterministisch auf dem Rest ableiten (kein LLM-Rechnen).
+    v_sched := finance.fn_savings_rate_schedule(p || jsonb_build_object('already_saved', v_saved_eur));
     IF (v_sched->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_sched;   -- {ok:false, reason} unveraendert durchreichen
     END IF;
-
-    -- WS-A: die Rate ist eine UMBUCHUNG in den Reserve-Topf (statt reiner Abbuchung) ->
-    -- der Fortschritt = Topf-Stand (s. savings_goal_progress); Topf <> Abbuchungskonto prueft die Konto-Regel oben.
     v_rate  := (v_sched->>'monthly_rate')::numeric;
     v_date  := (v_sched->>'target_date')::date;
     v_first := (v_sched->>'first_payment_date')::date;
+
+    -- Eigene Rate nur fuer einen Rest > 0 ohne Sparplan: sie fliesst in einen saldo-basierten Topf, vom Abbuchungskonto.
+    IF v_rate > 0 AND v_plan_id IS NULL THEN
+        IF v_depot THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'A monthly rate cannot be paid into a depot directly. Link the savings plan that buys into it '
+                       || '(savings_plan), or choose a cash/Tagesgeld, fixed-deposit or P2P account as the savings account.');
+        END IF;
+        IF v_acct IS NULL OR NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_acct AND status = 'active') THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'The goal still needs ' || to_char(v_rate, 'FM999999990D00') || ' EUR per month. Ask the user from '
+                       || 'which account the monthly rate is debited (an active account), or whether money that already '
+                       || 'lies on an account belongs to the goal.');
+        END IF;
+    END IF;
 
     -- Karten-Hinweis (hohe Schwelle): aktives Sparziel mit gleichem Zielbetrag und gleichem Zieldatum
     SELECT g.name INTO v_sim FROM finance.savings_goals g
@@ -97,29 +168,60 @@ BEGIN
     )
     RETURNING id INTO v_goal_id;
 
-    -- 2. Sparrate als recurring_payment (monatlich, negativ = Ausgabe vom Konto)
-    --    via gemeinsamen Helper (Teil 0: eine Quelle fuer den Insert).
-    v_rp_id := finance.fn_add_recurring_payment(
-        v_acct, -v_rate, left('Sparrate ' || (p->>'name'), 100),
-        1::smallint, 'month'::finance.schedule_unit, v_dom, v_first, finance.fn_recurring_valid_from(v_acct, v_first), NULL, NULL, NULL);
+    -- 2. Startbestand zuordnen (dieselbe fn wie die spaetere Zuordnung; der Guard oben hat ihn schon geprueft).
+    IF v_saved > 0 THEN
+        v_ear := finance.fn_book_savings_reservation(jsonb_build_object(
+            'savings_goal_id', v_goal_id, 'account_id', v_reserve, 'amount', v_saved));
+        IF (v_ear->>'ok')::boolean IS DISTINCT FROM true THEN
+            RAISE EXCEPTION 'Earmarking the starting amount of savings goal % failed: %', v_goal_id, v_ear->>'reason';
+        END IF;
+    END IF;
 
-    -- 3. FK-Link setzen
-    UPDATE finance.savings_goals SET recurring_payment_id = v_rp_id WHERE id = v_goal_id;
+    -- 3a. Sparrate als recurring_payment (monatlich, negativ = Ausgabe vom Konto) via gemeinsamen Helper; WS-A: die
+    --     Rate ist eine UMBUCHUNG in den Topf (fn_book_recurring_transfer bucht zwei-beinig und stempelt savings_goal_id
+    --     aufs Haben-Bein -> Fortschritt = Topf-Anteil).
+    IF v_rate > 0 AND v_plan_id IS NULL THEN
+        v_rp_id := finance.fn_add_recurring_payment(
+            v_acct, -v_rate, left('Sparrate ' || (p->>'name'), 100),
+            1::smallint, 'month'::finance.schedule_unit, v_dom, v_first, finance.fn_recurring_valid_from(v_acct, v_first), NULL, NULL, NULL);
+        UPDATE finance.savings_goals SET recurring_payment_id = v_rp_id WHERE id = v_goal_id;
+        UPDATE finance.recurring_payments SET target_account_id = v_reserve WHERE id = v_rp_id;
+    END IF;
 
-    -- 4. WS-A: Rate wird Transfer in den Topf (target_account_id). fn_book_recurring_transfer bucht dann zwei-beinig
-    --    und stempelt savings_goal_id aufs Haben-(Topf-)Bein -> Fortschritt = Topf-Stand.
-    UPDATE finance.recurring_payments SET target_account_id = v_reserve WHERE id = v_rp_id;
+    -- 3b. Sparplan verknuepfen: seine Kaeufe fuettern die Depot-Reserve des Ziels (fn_book_stock_buy).
+    IF v_plan_id IS NOT NULL THEN
+        UPDATE finance.savings_plans SET savings_goal_id = v_goal_id WHERE id = v_plan_id;
+        SELECT abs(rp.monthly_equivalent) INTO v_plan_monthly
+        FROM finance.savings_plans sp JOIN finance.recurring_payments rp ON rp.id = sp.recurring_payment_id
+        WHERE sp.id = v_plan_id;
+    END IF;
+
+    SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal_id;
+    v_lines := finance.fn_similar_note(v_sim)
+        || CASE WHEN v_rate = 0 THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_covered'))
+                ELSE '[]'::jsonb END
+        || CASE WHEN v_plan_id IS NOT NULL AND v_rate > 0 THEN jsonb_build_array(jsonb_build_object(
+                    'kind', 'note', 'value', 'finance.note.goal_plan_rate',
+                    'params', jsonb_build_object('plan', v_plan_name, 'monthly', core.fn_ui_money(COALESCE(v_plan_monthly, 0)),
+                                                 'needed', core.fn_ui_money(v_rate))))
+                ELSE '[]'::jsonb END;
 
     -- Phase L WS-4: Ueber-Spar-Sofort-Hinweis (Event-Fold, geteilter Helfer fn_savings_squeeze_fold). ERST HIER —
     -- nach dem target_account_id-UPDATE ist die Rate als Sparen in monthly_cashflow_summary. Auch bei schon
     -- bestehendem Pflicht-Defizit (frei < 0) warnt der Helfer - die neue Rate vertieft es; diese fn faltet kein
     -- cashflow_coverage, sonst bliebe die Anlage ohne jeden Hinweis.
     RETURN jsonb_build_object('ok', true, 'goal_id', v_goal_id, 'recurring_payment_id', v_rp_id,
-        'monthly_rate', v_rate, 'target_date', v_date, 'first_payment_date', v_first,
-        'card_lines', finance.fn_similar_note(v_sim),
+        'monthly_rate', CASE WHEN v_rp_id IS NOT NULL THEN v_rate ELSE 0 END,
+        'target_date', v_date, 'first_payment_date', v_first,
+        'current_amount', round(COALESCE(v_cur, 0), 2),
+        'savings_plan_id', v_plan_id,
+        'card_lines', v_lines,
         'beneficiary_person_id', v_benef,
         'beneficiary_name', (SELECT hp.full_name FROM core.fn_household_persons() hp WHERE hp.person_id = v_benef),
         'effective', (v_dates->'resolved') || jsonb_build_object('beneficiary_person_id', v_benef))
+        || CASE WHEN v_plan_id IS NOT NULL
+                THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', round(COALESCE(v_plan_monthly, 0), 2))
+                ELSE '{}'::jsonb END
         || finance.fn_savings_squeeze_fold();
 END;
 $$;

@@ -353,6 +353,13 @@
     "final": "Kreditrate gebucht."
   },
   {
+    "match": "Das Geld liegt schon komplett auf dem Tagesgeld Plus",
+    "calls": [
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Sommerreise 2027", "target_amount": 3000, "target_date": "2027-07-31", "reserve_account_name": "Tagesgeld Plus", "already_saved": "3000" } }
+    ],
+    "final": "Sparziel angelegt, keine Sparrate noetig."
+  },
+  {
     "match": "Zielbetrag 10000 Euro, bis Ende 2027",
     "calls": [
       { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "2027-12-31", "account_name": "DKB Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-07-01" } }

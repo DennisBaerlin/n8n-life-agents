@@ -110,4 +110,30 @@ BEGIN
     RAISE EXCEPTION 'FAIL schedule [Default Tag 15]: % erwartet, got %', v_exp, v; END IF;
   RAISE NOTICE 'PASS schedule [erste Rate ohne Datum: heute bzw. naechster 15.]';
 END $$;
+
+-- already_saved (Sparziel-Zweckbindung 2026-10-27): gerechnet wird auf dem REST.
+--  (A1) Ziel 3000, schon 1200, Datum: Rate = 1800 / Monate
+--  (A2) Ziel 3000, schon 3000, Datum in der Zukunft: Rate 0, months 0, ok
+--  (A3) gedeckt, aber kein Datum -> ok:false (Zieldatum ist Pflicht)
+--  (A4) gedeckt, Datum in der Vergangenheit -> ok:false
+--  (A5) Raten-Modus: Ziel 3000, schon 1000, Rate 500 -> 4 Monate
+DO $$
+DECLARE v jsonb;
+BEGIN
+  v := finance.fn_savings_rate_schedule('{"target_amount":3000,"already_saved":1200,"target_date":"2027-07-01","first_payment_date":"2026-11-01"}'::jsonb);
+  IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'monthly_rate')::numeric IS DISTINCT FROM 225 THEN
+    RAISE EXCEPTION 'FAIL schedule [A1 Rest]: %', v; END IF;   -- 8 Monate, 1800/8 = 225
+  v := finance.fn_savings_rate_schedule(jsonb_build_object('target_amount',3000,'already_saved',3000,'target_date',(core.fn_today() + 90)::text));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'monthly_rate')::numeric IS DISTINCT FROM 0 OR (v->>'months')::int IS DISTINCT FROM 0
+     OR (v->>'target_date')::date IS DISTINCT FROM core.fn_today() + 90 THEN
+    RAISE EXCEPTION 'FAIL schedule [A2 gedeckt]: %', v; END IF;
+  v := finance.fn_savings_rate_schedule('{"target_amount":3000,"already_saved":3500,"monthly_savings_rate":100}'::jsonb);
+  IF (v->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL schedule [A3 ohne Datum]: %', v; END IF;
+  v := finance.fn_savings_rate_schedule('{"target_amount":3000,"already_saved":3000,"target_date":"2020-01-01"}'::jsonb);
+  IF (v->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL schedule [A4 Vergangenheit]: %', v; END IF;
+  v := finance.fn_savings_rate_schedule('{"target_amount":3000,"already_saved":1000,"monthly_savings_rate":500,"first_payment_date":"2026-11-01"}'::jsonb);
+  IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'months')::int IS DISTINCT FROM 4 OR (v->>'target_date')::date IS DISTINCT FROM DATE '2027-03-01' THEN
+    RAISE EXCEPTION 'FAIL schedule [A5 Raten-Modus Rest]: %', v; END IF;
+  RAISE NOTICE 'PASS schedule [already_saved: Rest-Rate, gedeckt = Rate 0, Datum Pflicht/Zukunft, Raten-Modus auf dem Rest]';
+END $$;
 ROLLBACK;

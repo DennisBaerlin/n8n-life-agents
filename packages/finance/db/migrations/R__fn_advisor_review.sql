@@ -187,13 +187,16 @@ BEGIN
     -- ---------- WS-B Stufe 3: Uebererfuellt-Zweig (erreicht/uebertroffen, ORTHOGONAL zum Pace-Alert) ----------
     -- Owner-Korrektur "erreicht != ausgegeben": ein voll gefuelltes Ziel meldet sich AKTIV, OHNE Auto-Abschluss
     -- und OHNE Auto-Freigabe — der Betrag bleibt reserviert, bis der Owner ihn verwendet. Feuert NUR bei
-    -- current_amount >= target (nicht bei "hinter Plan"; das ist der Pace-Alert oben).
+    -- current_amount >= target (nicht bei "hinter Plan"; das ist der Pace-Alert oben). Nicht bei einem Ziel, das allein
+    -- durch Hand-Zuordnung gedeckt ist (earmarked_amount >= current_amount): die Karte der Zuordnung/Anlage hat die
+    -- Deckung schon gemeldet, ein Morgen-Alert waere Rauschen (Sparziel-Zweckbindung 2026-10-27).
     FOR r IN
         SELECT p.name,
                COALESCE(p.current_amount, 0) AS saved,
                p.target_amount               AS target
         FROM finance.savings_goal_progress p
         WHERE p.status = 'active' AND p.target_amount > 0 AND COALESCE(p.current_amount, 0) >= p.target_amount
+          AND COALESCE(p.current_amount, 0) > COALESCE(p.earmarked_amount, 0)
     LOOP
         v_alerts := v_alerts || jsonb_build_object(
             'metric_key', 'savings_goal_reached:' || r.name,

@@ -276,25 +276,32 @@ BEGIN
         IF (NULLIF(p->>'target_date','') IS NULL) = (NULLIF(p->>'monthly_savings_rate','') IS NULL) THEN
             RETURN 'provide EXACTLY ONE of target_date or monthly_savings_rate (the DB derives the other)';
         END IF;
+        -- Sparziel-Zweckbindung 2026-10-27: das Abbuchungskonto ist nur fuer eine Rate noetig -> optional, wenn ein
+        -- Startbestand (already_saved) das Ziel deckt oder ein Sparplan es finanziert (fn_create_savings_goal ist das Gesetz).
+        IF NULLIF(p->>'already_saved','')::numeric < 0 THEN RETURN 'already_saved must not be negative'; END IF;
         v_ref := NULLIF(trim(COALESCE(p->>'account','')), '');
-        IF v_ref IS NULL THEN RETURN 'account (name) is required'; END IF;
-        IF finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
+        IF v_ref IS NULL AND COALESCE(NULLIF(p->>'already_saved','')::numeric, 0) < v_num
+           AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL THEN
+            RETURN 'account (name of the account the monthly rate is debited from) is required unless already_saved covers the goal or a savings_plan funds it';
+        END IF;
+        IF v_ref IS NOT NULL AND finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
             RETURN format('account "%s" not found (neither existing nor in this batch)', v_ref);
         END IF;
         -- Audit Paket 3: ein Sparziel braucht ein Sparkonto (Topf), Gesetz in fn_create_savings_goal -> hier vorab
         -- als Zeilenfehler (vor dem Gate), statt erst beim Commit.
         IF NULLIF(trim(COALESCE(p->>'reserve_account','')), '') IS NULL THEN
-            RETURN 'reserve_account (name of the savings/Tagesgeld account the rate goes to) is required';
+            RETURN 'reserve_account (name of the account that holds or receives the money) is required';
         END IF;
-        IF lower(trim(p->>'reserve_account')) = lower(v_ref) THEN
+        IF v_ref IS NOT NULL AND lower(trim(p->>'reserve_account')) = lower(v_ref) THEN
             RETURN 'reserve_account must differ from the funding account';
         END IF;
         IF finance.fn_import_ref_account(p_batch_id, trim(p->>'reserve_account')) IS NULL THEN
             RETURN format('reserve_account "%s" not found (neither existing nor in this batch)', trim(p->>'reserve_account'));
         END IF;
-        -- wie fn_create_savings_goal: nur ein Tagesgeld/Festgeld taugt als Topf (vor dem Gate, nicht erst beim Commit)
-        IF COALESCE(finance.fn_import_ref_account_type(p_batch_id, trim(p->>'reserve_account')), '') NOT IN ('cash', 'fixed_deposit') THEN
-            RETURN format('reserve_account "%s" must be a cash/Tagesgeld or fixed-deposit account', trim(p->>'reserve_account'));
+        -- wie fn_create_savings_goal: Topf = saldo-basiertes Konto oder Depot (vor dem Gate, nicht erst beim Commit)
+        IF NOT COALESCE(finance.fn_import_ref_account_type(p_batch_id, trim(p->>'reserve_account')), '')
+               = ANY (finance.fn_goal_earmark_account_types()::text[]) THEN
+            RETURN format('reserve_account "%s" must be a cash/Tagesgeld, fixed-deposit, P2P or depot account', trim(p->>'reserve_account'));
         END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_savings_goal(v_name, FALSE);
         IF v_hits > 0 THEN RETURN format('savings goal "%s" already exists', v_name); END IF;

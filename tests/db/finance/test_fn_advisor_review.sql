@@ -584,6 +584,22 @@ BEGIN
     RAISE EXCEPTION 'FAIL [S1]: uebererfuelltes Ziel fälschlich als savings_pace (hinter Plan) gemeldet'; END IF;
   RAISE NOTICE 'PASS [S1: current >= target -> savings_goal_reached, nicht savings_pace]';
 
+  -- (S1b) nur durch Zuordnung gedeckt (Sparziel-Zweckbindung 2026-10-27): die Karte der Zuordnung/Anlage meldete die
+  -- Deckung schon -> kein periodischer savings_goal_reached-Alert (Rauschen fuer "Geld liegt schon da").
+  DECLARE v_p2p int; v_ge int; BEGIN
+    v_p2p := (finance.fn_create_account('{"name":"__s3_p2p__","account_type":"p2p","opening_balance":5000}'::jsonb)->>'account_id')::int;
+    INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__s3_earmarked__', 3000, current_date + 60, 'active') RETURNING id INTO v_ge;
+    PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_ge, 'account_id', v_p2p, 'amount', 3000));
+    r := finance.fn_advisor_review('finance');
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+               WHERE a->>'kind' = 'savings_goal_reached' AND (a->'msg')::text LIKE '%__s3_earmarked__%') THEN
+      RAISE EXCEPTION 'FAIL [S1b]: nur zugeordnet gedecktes Ziel darf keinen savings_goal_reached-Alert ausloesen'; END IF;
+    IF (SELECT earmarked_amount FROM finance.savings_goal_progress WHERE id = v_ge) IS DISTINCT FROM 3000 THEN
+      RAISE EXCEPTION 'FAIL [S1b earmarked_amount]'; END IF;
+    UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = v_ge;   -- stoert die folgenden Bloecke nicht
+  END;
+  RAISE NOTICE 'PASS [S1b: nur durch Zuordnung gedeckt -> kein erreicht-Alert]';
+
   -- ---------- (S2) Depot-Deckungs-Dialog: breach + hinter Plan -> Alert + Steuer-Hinweis ----------
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
   VALUES ('__s3_depot1__','stocks_depot','EUR','active', v_fund) RETURNING id INTO v_p1;

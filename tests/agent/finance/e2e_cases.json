@@ -87,6 +87,30 @@
         "notes":  "Testet fn_create_savings_goal RATEN-getrieben (Nutzer nennt Rate 100, KEIN Zieldatum -\u003e fn_savings_rate_schedule berechnet das Zieldatum = first + ceil(2000/100)=20 Monate). recurring_payment amount muss -100 sein (Rate uebernommen), schedule_day_of_month=5. Das LLM darf die Rate NICHT rechnen."
     },
     {
+        "id":  "e2e43",
+        "name":  "create_savings_goal: Ziel mit vorhandenem Geld auf P2P, ohne Rate (Zweckbindung)",
+        "task":  "Lege das Sparziel '__E2E__ Reise' an: 1500 Euro bis zum 31.12.2027. Das Geld liegt schon auf dem __E2E__ P2P, keine Sparrate.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ P2P', finance.fn_create_account(jsonb_build_object('name','__E2E__ P2P','account_type','p2p','account_holder','Erika','currency','EUR','opening_balance',2000)));",
+        "chat_id":  "test_e2e_e2e43",
+        "sentinel_accounts":  1,
+        "verify_sql":  "SELECT count(*) FROM finance.savings_goal_progress p JOIN finance.savings_goals g ON g.id = p.id WHERE g.name = '__E2E__ Reise' AND g.recurring_payment_id IS NULL AND p.current_amount = 1500 AND EXISTS (SELECT 1 FROM finance.savings_goal_reserve_entries e JOIN finance.accounts a ON a.id = e.account_id WHERE e.savings_goal_id = g.id AND a.name = '__E2E__ P2P' AND e.kind = 'manual' AND e.delta_native = 1500);",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Sparziel-Zweckbindung 2026-10-27: Schema-Fidelity already_saved + P2P-Topf + kein account_name. Erwartet: Ziel ohne recurring_payment, eine manual-Journal-Zeile 1500 auf dem P2P-Konto, Fortschritt 1500 (= Ziel). Cleanup via fn_clear_e2e_data (Journal sentinel-scoped vor dem Konto)."
+    },
+    {
+        "id":  "e2e42",
+        "name":  "book_savings_reservation: vorhandenes Tagesgeld einem Ziel zuordnen (Zweckbindung)",
+        "task":  "Ordne 400 Euro vom __E2E__ ZW Tagesgeld dem Sparziel '__E2E__ ZW Ziel' zu.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ ZW Giro', finance.fn_create_account(jsonb_build_object('name','__E2E__ ZW Giro','account_type','cash','account_holder','Erika','currency','EUR','opening_balance',3000)));SELECT pg_temp.ok('__E2E__ ZW Tagesgeld', finance.fn_create_account(jsonb_build_object('name','__E2E__ ZW Tagesgeld','account_type','cash','account_holder','Erika','currency','EUR','opening_balance',1000)));SELECT pg_temp.ok('__E2E__ ZW Ziel', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ ZW Ziel','target_amount',2000,'monthly_savings_rate',100,'account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ ZW Giro'),'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ ZW Tagesgeld'),'schedule_day_of_month',1)));",
+        "chat_id":  "test_e2e_e2e42",
+        "sentinel_accounts":  2,
+        "verify_sql":  "SELECT count(*) FROM finance.savings_goal_progress WHERE name = '__E2E__ ZW Ziel' AND current_amount = 400;",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Sparziel-Zweckbindung 2026-10-27: Schema-Fidelity tool_book_savings_reservation mit account_name auf einem Cash-Konto (vorher nur Depots). Erwartet: eine manual-Journal-Zeile 400 in Kontowaehrung, Fortschritt 400, keine Ueberweisung."
+    },
+    {
         "id":  "e2e07",
         "name":  "reconcile_account: Korrekturbuchung bei Drift",
         "task":  "Lege ein Cash-Konto \u0027__E2E__ Recon Konto\u0027 an (Inhaber Erika, ohne Zinsen). Buche eine Einzahlung von 500 Euro auf dieses Konto (Datum heute, Verwendungszweck \u0027Einlage\u0027). Gleiche das Konto dann ab: tatsaechlicher Saldo laut Banking-App ist 520 Euro (20 Euro Zinsen noch nicht gebucht), Datum heute.",

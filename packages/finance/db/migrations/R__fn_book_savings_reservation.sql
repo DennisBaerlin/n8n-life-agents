@@ -42,7 +42,6 @@ DECLARE
     v_old    NUMERIC;
     v_delta  NUMERIC;
     v_bal    NUMERIC;
-    v_held   NUMERIC;
     v_free   NUMERIC;
     v_mv     NUMERIC;
     v_short  NUMERIC;
@@ -88,11 +87,8 @@ BEGIN
 
     IF NOT v_depot THEN
         SELECT COALESCE(balance, 0) INTO v_bal FROM finance.account_balances WHERE account_id = v_acct;
-        SELECT COALESCE(sum(s.share_native), 0) INTO v_held
-        FROM finance.savings_goal_account_share s
-        WHERE s.account_id = v_acct AND s.goal_status = 'active';
         v_bal  := COALESCE(v_bal, 0);
-        v_free := v_bal - v_held;            -- frei VOR dem Append
+        v_free := finance.fn_account_free_balance(v_acct);   -- frei VOR dem Append (eine Adresse des Guards)
         IF v_delta > 0 AND v_delta > v_free THEN
             RETURN jsonb_build_object('ok', false, 'code', 'insufficient_free_balance',
                 'free', round(GREATEST(v_free, 0), 2), 'balance', round(v_bal, 2),

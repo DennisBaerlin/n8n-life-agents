@@ -43,6 +43,9 @@
                                                                                    "name":  "stop_funders"
                                                                                },
                                                                                {
+                                                                                   "name":  "account_name"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -347,15 +350,103 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_set_savings_goal(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027account_name\u0027, \u0027\u0027), ARRAY[\u0027cash\u0027,\u0027p2p\u0027]);",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ goal_id: $(\u0027Resolve Goal\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, link_savings_plan_name: $(\u0027Start\u0027).item.json.link_savings_plan_name, unlink_savings_plan_name: $(\u0027Start\u0027).item.json.unlink_savings_plan_name, stop_funders: $(\u0027Start\u0027).item.json.stop_funders }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).item.json.account_name }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
                       "typeVersion":  2.6,
                       "position":  [
-                                       880,
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "8fc06f2c-a1a3-5cbc-bf2d-ee5c5ef902dd",
+                      "name":  "Resolve Funding",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "671b82e0-8e9d-514e-adac-6053fc86f0f8",
+                                                                                   "leftValue":  "={{ !!$(\u0027Start\u0027).item.json.account_name \u0026\u0026 $(\u0027Resolve Funding\u0027).item.json.hit_count !== 1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "fabf6a84-825f-50d4-b87c-e9eae6fd3d91",
+                      "name":  "Funding invalid?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c213652d-6b00-503f-aa32-658995e51a57",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "567317c6-763d-57fb-8e6c-26abd37878ca",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=The debit account \u0027{{ $(\u0027Start\u0027).item.json.account_name }}\u0027 could not be uniquely resolved ({{ $(\u0027Resolve Funding\u0027).item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify($(\u0027Resolve Funding\u0027).item.json.candidates) }}. Ask which exact account.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       200
+                                   ],
+                      "id":  "2671666f-987b-540d-a2eb-2c0043d05503",
+                      "name":  "Funding unresolved"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_set_savings_goal(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ goal_id: $(\u0027Resolve Goal\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, link_savings_plan_name: $(\u0027Start\u0027).item.json.link_savings_plan_name, unlink_savings_plan_name: $(\u0027Start\u0027).item.json.unlink_savings_plan_name, stop_funders: $(\u0027Start\u0027).item.json.stop_funders, account_id: $(\u0027Resolve Funding\u0027).item.json.id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1760,
                                        0
                                    ],
                       "id":  "3a67cf3d-ebe8-5fab-9081-8d009765dd6c",
@@ -395,7 +486,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       1100,
+                                       1980,
                                        0
                                    ],
                       "id":  "bdbae38e-a03f-5e0e-8c1e-5a794c07cf7a",
@@ -444,7 +535,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1320,
+                                       2200,
                                        200
                                    ],
                       "id":  "22577173-e5df-58ca-9f03-91c938473fbe",
@@ -453,15 +544,15 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027new_monthly_rate\u0027)::numeric AS new_monthly_rate, (r-\u003e\u003e\u0027linked_savings_plan_id\u0027)::int AS linked_savings_plan_id, (r-\u003e\u003e\u0027paused_cash_rate\u0027)::boolean AS paused_cash_rate, (r-\u003e\u003e\u0027paused_plan_count\u0027)::int AS paused_plan_count, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze FROM finance.fn_set_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027new_monthly_rate\u0027)::numeric AS new_monthly_rate, COALESCE((r-\u003e\u003e\u0027covered\u0027)::boolean, false) AS covered, (r-\u003e\u003e\u0027required_monthly_rate\u0027)::numeric AS required_monthly_rate, COALESCE(r-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS rate_note, (r-\u003e\u003e\u0027linked_savings_plan_id\u0027)::int AS linked_savings_plan_id, (r-\u003e\u003e\u0027paused_cash_rate\u0027)::boolean AS paused_cash_rate, (r-\u003e\u003e\u0027paused_plan_count\u0027)::int AS paused_plan_count, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze FROM finance.fn_set_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ goal_id: $(\u0027Resolve Goal\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, link_savings_plan_name: $(\u0027Start\u0027).item.json.link_savings_plan_name, unlink_savings_plan_name: $(\u0027Start\u0027).item.json.unlink_savings_plan_name, stop_funders: $(\u0027Start\u0027).item.json.stop_funders, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ goal_id: $(\u0027Resolve Goal\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, link_savings_plan_name: $(\u0027Start\u0027).item.json.link_savings_plan_name, unlink_savings_plan_name: $(\u0027Start\u0027).item.json.unlink_savings_plan_name, stop_funders: $(\u0027Start\u0027).item.json.stop_funders, account_id: $(\u0027Resolve Funding\u0027).item.json.id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
                       "typeVersion":  2.6,
                       "position":  [
-                                       2200,
+                                       3080,
                                        0
                                    ],
                       "id":  "c4cd3185-0475-5fec-b59f-7484028f3a6c",
@@ -480,7 +571,7 @@
                                                                                  {
                                                                                      "id":  "0430d602-f7f3-551b-bd5e-defbc9494f6c",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_savings_goal\u0027, lines: [ { label: \u0027finance.label.goal\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.goal_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), (($(\u0027Start\u0027).item.json.beneficiary_person) ? { label: \u0027finance.label.beneficiary_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.beneficiary_person)) } : null), (($(\u0027Start\u0027).item.json.target_amount) ? { label: \u0027finance.label.target_amount\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.target_amount), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.target_amount), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.target_date) ? { label: \u0027finance.label.target_date\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027date\u0027, value: ($(\u0027Read Current\u0027).item.json.target_date) }), to: ({ kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).target_date || $(\u0027Start\u0027).item.json.target_date)) }) } } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null), (($(\u0027Start\u0027).item.json.priority) ? { label: \u0027finance.label.priority\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.priority_hint\u0027), params: { value: ($(\u0027Start\u0027).item.json.priority) } } : null), (($(\u0027Start\u0027).item.json.link_savings_plan_name) ? { label: \u0027finance.label.link_savings_plan\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.link_savings_plan\u0027), params: { name: ($(\u0027Start\u0027).item.json.link_savings_plan_name) } } : null), (($(\u0027Start\u0027).item.json.unlink_savings_plan_name) ? { label: \u0027finance.label.unlink_savings_plan\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.unlink_savings_plan_name) } : null), (($(\u0027Resolve Reserve\u0027).item.json.id) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.reserve_pot_set\u0027), params: { name: ($(\u0027Start\u0027).item.json.reserve_account_name) } } : null), (($(\u0027Start\u0027).item.json.stop_funders) ? { label: \u0027finance.label.stop_funding\u0027, kind: \u0027key\u0027, value: (\u0027finance.value.stop_funders\u0027) } : null), ((($(\u0027Start\u0027).item.json.target_amount || $(\u0027Start\u0027).item.json.target_date)) ? { kind: \u0027note\u0027, value: \u0027finance.note.set_goal_recalc\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_savings_goal\u0027, lines: [ { label: \u0027finance.label.goal\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.goal_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), (($(\u0027Start\u0027).item.json.beneficiary_person) ? { label: \u0027finance.label.beneficiary_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.beneficiary_person)) } : null), (($(\u0027Start\u0027).item.json.target_amount) ? { label: \u0027finance.label.target_amount\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.target_amount), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.target_amount), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.target_date) ? { label: \u0027finance.label.target_date\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027date\u0027, value: ($(\u0027Read Current\u0027).item.json.target_date) }), to: ({ kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).target_date || $(\u0027Start\u0027).item.json.target_date)) }) } } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null), (($(\u0027Start\u0027).item.json.priority) ? { label: \u0027finance.label.priority\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.priority_hint\u0027), params: { value: ($(\u0027Start\u0027).item.json.priority) } } : null), (($(\u0027Start\u0027).item.json.link_savings_plan_name) ? { label: \u0027finance.label.link_savings_plan\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.link_savings_plan\u0027), params: { name: ($(\u0027Start\u0027).item.json.link_savings_plan_name) } } : null), (($(\u0027Start\u0027).item.json.unlink_savings_plan_name) ? { label: \u0027finance.label.unlink_savings_plan\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.unlink_savings_plan_name) } : null), (($(\u0027Resolve Reserve\u0027).item.json.id) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.reserve_pot_set\u0027), params: { name: ($(\u0027Start\u0027).item.json.reserve_account_name) } } : null), (($(\u0027Start\u0027).item.json.stop_funders) ? { label: \u0027finance.label.stop_funding\u0027, kind: \u0027key\u0027, value: (\u0027finance.value.stop_funders\u0027) } : null), (($(\u0027Dry run\u0027).item.json.r.new_monthly_rate) ? { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.new_monthly_rate), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.account_name \u0026\u0026 $(\u0027Dry run\u0027).item.json.r.new_monthly_rate) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.account_name) } : null), (($(\u0027Dry run\u0027).item.json.r.covered) ? { kind: \u0027note\u0027, value: \u0027finance.note.goal_covered\u0027 } : null), ((($(\u0027Start\u0027).item.json.target_amount || $(\u0027Start\u0027).item.json.target_date) \u0026\u0026 !$(\u0027Dry run\u0027).item.json.r.covered) ? { kind: \u0027note\u0027, value: \u0027finance.note.set_goal_recalc\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -492,7 +583,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1540,
+                                       2420,
                                        0
                                    ],
                       "id":  "656cadfb-6a96-59d8-a570-34815ab5f4f0",
@@ -530,7 +621,7 @@
                       "type":  "n8n-nodes-base.executeWorkflow",
                       "typeVersion":  1.2,
                       "position":  [
-                                       1760,
+                                       2640,
                                        0
                                    ],
                       "id":  "a46fd877-1834-535e-bfa2-771cdd7ffda7",
@@ -564,7 +655,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       1980,
+                                       2860,
                                        0
                                    ],
                       "id":  "d5dca737-7adf-5aa2-bbb8-0e5a34e8f587",
@@ -601,7 +692,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2200,
+                                       3080,
                                        240
                                    ],
                       "id":  "0336f249-60b3-5bc6-9ff2-46fe16753ec9",
@@ -635,7 +726,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       2420,
+                                       3300,
                                        0
                                    ],
                       "id":  "6d87fd22-b19d-506e-a112-742925f06625",
@@ -666,7 +757,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2640,
+                                       3520,
                                        240
                                    ],
                       "id":  "a49c2c18-092e-5b8c-9cc3-665c83c32bad",
@@ -702,24 +793,42 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "20adbcdf-6d52-54b8-82d2-18d897313a8a",
+                                                                                     "name":  "covered",
+                                                                                     "value":  "={{ $(\u0027Set goal (atomic)\u0027).item.json.covered }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "498999f1-927c-58f6-9b13-b425a4e9d6bf",
+                                                                                     "name":  "required_monthly_rate",
+                                                                                     "value":  "={{ $(\u0027Set goal (atomic)\u0027).item.json.required_monthly_rate }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8da65d9c-5cc3-5632-9d9e-8f6f9e984824",
+                                                                                     "name":  "rate_note",
+                                                                                     "value":  "={{ $(\u0027Set goal (atomic)\u0027).item.json.rate_note }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e4a16ed5-686e-53a8-92ce-094232d1def5",
                                                                                      "name":  "linked_savings_plan_id",
                                                                                      "value":  "={{ $(\u0027Set goal (atomic)\u0027).item.json.linked_savings_plan_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "498999f1-927c-58f6-9b13-b425a4e9d6bf",
+                                                                                     "id":  "65217f32-9882-51b6-a9b8-4a754edcb432",
                                                                                      "name":  "paused_cash_rate",
                                                                                      "value":  "={{ $(\u0027Set goal (atomic)\u0027).item.json.paused_cash_rate }}",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "8da65d9c-5cc3-5632-9d9e-8f6f9e984824",
+                                                                                     "id":  "62a933d5-7cd3-59a8-af72-d0065c3170c7",
                                                                                      "name":  "paused_plan_count",
                                                                                      "value":  "={{ $(\u0027Set goal (atomic)\u0027).item.json.paused_plan_count }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "e4a16ed5-686e-53a8-92ce-094232d1def5",
+                                                                                     "id":  "3b7c45df-7e2b-598b-a655-2521ff9c301f",
                                                                                      "name":  "savings_squeeze",
                                                                                      "value":  "={{ $(\u0027Set goal (atomic)\u0027).item.json.savings_squeeze }}",
                                                                                      "type":  "string"
@@ -733,7 +842,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2640,
+                                       3520,
                                        0
                                    ],
                       "id":  "b7641a5c-58d3-5460-bd26-b53682d7ca82",
@@ -741,7 +850,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_savings_goal mit denselben Werten, immer zurückgerollt (nach den Person-/Topf-Checks). ok:false (Zielbetrag \u003c= 0, Zieldatum in der Vergangenheit, Ziel bereits gedeckt, Topf = Abbuchungskonto, Sparplan nicht gefunden/fremd gebunden) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_savings_goal mit denselben Werten, immer zurückgerollt (nach den Person-/Topf-/Abbuchungskonto-Checks). ok:false (Zielbetrag \u003c= 0, Zieldatum in der Vergangenheit, Topf = Abbuchungskonto, kein Topf für eine neue Rate, Sparplan nicht gefunden/fremd gebunden) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4
@@ -749,7 +858,7 @@
                       "type":  "n8n-nodes-base.stickyNote",
                       "typeVersion":  1,
                       "position":  [
-                                       880,
+                                       1760,
                                        -220
                                    ],
                       "id":  "4034acba-a140-5876-9eba-c145226dfe49",
@@ -757,7 +866,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_set_savings_goal: Rate Rest/Rest-Zeit + Recurring-Sync**\n\nZiel/Datum-Änderung -\u003e Sparrate = (Zielbetrag - bereits gespart) / Rest-Monate (NICHT Gesamt/Gesamt) -\u003e verknüpfte Sparrate (recurring) in-place. Status completed/cancelled -\u003e {ok:false} mit Verweis auf close_savings_goal (Reserve-Gate); active -\u003e Rate wieder aktiv bzw. Folge-Rate ab heute, wenn sie schon beendet war. WS-A: reserve_account_name (optional, via Resolve Reserve/Reserve invalid?) -\u003e rp.target_account_id zieht mit (künftige Raten = Umbuchung in den Topf; Guard reserve\u003c\u003eAbbuchungskonto); leer = Topf unverändert; BEREITS zugeordnete Buchungen bleiben dem Ziel zugeordnet. WS-B Stufe 2: link_savings_plan_name / unlink_savings_plan_name werden als String direkt an die fn gereicht (KEIN eigener Resolve-Node im Canvas) -\u003e die fn löst den Plan DB-seitig auf (fn_resolve_savings_plan) und setzt/löscht savings_plans.savings_goal_id (ein Ziel hat 0..N Sparpläne; ein bereits an ein ANDERES Ziel gebundener Plan -\u003e {ok:false}, erst lösen); danach speist jeder goal-verknüpfte Sparplan-Kauf die Depot-Reserve (Zwei-Schritt-Auto-Journal in fn_book_stock_buy). WS-B Stufe 3: stop_funders=true -\u003e fn_stop_savings_goal_funders pausiert die Cash-Rate + ALLE verknüpften Sparpläne (deren rps), Ziel + Reserve UNBERÜHRT (\"erreicht != ausgegeben\"; Lebenszyklus ERREICHT). {ok:false}: target\u003c=0 / Zieldatum Vergangenheit / Ziel bereits gedeckt / reserve==funding / Sparplan nicht gefunden/mehrdeutig / unlink eines nicht-gebundenen Plans / link eines fremd-gebundenen Plans. \"bereits gespart\" = savings_goal_progress.current_amount (Reserve-Stand = getaggte Bewegungen + Depot-Journal). Ändert der Write die Sparrate (neu gerechnet, reaktiviert, Topf gewechselt, Beiträge gestoppt), liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen \u003c 0 -\u003e Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.",
+                                         "content":  "## DB-Automatik\n**fn_set_savings_goal: Rate Rest/Rest-Zeit + Recurring-Sync**\n\nZiel/Datum-Änderung -\u003e Sparrate = (Zielbetrag - bereits gespart) / Rest-Monate (NICHT Gesamt/Gesamt) -\u003e verknüpfte Sparrate (recurring) in-place. Gedecktes Ziel (Rest \u003c= 0): Datum/Betrag ändern ist ok, covered=true, Rate bleibt. Ziel OHNE Rate mit Rest: account_name (Resolve Funding/Funding invalid?) legt eine Rate in den Topf an (reserve_account_name oder Konto mit dem größten Anteil); ohne account_name -\u003e code no_rate_running + required_monthly_rate (Agent fragt nach dem Konto). Status completed/cancelled -\u003e {ok:false} mit Verweis auf close_savings_goal (Reserve-Gate); active -\u003e Rate wieder aktiv bzw. Folge-Rate ab heute, wenn sie schon beendet war. WS-A: reserve_account_name (optional, via Resolve Reserve/Reserve invalid?) -\u003e rp.target_account_id zieht mit (künftige Raten = Umbuchung in den Topf; Guard reserve\u003c\u003eAbbuchungskonto); leer = Topf unverändert; BEREITS zugeordnete Buchungen bleiben dem Ziel zugeordnet. WS-B Stufe 2: link_savings_plan_name / unlink_savings_plan_name werden als String direkt an die fn gereicht (KEIN eigener Resolve-Node im Canvas) -\u003e die fn löst den Plan DB-seitig auf (fn_resolve_savings_plan) und setzt/löscht savings_plans.savings_goal_id (ein Ziel hat 0..N Sparpläne; ein bereits an ein ANDERES Ziel gebundener Plan -\u003e {ok:false}, erst lösen); danach speist jeder goal-verknüpfte Sparplan-Kauf die Depot-Reserve (Zwei-Schritt-Auto-Journal in fn_book_stock_buy). WS-B Stufe 3: stop_funders=true -\u003e fn_stop_savings_goal_funders pausiert die Cash-Rate + ALLE verknüpften Sparpläne (deren rps), Ziel + Reserve UNBERÜHRT (\"erreicht != ausgegeben\"; Lebenszyklus ERREICHT). {ok:false}: target\u003c=0 / Zieldatum Vergangenheit / Ziel bereits gedeckt / reserve==funding / Sparplan nicht gefunden/mehrdeutig / unlink eines nicht-gebundenen Plans / link eines fremd-gebundenen Plans. \"bereits gespart\" = savings_goal_progress.current_amount (Reserve-Stand = getaggte Bewegungen + Depot-Journal). Ändert der Write die Sparrate (neu gerechnet, reaktiviert, Topf gewechselt, Beiträge gestoppt), liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen \u003c 0 -\u003e Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.",
                                          "height":  240,
                                          "width":  560,
                                          "color":  4
@@ -765,7 +874,7 @@
                       "type":  "n8n-nodes-base.stickyNote",
                       "typeVersion":  1,
                       "position":  [
-                                       2200,
+                                       3080,
                                        -240
                                    ],
                       "id":  "f67797f2-a7d2-5671-9bab-3471c1050d4e",
@@ -870,6 +979,35 @@
                                                                   {
                                                                       "index":  0,
                                                                       "node":  "Reserve unresolved",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Resolve Funding",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Resolve Funding":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Funding invalid?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Funding invalid?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Funding unresolved",
                                                                       "type":  "main"
                                                                   }
                                                               ],

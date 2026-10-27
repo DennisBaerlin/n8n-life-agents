@@ -269,19 +269,27 @@ function Get-FinanceHitlLines {
             )
         }
         'savings_goal' {
+            # Sparziel-Zweckbindung 2026-10-27: eine eigene Rate gibt es nur fuer einen Rest > 0 ohne Sparplan; sonst
+            # entfallen Rate-Details (Abbuchungskonto/-tag, erste Buchung) und die Zeile zeigt 0 (Hinweis kommt aus der fn).
+            $rate = & $need 'MonthlyRate'
+            $hasRate = "(Number($rate) > 0 && !$S.savings_plan_name)"
             @(
                 (New-HitlLine 'core.label.name'                    "$S.goal_name")
                 (New-HitlLine 'finance.label.goal_type'            "$S.goal_type" -OmitEmpty)
                 (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel)
                 (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date)
-                (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -Params @{
-                    value  = (New-HitlValue -Kind money -Value (& $need 'MonthlyRate') -EurByModel)
+                (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -EurByModel -OmitEmpty)
+                (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If $hasRate -Params @{
+                    value  = (New-HitlValue -Kind money -Value $rate -EurByModel)
                     months = (& $need 'Months') })
-                (New-HitlLine 'finance.label.debit_account'        "$S.account_name")
-                (New-HitlLine 'finance.label.reserve_pot'          "'finance.tpl.reserve_pot'" -Kind tpl -Params @{ name = "$S.reserve_account_name" })
-                (New-HitlLine 'finance.label.debit_day'            (Get-FinanceDomTpl "$S.schedule_day_of_month" -DayTpl 'finance.tpl.day_ordinal' -Empty "'finance.value.relative_to_start'") -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
+                (New-HitlLine 'finance.label.monthly_savings_rate' "0" -Kind money -EurByModel -If "!($hasRate) && !$S.savings_plan_name")
+                (New-HitlLine 'finance.label.link_savings_plan'    "$S.savings_plan_name" -OmitEmpty)
+                (New-HitlLine 'finance.label.debit_account'        "$S.account_name" -If $hasRate)
+                (New-HitlLine 'finance.label.reserve_pot'          "'finance.tpl.reserve_pot'" -Kind tpl -If $hasRate -Params @{ name = "$S.reserve_account_name" })
+                (New-HitlLine 'finance.label.reserve_pot'          "$S.reserve_account_name" -If "!($hasRate)")
+                (New-HitlLine 'finance.label.debit_day'            (Get-FinanceDomTpl "$S.schedule_day_of_month" -DayTpl 'finance.tpl.day_ordinal' -Empty "'finance.value.relative_to_start'") -Kind tpl -If $hasRate -Params @{ day = "$S.schedule_day_of_month" })
                 # WP2: ohne genanntes Datum die erste Rate aus fn_savings_rate_schedule (naechster Termin ab heute)
-                (New-HitlLine 'finance.label.first_booking'        "($S.first_payment_date || $(& $need 'FirstPayment'))" -Kind date -IsDefault "!$S.first_payment_date")
+                (New-HitlLine 'finance.label.first_booking'        "($S.first_payment_date || $(& $need 'FirstPayment'))" -Kind date -If $hasRate -IsDefault "!$S.first_payment_date")
                 (& $own 'finance.label.beneficiary_person' (& $need 'Person'))
                 (New-HitlLine 'finance.label.priority'             "($S.priority ? 'finance.tpl.priority_hint' : null)" -Kind tpl -Params @{ value = "$S.priority" } -OmitEmpty)
                 (New-HitlLine 'core.label.note'                    "$S.notes" -OmitEmpty)
@@ -357,7 +365,7 @@ $script:FIN_IMPORT_CARD = [ordered]@{
                            D = @{ Ccy = 'X.ccy' }; Covered = @() }
     real_estate       = @{ Heading = 'finance.label.real_estate'; Alias = @{}
                            D = @{ Person = 'X.person' }; Covered = @() }
-    savings_goal      = @{ Heading = 'finance.label.savings_goal'; Alias = @{ name = 'goal_name'; account = 'account_name'; reserve_account = 'reserve_account_name' }
+    savings_goal      = @{ Heading = 'finance.label.savings_goal'; Alias = @{ name = 'goal_name'; account = 'account_name'; reserve_account = 'reserve_account_name'; savings_plan = 'savings_plan_name' }
                            D = @{ Person = 'X.person'; TargetDate = '(X.schedule || {}).target_date'; MonthlyRate = '(X.schedule || {}).monthly_rate'; Months = '(X.schedule || {}).months'; FirstPayment = '(X.schedule || {}).first_payment_date' }
                            Covered = @('target_date', 'monthly_savings_rate') }
     loan              = @{ Heading = 'finance.label.loan'; Alias = @{ debit_account = 'debit_account_name'; disbursement_account = 'disbursement_account_name' }

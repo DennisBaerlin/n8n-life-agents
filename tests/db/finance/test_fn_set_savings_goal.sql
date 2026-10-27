@@ -61,14 +61,19 @@ BEGIN
     RAISE EXCEPTION 'FAIL set_savings_goal [past date]: erwartet ok=false, got %', v_res; END IF;
   RAISE NOTICE 'PASS set_savings_goal [Zieldatum Vergangenheit -> ok:false]';
 
-  -- TEST 5: Ziel bereits gedeckt (Reserve >= Ziel) + Recompute angestossen -> {ok:false}
+  -- TEST 5 (Vertragsaenderung 2026-10-27): Ziel bereits gedeckt (Reserve >= Ziel) -> ein neues Zieldatum ist erlaubt
+  -- ("die Reise verschiebt sich"); die Rate wird NICHT neu gerechnet (kein Rest), covered=true meldet die Deckung.
   -- WS-A: current_amount = Reserve = markierte Bewegungen -> Deckung ueber einen markierten Reserve-Zufluss.
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
   VALUES (v_acct, 6000, CURRENT_DATE, 'transfer', v_goal, gen_random_uuid());
+  SELECT amount INTO v_rpamt FROM finance.recurring_payments WHERE id = v_rp;
   SELECT finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'target_date', '2028-12-31')) INTO v_res;
-  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'FAIL set_savings_goal [funded]: erwartet ok=false, got %', v_res; END IF;
-  RAISE NOTICE 'PASS set_savings_goal [Ziel bereits gedeckt (Ledger) -> ok:false]';
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'covered')::boolean IS DISTINCT FROM true
+     OR v_res->>'new_monthly_rate' IS NOT NULL
+     OR (SELECT target_date FROM finance.savings_goals WHERE id = v_goal) IS DISTINCT FROM DATE '2028-12-31'
+     OR (SELECT amount FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM v_rpamt THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [covered: Datum verschieben]: %', v_res; END IF;
+  RAISE NOTICE 'PASS set_savings_goal [gedecktes Ziel verschiebt sein Datum, Rate unveraendert, covered=true]';
 
   -- TEST 6 (WS-A): reserve_account_id setzen -> recurring_payments.target_account_id zieht mit (Rate wird Umbuchung)
   SELECT finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'reserve_account_id', v_reserve)) INTO v_res;
@@ -173,6 +178,48 @@ BEGIN
      OR (v_res->'savings_squeeze'->>'account_change')::numeric >= 0 THEN
     RAISE EXCEPTION 'FAIL set_savings_goal [fold]: Raten-Erhoehung muss savings_squeeze falten, got %', v_res; END IF;
   RAISE NOTICE 'PASS set_savings_goal [Raten-Erhoehung leert das Girokonto -> savings_squeeze im Return]';
+END $$;
+
+-- Ziele OHNE laufende Rate (Sparziel-Zweckbindung 2026-10-27):
+--  (N1) Ziel erhoeht, keine Rate, kein Abbuchungskonto -> ok, code no_rate_running + required_monthly_rate, KEINE
+--       angebliche new_monthly_rate (Bugfix: frueher still nicht gespeichert)
+--  (N2) dasselbe mit account_id -> neue Rate (rp) vom Konto in den Topf (= Konto mit dem Ziel-Geld), Ziel zeigt darauf
+--  (N3) ohne Topf und ohne reserve_account_id -> ok:false (Topf nennen)
+DO $$
+DECLARE
+  v_giro INT; v_p2p INT; v_goal INT; v_goal2 INT; v_res JSONB; v_rp INT; v_months INT; v_exp NUMERIC;
+BEGIN
+  v_giro := (finance.fn_create_account('{"name":"__ssg2_giro__","account_type":"cash","opening_balance":9000}'::jsonb)->>'account_id')::int;
+  v_p2p  := (finance.fn_create_account('{"name":"__ssg2_p2p__","account_type":"p2p","opening_balance":3000}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__ssg2 Reise__', 3000, CURRENT_DATE + 400, 'active') RETURNING id INTO v_goal;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_p2p, 'amount', 3000));
+
+  -- (N1)
+  v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'target_amount', 4200));
+  v_months := GREATEST(1, CEIL(((CURRENT_DATE + 400) - CURRENT_DATE) / 30.4375)::int);
+  v_exp := CEIL(1200.0 / v_months * 100) / 100;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->>'code' IS DISTINCT FROM 'no_rate_running'
+     OR (v_res->>'required_monthly_rate')::numeric IS DISTINCT FROM v_exp OR v_res->>'new_monthly_rate' IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [N1 no_rate_running]: % (erwartet %)', v_res, v_exp; END IF;
+
+  -- (N2)
+  v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'account_id', v_giro));
+  SELECT recurring_payment_id INTO v_rp FROM finance.savings_goals WHERE id = v_goal;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_rp IS NULL OR (v_res->>'new_monthly_rate')::numeric IS DISTINCT FROM v_exp
+     OR (SELECT target_account_id FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM v_p2p
+     OR (SELECT account_id FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM v_giro
+     OR (SELECT amount FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM -v_exp THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [N2 Rate starten]: % / rp %', v_res, v_rp; END IF;
+
+  -- (N3)
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__ssg2 Leer__', 1000, CURRENT_DATE + 400, 'active') RETURNING id INTO v_goal2;
+  v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal2, 'account_id', v_giro));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [N3 ohne Topf]: %', v_res; END IF;
+
+  RAISE NOTICE 'PASS set_savings_goal [ohne Rate: no_rate_running, Rate per account_id starten, ohne Topf abgelehnt]';
 END $$;
 
 ROLLBACK;

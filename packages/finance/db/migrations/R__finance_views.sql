@@ -432,7 +432,8 @@ SELECT
     b.priority,                                          -- WS-C1: Engpass-Reihung (kleiner = wichtiger; NULL = unpriorisiert)
     b.status,
     b.notes,
-    b.measurable                                        AS progress_measurable   -- Audit Paket 3 (ans Ende angehaengt)
+    b.measurable                                        AS progress_measurable,  -- Audit Paket 3 (ans Ende angehaengt)
+    b.saved - b.paced                                   AS earmarked_amount      -- davon Hand-Zuordnung (EUR; 2026-10-27)
 FROM base b;
 
 -- ============================================================

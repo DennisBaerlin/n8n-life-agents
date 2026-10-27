@@ -238,12 +238,16 @@ BEGIN
                     'entity_type', 'recurring_payment', 'id', (v_r->>'recurring_payment_id')::int);
 
             ELSIF v_row.entity_type = 'savings_goal' THEN
-                v_res    := finance.fn_import_resolve_account(v_payload->>'account', v_acct_map);
-                v_ref_id := NULLIF(v_res->>'id','')::int;
-                v_err    := v_res->>'error';
-                IF v_err IS NOT NULL THEN
-                    v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_err);
-                    CONTINUE;
+                -- Abbuchungskonto nur fuer eine Rate (2026-10-27: Startbestand/Sparplan koennen das Ziel ohne Rate decken).
+                v_ref_id := NULL;
+                IF NULLIF(trim(COALESCE(v_payload->>'account', '')), '') IS NOT NULL THEN
+                    v_res    := finance.fn_import_resolve_account(v_payload->>'account', v_acct_map);
+                    v_ref_id := NULLIF(v_res->>'id','')::int;
+                    v_err    := v_res->>'error';
+                    IF v_err IS NOT NULL THEN
+                        v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_err);
+                        CONTINUE;
+                    END IF;
                 END IF;
                 -- Audit Paket 3: Sparkonto (Topf) ist Pflicht -> wie das Abbuchungskonto aufloesen (auch batch-intern).
                 v_res := finance.fn_import_resolve_account(v_payload->>'reserve_account', v_acct_map);

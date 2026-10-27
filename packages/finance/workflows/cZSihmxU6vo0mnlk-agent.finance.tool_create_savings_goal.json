@@ -43,6 +43,12 @@
                                                                                    "name":  "priority"
                                                                                },
                                                                                {
+                                                                                   "name":  "already_saved"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "savings_plan_name"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -148,7 +154,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027account_name\u0027, ARRAY[\u0027cash\u0027,\u0027p2p\u0027]);",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027account_name\u0027, \u0027\u0027), ARRAY[\u0027cash\u0027,\u0027p2p\u0027]);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).item.json.account_name }) }}"
                                                      }
@@ -178,11 +184,11 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "63c86000-4769-5d20-a046-2d58d9436509",
-                                                                                   "leftValue":  "={{ $json.hit_count }}",
-                                                                                   "rightValue":  1,
+                                                                                   "id":  "46fd3f88-6841-53c2-be36-870d56a3ff62",
+                                                                                   "leftValue":  "={{ !!$(\u0027Start\u0027).item.json.account_name \u0026\u0026 $(\u0027Resolve Account\u0027).item.json.hit_count !== 1 }}",
+                                                                                   "rightValue":  true,
                                                                                    "operator":  {
-                                                                                                    "type":  "number",
+                                                                                                    "type":  "boolean",
                                                                                                     "operation":  "equals"
                                                                                                 }
                                                                                }
@@ -199,8 +205,8 @@
                                        440,
                                        0
                                    ],
-                      "id":  "e611b458-96e2-5297-8f49-7ea73b08bf29",
-                      "name":  "Account unique?"
+                      "id":  "c23fdc59-eb73-5397-aaf1-bf8b5fe698c5",
+                      "name":  "Account invalid?"
                   },
                   {
                       "parameters":  {
@@ -238,7 +244,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS sched_ok, r-\u003e\u003e\u0027reason\u0027 AS sched_reason, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, (r-\u003e\u003e\u0027months\u0027)::int AS months, r-\u003e\u003e\u0027first_payment_date\u0027 AS first_payment_date FROM finance.fn_savings_rate_schedule($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, already_saved: $(\u0027Start\u0027).item.json.already_saved }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -412,7 +418,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027reserve_account_name\u0027, \u0027\u0027), finance.fn_goal_pot_account_types()::text[]);",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027reserve_account_name\u0027, \u0027\u0027), finance.fn_goal_earmark_account_types()::text[]);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ reserve_account_name: $(\u0027Start\u0027).item.json.reserve_account_name }) }}"
                                                      }
@@ -479,7 +485,7 @@
                                                                                  {
                                                                                      "id":  "42253405-9ec7-5cad-a60e-427ff37b6874",
                                                                                      "name":  "error",
-                                                                                     "value":  "={{ !$(\u0027Start\u0027).item.json.reserve_account_name ? \u0027A savings goal needs a savings account (reserve, e.g. a Tagesgeld) where the money is kept - otherwise the progress cannot be measured. Ask the user which savings account the rate goes to, or offer to create one with tool_create_account first.\u0027 : (\u0027The savings account \u0027 + $(\u0027Start\u0027).item.json.reserve_account_name + \u0027 could not be uniquely resolved (\u0027 + $(\u0027Resolve Reserve\u0027).item.json.hit_count + \u0027 match(es)). Candidates: \u0027 + JSON.stringify($(\u0027Resolve Reserve\u0027).item.json.candidates) + \u0027. Ask which exact cash/Tagesgeld, fixed-deposit or P2P account.\u0027) }}",
+                                                                                     "value":  "={{ !$(\u0027Start\u0027).item.json.reserve_account_name ? \u0027A savings goal needs a savings account (reserve) where the money is kept - otherwise the progress cannot be measured. Ask the user which account holds or receives the money (cash/Tagesgeld, fixed deposit, P2P, or a depot with a savings plan), or offer to create one with tool_create_account first.\u0027 : (\u0027The savings account \u0027 + $(\u0027Start\u0027).item.json.reserve_account_name + \u0027 could not be uniquely resolved (\u0027 + $(\u0027Resolve Reserve\u0027).item.json.hit_count + \u0027 match(es)). Candidates: \u0027 + JSON.stringify($(\u0027Resolve Reserve\u0027).item.json.candidates) + \u0027. Ask which exact cash/Tagesgeld, fixed-deposit, P2P or depot account.\u0027) }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -502,7 +508,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_create_savings_goal(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Compute Schedule\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Compute Schedule\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, already_saved: $(\u0027Start\u0027).item.json.already_saved, savings_plan: $(\u0027Start\u0027).item.json.savings_plan_name }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -606,9 +612,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze FROM finance.fn_create_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027savings_plan_id\u0027)::int AS savings_plan_id, (r-\u003e\u003e\u0027required_monthly_rate\u0027)::numeric AS required_monthly_rate, (r-\u003e\u003e\u0027plan_monthly_amount\u0027)::numeric AS plan_monthly_amount, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze FROM finance.fn_create_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Compute Schedule\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Compute Schedule\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, already_saved: $(\u0027Start\u0027).item.json.already_saved, savings_plan: $(\u0027Start\u0027).item.json.savings_plan_name, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -633,7 +639,7 @@
                                                                                  {
                                                                                      "id":  "9f083e62-4535-5956-940b-025e01eb7ab2",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.create_savings_goal\u0027, lines: [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_name) }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type))) ? { label: \u0027finance.label.goal_type\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type) } : null), { label: \u0027finance.label.target_amount\u0027, kind: \u0027money\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).target_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.target_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Compute Schedule\u0027).item.json.target_date) }, { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.rate_computed\u0027), params: { months: ($(\u0027Compute Schedule\u0027).item.json.months), value: ({ kind: \u0027money\u0027, value: ($(\u0027Compute Schedule\u0027).item.json.monthly_rate), currency: (\u0027EUR\u0027) }) } }, { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).account_name) }, { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.reserve_pot\u0027), params: { name: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_account_name) } }, { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-2\u0027 ? \u0027finance.value.second_to_last_day_of_month\u0027 : ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ? \u0027finance.tpl.day_ordinal\u0027 : \u0027finance.value.relative_to_start\u0027)))), params: { day: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month) } }, { label: \u0027finance.label.first_booking\u0027, kind: \u0027date\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date || $(\u0027Compute Schedule\u0027).item.json.first_payment_date)), is_default: !!(!(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date) }, { label: \u0027finance.label.beneficiary_person\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Dry run\u0027).item.json.r.beneficiary_name ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Dry run\u0027).item.json.r.beneficiary_name) } }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))(((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)) \u0026\u0026 ![((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority)].every(((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))))) ? { label: \u0027finance.label.priority\u0027, kind: \u0027tpl\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)), params: { value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority) } } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes))) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.create_savings_goal\u0027, lines: [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_name) }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type))) ? { label: \u0027finance.label.goal_type\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type) } : null), { label: \u0027finance.label.target_amount\u0027, kind: \u0027money\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).target_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.target_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.target_date) }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))(((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).already_saved || null)))) ? { label: \u0027finance.label.already_saved\u0027, kind: \u0027money\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).already_saved || null)), currency: (\u0027EUR\u0027) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.rate_computed\u0027), params: { months: ($(\u0027Compute Schedule\u0027).item.json.months), value: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.monthly_rate), currency: (\u0027EUR\u0027) }) } } : null), ((!((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name) ? { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027money\u0027, value: (0), currency: (\u0027EUR\u0027) } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name))) ? { label: \u0027finance.label.link_savings_plan\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).account_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.reserve_pot\u0027), params: { name: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_account_name) } } : null), ((!((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name))) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_account_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-2\u0027 ? \u0027finance.value.second_to_last_day_of_month\u0027 : ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ? \u0027finance.tpl.day_ordinal\u0027 : \u0027finance.value.relative_to_start\u0027)))), params: { day: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month) } } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.first_booking\u0027, kind: \u0027date\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date || $(\u0027Compute Schedule\u0027).item.json.first_payment_date)), is_default: !!(!(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date) } : null), { label: \u0027finance.label.beneficiary_person\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Dry run\u0027).item.json.r.beneficiary_name ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Dry run\u0027).item.json.r.beneficiary_name) } }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))(((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)) \u0026\u0026 ![((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority)].every(((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))))) ? { label: \u0027finance.label.priority\u0027, kind: \u0027tpl\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)), params: { value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority) } } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes))) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -861,6 +867,30 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "3239157a-05eb-547f-aafb-661e6cda6d01",
+                                                                                     "name":  "current_amount",
+                                                                                     "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.current_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ca28395e-52d5-5b05-888b-5b5a545341d7",
+                                                                                     "name":  "savings_plan_id",
+                                                                                     "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.savings_plan_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9ed62c18-0032-57f8-9643-18e1c691630d",
+                                                                                     "name":  "required_monthly_rate",
+                                                                                     "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.required_monthly_rate }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7460b601-3a94-5b1d-a294-0c17b16b9860",
+                                                                                     "name":  "plan_monthly_amount",
+                                                                                     "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.plan_monthly_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a2f3f629-9457-50a6-9437-896331d9b8aa",
                                                                                      "name":  "savings_squeeze",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.savings_squeeze }}",
                                                                                      "type":  "string"
@@ -898,7 +928,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_savings_rate_schedule (read-only) + Root-CLAUDE.md *Das LLM rechnet NICHT***\n\nDer Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}. Dieser read-only Aufruf leitet die fehlende Größe deterministisch ab (Ziel-getrieben: Rate=Ziel/Monate; Raten-getrieben: Zieldatum=first+ceil(Ziel/Rate)). Derselbe Helper läuft autoritativ in der Write-fn -\u003e der Preview zeigt exakt den Schreibwert. Ohne first_payment_date liefert er den nächsten Termin des Abbuchungstags ab heute (WP2); genau dieses Datum zeigt die Karte und bekommt der Write. fehlt beides / Datum vor first_payment -\u003e {ok:false} -\u003e Schedule rejected.",
+                                         "content":  "## DB-Automatik\n**fn_savings_rate_schedule (read-only) + Root-CLAUDE.md *Das LLM rechnet NICHT***\n\nDer Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}, optional already_saved (Geld, das schon auf dem Topf liegt). Dieser read-only Aufruf leitet die fehlende Größe deterministisch auf dem REST ab (Ziel-getrieben: Rate=Rest/Monate; Raten-getrieben: Zieldatum=first+ceil(Rest/Rate); Rest \u003c= 0 -\u003e Rate 0, Zieldatum Pflicht). Derselbe Helper läuft autoritativ in der Write-fn -\u003e der Preview zeigt exakt den Schreibwert. Ohne first_payment_date liefert er den nächsten Termin des Abbuchungstags ab heute (WP2); genau dieses Datum zeigt die Karte und bekommt der Write. fehlt beides / Datum vor first_payment -\u003e {ok:false} -\u003e Schedule rejected.",
                                          "height":  220,
                                          "width":  520,
                                          "color":  4
@@ -914,7 +944,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_create_savings_goal (atomar)**\n\nSchritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv, Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum ableiten), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) recurring_payment INSERT (name=\u0027Sparrate \u003cZiel\u003e\u0027, amount=-rate, schedule_unit=month, valid_from=fn_recurring_valid_from), (4) UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id). Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen \u003c 0 (Sparraten übersteigen das frei Verfügbare) -\u003e Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.",
+                                         "content":  "## DB-Automatik\n**fn_create_savings_goal (atomar)**\n\nSchritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv: Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto; Depot nur mit Startbestand/Sparplan; Startbestand höchstens der freie Saldo, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum auf dem Rest), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) Startbestand zuordnen (fn_book_savings_reservation), (4) nur bei Rest \u003e 0 ohne Sparplan: recurring_payment INSERT (name=\u0027Sparrate \u003cZiel\u003e\u0027, amount=-rate, valid_from=fn_recurring_valid_from) + UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id); mit Sparplan: Plan an das Ziel binden, Karte zeigt Plan-Betrag vs. nötige Rate. Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen \u003c 0 (Sparraten übersteigen das frei Verfügbare) -\u003e Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.",
                                          "height":  230,
                                          "width":  520,
                                          "color":  4
@@ -930,9 +960,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nWeder Datum noch Rate / nicht-positiver Betrag liefert die fn als {ok:false, reason} -\u003e Goal rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.",
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\nWeder Datum noch Rate / nicht-positiver Betrag / Rest ohne Abbuchungskonto / Startbestand größer als frei liefert die fn als {ok:false, reason} -\u003e Goal rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.",
                                          "height":  200,
-                                         "width":  380,
+                                         "width":  400,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -946,9 +976,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Resolve Reserve -\u003e Reserve invalid? (leer ODER nicht eindeutig)**\n\nAudit Paket 3: ein Sparziel ohne Topf liefe als nackte Abbuchung ins Leere (Fortschritt 0, Dauer-hinter-Plan). Gesetz ist fn_create_savings_goal ({ok:false}); dieser Check lehnt schon VOR dem Gate ab, damit der Nutzer nie etwas bestätigt, das danach abgelehnt wird. Leer -\u003e Agent fragt nach dem Sparkonto oder bietet tool_create_account an.",
+                                         "content":  "## DB-Automatik\n**Resolve Reserve -\u003e Reserve invalid? (leer ODER nicht eindeutig)**\n\nAudit Paket 3: ein Sparziel ohne Topf liefe als nackte Abbuchung ins Leere (Fortschritt 0, Dauer-hinter-Plan). Gesetz ist fn_create_savings_goal ({ok:false}); dieser Check lehnt schon VOR dem Gate ab, damit der Nutzer nie etwas bestätigt, das danach abgelehnt wird. Topf = Konto des Ziel-Geldes (Giro/Tagesgeld, Festgeld, P2P oder Depot). Leer -\u003e Agent fragt nach dem Konto oder bietet tool_create_account an. Das Abbuchungskonto (Resolve Account) ist dagegen optional: ohne Rest braucht es keine Rate.",
                                          "height":  240,
-                                         "width":  400,
+                                         "width":  440,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -962,7 +992,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_create_savings_goal mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (weder Zieldatum noch Rate, nicht-positiver Betrag, Sparkonto-Pflicht) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_create_savings_goal mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (weder Zieldatum noch Rate, nicht-positiver Betrag, Sparkonto-Pflicht, Rest ohne Abbuchungskonto, Startbestand größer als frei, Sparplan schon gebunden) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  220,
                                          "width":  440,
                                          "color":  4
@@ -1023,30 +1053,30 @@
                                                              [
                                                                  {
                                                                      "index":  0,
-                                                                     "node":  "Account unique?",
+                                                                     "node":  "Account invalid?",
                                                                      "type":  "main"
                                                                  }
                                                              ]
                                                          ]
                                             },
-                        "Account unique?":  {
-                                                "main":  [
-                                                             [
-                                                                 {
-                                                                     "index":  0,
-                                                                     "node":  "Compute Schedule",
-                                                                     "type":  "main"
-                                                                 }
-                                                             ],
-                                                             [
-                                                                 {
-                                                                     "index":  0,
-                                                                     "node":  "Account ambiguous",
-                                                                     "type":  "main"
-                                                                 }
-                                                             ]
-                                                         ]
-                                            },
+                        "Account invalid?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Account ambiguous",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Compute Schedule",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
                         "Compute Schedule":  {
                                                  "main":  [
                                                               [

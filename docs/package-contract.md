@@ -101,7 +101,7 @@ also covers runtime-created contexts that have no `.md` (e.g. `family`, `finance
 
 ### 3.2 `onboarding/sections.json` (WS-B3, O3 — DRY onboarding, replaces the D3/K5 delegation model)
 
-`[ { "key", "ord" } ]` — the package's own onboarding sections (no `handler`/`content_ref`:
+`[ { "key", "ord", "gates_advisor"? } ]` — the package's own onboarding sections (no `handler`/`content_ref`:
 there is **no cross-agent delegation**). The label of each section is the catalog key `<pkg>.onboarding.<key>`
 (§3.11; the `/onboarding` menu shows it in the viewer's language, the state-table column `label` is the German
 model-facing projection seeded from `locales/de.json`; a `label` in `sections.json` is retired, `contract_lint` 15).
@@ -125,7 +125,7 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   proactively guides capture with its own tools + marks sections via its `set_onboarding_section` tool. There
   is **no** guide→package delegation: the guide onboards only `household`; each package onboards its own
   sections. The mandatory-onboarding gate (finance advisor pre-req, finance-owned key `feature.onboarding_gate`) reads the same combined
-  fn (`core.complete AND package.complete`).
+  fn (`core.complete AND package.complete`), except that open sections marked `"gates_advisor": false` in `sections.json` do not block it (finance: the monthly statement check). The flag only matters for a package whose advisor has such a hard entry gate and is not itself the onboarding agent (finance); career's advisor onboards its own sections, estate has no package gate.
 - **Next-step card + follow-up (Roter Faden 2026-10-23):** every `set_onboarding_section` tool ends with
   `New-OnboardingProgressCallNode` (core service `core:onboarding_progress` → `core.sub_onboarding_progress`, fire-and-
   forget). `core.fn_set_onboarding_section` returns `area_completed_now` (this call closed the area — advisory-locked per

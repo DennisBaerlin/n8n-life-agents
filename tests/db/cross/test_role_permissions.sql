@@ -1395,4 +1395,31 @@ BEGIN
   RAISE NOTICE 'PASS [finance_rw -> fn_price_gaps/fn_price_gap_claim/fn_apply_price_symbol, finance_ro -> fn_holding_price_status/fn_fx_rate_map/price_status]';
 END $$;
 
+-- Plan-Luecken (2026-10-27): load_context('financial_planning') unter context_ro -> Renderer -> finance.fn_plan_gaps liest
+-- agent.advisor_plans im DEFINER-Kontext von core.fn_fetch_context; die Luecken-Zeile muss unter der echten Rolle ankommen.
+DO $$
+DECLARE v_out text;
+BEGIN
+  DELETE FROM agent.advisor_plans WHERE domain = 'finance';
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, plan_md)
+  VALUES ('finance', NULL, 'RP Plan', 'active', 1, '{"risk_profile":{"content":"x"}}', 'rp');
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('financial_planning', 'rp', NULL, 'lazy', 'rp plan', jsonb_build_object('managed_by','agent','facts','{}'::jsonb))
+  ON CONFLICT (name) DO UPDATE SET content = EXCLUDED.content, metadata = EXCLUDED.metadata, load_strategy = 'lazy';
+  INSERT INTO core.context_renderers (context_name, render_fn, package)
+  VALUES ('financial_planning', 'finance.fn_render_plan_facts', 'finance')
+  ON CONFLICT (context_name) DO UPDATE SET render_fn = EXCLUDED.render_fn;
+  BEGIN
+    SET LOCAL ROLE context_ro;
+    SELECT content INTO v_out FROM core.fn_fetch_context('financial_planning');
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [context_ro -> financial_planning Plan-Luecken]: %', SQLERRM;
+  END;
+  IF v_out NOT LIKE '%Plan gaps: never confirmed in an interview: household_basics%' THEN
+    RAISE EXCEPTION 'FAIL [context_ro -> financial_planning Plan-Luecken]: Zeile fehlt: %', v_out; END IF;
+  RAISE NOTICE 'PASS [context_ro -> fn_fetch_context(financial_planning) -> fn_plan_gaps]';
+END $$;
+
 ROLLBACK;

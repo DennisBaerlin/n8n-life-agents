@@ -8,6 +8,7 @@ Buchhalter (`agent.finance`, CQRS) + Berater (`agent.finance_advisor`, bucht nie
 - Das Tool reicht nur `r->'<key>'->>'note'` durch (null-sicher); persistent-negative Folds laufen über `core.fn_should_notify` (Meldung nur beim Übergang).
 - Jeder `alert` und der `digest` tragen ein paket-gerendertes deutsches `text`-Feld — die generischen Core-Crons kennen keine finance-Felder. Drift nur über handelbare Blöcke (Depot + Cash); Immobilie/Vorsorge/p2p/Festgeld nie im Drift. Block-Join auf den stabilen `key`, nie auf den Namen.
 - `risk_profile` bleibt grob (`low|medium|high`), kein gespeicherter Horizont (Core-Denylist), kein `risk_need`.
+- **Plan-Lücken:** `finance.fn_plan_gaps` ist die eine Adresse für „was fehlt am aktiven Plan“ (nie im Interview bestätigte Sektionen über alle veröffentlichten Versionen, bestätigte Sektionen ohne verwertbaren Block, nur im Draft); `fn_render_plan_facts` zeigt daraus die englische Header-Zeile `Plan gaps:`. Der Katalog darin und die Liste im Berater-Prompt müssen gleich sein (`contract_lint` 28). Onboarding-Sektionen mit `"gates_advisor": false` (`onboarding/sections.json`, z. B. `monthly_check`) sperren den Berater-Eingang nicht.
 
 ## Recurring- & Zins-Scheduler
 

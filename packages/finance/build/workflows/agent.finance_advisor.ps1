@@ -55,7 +55,7 @@ function Build-AgentFinanceAdvisor {
 
     # --- Onboarding-Pflicht-Gate (Plan §1b, flag-gated feature.onboarding_gate; WS-B3 kombiniert) ---
     # Deterministisch VOR dem LLM (kein Cost): wenn das Feature an ist UND das Onboarding noch nicht
-    # vollstaendig ist (core-Haushalt UND finance-Sektionen), antwortet der Advisor mit einem
+    # vollstaendig ist (core-Haushalt UND die sperrenden finance-Sektionen), antwortet der Advisor mit einem
     # /onboarding-Redirect statt zu beraten. WS-B3: EIN Aufruf der kombinierten Schnittstelle
     # core.fn_onboarding_status('finance') liefert complete = (core AND finance) + die Union der offenen
     # Sektionen. Ist das finance-Paket-Bein unerreichbar (package={ok:false}), ist complete=false -> der
@@ -63,12 +63,22 @@ function Build-AgentFinanceAdvisor {
     # core.config (Haupt-Cred liest core.config + fuehrt die DEFINER-fn aus).
     # Textkatalog Phase C: im selben Read die Umleitungs-Texte in der Sprache des Absenders + die Bereichsnamen der
     # offenen Sektionen (<source>.onboarding.<key>, Katalog seit Phase B; fehlt einer -> das Label der Sektion).
+    # Plan-Luecken (2026-10-27): finance-Sektionen mit "gates_advisor": false in onboarding/sections.json (der Monats-
+    # Check — der Berater braucht ihn nicht, um einen Plan zu vervollstaendigen) sperren NICHT. complete wird darum hier
+    # gerechnet: Core complete UND Paket-Bein erreichbar (package.ok nicht false -> sonst fehlt es in open, Gate bleibt
+    # SICHER zu) UND keine offene Sektion ausser den Ausnahmen; open/doc = nur die sperrenden Bereiche.
+    $gateExempt = @(Get-OnboardingSectionKeys $RepoRoot 'finance' -NonGatingOnly)
+    foreach ($k in $gateExempt) { if ($k -notmatch '^[a-z][a-z0-9_]*$') { throw "agent.finance_advisor: ungueltiger Sektions-Key '$k'" } }
+    $gateExemptSql = if ($gateExempt.Count) { "ARRAY['" + ($gateExempt -join "','") + "']::text[]" } else { 'ARRAY[]::text[]' }
     $gateKeys = Get-UiKeysSql @('finance.gate.onboarding_required', 'finance.gate.onboarding_open')
     $nGateRead = Build-Pg 'Onboarding gate read' @(-1264, 0) `
-        ("=SELECT (s.st->>'complete')::boolean AS complete, s.st->'open' AS open, COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='onboarding_gate'),'false') AS gate_on, " +
+        ("=SELECT ((s.st->'core'->>'complete')::boolean AND (s.st->'package'->>'ok') IS DISTINCT FROM 'false' AND jsonb_array_length(s.blk) = 0) AS complete, " +
+         "s.blk AS open, COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='onboarding_gate'),'false') AS gate_on, " +
          "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($gateKeys), " +
-         "'doc', (SELECT jsonb_agg((o->>'source') || '.onboarding.' || (o->>'key')) FROM jsonb_array_elements(s.st->'open') o)))->'t' AS t " +
-         "FROM (SELECT core.fn_onboarding_status('finance') AS st) s;") `
+         "'doc', (SELECT jsonb_agg((o->>'source') || '.onboarding.' || (o->>'key')) FROM jsonb_array_elements(s.blk) o)))->'t' AS t " +
+         "FROM (SELECT x.st, COALESCE((SELECT jsonb_agg(o.e ORDER BY o.n) FROM jsonb_array_elements(x.st->'open') WITH ORDINALITY o(e, n) " +
+         "WHERE NOT (o.e->>'source' = 'finance' AND o.e->>'key' = ANY ($gateExemptSql))), '[]'::jsonb) AS blk " +
+         "FROM (SELECT core.fn_onboarding_status('finance') AS st) x) s;") `
         ([ordered]@{ chat_id = "String(`$('$START_NODE').item.json.chat_id || '')" })
     $nGateIf = Build-If 'Onboarding gate' @(-1152, -160) `
         "={{ `$('Onboarding gate read').item.json.gate_on === 'true' && `$('Onboarding gate read').item.json.complete === false }}" 'true' 'equals' 'boolean'
@@ -262,7 +272,7 @@ function Build-AgentFinanceAdvisor {
 
     $stickyCore = Build-Sticky 'Doc: Core-first-Gate' @(-1120, 660) `
         'Core-first Hard-Gate (WS-3) — immer-an, vor dem Flag-Gate' `
-        'Core onboarding read liest core.fn_onboarding_status(core)->>complete unter finance_ro (DEFINER-Window); Core onboarding gate (core_complete === false) -> Core onboarding required {ok:false,output:.../onboarding...} (relaybar, kein LLM-Cost), sonst weiter zu Load Config. ZWEI Onboarding-Gates: (1) dieses Core-first-Gate = IMMER-AN Boden (nur Core-Haushalt, vor Load Config) -> kein Paket vor Core-Onboarding; (2) das bestehende Onboarding gate NACH Load Config = strengere Opt-in-Stufe (feature.onboarding_gate, core+finance). Reihenfolge: Core-first blockt zuerst wenn der Haushalt fehlt; danach ggf. das Flag-Gate. onError=continue + === false => Lesefehler fällt fail-open durch. Generisch (jeder Paket-Agent erbt das Muster).' 540 320
+        'Core onboarding read liest core.fn_onboarding_status(core)->>complete unter finance_ro (DEFINER-Window); Core onboarding gate (core_complete === false) -> Core onboarding required {ok:false,output:.../onboarding...} (relaybar, kein LLM-Cost), sonst weiter zu Load Config. ZWEI Onboarding-Gates: (1) dieses Core-first-Gate = IMMER-AN Boden (nur Core-Haushalt, vor Load Config) -> kein Paket vor Core-Onboarding; (2) das bestehende Onboarding gate NACH Load Config = strengere Opt-in-Stufe (feature.onboarding_gate, core+finance; finance-Sektionen mit gates_advisor:false in onboarding/sections.json, z. B. der Monats-Check, sperren nicht). Reihenfolge: Core-first blockt zuerst wenn der Haushalt fehlt; danach ggf. das Flag-Gate. onError=continue + === false => Lesefehler fällt fail-open durch. Generisch (jeder Paket-Agent erbt das Muster).' 540 320
 
     $nodes = @($nTrigger) + $gate.Nodes + @(
         $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nBuildInput, $nAgent,

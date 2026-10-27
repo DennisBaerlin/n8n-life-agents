@@ -70,11 +70,15 @@ function Get-PackageManifest([string]$RepoRoot) {
 # Get-OnboardingSectionKeys — die Sektions-Keys EINES Pakets in Reihenfolge (ord) aus packages/<pkg>/onboarding/
 # sections.json, fuer Tool-Beschreibungen (tool_set_onboarding_section): die Liste wird abgeleitet, nie abgetippt
 # (die estate-Beschreibung nannte 6 von 7 Keys -> system_profile war nicht markierbar). Fehlt die Datei -> throw.
-function Get-OnboardingSectionKeys([string]$RepoRoot, [string]$Package) {
+# -NonGatingOnly: nur die Sektionen mit "gates_advisor": false (offen sperren sie den Berater-Eingang nicht, z. B.
+# der Monats-Check; fehlt das Feld = sperrt) -> build-fixe Ausnahmeliste des Onboarding-Gates im Berater.
+function Get-OnboardingSectionKeys([string]$RepoRoot, [string]$Package, [switch]$NonGatingOnly) {
     $f = Join-Path $RepoRoot "packages\$Package\onboarding\sections.json"
     if (-not (Test-Path $f)) { throw "Get-OnboardingSectionKeys: $f fehlt" }
     $enc = New-Object System.Text.UTF8Encoding($false)
-    return @(([System.IO.File]::ReadAllText($f, $enc) | ConvertFrom-Json) | Sort-Object ord | ForEach-Object { [string]$_.key })
+    $secs = @(([System.IO.File]::ReadAllText($f, $enc) | ConvertFrom-Json) | Sort-Object ord)
+    if ($NonGatingOnly) { $secs = @($secs | Where-Object { $_.PSObject.Properties.Name -contains 'gates_advisor' -and $_.gates_advisor -eq $false }) }
+    return @($secs | ForEach-Object { [string]$_.key })
 }
 
 function Get-OnboardingPackageOrder([string]$RepoRoot) {

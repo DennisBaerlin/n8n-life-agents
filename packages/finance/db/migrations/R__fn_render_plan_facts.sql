@@ -11,7 +11,10 @@
 --   JAHR aus glidepath.start_age + dem Geburtsdatum der OWNER-Person (Join family, role='owner';
 --   Muster finance.fn_render_finance_profile). Fehlt family/owner -> Phase ohne Jahr (defensiv, kein Crash).
 --
---   RUECKGABE: Header-Text (mehrzeilig) ODER NULL, wenn die Zeile keinen facts-Sidecar traegt
+--   PLAN-LUECKEN (2026-10-27): bei aktivem Plan die englische Zeile "Plan gaps: …" aus finance.fn_plan_gaps
+--   (nie bestaetigte Sektionen, fehlende Plan-Zahlen, nur im Draft) — auch bei leerem Sidecar.
+--
+--   RUECKGABE: Header-Text (mehrzeilig) ODER NULL, wenn die Zeile keinen facts-Sidecar und keine Luecken traegt
 --   (dann rendert die Engine nur die Prosa). Anwenden via:
 --     db_apply.ps1 -File packages\finance\db\migrations\R__fn_render_plan_facts.sql
 -- ============================================================
@@ -41,14 +44,39 @@ DECLARE
     v_year       TEXT;
     v_pi         TEXT;
     v_pp         TEXT;
+    v_gaps       JSONB;
+    v_gap_parts  TEXT[] := '{}';
+    v_gap_line   TEXT;
 BEGIN
     SELECT c.metadata->'facts' INTO v_facts
     FROM agent.core_contexts c
     WHERE c.name = p_name;
 
+    -- Plan-Luecken (2026-10-27): finance.fn_plan_gaps rechnet, welche Interview-Sektionen nie bestaetigt wurden und
+    -- welche Plan-Zahlen fehlen (nur bei aktivem Plan). Englisch = Modell-Instruktions-Schicht; der Berater-Prompt
+    -- liest die Zeile ("Plan gaps") und bietet das Schliessen an. Auch bei leerem Sidecar (Import-Plan ohne Fakten).
+    v_gaps := finance.fn_plan_gaps(v_facts);
+    IF jsonb_array_length(v_gaps->'open_sections') > 0 THEN
+        v_gap_parts := v_gap_parts || ('never confirmed in an interview: '
+            || (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(v_gaps->'open_sections') x));
+    END IF;
+    IF jsonb_array_length(v_gaps->'missing_blocks') > 0 THEN
+        v_gap_parts := v_gap_parts || ('confirmed but missing plan figure: '
+            || (SELECT string_agg((m->>'section') || ' (' || (m->>'block') || ')', ', ')
+                FROM jsonb_array_elements(v_gaps->'missing_blocks') m));
+    END IF;
+    IF jsonb_array_length(v_gaps->'draft_only_sections') > 0 THEN
+        v_gap_parts := v_gap_parts || ('saved in the draft, not yet published: '
+            || (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(v_gaps->'draft_only_sections') x));
+    END IF;
+    IF array_length(v_gap_parts, 1) IS NOT NULL THEN
+        v_gap_line := 'Plan gaps: ' || array_to_string(v_gap_parts, '; ');
+    END IF;
+
     IF v_facts IS NULL OR jsonb_typeof(v_facts) IS DISTINCT FROM 'object'
        OR v_facts = '{}'::jsonb THEN
-        RETURN NULL;  -- kein Fakten-Sidecar -> Engine rendert nur die Prosa
+        -- kein Fakten-Sidecar -> nur die Luecken-Zeile (falls vorhanden), sonst rendert die Engine nur die Prosa
+        RETURN CASE WHEN v_gap_line IS NOT NULL THEN '- ' || v_gap_line END;
     END IF;
 
     -- Owner-Geburtsdatum + person_id (Single-Writer-Referenz auf family; defensiv: fehlt -> NULL)
@@ -210,6 +238,10 @@ BEGIN
                          || '; alles monatlich brutto'
                END);
     END LOOP;
+
+    IF v_gap_line IS NOT NULL THEN
+        v_lines := v_lines || v_gap_line;
+    END IF;
 
     IF array_length(v_lines, 1) IS NULL THEN
         RETURN NULL;  -- facts vorhanden, aber leer/ohne bekannte Bloecke -> nur Prosa

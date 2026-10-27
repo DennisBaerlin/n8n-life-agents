@@ -1771,6 +1771,37 @@ Get-ChildItem -Path (Join-Path $RepoRoot 'packages') -Recurse -Filter '*.ps1' |
     }
 
 # ---------------------------------------------------------------
+# (28) BERATER-INTERVIEW-KATALOG (Plan-Luecken 2026-10-27): finance.fn_plan_gaps traegt den Katalog der Interview-
+#     Sektionen + ihrer Pflicht-Bloecke als Konstante (die DB meldet daraus die Luecken), der Berater-Prompt nennt
+#     dieselben Keys unter "### Interview catalog" ("N. `key` ... **-> emits the `block` ...**"). Beide muessen in
+#     Keys, Reihenfolge und Bloecken gleich sein — sonst gilt eine im Prompt umbenannte Sektion fuer immer als offen.
+#     Dazu: "gates_advisor" in onboarding/sections.json ist, falls vorhanden, ein Boolean (fehlt = sperrt).
+# ---------------------------------------------------------------
+$gapFn  = Join-Path $pkgDir 'finance\db\migrations\R__fn_plan_gaps.sql'
+$advCtx = Join-Path $pkgDir 'finance\contexts\finance_advisor_instructions.md'
+if ((Test-Path $gapFn) -and (Test-Path $advCtx)) {
+    $fnCat = @([regex]::Matches([System.IO.File]::ReadAllText($gapFn, $Utf8NoBom), '\{"key":"([a-z_]+)",\s*"blocks":\[([^\]]*)\]\}') |
+        ForEach-Object { $_.Groups[1].Value + '=' + ((@([regex]::Matches($_.Groups[2].Value, '"([a-z_]+)"') | ForEach-Object { $_.Groups[1].Value })) -join '+') })
+    $ctxText = [System.IO.File]::ReadAllText($advCtx, $Utf8NoBom)
+    $catBody = (($ctxText -split '(?m)^### Interview catalog', 2)[-1] -split '(?m)^### ', 2)[0]
+    $mdCat = @([regex]::Matches($catBody, '(?m)^\d+\. `([a-z_]+)`(.*)$') | ForEach-Object {
+        $em = [regex]::Match($_.Groups[2].Value, 'emits the (.+?) blocks?\.')
+        $_.Groups[1].Value + '=' + ((@(if ($em.Success) { [regex]::Matches($em.Groups[1].Value, '`([a-z_]+)`') | ForEach-Object { $_.Groups[1].Value } })) -join '+') })
+    if ($fnCat.Count -eq 0 -or $mdCat.Count -eq 0) {
+        $errors.Add("BERATER-KATALOG: Katalog nicht lesbar (fn_plan_gaps: $($fnCat.Count), Prompt: $($mdCat.Count) Eintraege) -- Check 28 ist defekt oder das Format hat sich geaendert.")
+    } elseif (($fnCat -join ',') -ne ($mdCat -join ',')) {
+        $errors.Add("BERATER-KATALOG: finance.fn_plan_gaps [$($fnCat -join ', ')] != finance_advisor_instructions.md 'Interview catalog' [$($mdCat -join ', ')] -- Keys, Reihenfolge und emittierte Bloecke muessen gleich sein.")
+    }
+}
+foreach ($sf in (Get-ChildItem (Join-Path $pkgDir '*\onboarding\sections.json') -ErrorAction SilentlyContinue)) {
+    foreach ($s in @([System.IO.File]::ReadAllText($sf.FullName, $Utf8NoBom) | ConvertFrom-Json)) {
+        if ($s.PSObject.Properties.Name -contains 'gates_advisor' -and $s.gates_advisor -isnot [bool]) {
+            $errors.Add("ONBOARDING gates_advisor: $($sf.Directory.Parent.Name)/onboarding/sections.json '$($s.key)' -- gates_advisor muss true/false sein (fehlt = sperrt den Berater).")
+        }
+    }
+}
+
+# ---------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------
 Write-Host ""

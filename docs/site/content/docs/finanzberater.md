@@ -14,6 +14,10 @@ Deine tatsächlichen Zahlen (Konten, Einkommen, Kredite, Versicherungen, Vorsorg
 
 Die Reihenfolge der Themen folgt einer bewährten Beratungs-Logik (angelehnt an die DIN-Norm für Finanzanalysen): erst Absicherung (fehlt eine Berufsunfähigkeitsversicherung?), dann Vorsorge (Rentenlücken), dann erst Vermögensaufbau. Für die Rentenlücke nutzt er deine neueste Renteninformation: die beiden Szenarien der Rentenversicherung (1 % und 2 % jährliche Anpassung) rechnet die Datenbank mit der Inflationsannahme deines Plans in heutige Kaufkraft um, und der Berater nennt das Ergebnis als Spanne – mit dem Hinweis, dass die Beträge brutto sind (vor Kranken- und Pflegeversicherung und Steuer). Konkret geht er neun Abschnitte durch — Basisdaten, Risikoabsicherung, Notgroschen, Kredite, Altersvorsorge, dein Risikoprofil, Vermögensaufbau-Strategie, grenzüberschreitende Themen (falls relevant) und schließlich Ziele. Aus vier dieser Abschnitte entstehen strukturierte Kennzahlen, die die Datenbank später maschinell auswerten kann: dein Sparziel (Zielrente, Zielvermögen), dein Risikoprofil (wie viel Risiko du tragen willst und wie viel du dir finanziell leisten kannst), deine Ziel-Verteilung des Vermögens (z. B. wie viel Prozent Aktien, wie viel Festgeld — mit Toleranz-Korridor) und dein Notgroschen-Ziel.
 
+Hast du schon einen Plan, der aber noch Lücken hat (etwa weil du ihn importiert hast oder ein Gespräch abgebrochen wurde), merkt der Berater das selbst: Die Datenbank prüft, welche Abschnitte nie im Gespräch bestätigt wurden und welche Kennzahlen fehlen, zum Beispiel das Notgroschen-Ziel. Der Berater beantwortet zuerst deine eigentliche Frage und bietet dir dann einmal an, die fehlenden Teile nacheinander zu ergänzen, das Wichtigste zuerst. Bereits bestätigte Abschnitte fragt er nicht noch einmal ab.
+
+Ist die Einstiegs-Pflicht eingeschaltet (Standard), muss der Einstieg im Finanzbereich (`/onboarding`) dafür erledigt oder übersprungen sein. Nur der Monats-Check sperrt den Berater nicht.
+
 ## Monatsüberschuss: Konsum, Pflicht und Sparen getrennt
 
 Der Berater rechnet deinen Monat in klar getrennten Teilen:

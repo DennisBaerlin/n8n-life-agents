@@ -4,5 +4,5 @@
   { "key": "liabilities", "ord": 3 },
   { "key": "protection",  "ord": 4 },
   { "key": "goals",       "ord": 5 },
-  { "key": "monthly_check", "ord": 6 }
+  { "key": "monthly_check", "ord": 6, "gates_advisor": false }
 ]

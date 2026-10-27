@@ -19,7 +19,7 @@ RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
         WHEN 'pension' THEN ARRAY['name','pension_type','provider','contract_number','owner_person','current_value','value_updated_at','guaranteed_monthly_pension','retirement_start_date','contribution_amount','schedule_unit','schedule_interval','debit_account','first_payment_date','schedule_day_of_month','notes']
         WHEN 'pension_statement' THEN ARRAY['pension','pension_id','statement_date','reached_claim','projection','scenario_1pct','scenario_2pct','em_monthly','earning_points','regular_retirement_date','notes']
         WHEN 'recurring_payment' THEN ARRAY['name','account','direction','amount','schedule_unit','schedule_interval','schedule_day_of_month','first_payment_date','valid_from','valid_to','notes']
-        WHEN 'real_estate' THEN ARRAY['name','current_value','value_updated_at','owner_person','status','notes']
+        WHEN 'real_estate' THEN ARRAY['name','current_value','value_updated_at','owner_person','status','notes','living_area_m2','year_built']
         WHEN 'savings_goal' THEN ARRAY['name','goal_type','target_amount','target_date','monthly_savings_rate','already_saved','savings_plan','replace_transfer','account','reserve_account','schedule_day_of_month','first_payment_date','beneficiary_person','priority','notes']
         WHEN 'loan' THEN ARRAY['name','lender','borrower_person','original_amount','current_balance','disbursement_date','interest_rate','interest_rate_fixed_until','term_end_date','monthly_annuity','first_payment_date','schedule_day_of_month','debit_account','disbursement_account','real_estate','notes']
     END;

@@ -150,6 +150,30 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw/finance_ro -> fn_get_account_close_blockers/fn_get_loan_payment_split/fn_recurring_due_open: kein permission denied]';
 
+  -- ===== (2-mr) Instandhaltungsruecklage (2026-10-27): Empfehlung liest core.fn_config_get =====
+  -- finance_rw (Tools: create/set_real_estate, create/set_savings_goal), finance_ro (Agent-Frei-SQL) und core_ro
+  -- (Monitor-Frei-SQL / Trigger-Auswertung ueber read_surface) lesen die View + die Helfer ohne permission denied.
+  DECLARE v_role TEXT; BEGIN
+    FOREACH v_role IN ARRAY ARRAY['finance_rw', 'finance_ro', 'core_ro'] LOOP
+      BEGIN
+        EXECUTE format('SET LOCAL ROLE %I', v_role);
+        PERFORM count(*) FROM finance.maintenance_reserve_status;
+        IF (finance.fn_maintenance_reserve_rate(100, 1980)->>'ok')::boolean IS DISTINCT FROM true THEN
+          RAISE EXCEPTION 'Empfehlung nicht ok';
+        END IF;
+        IF v_role <> 'core_ro' THEN
+          PERFORM finance.fn_maintenance_card_lines(-1);
+          PERFORM finance.fn_real_estate_facts_reason('{"living_area_m2":"100","year_built":"1980"}'::jsonb);
+        END IF;
+        RESET ROLE;
+      EXCEPTION WHEN OTHERS THEN
+        RESET ROLE;
+        RAISE EXCEPTION 'FAIL [% -> Instandhaltungsruecklage]: %', v_role, SQLERRM;
+      END;
+    END LOOP;
+  END;
+  RAISE NOTICE 'PASS [finance_rw/finance_ro/core_ro -> maintenance_reserve_status + fn_maintenance_reserve_rate: kein permission denied]';
+
   -- ===== (2-mc) Monats-Check: tool_reconcile_bank_statement / tool_void_bank_statement laufen unter finance_rw =====
   -- Vorschau (inkl. Kartenzeilen ueber core.fn_ui_*), Buchung (Abgleich, Skips, Aggregat) und Ruecknahme ohne
   -- permission denied; fn_resolve_account_by_number liest unter beiden Rollen.

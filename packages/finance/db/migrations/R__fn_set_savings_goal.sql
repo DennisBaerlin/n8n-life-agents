@@ -31,6 +31,13 @@
 --   code:'existing_transfer', transfers}; replace_transfer=true -> die neue Rate fuehrt ihn fort (sein Monatsbetrag, Tag,
 --   naechster Termin; er endet dann, fn_goal_end_transfer; Entscheidung fn_goal_transfer_choice), Rueckgabe replaced_transfer_id + required_monthly_rate
 --   (falls abweichend) + card_lines (Hinweis); false -> zusaetzliche Rate; nicht monatlich -> code transfer_not_monthly.
+--   INSTANDHALTUNGSRUECKLAGE (real_estate_id gesetzt, 2026-10-27): kein Ziel/Datum -> target_amount, target_date und
+--   link_savings_plan_name -> {ok:false}; der einzige Hebel ist monthly_savings_rate (opt, nur hier erlaubt; an einem
+--   Ziel mit Datum -> {ok:false}, dort folgt die Rate aus Betrag und Datum). Laeuft eine Rate -> Aenderung ueber
+--   fn_change_owned_recurring (Korrektur in place oder Split ab dem naechsten Termin, Historie bleibt). Keine Rate: mit
+--   account_id wird eine angelegt (genannte Rate, sonst die Empfehlung nach II. BV; Dauerauftrags-Entscheidung wie
+--   oben), ohne -> code no_rate_running + required_monthly_rate. Reaktivieren, waehrend die Immobilie schon eine aktive
+--   Ruecklage hat -> {ok:false, code:'reserve_exists'} (Partial-UNIQUE als Backstop).
 --   RUECKGABE: {ok:true, goal_id, recurring_payment_id, new_monthly_rate (nur wenn eine Rate gesetzt/angelegt wurde),
 --   covered?, required_monthly_rate?, code?, linked_savings_plan_id, paused_cash_rate, paused_plan_count} + optional
 --   savings_squeeze (fn_savings_squeeze_fold, nur bei Raten-Aenderung: neu gerechnet, angelegt, reaktiviert, Topf
@@ -80,6 +87,10 @@ DECLARE
     v_old         JSONB;     -- fortgefuehrter Dauerauftrag (fn_goal_transfer_candidates)
     v_old_id      INT;
     v_dom         SMALLINT;
+    v_mrate       NUMERIC := NULLIF(p->>'monthly_savings_rate', '')::numeric;   -- nur Instandhaltungsruecklage
+    v_rec         JSONB;
+    v_chg         JSONB;     -- fn_change_owned_recurring
+    v_rate_change NUMERIC;   -- neue Rate einer laufenden Ruecklagen-Rate
 BEGIN
     -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date']);
@@ -100,6 +111,46 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A savings goal is completed or cancelled with close_savings_goal (it checks the remaining '
                    || 'reserve first), not by changing its status.');
+    END IF;
+
+    -- Instandhaltungsruecklage: Form-Regeln + der Raten-Hebel (vor jeder Neuberechnung, write-frei)
+    IF v_row.real_estate_id IS NOT NULL THEN
+        IF v_target IS NOT NULL OR v_tdate IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'A maintenance reserve has no target amount and no target date. To change how much goes into it, '
+                       || 'pass monthly_savings_rate.');
+        END IF;
+        IF v_link_name IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'A maintenance reserve is saved on a cash/Tagesgeld, fixed-deposit or P2P account, not by a savings plan into a depot.');
+        END IF;
+        IF v_status = 'active' AND v_row.status <> 'active' AND EXISTS (SELECT 1 FROM finance.savings_goals
+                WHERE real_estate_id = v_row.real_estate_id AND status = 'active' AND id <> v_id) THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'reserve_exists',
+                'reason', 'The property already has another active maintenance reserve - change that one instead of re-opening this one.');
+        END IF;
+        IF v_mrate IS NOT NULL AND v_mrate < 0 THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'Monthly savings rate cannot be negative, got ' || v_mrate || '.');
+        END IF;
+        IF v_row.recurring_payment_id IS NOT NULL THEN
+            IF v_mrate = 0 THEN
+                RETURN jsonb_build_object('ok', false,
+                    'reason', 'To stop paying into the maintenance reserve, pass stop_funders=true (the money stays earmarked).');
+            END IF;
+            v_rate_change := v_mrate;
+        ELSIF v_mrate IS NOT NULL OR v_new_acct IS NOT NULL THEN
+            IF v_mrate IS NULL THEN
+                v_rec := finance.fn_maintenance_reserve_rate(v_row.real_estate_id);
+                IF (v_rec->>'ok')::boolean IS DISTINCT FROM true THEN
+                    RETURN v_rec;
+                END IF;
+            END IF;
+            v_need := NULLIF(COALESCE(v_mrate, (v_rec->>'monthly_eur')::numeric), 0);  -- 0 = keine Rate
+        END IF;
+    ELSIF v_mrate IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'For a savings goal with a target date the monthly rate follows from the target amount and date - '
+                   || 'change those instead (monthly_savings_rate is only for a maintenance reserve).');
     END IF;
 
     IF v_target IS NOT NULL AND v_target <= 0 THEN
@@ -126,7 +177,7 @@ BEGIN
     v_eff_tdate  := COALESCE(v_tdate, v_row.target_date);
     v_rate := NULL;
 
-    IF v_recompute OR (v_row.recurring_payment_id IS NULL AND v_new_acct IS NOT NULL) THEN
+    IF v_row.real_estate_id IS NULL AND (v_recompute OR (v_row.recurring_payment_id IS NULL AND v_new_acct IS NOT NULL)) THEN
         IF v_eff_tdate <= CURRENT_DATE THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'Target date (' || v_eff_tdate || ') must be in the future to recompute a monthly rate.');
@@ -227,6 +278,25 @@ BEGIN
         v_unlink_plan := v_plan_res.id;
     END IF;
 
+    -- Instandhaltungsruecklage: laufende Rate aendern (vor allen anderen Writes; ok:false der Split-Guards bleibt write-frei)
+    IF v_rate_change IS NOT NULL THEN
+        -- gestoppte/beendete Rate (stop_funders, Close) -> erst ab heute als Folge-Zeile reaktivieren, dann den Betrag
+        -- setzen (sonst aenderte sich nur der Betrag einer pausierten Zeile und nichts flosse mehr ein)
+        IF EXISTS (SELECT 1 FROM finance.recurring_payments
+                   WHERE id = v_row.recurring_payment_id AND valid_to IS NOT NULL AND valid_to <= CURRENT_DATE) THEN
+            v_reopen := finance.fn_reopen_recurring_payment(v_row.recurring_payment_id, CURRENT_DATE);
+            IF (v_reopen->>'ok')::boolean IS DISTINCT FROM true THEN
+                RETURN v_reopen;
+            END IF;
+            v_row.recurring_payment_id := (v_reopen->>'recurring_payment_id')::int;
+        END IF;
+        v_chg := finance.fn_change_owned_recurring(v_row.recurring_payment_id, NULL, -v_rate_change, NULL, NULL, NULL);
+        IF (v_chg->>'ok')::boolean IS DISTINCT FROM true THEN
+            RETURN v_chg;
+        END IF;
+        v_row.recurring_payment_id := (v_chg->>'recurring_payment_id')::int;
+    END IF;
+
     UPDATE finance.savings_goals SET
         name          = COALESCE(NULLIF(p->>'name', ''), name),
         target_amount = COALESCE(v_target, target_amount),
@@ -305,8 +375,11 @@ BEGIN
         v_stop_res := finance.fn_stop_savings_goal_funders(jsonb_build_object('goal_id', v_id));
     END IF;
 
-    RETURN jsonb_build_object('ok', true, 'goal_id', v_id, 'effective', v_dates->'resolved',
-        'recurring_payment_id', v_row.recurring_payment_id, 'new_monthly_rate', v_rate,
+    RETURN jsonb_build_object('ok', true, 'goal_id', v_id,
+        -- Instandhaltungsruecklage: eine aus der Empfehlung angelegte Rate fest in den Write (Karte = Write)
+        'effective', (v_dates->'resolved') || CASE WHEN v_row.real_estate_id IS NOT NULL AND v_rate IS NOT NULL
+                         THEN jsonb_build_object('monthly_savings_rate', v_rate::text) ELSE '{}'::jsonb END,
+        'recurring_payment_id', v_row.recurring_payment_id, 'new_monthly_rate', COALESCE(v_rate, v_rate_change),
         'linked_savings_plan_id', v_touched_plan,
         -- Post-State der Funder-Pausierung (kein Input-Echo): was WIRKLICH pausiert wurde. Ohne stop_funders
         -- ist v_stop_res NULL -> COALESCE auf false/0 (nichts gestoppt), nie SQL-NULL im Return-Vertrag.
@@ -332,7 +405,7 @@ BEGIN
                 ELSE '{}'::jsonb END
         -- nur wenn sich die Sparrate aendert (neu gerechnet, angelegt, reaktiviert, Topf gewechselt, Beitraege gestoppt);
         -- reine Stammdaten-/Notiz-/Sparplan-Link-Edits falten nichts
-        || CASE WHEN v_rate IS NOT NULL OR v_status = 'active' OR v_reserve IS NOT NULL OR v_stop_funders
+        || CASE WHEN v_rate IS NOT NULL OR v_rate_change IS NOT NULL OR v_status = 'active' OR v_reserve IS NOT NULL OR v_stop_funders
                 THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;
 END;
 $$;

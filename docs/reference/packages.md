@@ -142,14 +142,14 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_create_account` | Konto anlegen (cash/p2p/depot/festgeld) samt Eröffnungssaldo + Inhaber in einem Schritt; Kredite nur über `tool_create_loan` |
 | `tool_create_insurance` | Versicherung + Prämien-Dauerauftrag anlegen |
 | `tool_create_loan` | Kredit inkl. Loan-Konto, Auszahlung, Rate anlegen |
-| `tool_create_real_estate` | Immobilie als Asset anlegen |
+| `tool_create_real_estate` | Immobilie als Asset anlegen (optional Wohnfläche + Baujahr → Karte zeigt die Instandhaltungs-Empfehlung) |
 | `tool_book_stock_buy` | Aktien-/ETF-Kauf buchen; `existing_position` = Bestandsübernahme ohne Belastung des Verrechnungskontos |
 | `tool_book_stock_sell` | Aktien-/ETF-Verkauf buchen |
 | `tool_book_dividend` | Dividende buchen |
 | `tool_book_transfer` | Transfer zwischen zwei eigenen Konten buchen |
 | `tool_book_transaction` | Externe Einnahme/Ausgabe (Dritte) buchen |
 | `tool_book_loan_payment` | Kreditrate buchen (Zins/Tilgungs-Split automatisch) |
-| `tool_create_savings_goal` | Sparziel anlegen: Topf, Startbestand, Rate auf dem Rest oder Sparplan(e) als Quelle; ein bestehender Dauerauftrag in den Topf wird auf Wunsch fortgeführt (`replace_transfer`) |
+| `tool_create_savings_goal` | Sparziel anlegen: Topf, Startbestand, Rate auf dem Rest oder Sparplan(e) als Quelle; ein bestehender Dauerauftrag in den Topf wird auf Wunsch fortgeführt (`replace_transfer`); mit `real_estate_name` die dauerhafte Instandhaltungsrücklage der Immobilie (ohne Zielbetrag/-datum, Rate genannt oder Empfehlung nach II. BV) |
 | `tool_book_savings_goal_transfer` | Sparziel-Reserve bewegen: einzahlen/entnehmen/umschichten (getaggter Transfer) |
 | `tool_book_savings_reservation` | vorhandenes Geld eines Kontos (Giro/Tagesgeld, Festgeld, P2P, Depot) einem Sparziel zuordnen, ohne Überweisung (absoluter Betrag → append-only Journal) |
 | `tool_reconcile_account` | Ein Konto-Saldo abgleichen (Korrekturbuchung) |
@@ -160,12 +160,12 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_create_pension` | Altersvorsorge (+ optional Beitrag) anlegen |
 | `tool_set_account` | Konto-Stammdaten ändern |
 | `tool_set_account_interest` | Kontozins setzen/ändern |
-| `tool_set_real_estate` | Immobilie neubewerten/ändern |
+| `tool_set_real_estate` | Immobilie neubewerten/ändern (auch Wohnfläche + Baujahr) |
 | `tool_set_pension` | Altersvorsorge ändern |
 | `tool_set_insurance` | Versicherung ändern |
 | `tool_set_loan` | Kredit-Konditionen/Status ändern |
 | `tool_set_recurring_payment` | Standalone Dauerauftrag ändern (Betrag/Pause/Resume/Ende) |
-| `tool_set_savings_goal` | Sparziel ändern (Sparrate wird neu berechnet) |
+| `tool_set_savings_goal` | Sparziel ändern (Sparrate wird neu berechnet; bei einer Instandhaltungsrücklage nur die Rate über `monthly_savings_rate`) |
 | `tool_set_holding` | Depot-Position-Metadaten ändern |
 | `tool_set_asset_classes` | Anlageklassen mehrerer Depot-Positionen mit EINER Karte zuordnen (Plan-Block-Key oder `outside_plan`); auch beim Finanzberater gebunden |
 | `tool_verify_price_symbol` | Lese-Tool ohne Karte: Börsen-Notierungen einer ISIN nachschlagen, damit der Nutzer die Kursquelle wählt (Wahl dann per `tool_set_holding`) |
@@ -179,7 +179,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_close_insurance` | Versicherung beenden (Smart-Close) |
 | `tool_close_pension` | Altersvorsorge beenden (Smart-Close) |
 | `tool_close_savings_goal` | Sparziel beenden (Smart-Close) |
-| `tool_delete_real_estate` | Immobilie löschen (nur Fehlanlage; „verkauft" → `tool_sell_real_estate`) |
+| `tool_delete_real_estate` | Immobilie löschen (nur Fehlanlage ohne Kredit und ohne Instandhaltungsrücklage; „verkauft" → `tool_sell_real_estate`) |
 | `tool_delete_holding` | Depot-Position löschen (nur ohne Trades) |
 | `tool_delete_account` | Konto löschen (nur ohne jede Referenz) |
 | `tool_delete_recurring_payment` | Standalone Dauerauftrag löschen (Zubringer eines Sparplans/Sparziels nur mit `confirm_feeds_savings`) |

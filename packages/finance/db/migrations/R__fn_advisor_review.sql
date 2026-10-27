@@ -33,6 +33,11 @@
 --   Monats-Check (WP-E): account_coverage:<konto> = Deckungs-Vorschau (finance.fn_account_outlook) unterschreitet
 --     den Puffer finance.coverage_buffer_eur, nur Konten mit Kontoauszug; recurring_missing:<ketten-kopf> = die
 --     juengsten zwei Termine einer laufenden Dauerauftrags-Kette hat ein Kontoauszug als fehlend festgestellt.
+--   Instandhaltungsruecklage (2026-10-27, aus finance.maintenance_reserve_status): maintenance_reserve_low:<immobilie>
+--     = eingestellte Rate (Kopf der Kette) einer aktiven Immobilie unter der Empfehlung nach II. BV (latch_keys
+--     Stufe:Satz -> Stufen-/Satzwechsel meldet erneut; ohne Kurs NULL -> keine Meldung);
+--     maintenance_reserve_missing:<immobilie> = aktive Immobilie ohne aktive Ruecklage (einmal). Digest: Ruecklage als
+--     digest_maintenance_line (Stand + Rate) statt Prozent-Zeile; savings_pace/goal_reached entfallen (kein Ziel).
 --
 --   PARTIAL-TOLERANT: jeder Soll-Block optional; fehlt der Plan/das Fakt, entfaellt die Metrik still
 --   (kein Crash, leeres alerts moeglich). Robust bei leeren Live-Daten.
@@ -394,6 +399,48 @@ BEGIN
                                       'amount', core.fn_ui_money((r.o->'suggestion'->>'amount')::numeric, r.o->>'currency'),
                                       'from',   r.o->'suggestion'->>'from_account',
                                       'date',   core.fn_ui_date((r.o->'suggestion'->>'by_date')::date))) END));
+    END LOOP;
+
+    -- ---------- (2e) Instandhaltungsruecklage (2026-10-27) ----------
+    -- Rechnung allein in finance.maintenance_reserve_status (Empfehlung nach II. BV, laufende Rate in EUR ueber die
+    -- Kette). low: laufende Rate < Empfehlung; latch_keys = Stufe:Satz -> ein Stufenwechsel (22/32 Jahre) oder neue
+    -- II.-BV-Saetze melden erneut. missing: aktive Immobilie ohne aktive Ruecklage, einmal je Immobilie (mit
+    -- Empfehlung, ohne Flaeche/Baujahr die Daten-Variante).
+    FOR r IN
+        SELECT * FROM finance.maintenance_reserve_status
+        WHERE goal_id IS NOT NULL AND property_status = 'active' AND recommended_monthly IS NOT NULL
+          AND running_monthly_eur < recommended_monthly   -- NULL (kein Kurs) meldet nicht falsch
+    LOOP
+        v_alerts := v_alerts || jsonb_build_object(
+            'metric_key', 'maintenance_reserve_low:' || r.real_estate_id,
+            'kind',       'maintenance_reserve_low',
+            'label',      'maintenance reserve below II. BV recommendation',
+            'value',      r.running_monthly_eur,
+            'target',     r.recommended_monthly,
+            'drift',      r.gap_monthly_eur,
+            'latch_keys', jsonb_build_array(r.band || ':' || r.rate_eur_m2::text),
+            'msg',        jsonb_build_array(core.fn_ui_tpl('finance.advisor.maintenance_reserve_low', jsonb_build_object(
+                              'property', r.real_estate_name,
+                              'rate',     core.fn_ui_money(r.running_monthly_eur),
+                              'recommended', core.fn_ui_money(r.recommended_monthly),
+                              'rate_m2',  core.fn_ui_money(r.rate_eur_m2),
+                              'age',      core.fn_ui_num(r.age_years)))));
+    END LOOP;
+    FOR r IN
+        SELECT * FROM finance.maintenance_reserve_status WHERE goal_id IS NULL
+    LOOP
+        v_alerts := v_alerts || jsonb_build_object(
+            'metric_key', 'maintenance_reserve_missing:' || r.real_estate_id,
+            'kind',       'maintenance_reserve_missing',
+            'label',      'property without maintenance reserve',
+            'value',      0,
+            'target',     r.recommended_monthly,
+            'drift',      r.recommended_monthly,
+            'msg',        jsonb_build_array(CASE WHEN r.recommended_monthly IS NOT NULL
+                              THEN core.fn_ui_tpl('finance.advisor.maintenance_reserve_missing', jsonb_build_object(
+                                       'property', r.real_estate_name, 'recommended', core.fn_ui_money(r.recommended_monthly)))
+                              ELSE core.fn_ui_tpl('finance.advisor.maintenance_reserve_missing_data', jsonb_build_object(
+                                       'property', r.real_estate_name)) END));
     END LOOP;
 
     -- ---------- (2d) Monats-Check: Dauerauftrag zweimal in Folge nicht gekommen ----------
@@ -838,15 +885,24 @@ BEGIN
         -- WS-C1: Engpass-Reihung im Digest sichtbar — target_date ASC, priority ASC NULLS LAST, name als
         -- Tie-Breaker (deterministisch -> kein Flake bei gleichem Datum+priority).
         -- Audit Paket 3: Ziel ohne Topf -> "nicht messbar" statt einer irrefuehrenden 0-%-Zeile.
-        || COALESCE((SELECT jsonb_agg(CASE WHEN progress_measurable
+        || COALESCE((SELECT jsonb_agg(CASE
+                         -- Instandhaltungsruecklage: kein Ziel -> Stand + eingestellte Rate statt "x % von —"
+                         -- (Rate aus maintenance_reserve_status, EIN Join; ohne Kurs NULL -> "—", nie still 0)
+                         WHEN sgp.real_estate_id IS NOT NULL
+                         THEN core.fn_ui_tpl('finance.advisor.digest_maintenance_line', jsonb_build_object(
+                                  'name', sgp.name, 'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),
+                                  'rate', core.fn_ui_money(m.running_monthly_eur)))
+                         WHEN sgp.progress_measurable
                          THEN core.fn_ui_tpl('finance.advisor.digest_goal_line', jsonb_build_object(
-                                  'name', name, 'pct', core.fn_ui_num(COALESCE(progress_percent, 0)),
-                                  'current', core.fn_ui_money(COALESCE(current_amount, 0)),
-                                  'target', core.fn_ui_money(target_amount)))
+                                  'name', sgp.name, 'pct', core.fn_ui_num(COALESCE(sgp.progress_percent, 0)),
+                                  'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),
+                                  'target', core.fn_ui_money(sgp.target_amount)))
                          ELSE core.fn_ui_tpl('finance.advisor.digest_goal_line_unmeasurable', jsonb_build_object(
-                                  'name', name, 'target', core.fn_ui_money(target_amount))) END
-                       ORDER BY target_date, priority NULLS LAST, name)
-                     FROM finance.savings_goal_progress WHERE status = 'active'),
+                                  'name', sgp.name, 'target', core.fn_ui_money(sgp.target_amount))) END
+                       ORDER BY sgp.target_date, sgp.priority NULLS LAST, sgp.name)
+                     FROM finance.savings_goal_progress sgp
+                     LEFT JOIN finance.maintenance_reserve_status m ON m.goal_id = sgp.id
+                     WHERE sgp.status = 'active'),
                     jsonb_build_array(core.fn_ui_tpl('finance.advisor.digest_no_goals')));
 
     -- WS-B Stufe 3: Reserve-Aufschluesselung Cash/Depot je Konto ("wo liegt mein Ziel-Geld?") aus der

@@ -263,6 +263,10 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'core.label.name'             "$S.name")
                 (New-HitlLine 'finance.label.current_value' "($S.current_value || null)" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.valuation_date' "$S.value_updated_at" -Kind date -OmitEmpty)
+                # Instandhaltungsruecklage (2026-10-27): Gebaeude-Fakten fuer die Empfehlung nach II. BV (Hinweis-Zeile der fn)
+                (New-HitlLine 'finance.label.living_area' "($S.living_area_m2 ? 'finance.tpl.area_m2' : null)" -Kind tpl -Params @{ value = "$S.living_area_m2" } -OmitEmpty)
+                # Jahr als Text (eine Zahl-Formatierung setzte einen Tausenderpunkt: 1.994)
+                (New-HitlLine 'finance.label.year_built'  "($S.year_built ? String($S.year_built) : null)" -OmitEmpty)
                 (& $own 'finance.label.owner_person' (& $need 'Person'))
                 (New-HitlLine 'core.label.status'           "($S.status || 'active')" -Kind enum -Enum 'finance.enum.status' -IsDefault "!$S.status")
                 (New-HitlLine 'finance.label.notes'         "$S.notes" -OmitEmpty)
@@ -273,15 +277,20 @@ function Get-FinanceHitlLines {
             # entfallen Rate-Details (Abbuchungskonto/-tag, erste Buchung) und die Zeile zeigt 0 (Hinweis kommt aus der fn).
             $rate = & $need 'MonthlyRate'
             $hasRate = "(Number($rate) > 0 && !$S.savings_plan_name)"
+            # Instandhaltungsruecklage (2026-10-27, nur Einzel-Tool): Unterart ohne Zielbetrag/-datum, mit Immobilie; die
+            # Rate ist genannt / Dauerauftrag / Empfehlung (Empfehlung + Unterschreitung als Hinweis-Zeilen der fn)
+            $isRes = "(!!$S.real_estate_name)"
             @(
                 (New-HitlLine 'core.label.name'                    "$S.goal_name")
                 (New-HitlLine 'finance.label.goal_type'            "$S.goal_type" -OmitEmpty)
-                (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date)
+                (New-HitlLine 'finance.label.real_estate'          "$S.real_estate_name" -If $isRes)
+                (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel -If "!$isRes")
+                (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date -If "!$isRes")
                 (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -Currency "($S.reserve_currency || 'EUR')" -OmitEmpty)
-                (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If $hasRate -Params @{
+                (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If "$hasRate && !$isRes" -Params @{
                     value  = (New-HitlValue -Kind money -Value $rate -EurByModel)
                     months = (& $need 'Months') })
+                (New-HitlLine 'finance.label.monthly_savings_rate' $rate -Kind money -EurByModel -If "$hasRate && $isRes")
                 (New-HitlLine 'finance.label.monthly_savings_rate' "0" -Kind money -EurByModel -If "!($hasRate) && !$S.savings_plan_name")
                 (New-HitlLine 'finance.label.link_savings_plan'    "$S.savings_plan_name" -OmitEmpty)
                 # 2026-10-27: Antwort auf existing_transfer (fortfuehren oder zusaetzlich); Konto/Tag kommen dann aus r.effective

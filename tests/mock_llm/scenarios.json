@@ -438,6 +438,20 @@
     "final": "Immobilie neu bewertet."
   },
   {
+    "match": "Musterimmobilie hat 120 m² Wohnfläche",
+    "calls": [
+      { "tool": "tool_set_real_estate", "args": { "real_estate_name": "Musterimmobilie", "living_area_m2": "120", "year_built": "1995" } }
+    ],
+    "final": "Wohnfläche und Baujahr eingetragen."
+  },
+  {
+    "match": "Musterimmobilie eine Instandhaltungsrücklage ein",
+    "calls": [
+      { "tool": "tool_create_savings_goal", "args": { "real_estate_name": "Musterimmobilie", "reserve_account_name": "Tagesgeld Plus", "account_name": "DKB Giro" } }
+    ],
+    "final": "Instandhaltungsrücklage vorgeschlagen."
+  },
+  {
     "match": "HUK Hausratversicherung steigt auf 95 Euro",
     "calls": [
       { "tool": "tool_set_insurance", "args": { "insurance_name": "HUK Hausratversicherung", "annual_premium": "95" } }

@@ -11,6 +11,12 @@
 --      fn_goal_transfer_choice(Topf, Abbuchungskonto, p.replace_transfer). Fortfuehren -> sein Konto, Tag und
 --      naechster Termin, die Rate = SEIN Monatsbetrag (die Bank ueberweist ihn weiter); bei genanntem Datum needed_rate.
 --   3. fn_savings_rate_schedule auf dem Rest (Ziel - p_saved_eur).
+--   INSTANDHALTUNGSRUECKLAGE (p.real_estate_id gesetzt, 2026-10-27): kein Ziel, kein Datum. Rate = genannte
+--   monthly_savings_rate, sonst die Empfehlung (fn_maintenance_reserve_rate der Immobilie; ohne Flaeche/Baujahr deren
+--   {ok:false, code:'maintenance_data_missing'}). Waere die Rate > 0, laeuft dieselbe Dauerauftrags-Entscheidung wie
+--   oben (fn_goal_transfer_choice; Bedingung "Rate > 0" statt "Rest > 0"): fortfuehren -> Rate = SEIN Monatsbetrag,
+--   needed_rate = genannte Rate bzw. Empfehlung. Erste Rate = genannt bzw. naechster Termin ab heute (Raster wie
+--   fn_savings_rate_schedule). Zusaetzlich recommendation = das jsonb der Empfehlung (oder null).
 --   Eingabe: p (Payload wie fn_create_savings_goal; Datumsfelder schon ISO), p_reserve (Topf-id oder NULL = im Import
 --   noch nicht angelegt), p_reserve_is_depot, p_acct (Abbuchungskonto-id oder NULL), p_saved_eur (Startbestand in EUR).
 --   RUECKGABE: {ok:true, monthly_rate (wirksame eigene Rate bzw. der Plan-/Dauerauftrags-Betrag), needed_rate,
@@ -37,10 +43,56 @@ DECLARE
     v_dom          SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
     v_date_given   BOOLEAN  := NULLIF(p->>'target_date', '') IS NOT NULL;
     v_q            JSONB    := p;
+    v_dates        JSONB;
     v_sched        JSONB;
     v_rate         NUMERIC;
     v_need         NUMERIC;
+    v_re_id        INT      := NULLIF(p->>'real_estate_id', '')::int;
+    v_rec          JSONB;
+    v_first        DATE;
 BEGIN
+    -- Instandhaltungsruecklage: eigener Zweig (kein Ziel/Datum, keine Sparplaene - die prueft fn_create_savings_goal)
+    IF v_re_id IS NOT NULL THEN
+        v_rec  := finance.fn_maintenance_reserve_rate(v_re_id);
+        v_rate := NULLIF(p->>'monthly_savings_rate', '')::numeric;
+        IF v_rate IS NULL THEN
+            IF (v_rec->>'ok')::boolean IS DISTINCT FROM true THEN
+                RETURN v_rec;
+            END IF;
+            v_rate := (v_rec->>'monthly_eur')::numeric;
+        ELSIF v_rate < 0 THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'Monthly savings rate cannot be negative, got ' || v_rate || '.');
+        END IF;
+        v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date']);
+        IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
+        v_first := NULLIF(v_dates->'p'->>'first_payment_date', '')::date;
+        IF v_rate > 0 AND p_reserve IS NOT NULL AND NOT COALESCE(p_reserve_is_depot, false) THEN
+            v_choice := finance.fn_goal_transfer_choice(p_reserve, p_acct, v_replace);
+            IF (v_choice->>'ok')::boolean IS DISTINCT FROM true THEN
+                RETURN v_choice;
+            END IF;
+            IF jsonb_typeof(v_choice->'transfer') = 'object' THEN
+                v_old   := v_choice->'transfer';
+                v_acct  := COALESCE(v_acct, (v_old->>'account_id')::int);
+                v_dom   := NULLIF(v_old->>'day', '')::smallint;
+                v_first := (v_old->>'next_due')::date;
+                v_need  := v_rate;
+                v_rate  := (v_old->>'monthly_amount')::numeric;
+            END IF;
+        END IF;
+        IF v_first IS NULL THEN
+            SELECT min(d) INTO v_first
+            FROM finance.fn_schedule_occurrences(core.fn_today(), 1, 'month', v_dom, NULL, core.fn_today(), core.fn_today() + 62) d;
+        END IF;
+        RETURN jsonb_build_object('ok', true,
+            'monthly_rate', v_rate, 'needed_rate', v_need, 'target_date', NULL, 'months', NULL,
+            'first_payment_date', v_first,
+            'first_defaulted', NULLIF(p->>'first_payment_date', '') IS NULL AND v_old IS NULL,
+            'plan_ids', NULL, 'plan_names', NULL, 'plan_monthly', NULL,
+            'transfer', v_old, 'account_id', v_acct, 'schedule_day_of_month', v_dom,
+            'recommendation', CASE WHEN (v_rec->>'ok')::boolean THEN v_rec END);
+    END IF;
+
     -- 1. Sparplaene
     IF v_plan_name IS NOT NULL THEN
         SELECT r.id, r.hit_count INTO v_plan FROM finance.fn_resolve_savings_plan(v_plan_name, FALSE) r;

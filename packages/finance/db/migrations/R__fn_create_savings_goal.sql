@@ -31,6 +31,15 @@
 --   Startbestand/Sparplan), schedule_day_of_month, first_payment_date (opt, WP2: leer = naechster Termin ab heute laut
 --   fn_savings_rate_schedule), priority (opt, WS-C1: kleiner = wichtiger), notes,
 --   beneficiary_person_id (opt, Slug; leer = Inhaber des Spartopfs, fn_default_beneficiary; Topf ohne Inhaber -> NULL).
+--   INSTANDHALTUNGSRUECKLAGE (2026-10-27): real_estate_name (opt) gesetzt -> dauerhafte Ruecklage der Immobilie
+--   (fn_resolve_real_estate, nur aktive; not_found/ambiguous -> {ok:false, code, candidates}): OHNE target_amount und
+--   target_date (genannt -> {ok:false}), ohne Sparplan, Topf saldo-basiert (kein Depot), hoechstens eine aktive je
+--   Immobilie (code reserve_exists; Partial-UNIQUE als Backstop). name leer -> 'Instandhaltungsrücklage <Immobilie>'.
+--   Rate = genannt, sonst fortgefuehrter Dauerauftrag (existing_transfer wie oben), sonst die Empfehlung nach II. BV
+--   (fn_savings_goal_funding -> fn_maintenance_reserve_rate; ohne Flaeche/Baujahr code maintenance_data_missing).
+--   effective pinnt name + monthly_savings_rate (Karte = Write, auch wenn sich Empfehlung/Config dazwischen aendert).
+--   Rueckgabe zusaetzlich real_estate_id, recommended_monthly, rate_eur_m2, band (null ohne Daten); card_lines:
+--   Empfehlung (finance.note.maintenance_recommendation) + Rate darunter (finance.note.maintenance_rate_below).
 --   SPARKONTO-PFLICHT (Audit Paket 3): ohne Topf liefe eine Rate als nackte Abbuchung ins Leere -> Fortschritt 0. Der
 --   Topf ist Gesetz in der fn (auch fuer den Import-Pfad), nicht nur im Tool.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, goal_id, recurring_payment_id (NULL ohne Rate), monthly_rate (eigene Rate,
@@ -77,6 +86,11 @@ DECLARE
     v_old        JSONB;     -- fortgefuehrter Dauerauftrag
     v_old_id     INT;
     v_need       NUMERIC;   -- noetige Rate bei genanntem Datum (nur Karten-Hinweis)
+    v_name       TEXT     := NULLIF(btrim(p->>'name'), '');
+    v_re_name    TEXT     := NULLIF(btrim(p->>'real_estate_name'), '');
+    v_re         RECORD;    -- fn_resolve_real_estate
+    v_re_id      INT;       -- gesetzt = Instandhaltungsruecklage
+    v_rec        JSONB;     -- Empfehlung nach II. BV (fn_savings_goal_funding.recommendation)
 BEGIN
     -- relative Datumsangaben ("in 2 years") -> ISO, damit effective sie fest in den Write nach der Karte traegt
     -- (fn_savings_rate_schedule loest dieselben Keys fuer die Karte auf); nicht aufloesbar -> {ok:false, code:'invalid_date'}
@@ -90,6 +104,42 @@ BEGIN
     IF v_saved < 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'already_saved cannot be negative, got ' || v_saved || '.');
     END IF;
+    -- Instandhaltungsruecklage: Immobilie aufloesen + Form-Regeln (Gesetz: Form-CHECK + Partial-UNIQUE)
+    IF v_re_name IS NOT NULL THEN
+        SELECT r.id, r.hit_count, r.candidates INTO v_re FROM finance.fn_resolve_real_estate(v_re_name, TRUE) r;
+        IF COALESCE(v_re.hit_count, 0) = 0 THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'not_found', 'candidates', '[]'::jsonb,
+                'reason', 'No active property named "' || v_re_name || '" - ask the user which property, or record it first with tool_create_real_estate.');
+        ELSIF v_re.hit_count > 1 THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'ambiguous', 'candidates', v_re.candidates,
+                'reason', 'Multiple properties match "' || v_re_name || '" - ask the user which one (candidates).');
+        END IF;
+        v_re_id := v_re.id;
+        -- target_amount 0 = nicht gesetzt (das Tool-Feld ist eine Zahl mit Default 0)
+        IF COALESCE(NULLIF(p->>'target_amount', '')::numeric, 0) <> 0 OR NULLIF(p->>'target_date', '') IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'A maintenance reserve has no target amount and no target date - it keeps running with a monthly '
+                       || 'rate. Leave target_amount and target_date empty (or create a normal savings goal without real_estate_name).');
+        END IF;
+        IF NULLIF(btrim(p->>'savings_plan'), '') IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'A maintenance reserve is saved on a cash/Tagesgeld, fixed-deposit or P2P account, not by a savings plan into a depot.');
+        END IF;
+        SELECT g.name INTO v_sim FROM finance.savings_goals g WHERE g.real_estate_id = v_re_id AND g.status = 'active';
+        IF v_sim IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'reserve_exists',
+                'reason', 'This property already has an active maintenance reserve ("' || v_sim || '"). Change its rate with '
+                       || 'tool_set_savings_goal instead.');
+        END IF;
+        v_name := COALESCE(v_name, left('Instandhaltungsrücklage ' || (SELECT name FROM finance.real_estate WHERE id = v_re_id), 100));
+        -- Dubletten-Backstop auch fuer den vergebenen Namen (das Tool prueft nur einen genannten goal_name)
+        IF (SELECT r.hit_count FROM finance.fn_resolve_savings_goal(v_name, TRUE) r) > 0 THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'name_exists',
+                'reason', 'An active savings goal named "' || v_name || '" already exists - give the maintenance reserve a '
+                       || 'different name (goal_name).');
+        END IF;
+        p := p || jsonb_build_object('real_estate_id', v_re_id);
+    END IF;
     -- Audit Paket 3: Sparkonto-Pflicht (Gesetz in der fn; Tool + Import pruefen vorab nur als Komfort).
     IF v_reserve IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -100,6 +150,10 @@ BEGIN
     END IF;
     SELECT account_type, currency, status INTO v_rtype, v_rccy, v_rstatus FROM finance.accounts WHERE id = v_reserve;
     v_depot := v_rtype IN ('stocks_depot', 'crypto_depot');
+    IF v_depot AND v_re_id IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'A maintenance reserve needs a cash/Tagesgeld, fixed-deposit or P2P account as its savings account, not a depot.');
+    END IF;
     IF v_depot THEN
         IF v_rstatus IS DISTINCT FROM 'active' THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'The depot of the goal must be an active account.');
@@ -151,6 +205,7 @@ BEGIN
     v_plan_id      := v_plan_ids[1];
     v_plan_names   := v_sched->>'plan_names';
     v_plan_monthly := (v_sched->>'plan_monthly')::numeric;
+    v_rec          := CASE WHEN jsonb_typeof(v_sched->'recommendation') = 'object' THEN v_sched->'recommendation' END;
 
     -- Eigene Rate nur fuer einen Rest > 0 ohne Sparplan: sie fliesst in einen saldo-basierten Topf, vom Abbuchungskonto.
     IF v_rate > 0 AND v_plan_id IS NULL THEN
@@ -174,16 +229,17 @@ BEGIN
 
     -- 1. Sparziel (target_date = vom Helper aufgeloest, egal ob genannt oder berechnet)
     INSERT INTO finance.savings_goals
-        (name, goal_type, target_amount, target_date, status, priority, notes, beneficiary_person_id)
+        (name, goal_type, target_amount, target_date, status, priority, notes, beneficiary_person_id, real_estate_id)
     VALUES (
-        p->>'name',
+        v_name,
         NULLIF(p->>'goal_type', ''),
-        (p->>'target_amount')::numeric,
+        CASE WHEN v_re_id IS NULL THEN NULLIF(p->>'target_amount', '')::numeric END,  -- Instandhaltungsruecklage: NULL (Form-CHECK)
         v_date,
         'active',
         NULLIF(p->>'priority', '')::smallint,     -- WS-C1: Engpass-Reihung (kleiner = wichtiger; leer=NULL=unpriorisiert)
         NULLIF(p->>'notes', ''),
-        v_benef                                   -- WS-4: genannte Person, sonst Topf-Inhaber; NULL=Haushalt. FK->agent.persons.
+        v_benef,                                  -- WS-4: genannte Person, sonst Topf-Inhaber; NULL=Haushalt. FK->agent.persons.
+        v_re_id
     )
     RETURNING id INTO v_goal_id;
 
@@ -201,7 +257,7 @@ BEGIN
     --     aufs Haben-Bein -> Fortschritt = Topf-Anteil).
     IF v_rate > 0 AND v_plan_id IS NULL THEN
         v_rp_id := finance.fn_add_recurring_payment(
-            v_acct, -v_rate, left('Sparrate ' || (p->>'name'), 100),
+            v_acct, -v_rate, left('Sparrate ' || v_name, 100),
             1::smallint, 'month'::finance.schedule_unit, v_dom, v_first, finance.fn_recurring_valid_from(v_acct, v_first), NULL, NULL, NULL);
         UPDATE finance.savings_goals SET recurring_payment_id = v_rp_id WHERE id = v_goal_id;
         UPDATE finance.recurring_payments SET target_account_id = v_reserve WHERE id = v_rp_id;
@@ -220,7 +276,14 @@ BEGIN
 
     SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal_id;
     v_lines := finance.fn_similar_note(v_sim)
-        || CASE WHEN v_rate = 0 THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_covered'))
+        || CASE WHEN v_rate = 0 AND v_re_id IS NULL THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_covered'))
+                ELSE '[]'::jsonb END
+        -- Instandhaltungsruecklage: Empfehlung nach II. BV (Untergrenze) + Hinweis, wenn die wirksame Rate darunter liegt
+        || CASE WHEN v_re_id IS NOT NULL THEN finance.fn_maintenance_card_lines(v_re_id) ELSE '[]'::jsonb END
+        || CASE WHEN v_rec IS NOT NULL AND v_rate < (v_rec->>'monthly_eur')::numeric THEN jsonb_build_array(jsonb_build_object(
+                    'kind', 'note', 'value', 'finance.note.maintenance_rate_below',
+                    'params', jsonb_build_object('monthly', core.fn_ui_money(v_rate),
+                                                 'recommended', core.fn_ui_money((v_rec->>'monthly_eur')::numeric))))
                 ELSE '[]'::jsonb END
         -- Sparplaene vs. noetige Rate nur, wenn sie abweichen (Datum oder Rate genannt); ein aus den Plaenen
         -- abgeleitetes Datum braucht keinen Vergleich.
@@ -272,7 +335,18 @@ BEGIN
                          -- fortgefuehrter Dauerauftrag: Abbuchungskonto + Tag fuer die Karte ('' statt NULL, damit kein
                          -- genannter Tag aus Start durchscheint; die fn leitet beide im Write erneut gleich ab)
                          'account_name', CASE WHEN v_old IS NOT NULL THEN (SELECT a.name FROM finance.accounts a WHERE a.id = v_acct) END,
-                         'schedule_day_of_month', CASE WHEN v_old IS NOT NULL THEN COALESCE(v_dom::text, '') END)))
+                         'schedule_day_of_month', CASE WHEN v_old IS NOT NULL THEN COALESCE(v_dom::text, '') END,
+                         -- Instandhaltungsruecklage: Name (Default) + wirksame Rate (genannt / Dauerauftrag / Empfehlung)
+                         -- fest in den Write; goal_name fuer die Karte (Feldname des Einzel-Tools)
+                         'name', CASE WHEN v_re_id IS NOT NULL THEN v_name END,
+                         'goal_name', CASE WHEN v_re_id IS NOT NULL THEN v_name END,
+                         'monthly_savings_rate', CASE WHEN v_re_id IS NOT NULL THEN v_rate::text END)))
+        || CASE WHEN v_re_id IS NOT NULL
+                THEN jsonb_build_object('real_estate_id', v_re_id,
+                         'recommended_monthly', (v_rec->>'monthly_eur')::numeric,
+                         'rate_eur_m2', (v_rec->>'rate_eur_m2')::numeric,
+                         'band', v_rec->>'band')
+                ELSE '{}'::jsonb END
         || CASE WHEN v_plan_id IS NOT NULL
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', v_plan_monthly)
                 ELSE '{}'::jsonb END

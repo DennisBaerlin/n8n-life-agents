@@ -1069,4 +1069,59 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT derisk;
 
+-- ============================================================
+-- Instandhaltungsruecklage (2026-10-27): Rate unter der Empfehlung nach II. BV -> maintenance_reserve_low:<id>
+-- (latch_keys = Stufe + Satz, damit ein Stufen-/Satzwechsel erneut meldet); aktive Immobilie ohne Ruecklage ->
+-- maintenance_reserve_missing:<id>; Digest-Zeile digest_maintenance_line statt "0 % (x / —)".
+-- ============================================================
+SAVEPOINT maintenance;
+DO $$
+DECLARE
+  y      INT := EXTRACT(YEAR FROM core.fn_today())::int;
+  r      jsonb;
+  a      jsonb;
+  v_giro INT; v_pot INT; v_haus INT; v_grund INT;
+BEGIN
+  INSERT INTO core.config (package, category, key, value) VALUES
+      ('finance','finance','maintenance_rate_under22_eur_m2','11.50'),
+      ('finance','finance','maintenance_rate_from22_eur_m2','14.58'),
+      ('finance','finance','maintenance_rate_from32_eur_m2','18.62')
+    ON CONFLICT (category, key) DO UPDATE SET value = EXCLUDED.value, package = 'finance';
+  v_giro := (finance.fn_create_account('{"name":"__adv_mr_giro__","account_type":"cash","opening_balance":9000}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__adv_mr_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_haus := (finance.fn_create_real_estate(jsonb_build_object('name','__adv_mr_haus__','living_area_m2','110','year_built',y - 40))->>'real_estate_id')::int;
+  v_grund := (finance.fn_create_real_estate('{"name":"__adv_mr_grund__"}'::jsonb)->>'real_estate_id')::int;
+  -- Rate 100 < Empfehlung 171 (110 m2, Alter 40)
+  PERFORM finance.fn_create_savings_goal(jsonb_build_object('real_estate_name','__adv_mr_haus__','reserve_account_id',v_pot,
+            'account_id',v_giro,'monthly_savings_rate',100));
+  r := finance.fn_advisor_review('finance');
+
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'maintenance_reserve_low:' || v_haus;
+  IF a IS NULL OR (a->>'value')::numeric IS DISTINCT FROM 100 OR (a->>'target')::numeric IS DISTINCT FROM 171
+     OR (a->>'drift')::numeric IS DISTINCT FROM 71 OR a->'latch_keys'->>0 IS DISTINCT FROM 'from32:18.62'
+     OR (a->'msg')::text NOT LIKE '%finance.advisor.maintenance_reserve_low%' THEN
+    RAISE EXCEPTION 'FAIL [MR1 Rate unter Empfehlung]: %', a; END IF;
+  -- Immobilie ohne Daten und ohne Ruecklage -> Hinweis (Variante ohne Empfehlung)
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'maintenance_reserve_missing:' || v_grund;
+  IF a IS NULL OR (a->'msg')::text NOT LIKE '%finance.advisor.maintenance_reserve_missing_data%' THEN
+    RAISE EXCEPTION 'FAIL [MR2 fehlende Ruecklage]: %', r->'alerts'; END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'maintenance_reserve_missing:' || v_haus) THEN
+    RAISE EXCEPTION 'FAIL [MR2 Haus hat eine Ruecklage]'; END IF;
+  -- Digest: eigene Zeile, kein savings_pace/goal_reached fuer die Ruecklage
+  IF (r->'digest'->'lines')::text NOT LIKE '%finance.advisor.digest_maintenance_line%' THEN
+    RAISE EXCEPTION 'FAIL [MR3 Digest-Zeile]: %', r->'digest'->'lines'; END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x
+             WHERE x->>'metric_key' LIKE 'savings_goal%:Instandhaltungsrücklage __adv_mr_haus__') THEN
+    RAISE EXCEPTION 'FAIL [MR3 Sparziel-Alert fuer Ruecklage]: %', r->'alerts'; END IF;
+
+  -- Rate auf Empfehlung -> kein low-Alert mehr
+  PERFORM finance.fn_set_savings_goal(jsonb_build_object('goal_id',
+            (SELECT id FROM finance.savings_goals WHERE real_estate_id = v_haus), 'monthly_savings_rate', '171'));
+  r := finance.fn_advisor_review('finance');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'maintenance_reserve_low:' || v_haus) THEN
+    RAISE EXCEPTION 'FAIL [MR4 Rate = Empfehlung still]'; END IF;
+  RAISE NOTICE 'PASS [MR1-MR4: Ruecklage unter Empfehlung, fehlende Ruecklage, Digest-Zeile, still bei Empfehlung]';
+END $$;
+ROLLBACK TO SAVEPOINT maintenance;
+
 ROLLBACK;

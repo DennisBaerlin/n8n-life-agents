@@ -5,7 +5,8 @@
 --   dem Sentinel-Marker '__E2E__', FK-sicher und atomar (laeuft in der Transaktion des Dispatchers).
 --   GUARD 1 (Pre-Assertion): jede eingesammelte Konto-ID MUSS den Marker tragen + Runaway-Obergrenze -> bricht VOR
 --     jedem DELETE ab. GUARD 2 (Post-Assertion): keine finance-Sentinel-Zeile darf zurueckbleiben.
---   Jeder DELETE ist sentinel-/account-scoped. p_runid: NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
+--   Jeder DELETE ist sentinel-/account-scoped (eine Instandhaltungsruecklage einer Sentinel-Immobilie zaehlt als
+--   Sentinel, auch ohne Marker im Namen: sonst blockiert ihr FK RESTRICT den Immobilien-DELETE). p_runid: NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
 --   RUECKGABE: flache Zaehler {accounts, transactions, holdings, savings_plans, insurances, loans, savings_goals,
 --     real_estate, pension, recurring_payments, interest_rates, balances, import_staging}
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
@@ -50,7 +51,7 @@ BEGIN
     SELECT COALESCE(array_agg(DISTINCT rp_id), ARRAY[]::int[]) INTO v_rp FROM (
         SELECT recurring_payment_id AS rp_id FROM finance.insurances    WHERE name LIKE v_pat AND recurring_payment_id IS NOT NULL
         UNION SELECT recurring_payment_id    FROM finance.loans         WHERE name LIKE v_pat AND recurring_payment_id IS NOT NULL
-        UNION SELECT recurring_payment_id    FROM finance.savings_goals  WHERE name LIKE v_pat AND recurring_payment_id IS NOT NULL
+        UNION SELECT recurring_payment_id    FROM finance.savings_goals  WHERE (name LIKE v_pat OR real_estate_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat)) AND recurring_payment_id IS NOT NULL
         UNION SELECT recurring_payment_id    FROM finance.savings_plans  WHERE name LIKE v_pat AND recurring_payment_id IS NOT NULL
         UNION SELECT recurring_payment_id    FROM finance.pension        WHERE name LIKE v_pat AND recurring_payment_id IS NOT NULL
         UNION SELECT id                      FROM finance.recurring_payments WHERE account_id = ANY(v_acct) OR target_account_id = ANY(v_acct)
@@ -71,13 +72,13 @@ BEGIN
     -- 3. Savings-Goal-Reserve-Journal (der account_id-FK NO ACTION wuerde den Depot-DELETE sonst blocken)
     DELETE FROM finance.savings_goal_reserve_entries
      WHERE account_id = ANY(v_acct)
-        OR savings_goal_id IN (SELECT id FROM finance.savings_goals WHERE name LIKE v_pat);
+        OR savings_goal_id IN (SELECT id FROM finance.savings_goals WHERE (name LIKE v_pat OR real_estate_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat)));
 
     -- 4. Sentinel-Stammdaten, die recurring_payments referenzieren -> zuerst weg
     DELETE FROM finance.savings_plans WHERE name LIKE v_pat;  GET DIAGNOSTICS v_sp   = ROW_COUNT;
     DELETE FROM finance.insurances    WHERE name LIKE v_pat;  GET DIAGNOSTICS v_ins  = ROW_COUNT;
     DELETE FROM finance.loans         WHERE name LIKE v_pat;  GET DIAGNOSTICS v_loan = ROW_COUNT;
-    DELETE FROM finance.savings_goals WHERE name LIKE v_pat;  GET DIAGNOSTICS v_sg   = ROW_COUNT;
+    DELETE FROM finance.savings_goals WHERE (name LIKE v_pat OR real_estate_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat));  GET DIAGNOSTICS v_sg   = ROW_COUNT;
     DELETE FROM finance.real_estate   WHERE name LIKE v_pat;  GET DIAGNOSTICS v_re   = ROW_COUNT;
     DELETE FROM finance.pension       WHERE name LIKE v_pat;  GET DIAGNOSTICS v_pen  = ROW_COUNT;
 
@@ -102,7 +103,7 @@ BEGIN
     OR EXISTS (SELECT 1 FROM finance.insurances    WHERE name LIKE v_pat)
     OR EXISTS (SELECT 1 FROM finance.loans         WHERE name LIKE v_pat)
     OR EXISTS (SELECT 1 FROM finance.real_estate   WHERE name LIKE v_pat)
-    OR EXISTS (SELECT 1 FROM finance.savings_goals  WHERE name LIKE v_pat)
+    OR EXISTS (SELECT 1 FROM finance.savings_goals  WHERE (name LIKE v_pat OR real_estate_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat)))
     OR EXISTS (SELECT 1 FROM finance.savings_goal_reserve_entries WHERE account_id = ANY(v_acct))
     OR EXISTS (SELECT 1 FROM finance.savings_plans  WHERE name LIKE v_pat)
     OR EXISTS (SELECT 1 FROM finance.pension        WHERE name LIKE v_pat) THEN

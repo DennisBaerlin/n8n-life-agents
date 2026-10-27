@@ -6,7 +6,7 @@ function Build-CreateRealEstate {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('name','current_value','value_updated_at','owner_person','status','notes')
+    $trig = Build-Trigger @('name','current_value','value_updated_at','owner_person','status','notes','living_area_m2','year_built')
 
     # Dedup-Guard (Name, aktive Immobilien) — Block vor dem Gate
     $checkDup = Build-Pg 'Check duplicate name' @(220, -200) `
@@ -40,6 +40,8 @@ function Build-CreateRealEstate {
             owner_person_id  = '$(''Resolve Person'').item.json.person_id'
             status           = '$(''Start'').item.json.status'
             notes            = '$(''Start'').item.json.notes'
+            living_area_m2   = '$(''Start'').item.json.living_area_m2'
+            year_built       = '$(''Start'').item.json.year_built'
         })
 
     # --- HITL approval gate (before the write) ---
@@ -73,7 +75,7 @@ function Build-CreateRealEstate {
 
     $stickyDoc = Build-Sticky 'Doc HITL + atomar' @(1980, -200) `
         'Human-in-the-Loop + finance.fn_create_real_estate' `
-        'Vor dem Write: Werteliste -> agent.tool_human_approval (Approve/Decline). Approve -> finance.fn_create_real_estate atomar (1 INSERT). Unbekannter Status -> {ok:false} ohne Write -> Write ok? -> Create rejected (reason an den Agenten). Eine Immobilie hat keinen Saldo/Trigger (kein finance.account_balances-Eintrag) -> hier keine DB-Automatik-Sticky nötig.' 200 380
+        'Vor dem Write: Werteliste -> agent.tool_human_approval (Approve/Decline). Approve -> finance.fn_create_real_estate atomar (1 INSERT). Unbekannter Status oder ungültige Wohnfläche/Baujahr (fn_real_estate_facts_reason, CHECK als Backstop) -> {ok:false} ohne Write -> Write ok? -> Create rejected (reason an den Agenten). Mit Wohnfläche + Baujahr hängt die fn die Instandhaltungs-Empfehlung nach II. BV und ggf. "noch keine Rücklage" als Karten-Hinweis an (fn_maintenance_card_lines). Eine Immobilie hat keinen Saldo/Trigger (kein finance.account_balances-Eintrag) -> hier keine DB-Automatik-Sticky nötig.' 200 380
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(660, -480) `
         'core.fn_dry_run (DB ist das Gesetz)' `

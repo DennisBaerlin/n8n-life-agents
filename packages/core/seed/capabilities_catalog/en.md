@@ -36,12 +36,12 @@ Record state/occupational/private pensions as assets.
 - "Record my Rürup pension with Allianz, current surrender value 12,000 euros (as of today), monthly contribution 200 euros from the DKB Giro, debit day 1."
 
 ## Real estate
-Add property as an asset, revalue it, sell it.
+Add property as an asset, revalue it, sell it; with living area and year built, the maintenance reserve per II. BV.
 - "Please delete the property 'Musterimmobilie' completely from my net worth overview, I don't need it any more."
 - "Update the value of my Musterimmobilie to 350,000 euros."
 
 ## Savings goals
-Savings goals with a target amount/date and an automatically calculated savings rate.
+Savings goals with a target amount/date and an automatically calculated savings rate; an ongoing maintenance reserve for a property.
 - "Create a new savings goal 'Emergency fund': target 10,000 euros by the end of 2027, from the DKB Giro into Tagesgeld Plus, debit day 1, first booking on 1 Jul 2026."
 
 ## Standing orders

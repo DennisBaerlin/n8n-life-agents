@@ -501,6 +501,55 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
     SELECT p_status IN ('active', 'paused');
 $$;
 
+-- fn_maintenance_reserve_rate (Instandhaltungsruecklage 2026-10-27): die EINE Rechen-Adresse fuer die empfohlene
+-- Monatsrate einer Immobilie nach II. BV § 28 Abs. 2 (https://www.gesetze-im-internet.de/bvo_2/__28.html): Satz je m2
+-- Wohnflaeche und Jahr nach dem Alter seit Bezugsfertigkeit "am Ende des Kalenderjahres" (= Kalenderjahr - year_built):
+-- unter 22 Jahre / ab 22 / ab 32 (Gesetzeskonstanten hier). Die Betraege werden alle 3 Jahre per VPI angepasst
+-- (§ 26 Abs. 4) und stehen deshalb in core.config finance.maintenance_rate_{under22,from22,from32}_eur_m2 (Stand
+-- 1.1.2026: 11,50 / 14,58 / 18,62; COALESCE-Defaults = dieselben Werte). Rate = Flaeche x Satz / 12, auf ganze Euro
+-- AUFGERUNDET (Untergrenze, Dauerauftrags-tauglich). Zuschlaege (Aufzug, Waermelieferung) bewusst nicht (BACKLOG).
+-- Genutzt von maintenance_reserve_status, fn_create/set_savings_goal, fn_create/set_real_estate (Karte), Advisor.
+-- IM INIT, weil die View (R__finance_views sortiert vor R__fn_*) sie referenziert. STABLE (heute + Config).
+-- RUECKGABE: {ok:true, age_years, band ('under22'|'from22'|'from32'), rate_eur_m2, annual_eur, monthly_eur}
+--   | {ok:false, code:'maintenance_data_missing'|'invalid_maintenance_data', reason}.
+CREATE OR REPLACE FUNCTION finance.fn_maintenance_reserve_rate(p_area numeric, p_year_built int)
+RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_age  INT;
+    v_band TEXT;
+    v_rate NUMERIC;
+BEGIN
+    IF p_area IS NULL OR p_year_built IS NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'maintenance_data_missing',
+            'reason', 'The recommended maintenance reserve needs the living area (m2) and the year the building was '
+                   || 'completed (year built) of the property - ask the user for the missing value, or for a monthly amount.');
+    END IF;
+    v_age := EXTRACT(YEAR FROM core.fn_today())::int - p_year_built;
+    IF p_area <= 0 OR v_age < 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'invalid_maintenance_data',
+            'reason', 'The living area must be positive and the year built cannot be in the future (got '
+                   || p_area || ' m2, ' || p_year_built || ').');
+    END IF;
+    v_band := CASE WHEN v_age < 22 THEN 'under22' WHEN v_age < 32 THEN 'from22' ELSE 'from32' END;
+    v_rate := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'maintenance_rate_' || v_band || '_eur_m2'), '')::numeric,
+                       CASE v_band WHEN 'under22' THEN 11.50 WHEN 'from22' THEN 14.58 ELSE 18.62 END);
+    RETURN jsonb_build_object('ok', true, 'age_years', v_age, 'band', v_band, 'rate_eur_m2', v_rate,
+        'annual_eur', round(p_area * v_rate, 2), 'monthly_eur', CEIL(p_area * v_rate / 12));
+END;
+$$;
+-- Dieselbe Empfehlung fuer eine gespeicherte Immobilie (die EINE Adresse fuer den Lookup Flaeche/Baujahr; Write-fns,
+-- Karte). Unbekannte id -> wie fehlende Daten.
+CREATE OR REPLACE FUNCTION finance.fn_maintenance_reserve_rate(p_real_estate_id int)
+RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_area NUMERIC;
+    v_year INT;
+BEGIN
+    SELECT living_area_m2, year_built INTO v_area, v_year FROM finance.real_estate WHERE id = p_real_estate_id;
+    RETURN finance.fn_maintenance_reserve_rate(v_area, v_year);
+END;
+$$;
+
 -- ============================================================
 -- ZINS-RASTER (die EINE Quelle der Gutschrift-Termine; Live-Befund 2026-10-24: Kalender-Raster)
 --   fn_interest_grid_point(anchor, k, n, unit, dom) = der k-te Rasterpunkt (k >= 0) eines Zins-Regimes mit Anker
@@ -1164,9 +1213,13 @@ CREATE TABLE IF NOT EXISTS finance.real_estate (
     status           finance.property_status NOT NULL DEFAULT 'active',
     notes            text,
     sale_tx_id       int,                               -- Audit F5: Erloes-Tx von fn_sell_real_estate; Void dieser Tx setzt status zurueck. FK -> transactions UNTEN (Tabelle entsteht spaeter).
+    living_area_m2   numeric(8,2),                      -- Instandhaltungsruecklage (2026-10-27): Wohnflaeche m2; NULL = unbekannt
+    year_built       smallint,                          -- Jahr der Bezugsfertigkeit (meist Baujahr; RESO YearBuilt); Alter wird abgeleitet
     created_at       timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE finance.real_estate ADD COLUMN IF NOT EXISTS sale_tx_id int;
+ALTER TABLE finance.real_estate ADD COLUMN IF NOT EXISTS living_area_m2 numeric(8,2);
+ALTER TABLE finance.real_estate ADD COLUMN IF NOT EXISTS year_built smallint;
 
 -- ============================================================
 -- PENSION / ALTERSVORSORGE
@@ -1474,15 +1527,24 @@ CREATE TABLE IF NOT EXISTS finance.savings_goals (
     id                   serial PRIMARY KEY,
     name                 varchar(100) NOT NULL,         -- e.g. 'Korea Flug', 'Notgroschen'
     goal_type            varchar(50),                   -- optional free text label
-    target_amount        numeric(12,2) NOT NULL,
-    target_date          date NOT NULL,
+    target_amount        numeric(12,2),                  -- NULL nur bei einer Instandhaltungsruecklage (Form-CHECK unten)
+    target_date          date,                           -- dito
     beneficiary_person_id text,                          -- Multi-Member: begünstigte Person (Slug aus family; NULL=Haushalt); FK unten
     recurring_payment_id int REFERENCES finance.recurring_payments(id), -- monthly savings rate created by agent
     status               finance.goal_status NOT NULL DEFAULT 'active',
     priority             smallint,                       -- WS-C1: Engpass-Reihung (kleiner = wichtiger; NULL = unpriorisiert)
     notes                text,
+    real_estate_id       int REFERENCES finance.real_estate(id),  -- gesetzt = Instandhaltungsruecklage dieser Immobilie (RESTRICT wie loans)
     created_at           timestamptz NOT NULL DEFAULT now()
 );
+
+-- Instandhaltungsruecklage (2026-10-27): ein Sparziel MIT real_estate_id ist eine dauerhafte Ruecklage ohne Zielbetrag
+-- und Zieldatum (Sinking Fund, Muster YNAB-"Monthly Savings Builder"/Firefly-Piggy ohne Ziel); die Art folgt allein aus
+-- real_estate_id (ein Fakt, eine Adresse; Form-CHECK finance_savings_goals_shape + Partial-UNIQUE unten). Bestands-DBs:
+-- NOT NULL fallen lassen (idempotent), die Spalte nachruesten.
+ALTER TABLE finance.savings_goals ALTER COLUMN target_amount DROP NOT NULL;
+ALTER TABLE finance.savings_goals ALTER COLUMN target_date DROP NOT NULL;
+ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS real_estate_id int REFERENCES finance.real_estate(id);
 
 -- WS-C1 (Phase S): priority — additiv/nullable -> Init-only (Muster asset_class/savings_goal_id/owner_person_id,
 -- KEINE V-Migration). Engpass-Reihung der Ziele: target_date ASC, priority ASC NULLS LAST (kleiner = wichtiger,
@@ -1905,6 +1967,16 @@ DO $$ BEGIN
         CHECK (disbursement_account_id IS NULL OR original_amount IS NOT NULL);
     ALTER TABLE finance.savings_goals DROP CONSTRAINT IF EXISTS finance_savings_goals_target_pos;
     ALTER TABLE finance.savings_goals ADD  CONSTRAINT finance_savings_goals_target_pos CHECK (target_amount > 0);
+    -- Form: Ziel mit Betrag + Datum ODER Instandhaltungsruecklage (real_estate_id) ohne beides.
+    ALTER TABLE finance.savings_goals DROP CONSTRAINT IF EXISTS finance_savings_goals_shape;
+    ALTER TABLE finance.savings_goals ADD  CONSTRAINT finance_savings_goals_shape CHECK (
+        (real_estate_id IS NULL AND target_amount IS NOT NULL AND target_date IS NOT NULL)
+     OR (real_estate_id IS NOT NULL AND target_amount IS NULL AND target_date IS NULL));
+    -- Wohnflaeche/Baujahr: feste Grenzen (current_date im CHECK waere nicht immutable; "nicht in der Zukunft" prueft die fn)
+    ALTER TABLE finance.real_estate   DROP CONSTRAINT IF EXISTS finance_real_estate_area_pos;
+    ALTER TABLE finance.real_estate   ADD  CONSTRAINT finance_real_estate_area_pos CHECK (living_area_m2 IS NULL OR living_area_m2 > 0);
+    ALTER TABLE finance.real_estate   DROP CONSTRAINT IF EXISTS finance_real_estate_year_built_range;
+    ALTER TABLE finance.real_estate   ADD  CONSTRAINT finance_real_estate_year_built_range CHECK (year_built IS NULL OR year_built BETWEEN 1800 AND 2200);
     ALTER TABLE finance.real_estate   DROP CONSTRAINT IF EXISTS finance_real_estate_value_nonneg;
     ALTER TABLE finance.real_estate   ADD  CONSTRAINT finance_real_estate_value_nonneg CHECK (current_value IS NULL OR current_value >= 0);
     ALTER TABLE finance.pension       DROP CONSTRAINT IF EXISTS finance_pension_value_nonneg;
@@ -1999,6 +2071,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS finance_pension_rp_uq
 -- legt finance:V030 an (nach dem Aufraeumen des Altbestands; ein Init-CREATE scheiterte vor der V-Phase an Dubletten).
 CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_goals_rp_uq
     ON finance.savings_goals (recurring_payment_id) WHERE recurring_payment_id IS NOT NULL;
+-- Hoechstens EINE aktive Instandhaltungsruecklage je Immobilie (fn_create/set_savings_goal lehnen vorher freundlich ab).
+CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_goals_reserve_uq
+    ON finance.savings_goals (real_estate_id) WHERE real_estate_id IS NOT NULL AND status = 'active';
 CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_plans_rp_uq
     ON finance.savings_plans (recurring_payment_id) WHERE recurring_payment_id IS NOT NULL;
 

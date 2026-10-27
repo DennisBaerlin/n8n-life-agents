@@ -6,8 +6,10 @@
 --   Wird current_value gesetzt OHNE value_updated_at -> value_updated_at = CURRENT_DATE (Bewertungsdatum).
 --   HINWEIS: status='sold' loest verknuepfte Kredite (real_estate_id) NICHT automatisch ab.
 --   Eingabe jsonb: real_estate_id (im n8n via fn_resolve_real_estate aufgeloest), name,
---   current_value, value_updated_at, owner_person_id (Slug; leer=unveraendert), status ('active'|'sold'), notes.
---   RUECKGABE: {ok:true, real_estate_id}. Korrigierbar (current_value<0, unbekannter status) -> {ok:false}.
+--   current_value, value_updated_at, owner_person_id (Slug; leer=unveraendert), status ('active'|'sold'), notes,
+--   living_area_m2, year_built (Instandhaltungsruecklage 2026-10-27; leer=unveraendert).
+--   RUECKGABE: {ok:true, real_estate_id, card_lines (nur wenn Flaeche/Baujahr gesendet: fn_maintenance_card_lines)}.
+--   Korrigierbar (current_value<0, unbekannter status, Flaeche/Baujahr ungueltig) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_real_estate(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -33,6 +35,10 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Current value must not be negative, got ' || v_cv || '.');
     END IF;
+    v_reason := finance.fn_real_estate_facts_reason(p);
+    IF v_reason IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', v_reason);
+    END IF;
 
     UPDATE finance.real_estate SET
         name             = COALESCE(NULLIF(p->>'name', ''), name),
@@ -44,9 +50,13 @@ BEGIN
                            END,
         owner_person_id  = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- WS-4: typisierter Eigentuemer (Slug); leer=unveraendert
         status           = COALESCE(NULLIF(p->>'status', '')::finance.property_status, status),
-        notes            = COALESCE(NULLIF(p->>'notes', ''), notes)
+        notes            = COALESCE(NULLIF(p->>'notes', ''), notes),
+        living_area_m2   = COALESCE(NULLIF(p->>'living_area_m2', '')::numeric, living_area_m2),
+        year_built       = COALESCE(NULLIF(p->>'year_built', '')::smallint, year_built)
     WHERE id = v_id;
 
-    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id, 'effective', v_dates->'resolved');
+    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id, 'effective', v_dates->'resolved')
+        || CASE WHEN NULLIF(p->>'living_area_m2', '') IS NOT NULL OR NULLIF(p->>'year_built', '') IS NOT NULL
+                THEN jsonb_build_object('card_lines', finance.fn_maintenance_card_lines(v_id)) ELSE '{}'::jsonb END;
 END;
 $$;

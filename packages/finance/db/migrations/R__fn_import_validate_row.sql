@@ -13,6 +13,7 @@ RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
     v_name   TEXT := NULLIF(trim(COALESCE(p->>'name','')), '');
     v_hits   INT;
+    v_facts  TEXT;    -- fn_real_estate_facts_reason (Instandhaltungsruecklage)
     v_num    NUMERIC;
     v_key    TEXT;
     v_ref    TEXT;
@@ -266,6 +267,9 @@ BEGIN
     ELSIF p_type = 'real_estate' THEN
         v_num := NULLIF(p->>'current_value','')::numeric;
         IF v_num IS NULL OR v_num < 0 THEN RETURN 'current_value must be a non-negative number'; END IF;
+        -- Instandhaltungsruecklage (2026-10-27): Wohnflaeche/Baujahr optional, dieselbe Pruefung wie die create-fn
+        v_facts := finance.fn_real_estate_facts_reason(p);
+        IF v_facts IS NOT NULL THEN RETURN v_facts; END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_real_estate(v_name, FALSE);
         IF v_hits > 0 THEN RETURN format('real estate "%s" already exists', v_name); END IF;
 

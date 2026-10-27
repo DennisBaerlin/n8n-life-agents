@@ -36,12 +36,12 @@ Gesetzliche/betriebliche/private Vorsorge als Vermögenswert erfassen.
 - "Erfasse meine Ruerup-Rente bei der Allianz, aktueller Rückkaufswert 12.000 Euro (Stand heute), monatlicher Beitrag 200 Euro vom DKB Giro, Abbuchungstag 1."
 
 ## Immobilien
-Immobilien als Vermögenswert anlegen, neu bewerten, verkaufen.
+Immobilien als Vermögenswert anlegen, neu bewerten, verkaufen; mit Wohnfläche und Baujahr die Instandhaltungsrücklage nach II. BV.
 - "Bitte lösche die Immobilie 'Musterimmobilie' komplett aus meiner Vermögensübersicht, ich brauche sie nicht mehr."
 - "Aktualisiere den Wert meiner Musterimmobilie auf 350.000 Euro."
 
 ## Sparziele
-Sparziele mit Zielbetrag/-datum und automatisch berechneter Sparrate.
+Sparziele mit Zielbetrag/-datum und automatisch berechneter Sparrate; dauerhafte Instandhaltungsrücklage für eine Immobilie.
 - "Lege ein neues Sparziel 'Notfallfonds' an: Zielbetrag 10000 Euro, bis Ende 2027, vom DKB Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.07.2026."
 
 ## Daueraufträge

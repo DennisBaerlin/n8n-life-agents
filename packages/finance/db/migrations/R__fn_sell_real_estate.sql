@@ -10,7 +10,8 @@
 --   (fn_bookable_account_reason) -> {ok:false, reason}.
 --   Eingabe jsonb: real_estate_name, proceeds_account_id (n8n-resolved), sale_date, sale_price.
 --   Resolve findet auch sold (p_active_only=FALSE) -> freundliches {ok:false} statt RAISE.
---   RUECKGABE: {ok:true, real_estate_id, proceeds_tx_id, sale_price, linked_loan_count, linked_loans, note}.
+--   RUECKGABE: {ok:true, real_estate_id, proceeds_tx_id, sale_price, linked_loan_count, linked_loans, note,
+--   linked_reserve ({goal_id, name, current_amount} der weiterlaufenden Instandhaltungsruecklage oder null)}.
 --   RAISE nur bei not-found / mehrdeutig.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_sell_real_estate(p jsonb)
@@ -27,6 +28,7 @@ DECLARE
     v_cnt       INT;
     v_note      TEXT;
     v_dates     JSONB;
+    v_reserve   JSONB;
 BEGIN
     -- relative Datumsangabe ("last friday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['sale_date']);
@@ -87,9 +89,21 @@ BEGIN
         THEN v_cnt || ' linked loan(s) remain after the sale and were NOT paid off automatically — settle them separately via settle_loan.'
         ELSE NULL END;
 
+    -- 4. Allow+Hinweis: eine aktive Instandhaltungsruecklage laeuft weiter (Rate + Zweckbindung) -> der Nutzer
+    --    entscheidet, ob er sie schliesst (close_savings_goal) oder das Geld anders verwendet.
+    SELECT jsonb_build_object('goal_id', g.id, 'name', g.name, 'current_amount', round(COALESCE(sp.current_amount, 0), 2))
+      INTO v_reserve
+    FROM finance.savings_goals g
+    LEFT JOIN finance.savings_goal_progress sp ON sp.id = g.id
+    WHERE g.real_estate_id = v_re.id AND g.status = 'active';
+    IF v_reserve IS NOT NULL THEN
+        v_note := concat_ws(' ', v_note, 'The maintenance reserve "' || (v_reserve->>'name') || '" of this property is still '
+                  || 'active (its monthly rate keeps running) - ask the user whether to close it with close_savings_goal.');
+    END IF;
+
     RETURN jsonb_build_object('ok', true,
         'real_estate_id', v_re.id, 'proceeds_tx_id', v_tx, 'sale_price', v_price,
-        'linked_loan_count', v_cnt, 'linked_loans', v_loans, 'note', v_note,
+        'linked_loan_count', v_cnt, 'linked_loans', v_loans, 'note', v_note, 'linked_reserve', v_reserve,
         'effective', (v_dates->'resolved') || jsonb_build_object('sale_date', v_date));
 END;
 $$;

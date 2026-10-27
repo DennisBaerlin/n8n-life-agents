@@ -146,6 +146,12 @@
                       "reason":  "model:view-wert (Personen-Bezeichnung in Views fuer postgres_select)"
                   },
                   {
+                      "where":  "packages/finance/db/migrations/R__fn_create_savings_goal.sql",
+                      "literal":  "Instandhaltungsrücklage ",
+                      "count":  1,
+                      "reason":  "data:gespeicherter Standardname einer Instandhaltungsruecklage (Sparziel-Name, Originalsprache; der Nutzer kann ihn umbenennen)"
+                  },
+                  {
                       "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
                       "literal":  "Bestandsübernahme ",
                       "count":  1,

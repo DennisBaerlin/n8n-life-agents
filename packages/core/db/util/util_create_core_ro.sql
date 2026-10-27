@@ -187,3 +187,14 @@ DO $$ BEGIN
         GRANT EXECUTE ON FUNCTION core.fn_stale_facts_count() TO core_ro;
     END IF;
 END $$;
+
+-- Instandhaltungsruecklage (2026-10-27): die Paket-View finance.maintenance_reserve_status ruft (ueber die INVOKER-fn
+-- finance.fn_maintenance_reserve_rate) core.fn_config_get. core_ro liest core.config ohnehin direkt (Sammel-GRANT oben,
+-- keine Secrets in config) -> EXECUTE auf das read-all-Fenster gibt keine neue Sicht frei, verhindert aber den stillen
+-- "permission denied for function fn_config_get", wenn der Monitor (core_ro / core_ro_eval) eine Paket-View mit
+-- Config-Lesezugriff abfragt. Grant am Rollen-Ort (die fn-R__ re-REVOKEt PUBLIC). Guarded auf fn-Existenz.
+DO $$ BEGIN
+    IF to_regprocedure('core.fn_config_get(text, text, text)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_config_get(text, text, text) TO core_ro;
+    END IF;
+END $$;

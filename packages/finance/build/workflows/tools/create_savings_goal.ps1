@@ -6,14 +6,14 @@ function Build-CreateSavingsGoal {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer')
+    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer','real_estate_name')
 
     # Duplicate-name guard (Backstop wie bei den anderen create_*-Tools): ein create_* darf kein
     # zweites Sparziel gleichen Namens still anlegen (name hat keine UNIQUE-Constraint). Existiert ein
     # AKTIVES Sparziel des Namens -> sauberer BLOCK vor dem Gate (structured return). Aendern eines
     # bestehenden Ziels (Betrag/Datum) ist tool_set_savings_goal.
     $checkDup = Build-Pg 'Check duplicate name' @(220, -200) `
-        "=SELECT hit_count, candidates FROM finance.fn_resolve_savings_goal((`$1::jsonb)->>'goal_name');" `
+        "=SELECT hit_count, candidates FROM finance.fn_resolve_savings_goal(NULLIF((`$1::jsonb)->>'goal_name', ''));" `
         ([ordered]@{ goal_name = '$(''Start'').item.json.goal_name' })
 
     $ifExists = Build-If 'Goal exists?' @(440, -200) `
@@ -68,7 +68,7 @@ function Build-CreateSavingsGoal {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_savings_goal' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create savings goal (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, (r->>'recommended_monthly')::numeric AS recommended_monthly" `
         -Params ([ordered]@{
             name                  = '$(''Start'').item.json.goal_name'
             goal_type             = '$(''Start'').item.json.goal_type'
@@ -85,6 +85,7 @@ function Build-CreateSavingsGoal {
             already_saved         = '$(''Start'').item.json.already_saved'
             savings_plan          = '$(''Start'').item.json.savings_plan_name'
             replace_transfer      = '$(''Start'').item.json.replace_transfer'
+            real_estate_name      = '$(''Start'').item.json.real_estate_name'
         })
 
     # --- HITL approval gate (Rate, Zieldatum, erste Rate aus dem Probelauf, nicht aus dem Prompt) ---
@@ -130,6 +131,7 @@ function Build-CreateSavingsGoal {
         ,@('plan_monthly_amount', "={{ `$('Create savings goal (atomic)').item.json.plan_monthly_amount }}", 'number')
         ,@('replaced_transfer_id', "={{ `$('Create savings goal (atomic)').item.json.replaced_transfer_id }}", 'number')
         ,@('savings_squeeze', "={{ `$('Create savings goal (atomic)').item.json.savings_squeeze }}", 'string')
+        ,@('recommended_monthly', "={{ `$('Create savings goal (atomic)').item.json.recommended_monthly }}", 'number')
     )
 
     $stickyCompute = Build-Sticky 'Rate/Zieldatum: DB rechnet (nicht das LLM)' @(660, -240) `
@@ -139,6 +141,10 @@ function Build-CreateSavingsGoal {
     $stickyFn = Build-Sticky 'fn_create_savings_goal: Schritte + Über-Spar-Fold' @(2420, -240) `
         'fn_create_savings_goal (atomar)' `
         'Schritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv: Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto; Depot nur mit Startbestand/Sparplan; Startbestand höchstens der freie Saldo, sonst {ok:false}); Sparpläne auflösen (einer oder mehrere, komma-getrennt; Monatsbetrag aktiver Pläne in EUR). (1) Bestehender Dauerauftrag in den Topf (fn_goal_transfer_candidates, nur Raten-Pfad): ohne replace_transfer -> existing_transfer; true -> die Ziel-Rate führt ihn fort (sein Konto, Tag, nächster Termin, Betrag), er endet dann. (2) fn_savings_rate_schedule (Rate/Datum auf dem Rest), (3) Sparziel INSERT, (4) Startbestand zuordnen (fn_book_savings_reservation), (5) nur bei Rest > 0 ohne Sparplan: recurring_payment INSERT (name=''Sparrate <Ziel>'') als Transfer in den Topf + goal.recurring_payment_id; alter Dauerauftrag endet am ersten Ziel-Termin (fn_goal_end_transfer, offene Termine davor bleiben fällig); Quellen + Rate/Datum aus fn_savings_goal_funding (dieselbe Ableitung wie die Import-Karte); mit Sparplänen: alle an das Ziel binden, Karte zeigt Plan-Betrag vs. nötige Rate nur bei Abweichung. Fortschritt live aus finance.savings_goal_progress. Am Ende fn_savings_squeeze_fold (Sparraten übersteigen das frei Verfügbare -> Note in savings_squeeze). Bookkeeper relayed.' 230 600
+
+    $stickyReserve2 = Build-Sticky 'Instandhaltungsrücklage (real_estate_name)' @(1760, -480) `
+        'fn_create_savings_goal -> fn_savings_goal_funding -> fn_maintenance_reserve_rate' `
+        'Mit real_estate_name wird das Ziel die dauerhafte Rücklage dieser Immobilie: die fn löst den Namen auf (not_found/ambiguous -> Dry run rejected mit candidates), ohne Zielbetrag/-datum (Form-CHECK), ohne Sparplan, Topf kein Depot, höchstens eine aktive je Immobilie (reserve_exists; Partial-UNIQUE als Backstop). Rate = genannt, sonst fortgeführter Dauerauftrag (existing_transfer), sonst Empfehlung nach II. BV (Fläche × Satz nach Alter ÷ 12, Sätze aus core.config). Name leer -> Instandhaltungsrücklage <Immobilie>. r.effective pinnt Name + Rate in den Write; die Karte zeigt Immobilie + Rate, die fn hängt Empfehlung und ggf. "Rate darunter" an.' 260 520
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `
@@ -159,7 +165,7 @@ function Build-CreateSavingsGoal {
     $nodes = @($trig, $checkDup, $ifExists, $errExists, $resAcct, $ifAcct, $errAcct,
                $resPerson, $ifPersonBad, $errPerson,
                $resReserve, $ifReserveBad, $errReserve) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret,
-               $stickyDup, $stickyCompute, $stickyFn, $stickyOk, $stickyReserve,
+               $stickyDup, $stickyCompute, $stickyFn, $stickyOk, $stickyReserve, $stickyReserve2,
                $stickyDry)
 
     $conns = [ordered]@{

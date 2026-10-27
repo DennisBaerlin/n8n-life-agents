@@ -7,7 +7,7 @@ function Build-SetRealEstate {
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('real_estate_name','new_name','current_value','value_updated_at',
-                           'owner_person','status','notes')
+                           'owner_person','status','notes','living_area_m2','year_built')
 
     $resRe = Build-Pg 'Resolve Real Estate' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_real_estate((`$1::jsonb)->>'real_estate_name', TRUE);" `
@@ -20,7 +20,7 @@ function Build-SetRealEstate {
 
     # Aktuellen Wert/Status fuer den HITL-Summary (alt -> neu) lesen.
     $readCur = Build-Pg 'Read Current' @(660, 0) `
-        "=SELECT current_value, status::text AS status FROM finance.real_estate WHERE id = ((`$1::jsonb)->>'id')::int;" `
+        "=SELECT current_value, status::text AS status, living_area_m2, year_built FROM finance.real_estate WHERE id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Real Estate'').item.json.id' })
 
     # WS-4: optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
@@ -45,6 +45,8 @@ function Build-SetRealEstate {
             owner_person_id  = '$(''Resolve Person'').item.json.person_id'
             status           = '$(''Start'').item.json.status'
             notes            = '$(''Start'').item.json.notes'
+            living_area_m2   = '$(''Start'').item.json.living_area_m2'
+            year_built       = '$(''Start'').item.json.year_built'
         })
 
     # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Wert in EUR-Konvention
@@ -64,6 +66,13 @@ function Build-SetRealEstate {
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.status') })
         (New-HitlLine 'core.label.note'              "$S.notes" -If "$S.notes")
+        # Instandhaltungsruecklage (2026-10-27): Gebaeude-Fakten alt -> neu; die Empfehlung nach II. BV haengt die fn an
+        (New-HitlLine 'finance.label.living_area'    "'finance.tpl.change'" -Kind tpl -If "$S.living_area_m2" -Params @{
+            from = "($R.living_area_m2 ?? null)"
+            to   = "$S.living_area_m2" })
+        (New-HitlLine 'finance.label.year_built'     "'finance.tpl.change'" -Kind tpl -If "$S.year_built" -Params @{
+            from = "($R.year_built ? String($R.year_built) : null)"
+            to   = "String($S.year_built)" })
     )
 
     $gateId = $GateId
@@ -91,7 +100,7 @@ function Build-SetRealEstate {
 
     $stickyOv = Build-Sticky 'Doc set_real_estate' @(2200, -220) `
         'fn_set_real_estate: partielles UPDATE' `
-        'Neubewertung/Status/Stammdaten. current_value ohne value_updated_at -> Datum = heute. Net-Worth-View liest current_value live (kein Recompute). HINWEIS: status=sold löst verknüpfte Kredite NICHT ab. {ok:false} bei current_value<0.' 200 400
+        'Neubewertung/Status/Stammdaten. current_value ohne value_updated_at -> Datum = heute. Net-Worth-View liest current_value live (kein Recompute). HINWEIS: status=sold löst verknüpfte Kredite NICHT ab. {ok:false} bei current_value<0 oder ungültiger Wohnfläche/Baujahr. Wohnfläche/Baujahr gesendet -> Karten-Hinweis mit der Instandhaltungs-Empfehlung (fn_maintenance_card_lines).' 200 400
 
     $nodes = @($trig, $resRe, $ifRe, $errRe, $readCur, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)

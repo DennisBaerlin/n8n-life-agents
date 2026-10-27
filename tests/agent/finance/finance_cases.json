@@ -950,5 +950,33 @@
         "expected_tool":  "tool_import_stage_rows",
         "expected_behavior":  "Stagt ueber tool_import_stage_rows eine pension-Zeile (Testversorgung Mock, pension_type occupational, provider Testversorgungskasse, contract_number TV-4711-K) UND eine pension_statement-Zeile (pension = Testversorgung Mock, statement_date 2025-12-31, reached_claim 74, Versorgungspunkte hoechstens in notes). Ruft NICHT tool_create_pension und setzt die 74 Euro NIE als guaranteed_monthly_pension: die Anwartschaft ist der bisher erreichte Anspruch zum Stichtag, keine garantierte Rente bei Rentenbeginn. Rechnet nichts um.",
         "notes":  "Live-Befund 2026-10-26 (Werte hier erfunden): eine eingefuegte Betriebsrenten-Uebersicht landete per tool_create_pension als guaranteed_monthly_pension + Notiz statt als datierte Standmitteilung -> Berater-Fenster fn_pension_outlook sah never=true, keine Jahres-Erinnerung. Fix: Tool-Descriptions create_/set_pension. Judge: die Staging-Zeilen enthalten pension_statement mit statement_date 2025-12-31 und reached_claim 74; kein guaranteed_monthly_pension."
+    },
+    {
+        "id":  "tc80",
+        "name":  "Immobilie: Wohnflaeche + Baujahr nachtragen (set_real_estate, Instandhaltungsruecklage)",
+        "task":  "Unsere Musterimmobilie hat 120 m² Wohnfläche und wurde 1995 gebaut.",
+        "chat_id":  "test_tc80",
+        "expected_tool":  "tool_set_real_estate",
+        "expected_tool_args":  {
+                                   "real_estate_name":  "Musterimmobilie",
+                                   "living_area_m2":  120,
+                                   "year_built":  1995
+                               },
+        "expected_behavior":  "Ruft tool_set_real_estate mit real_estate_name='Musterimmobilie', living_area_m2=120 und year_built=1995 auf. Rechnet keine Instandhaltungsrate selbst aus (die Karte zeigt die Empfehlung aus der DB) und nennt keine selbst gerechnete Zahl.",
+        "notes":  "Instandhaltungsruecklage 2026-10-27. Musterimmobilie ist Fixture-Entitaet (dauerhaft). Judge: actual_tool_input enthaelt living_area_m2=120 und year_built=1995; keine vom LLM gerechnete Monatsrate im Text."
+    },
+    {
+        "id":  "tc81",
+        "name":  "Instandhaltungsruecklage fuer eine Immobilie anlegen (create_savings_goal mit real_estate_name)",
+        "task":  "Richte für die Musterimmobilie eine Instandhaltungsrücklage ein, vom DKB Giro auf das Tagesgeld Plus.",
+        "chat_id":  "test_tc81",
+        "expected_tool":  "tool_create_savings_goal",
+        "expected_tool_args":  {
+                                   "real_estate_name":  "Musterimmobilie",
+                                   "reserve_account_name":  "Tagesgeld Plus",
+                                   "account_name":  "DKB Giro"
+                               },
+        "expected_behavior":  "Ruft tool_create_savings_goal mit real_estate_name='Musterimmobilie', reserve_account_name='Tagesgeld Plus' und account_name='DKB Giro' auf; target_amount, target_date und savings_plan_name bleiben leer, die Rate rechnet das Tool. Lehnt das Tool mit maintenance_data_missing ab, fragt der Agent nach Wohnflaeche und Baujahr (oder einem Monatsbetrag) statt eine Rate zu erfinden.",
+        "notes":  "Instandhaltungsruecklage 2026-10-27. Judge: actual_tool_input real_estate_name='Musterimmobilie' ohne target_amount/target_date; keine selbst gerechnete Rate."
     }
 ]

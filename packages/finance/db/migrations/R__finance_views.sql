@@ -32,6 +32,7 @@ DROP VIEW IF EXISTS finance.monthly_liquidity_summary CASCADE;
 DROP VIEW IF EXISTS finance.depot_holdings_overview CASCADE;
 DROP VIEW IF EXISTS finance.active_insurances CASCADE;
 DROP VIEW IF EXISTS finance.pension_overview CASCADE;
+DROP VIEW IF EXISTS finance.maintenance_reserve_status CASCADE;   -- haengt an savings_goal_progress
 DROP VIEW IF EXISTS finance.real_estate_overview CASCADE;
 DROP VIEW IF EXISTS finance.savings_goal_progress CASCADE;
 DROP VIEW IF EXISTS finance.account_reserve_status CASCADE;
@@ -436,7 +437,8 @@ SELECT
     b.status,
     b.notes,
     b.measurable                                        AS progress_measurable,  -- Audit Paket 3 (ans Ende angehaengt)
-    b.saved - b.paced                                   AS earmarked_amount      -- davon Hand-Zuordnung (EUR; 2026-10-27)
+    b.saved - b.paced                                   AS earmarked_amount,     -- davon Hand-Zuordnung (EUR; 2026-10-27)
+    b.real_estate_id                                    -- gesetzt = Instandhaltungsruecklage (ohne Ziel/Datum -> Prozent/Rest/Pace NULL)
 FROM base b;
 
 -- ============================================================
@@ -502,7 +504,9 @@ SELECT
     re.current_value + coalesce(sum(finance.fn_to_eur(b.balance, ka.currency)), 0) AS net_equity,
     count(l.id) FILTER (WHERE l.status = 'active')      AS active_loan_count,
     re.notes,
-    COALESCE(bool_or(b.balance <> 0 AND finance.fn_to_eur(b.balance, ka.currency) IS NULL), false) AS has_fx_gap
+    COALESCE(bool_or(b.balance <> 0 AND finance.fn_to_eur(b.balance, ka.currency) IS NULL), false) AS has_fx_gap,
+    re.living_area_m2,                                   -- Instandhaltungsruecklage (2026-10-27)
+    re.year_built
 FROM finance.real_estate re
 LEFT JOIN finance.loans l
     ON l.real_estate_id = re.id AND finance.fn_loan_is_outstanding(l.status)
@@ -512,7 +516,59 @@ LEFT JOIN finance.accounts ka
     ON ka.id = l.loan_account_id
 LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id
 GROUP BY re.id, re.name, re.current_value, re.value_updated_at,
-         rep.full_name, re.owner_person_id, re.status, re.notes;
+         rep.full_name, re.owner_person_id, re.status, re.notes, re.living_area_m2, re.year_built;
+
+-- ============================================================
+-- VIEW: maintenance_reserve_status (Instandhaltungsruecklage, 2026-10-27)
+-- Je AKTIVER Immobilie (plus jede verkaufte, deren Ruecklage noch aktiv ist): Empfehlung nach II. BV
+-- (finance.fn_maintenance_reserve_rate, NULL ohne Flaeche/Baujahr), die aktive Ruecklage (savings_goals.real_estate_id),
+-- ihr Stand (savings_goal_progress.current_amount) und die EINGESTELLTE Monatsrate in EUR = Kopf der Raten-Kette
+-- (auf ihn zeigt das Ziel immer), solange er aktiv und nicht beendet ist - auch wenn die erste Abbuchung erst kommt
+-- (sonst meldete der Advisor direkt nach dem Anlegen "0 EUR laufen"). 0 ohne laufende Rate, NULL ohne Ruecklage oder
+-- ohne Kurs fuer die Konto-Waehrung (has_fx_gap; ein fehlender Kurs faellt nie still als 0 aus).
+-- gap_monthly_eur = Empfehlung - eingestellte Rate (positiv = darunter).
+-- Konsumenten: fn_advisor_review (maintenance_reserve_low/_missing, Digest), Agent-Reads (postgres_select).
+-- ============================================================
+CREATE VIEW finance.maintenance_reserve_status AS
+WITH base AS (
+    SELECT re.id, re.name, re.status AS property_status, re.living_area_m2, re.year_built,
+           finance.fn_maintenance_reserve_rate(re.living_area_m2, re.year_built) AS rec,
+           g.id AS goal_id, g.name AS goal_name, g.recurring_payment_id
+    FROM finance.real_estate re
+    LEFT JOIN finance.savings_goals g ON g.real_estate_id = re.id AND g.status = 'active'
+    WHERE re.status = 'active' OR g.id IS NOT NULL
+),
+run AS (
+    SELECT b.goal_id,
+           CASE WHEN b.goal_id IS NULL THEN NULL
+                WHEN rp.id IS NULL THEN 0
+                ELSE round(finance.fn_to_eur(abs(rp.monthly_equivalent), a.currency), 2) END AS monthly_eur,
+           rp.id IS NOT NULL AND finance.fn_to_eur(abs(rp.monthly_equivalent), a.currency) IS NULL AS fx_gap
+    FROM base b
+    LEFT JOIN finance.recurring_payments rp
+           ON rp.id = b.recurring_payment_id AND rp.status = 'active'
+          AND (rp.valid_to IS NULL OR rp.valid_to > current_date)
+    LEFT JOIN finance.accounts a ON a.id = rp.account_id
+)
+SELECT b.id                                                       AS real_estate_id,
+       b.name                                                     AS real_estate_name,
+       b.property_status,
+       b.living_area_m2,
+       b.year_built,
+       CASE WHEN (b.rec->>'ok')::boolean THEN (b.rec->>'age_years')::int END       AS age_years,
+       CASE WHEN (b.rec->>'ok')::boolean THEN b.rec->>'band' END                   AS band,
+       CASE WHEN (b.rec->>'ok')::boolean THEN (b.rec->>'rate_eur_m2')::numeric END AS rate_eur_m2,
+       CASE WHEN (b.rec->>'ok')::boolean THEN (b.rec->>'monthly_eur')::numeric END AS recommended_monthly,
+       b.goal_id,
+       b.goal_name,
+       CASE WHEN b.goal_id IS NOT NULL THEN round(COALESCE(p.current_amount, 0), 2) END AS saved_eur,
+       r.monthly_eur                                              AS running_monthly_eur,
+       CASE WHEN (b.rec->>'ok')::boolean AND b.goal_id IS NOT NULL
+            THEN (b.rec->>'monthly_eur')::numeric - r.monthly_eur END                AS gap_monthly_eur,
+       COALESCE(r.fx_gap, false)                                  AS has_fx_gap
+FROM base b
+LEFT JOIN run r ON r.goal_id = b.goal_id
+LEFT JOIN finance.savings_goal_progress p ON p.id = b.goal_id;
 
 -- ============================================================
 -- VIEW: Pension overview (net-worth building block)

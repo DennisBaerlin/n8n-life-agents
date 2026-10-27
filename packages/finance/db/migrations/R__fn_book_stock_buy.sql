@@ -20,17 +20,18 @@
 --   recurring_payment_id (Sparplan-Ausfuehrung ist echter Geldfluss); Holding hat bereits Stueck > 0 (ein
 --   erneuter Depotauszug wuerde die Position verdoppeln -> Korrektur ueber set_holding).
 --   CHECK finance_transactions_position_takeover_shape ist der Backstop der Gegenbuchungs-Form.
---   WS-B Stufe 2 (Phase S) — ZWEI-SCHRITT-AUTO-JOURNAL: ist dieser Kauf die Ausfuehrung eines
---   GOAL-VERKNUEPFTEN Sparplans (recurring_payment_id -> savings_plans.savings_goal_id IS NOT NULL), dann
---   ATOMAR in derselben Tx: (a) das Cash-Soll-(Settlement-)Bein wird mit savings_goal_id getaggt (Cash-Anteil
---   der Reserve -Betrag) UND (b) eine append-only savings_goal_reserve_entries-Zeile kind='sparplan_buy',
---   delta_native = shares*price + fee (volle Cash-Abfluss-Magnitude inkl. Gebuehr, in DEPOT-Waehrung), currency =
---   Depot-Waehrung, value_date = transaction_date, source_tx_id = Kauf-Tx (Depot-Anteil +Betrag). Gleich-und-
---   entgegengesetzt (beide Legs native, per Guard gleiche Waehrung -> nach EUR-Umrechnung in der VIEW gegengleich)
---   -> current_amount bleibt KONSERVIERT (Cash->Depot 1:1). WP-3b Guard: Settlement-Waehrung != Depot-Waehrung
---   bei goal-Kauf -> {ok:false} (Cross-Currency-Settlement out-of-scope, sonst Konservierungs-Drift).
---   Manueller Kauf (recurring_payment_id NULL) ODER nicht-goal-Sparplan -> KEINE Wirkung (kein Tag, kein Journal).
---   Idempotenz erbt vom Buy (die Journal-Zeile teilt die Buy-Tx -> re-run kein Doppel-Insert).
+--   WS-B Stufe 2 (Phase S) — AUTO-JOURNAL: ist dieser Kauf die Ausfuehrung eines GOAL-VERKNUEPFTEN Sparplans
+--   (recurring_payment_id -> savings_plans.savings_goal_id IS NOT NULL), dann ATOMAR in derselben Tx append-only
+--   savings_goal_reserve_entries-Zeilen kind='sparplan_buy', value_date = transaction_date, source_tx_id = Kauf-Tx:
+--     * Depot +X (X = shares*price + fee, volle Cash-Abfluss-Magnitude inkl. Gebuehr, Depot-Waehrung),
+--     * Verrechnungskonto -c, c = min(Ziel-Anteil auf dem Verrechnungskonto, X), nur wenn c > 0.
+--   KONSERVIERUNG NUR FUER ZIEL-GELD (Sparziel-Zweckbindung 2026-10-27): Geld, das dem Ziel schon gehoerte, wird nur
+--   umgeschichtet (Fortschritt unveraendert); der Rest (X - c) ist frisches Geld und zaehlt als neu gespart. Vorher
+--   wurde das Cash-Bein selbst mit -X getaggt -> ein Sparplan, der nicht aus Ziel-Geld bezahlt wurde, brachte NIE
+--   Fortschritt. Der Kauf traegt kein Ziel-Tag mehr. WP-3b Guard: Settlement-Waehrung != Depot-Waehrung bei goal-Kauf
+--   -> {ok:false} (Cross-Currency-Settlement out-of-scope; beide Zeilen tragen dieselbe Waehrung).
+--   Manueller Kauf (recurring_payment_id NULL) ODER nicht-goal-Sparplan -> KEINE Wirkung (kein Journal).
+--   Idempotenz erbt vom Buy (die Journal-Zeilen teilen die Buy-Tx -> re-run kein Doppel-Insert).
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, holding_id, buy_tx_id, settlement_balance,
 --   total_shares, avg_purchase_price} (Post-State aus der fn: Trigger-gepflegte shares/avg +
 --   neuer Verrechnungskonto-Saldo, in derselben Transaktion gelesen). Korrigierbar
@@ -66,6 +67,7 @@ DECLARE
     v_settle_ccy CHAR(3);          -- WP-3b: Settlement-Konto-Waehrung (Konservierungs-Guard bei goal-Kauf)
     v_rp_id      INT               := NULLIF(p->>'recurring_payment_id', '')::int;
     v_goal       INT;              -- WS-B Stufe 2: Ziel des goal-verknuepften Sparplans (NULL = manueller/freier Kauf)
+    v_goal_cash  NUMERIC;          -- 2026-10-27: Ziel-Geld auf dem Verrechnungskonto, das der Kauf umschichtet (c)
     v_holding    INT;
     v_buy        INT;
     v_bal        NUMERIC;
@@ -227,9 +229,8 @@ BEGIN
         RETURNING id INTO v_holding;
     END IF;
 
-    -- EINE Kauf-Transaktion (Gebuehr in amount gefaltet + separat in order_fee). WS-B Stufe 2 (a): bei
-    -- goal-verknuepftem Sparplan-Kauf wird das Cash-Soll-Bein mit savings_goal_id getaggt (Cash-Anteil -Betrag);
-    -- v_goal NULL -> kein Tag (manueller/freier Kauf).
+    -- EINE Kauf-Transaktion (Gebuehr in amount gefaltet + separat in order_fee). Kein Ziel-Tag (2026-10-27): die
+    -- Ziel-Wirkung eines goal-verknuepften Kaufs laeuft komplett ueber das Journal (unten).
     IF v_existing THEN v_group := gen_random_uuid(); END IF;
     INSERT INTO finance.transactions
         (account_id, amount, transaction_date, category, holding_id, shares, order_fee, unit_price,
@@ -238,7 +239,7 @@ BEGIN
     -- daraus); ein normaler Kauf bleibt bei |amount| (abgebuchter Cent-Betrag, Broker-Konvention).
     VALUES (v_settle, -(v_shares * v_price + v_fee), v_date, 'buy', v_holding, v_shares, v_fee,
             CASE WHEN v_existing THEN v_price END,
-            v_rp_id, CASE WHEN v_rp_id IS NOT NULL THEN v_due END, v_goal,
+            v_rp_id, CASE WHEN v_rp_id IS NOT NULL THEN v_due END, NULL,
             CASE WHEN v_existing THEN 'Bestandsübernahme ' ELSE 'Kauf ' END
                    || (p->>'shares') || ' ' || v_symbol || ' @ ' || (p->>'price_per_share')
                    || ' (Gebühr ' || COALESCE(p->>'order_fee', '0') || ')',
@@ -264,17 +265,22 @@ BEGIN
             'reason', 'This savings-plan execution (payment ' || v_rp_id || ' due ' || v_due || ') is already booked.');
     END IF;
 
-    -- WS-B Stufe 2 (b): Depot-Anteil der Ziel-Reserve fortschreiben — EINE append-only Journal-Zeile,
-    -- gleich-und-entgegengesetzt zum getaggten -Cash-Bein (delta = volle Cash-Abfluss-Magnitude inkl.
-    -- Gebuehr) -> current_amount bleibt konserviert. account_id = Depot (Marktwert-Deckung, depot_reserve_status);
-    -- source_tx_id = die Kauf-Tx (Idempotenz erbt vom Buy). WP-3b: delta_native = roher Nativ-Betrag in der
-    -- DEPOT-Waehrung (v_depot_ccy, per Konservierungs-Guard = Settlement-Waehrung des -Cash-Beins), value_date =
-    -- transaction_date -> die VIEW konvertiert beide Legs mit demselben Kurs/Datum nach EUR (kein fn_to_eur am
-    -- Insert, kein NULL-Crash, kein Drift).
+    -- WS-B Stufe 2: Ziel-Reserve fortschreiben — append-only Journal-Zeilen (source_tx_id = Kauf, Idempotenz erbt vom
+    -- Buy). Depot +X; soweit Ziel-Geld auf dem Verrechnungskonto lag, dort -c (Umschichten, konserviert), der Rest ist
+    -- frisch. WP-3b: delta_native = roher Nativ-Betrag in der Depot- (= per Guard Settlement-)Waehrung, value_date =
+    -- transaction_date -> die VIEW konvertiert beide Zeilen mit demselben Kurs/Datum nach EUR (kein fn_to_eur am Insert).
     IF v_goal IS NOT NULL THEN
+        SELECT LEAST(GREATEST(COALESCE(s.share_native, 0), 0), v_shares * v_price + v_fee) INTO v_goal_cash
+        FROM finance.savings_goal_account_share s
+        WHERE s.goal_id = v_goal AND s.account_id = v_settle;
         INSERT INTO finance.savings_goal_reserve_entries
             (savings_goal_id, account_id, delta_native, currency, value_date, source_tx_id, kind)
         VALUES (v_goal, v_depot, v_shares * v_price + v_fee, COALESCE(v_depot_ccy, 'EUR'), v_date, v_buy, 'sparplan_buy');
+        IF COALESCE(v_goal_cash, 0) > 0 THEN
+            INSERT INTO finance.savings_goal_reserve_entries
+                (savings_goal_id, account_id, delta_native, currency, value_date, source_tx_id, kind)
+            VALUES (v_goal, v_settle, -v_goal_cash, COALESCE(v_depot_ccy, 'EUR'), v_date, v_buy, 'sparplan_buy');
+        END IF;
     END IF;
 
     -- Post-State (Trigger haben gefeuert): Verrechnungskonto-Saldo + Holding shares/avg + Anlageklasse (WS-6).

@@ -111,6 +111,18 @@
         "notes":  "Sparziel-Zweckbindung 2026-10-27: Schema-Fidelity tool_book_savings_reservation mit account_name auf einem Cash-Konto (vorher nur Depots). Erwartet: eine manual-Journal-Zeile 400 in Kontowaehrung, Fortschritt 400, keine Ueberweisung."
     },
     {
+        "id":  "e2e44",
+        "name":  "book_stock_sell: Verkauf mit Sparziel schichtet die Ziel-Reserve aufs Konto um (derisk)",
+        "task":  "Verkaufe 5 VWCE aus dem __E2E__ DR Depot zu 120 Euro, ohne Gebuehr, das Geld ist fuer das Sparziel '__E2E__ DR Ziel'.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ DR Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ DR Cash','account_type','cash','account_holder','Erika','currency','EUR','opening_balance',3000)));SELECT pg_temp.ok('__E2E__ DR Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ DR Depot','account_type','stocks_depot','account_holder','Erika','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Cash'))));SELECT pg_temp.ok('Kauf', finance.fn_book_stock_buy(jsonb_build_object('depot_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Depot'),'settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Cash'),'isin','IE00BK5BQT80','symbol','VWCE','name','Vanguard FTSE All-World','shares',10,'price_per_share',100,'order_fee',0,'transaction_date',CURRENT_DATE::text)));SELECT pg_temp.ok('__E2E__ DR Ziel', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ DR Ziel','target_amount',1000,'target_date',(CURRENT_DATE + 200)::text,'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Depot'),'already_saved',1000)));",
+        "chat_id":  "test_e2e_e2e44",
+        "sentinel_accounts":  2,
+        "verify_sql":  "SELECT count(*) FROM finance.savings_goal_account_share s JOIN finance.savings_goals g ON g.id = s.goal_id JOIN finance.accounts a ON a.id = s.account_id WHERE g.name = '__E2E__ DR Ziel' AND a.name = '__E2E__ DR Cash' AND s.share_native = 600;",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Sparziel-Zweckbindung 2026-10-27 (Umschicht-Hilfe): Schema-Fidelity savings_goal_name am Verkauf. Ziel mit 1000 EUR Depot-Zuordnung; Verkauf 5 x 120 = 600 -> derisk: 600 liegen danach als Ziel-Geld auf dem Verrechnungskonto, Fortschritt bleibt 1000."
+    },
+    {
         "id":  "e2e07",
         "name":  "reconcile_account: Korrekturbuchung bei Drift",
         "task":  "Lege ein Cash-Konto \u0027__E2E__ Recon Konto\u0027 an (Inhaber Erika, ohne Zinsen). Buche eine Einzahlung von 500 Euro auf dieses Konto (Datum heute, Verwendungszweck \u0027Einlage\u0027). Gleiche das Konto dann ab: tatsaechlicher Saldo laut Banking-App ist 520 Euro (20 Euro Zinsen noch nicht gebucht), Datum heute.",

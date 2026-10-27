@@ -290,10 +290,11 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_buy [ungueltige quote_currency DOLLAR -> ok:false, kein Write]';
 
   -- ============================================================
-  -- TEST 10-13 (WS-B Stufe 2): Zwei-Schritt-Auto-Journal — ein goal-verknuepfter Sparplan-Kauf
-  --   markiert sein Cash-Soll-Bein (savings_goal_id) UND haengt EINE Journal-Zeile (sparplan_buy)
-  --   ans Depot-Reserve-Journal. Konservierungs-Invariante: Cash->Depot 1:1, current_amount waechst
-  --   NUR um den getaggten Feed, NICHT zusaetzlich um den Kauf. Manueller Kauf (kein rp) -> KEINE Wirkung.
+  -- TEST 10-13 (WS-B Stufe 2, Vertragsaenderung Sparziel-Zweckbindung 2026-10-27): ein goal-verknuepfter Sparplan-Kauf
+  --   schreibt Journal-Zeilen (kind sparplan_buy, source_tx_id = Kauf): Depot +X und — soweit Ziel-Geld auf dem
+  --   Verrechnungskonto liegt — Verrechnungskonto -c (c = min(Anteil, X)). Der Kauf selbst traegt KEIN Tag mehr.
+  --   Ziel-Geld wird nur umgeschichtet (konserviert), frisches Geld (X - c) zaehlt als neu gespart.
+  --   Manueller Kauf (kein rp) -> KEINE Wirkung.
   -- ============================================================
   DECLARE
     v_goal_id    INT;
@@ -368,31 +369,28 @@ BEGIN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [sparplan_buy ok]: %', v_result; END IF;
     v_buy_tx := (v_result->>'buy_tx_id')::int;
 
-    -- (a) Cash-Soll-Bein getaggt
+    -- (a) der Kauf traegt kein Ziel-Tag mehr (die Umschichtung laeuft komplett im Journal)
     SELECT savings_goal_id INTO v_tag FROM finance.transactions WHERE id = v_buy_tx;
-    IF v_tag IS DISTINCT FROM v_goal_id THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Cash-Bein-Tag]: erwartet savings_goal_id=%, got %', v_goal_id, v_tag; END IF;
+    IF v_tag IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL fn_book_stock_buy [kein Kauf-Tag]: erwartet NULL, got %', v_tag; END IF;
 
-    -- (b) genau EINE Journal-Zeile, kind=sparplan_buy, delta=50 (=shares*price+fee), source=buy_tx, account=Depot
-    SELECT count(*), min(delta_native), min(account_id), min(kind), min(source_tx_id)
-      INTO v_jrnl_cnt, v_jrnl_delta, v_jrnl_acct, v_jrnl_kind, v_jrnl_src
-      FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal_id;
-    IF v_jrnl_cnt IS DISTINCT FROM 1 THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Journal-Anzahl]: erwartet 1, got %', v_jrnl_cnt; END IF;
-    IF v_jrnl_delta IS DISTINCT FROM 50 THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Journal-delta]: erwartet 50, got %', v_jrnl_delta; END IF;
-    IF v_jrnl_kind IS DISTINCT FROM 'sparplan_buy' THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Journal-kind]: erwartet sparplan_buy, got %', v_jrnl_kind; END IF;
-    IF v_jrnl_src IS DISTINCT FROM v_buy_tx THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Journal-source_tx_id]: erwartet %, got %', v_buy_tx, v_jrnl_src; END IF;
-    IF v_jrnl_acct IS DISTINCT FROM v_depot_id THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Journal-account_id]: erwartet Depot %, got %', v_depot_id, v_jrnl_acct; END IF;
+    -- (b) Depot-Zeile +50 (sparplan_buy, source=buy_tx) + Verrechnungskonto-Zeile -50 (Ziel-Geld lag dort: 200 >= 50)
+    SELECT count(*), min(delta_native), min(kind), min(source_tx_id)
+      INTO v_jrnl_cnt, v_jrnl_delta, v_jrnl_kind, v_jrnl_src
+      FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal_id AND account_id = v_depot_id;
+    IF v_jrnl_cnt IS DISTINCT FROM 1 OR v_jrnl_delta IS DISTINCT FROM 50 OR v_jrnl_kind IS DISTINCT FROM 'sparplan_buy'
+       OR v_jrnl_src IS DISTINCT FROM v_buy_tx THEN
+      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Depot-Zeile]: cnt % delta % kind % src %', v_jrnl_cnt, v_jrnl_delta, v_jrnl_kind, v_jrnl_src; END IF;
+    SELECT count(*), min(delta_native) INTO v_jrnl_cnt, v_jrnl_delta
+      FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal_id AND account_id = v_settle_id AND source_tx_id = v_buy_tx;
+    IF v_jrnl_cnt IS DISTINCT FROM 1 OR v_jrnl_delta IS DISTINCT FROM -50 THEN
+      RAISE EXCEPTION 'FAIL fn_book_stock_buy [Verrechnungskonto-Zeile]: cnt % delta %', v_jrnl_cnt, v_jrnl_delta; END IF;
 
-    -- (c) KONSERVIERUNG: current_amount = 200 (Feed) - 50 (Cash-Bein) + 50 (Journal) = 200 UNVERAENDERT
+    -- (c) KONSERVIERUNG: Ziel-Geld umgeschichtet -> current_amount = 200 - 50 + 50 = 200 UNVERAENDERT
     SELECT current_amount INTO v_curr FROM finance.savings_goal_progress WHERE id = v_goal_id;
     IF v_curr IS DISTINCT FROM 200 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [Konservierung]: current_amount erwartet 200 (nur Feed), got % (Kauf doppelt gezaehlt?)', v_curr; END IF;
-    RAISE NOTICE 'PASS fn_book_stock_buy [WS-B2 sparplan_buy: Cash-Tag + Journal +50 + Konservierung 200]';
+    RAISE NOTICE 'PASS fn_book_stock_buy [sparplan_buy aus Ziel-Geld: Depot +50, Verrechnungskonto -50, Konservierung 200]';
 
     -- TEST 11: manueller Kauf (kein recurring_payment_id) -> KEINE Wirkung (kein Tag, kein Journal).
     SELECT count(*) INTO v_cnt_before FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal_id;
@@ -424,7 +422,7 @@ BEGIN
       'recurring_payment_id', v_plan_rp
     )) INTO v_result;
     v_buy_tx := (v_result->>'buy_tx_id')::int;
-    SELECT delta_native INTO v_jrnl_delta FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_buy_tx;
+    SELECT delta_native INTO v_jrnl_delta FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_buy_tx AND account_id = v_depot_id;
     IF v_jrnl_delta IS DISTINCT FROM 105 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [Journal-delta inkl. Gebuehr]: erwartet 105 (100+5), got %', v_jrnl_delta; END IF;
     -- Konservierung haelt auch mit Gebuehr (Gebuehr verlaesst Cash und betritt Depot-Reserve symmetrisch).
@@ -465,16 +463,20 @@ BEGIN
     IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [crypto sparplan_buy ok]: %', v_result; END IF;
     v_buy_tx := (v_result->>'buy_tx_id')::int;
-    SELECT delta_native, account_id INTO v_jrnl_delta, v_jrnl_acct
-      FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_buy_tx;
+    SELECT delta_native INTO v_jrnl_delta
+      FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_buy_tx AND account_id = v_crypto_dep;
     IF v_jrnl_delta IS DISTINCT FROM 500 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [crypto Journal-delta]: erwartet 500 (0.01*50000), got %', v_jrnl_delta; END IF;
-    IF v_jrnl_acct IS DISTINCT FROM v_crypto_dep THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [crypto Journal-account]: erwartet Krypto-Depot %, got %', v_crypto_dep, v_jrnl_acct; END IF;
+    -- TEILWEISE aus Ziel-Geld: auf dem Verrechnungskonto liegen nur noch 200-50-105 = 45 des Ziels -> -45 dort,
+    -- 455 frisches Geld -> current_amount 200 + 455 = 655.
+    SELECT delta_native INTO v_jrnl_delta
+      FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_buy_tx AND account_id = v_settle_id;
+    IF v_jrnl_delta IS DISTINCT FROM -45 THEN
+      RAISE EXCEPTION 'FAIL fn_book_stock_buy [crypto teilweise]: Verrechnungskonto-Zeile erwartet -45, got %', v_jrnl_delta; END IF;
     SELECT current_amount INTO v_curr FROM finance.savings_goal_progress WHERE id = v_goal_id;
-    IF v_curr IS DISTINCT FROM 200 THEN
-      RAISE EXCEPTION 'FAIL fn_book_stock_buy [crypto Konservierung]: current_amount erwartet 200, got %', v_curr; END IF;
-    RAISE NOTICE 'PASS fn_book_stock_buy [WS-B2 FX-Krypto: Journal +500 aufs Krypto-Depot + Konservierung]';
+    IF v_curr IS DISTINCT FROM 655 THEN
+      RAISE EXCEPTION 'FAIL fn_book_stock_buy [crypto teilweise frisch]: current_amount erwartet 655, got %', v_curr; END IF;
+    RAISE NOTICE 'PASS fn_book_stock_buy [Krypto-Kauf: 45 umgeschichtet, 455 frisch -> 655]';
   END;
 
   -- ============================================================
@@ -564,10 +566,11 @@ BEGIN
     SELECT reserved INTO v_reserved FROM finance.depot_reserve_status WHERE account_id = v_krw_depot;
     IF v_reserved IS DISTINCT FROM 1000 THEN RAISE EXCEPTION 'FAIL [15 reserved EUR]: erwartet 1000 EUR (1450000 KRW / 1450), got % (View nicht konvertiert?)', v_reserved; END IF;
 
-    -- (c) KONSERVIERUNG in EUR: Cash-Bein -1450000 KRW (= -1000 EUR) + Depot-Journal +1000 EUR -> current_amount 0.
+    -- (c) FRISCHES GELD in EUR (2026-10-27): auf dem KRW-Verrechnungskonto lag kein Ziel-Geld -> keine Gegenzeile,
+    --     der Kauf zaehlt voll: current_amount = 1000 EUR.
     SELECT current_amount INTO v_kcur FROM finance.savings_goal_progress WHERE id = v_krw_goal;
-    IF v_kcur IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL [15 Konservierung]: erwartet 0 (Cash+Depot kuerzen sich in EUR), got %', v_kcur; END IF;
-    RAISE NOTICE 'PASS [15 WP-3b: KRW-Kauf -> delta_native roh KRW + currency + EUR-Umrechnung in der View (reserved 1000) + Konservierung]';
+    IF v_kcur IS DISTINCT FROM 1000 THEN RAISE EXCEPTION 'FAIL [15 frisch]: erwartet 1000 EUR (frisches Geld), got %', v_kcur; END IF;
+    RAISE NOTICE 'PASS [15 WP-3b: KRW-Kauf -> delta_native roh KRW + currency + EUR-Umrechnung in der View (reserved 1000), frisch +1000]';
 
     -- (d) value_date FOLGT dem transaction_date (nicht hardcoded CURRENT_DATE) — RUECKDATIERTER Kauf.
     DECLARE v_bkbuy INT; v_bkvd DATE; BEGIN

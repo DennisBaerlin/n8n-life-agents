@@ -28,6 +28,9 @@
                                                                                    "name":  "transaction_date"
                                                                                },
                                                                                {
+                                                                                   "name":  "savings_goal_name"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -147,7 +150,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_stock_sell(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ settlement_id: $(\u0027Find Holding\u0027).item.json.r.settlement_account_id, holding_id: $(\u0027Find Holding\u0027).item.json.r.holding_id, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, symbol: $(\u0027Find Holding\u0027).item.json.r.symbol }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ settlement_id: $(\u0027Find Holding\u0027).item.json.r.settlement_account_id, holding_id: $(\u0027Find Holding\u0027).item.json.r.holding_id, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, symbol: $(\u0027Find Holding\u0027).item.json.r.symbol, savings_goal_name: $(\u0027Start\u0027).item.json.savings_goal_name }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -251,9 +254,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027sell_tx_id\u0027)::int AS sell_tx_id, (r-\u003e\u003e\u0027settlement_balance\u0027)::numeric AS settlement_balance, (r-\u003e\u003e\u0027proceeds\u0027)::numeric AS proceeds, (r-\u003e\u003e\u0027remaining_shares\u0027)::numeric AS remaining_shares FROM finance.fn_book_stock_sell(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027sell_tx_id\u0027)::int AS sell_tx_id, (r-\u003e\u003e\u0027settlement_balance\u0027)::numeric AS settlement_balance, (r-\u003e\u003e\u0027proceeds\u0027)::numeric AS proceeds, (r-\u003e\u003e\u0027remaining_shares\u0027)::numeric AS remaining_shares, (r-\u003e\u003e\u0027derisk_amount\u0027)::numeric AS derisk_amount, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS goal_current_amount FROM finance.fn_book_stock_sell(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ settlement_id: $(\u0027Find Holding\u0027).item.json.r.settlement_account_id, holding_id: $(\u0027Find Holding\u0027).item.json.r.holding_id, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, symbol: $(\u0027Find Holding\u0027).item.json.r.symbol, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ settlement_id: $(\u0027Find Holding\u0027).item.json.r.settlement_account_id, holding_id: $(\u0027Find Holding\u0027).item.json.r.holding_id, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, symbol: $(\u0027Find Holding\u0027).item.json.r.symbol, savings_goal_name: $(\u0027Start\u0027).item.json.savings_goal_name, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -278,7 +281,7 @@
                                                                                  {
                                                                                      "id":  "3d8b3fd0-c23a-52f4-a304-fe89425f497f",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_stock_sell\u0027, lines: [ { label: \u0027finance.label.symbol\u0027, kind: \u0027text\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.symbol) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.depot_name) }, { label: \u0027finance.label.available\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.pieces\u0027), params: { count: ({ kind: \u0027number\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.available_shares), digits: -1 }) } }, { label: \u0027finance.label.sell\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.pieces\u0027), params: { count: ({ kind: \u0027number\u0027, value: ($(\u0027Start\u0027).item.json.shares), digits: -1 }) } }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.price_per_share), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.order_fee), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027finance.label.proceeds_net\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.proceeds), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_stock_sell\u0027, lines: [ { label: \u0027finance.label.symbol\u0027, kind: \u0027text\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.symbol) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.depot_name) }, { label: \u0027finance.label.available\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.pieces\u0027), params: { count: ({ kind: \u0027number\u0027, value: ($(\u0027Find Holding\u0027).item.json.r.available_shares), digits: -1 }) } }, { label: \u0027finance.label.sell\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.pieces\u0027), params: { count: ({ kind: \u0027number\u0027, value: ($(\u0027Start\u0027).item.json.shares), digits: -1 }) } }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.price_per_share), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.order_fee), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027finance.label.proceeds_net\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.proceeds), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) }, (($(\u0027Start\u0027).item.json.savings_goal_name) ? { label: \u0027finance.label.derisk_goal\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.derisk_goal\u0027), params: { amount: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.derisk_amount), currency: ($(\u0027Find Holding\u0027).item.json.r.currency) }), goal: ($(\u0027Start\u0027).item.json.savings_goal_name) } } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -503,6 +506,18 @@
                                                                                      "name":  "remaining_shares",
                                                                                      "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.remaining_shares }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a6562f50-fd32-58ac-b96f-38a3aef15563",
+                                                                                     "name":  "derisk_amount",
+                                                                                     "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.derisk_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5c02b6ca-b44c-53cd-b62c-512ea0e538bf",
+                                                                                     "name":  "goal_current_amount",
+                                                                                     "value":  "={{ $(\u0027Create sell (atomic)\u0027).item.json.goal_current_amount }}",
+                                                                                     "type":  "number"
                                                                                  }
                                                                              ]
                                                          },
@@ -521,7 +536,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_stock_sell mit denselben Werten, immer zurückgerollt. ok:false (zu viele Stücke, Stückzahl/Kurs nicht positiv) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_stock_sell mit denselben Werten, immer zurückgerollt. ok:false (zu viele Stücke, Stückzahl/Kurs nicht positiv; mit savings_goal_name: Ziel unklar, kein Ziel-Geld in diesem Depot, Währung Verrechnungskonto ≠ Depot) -\u003e sonst bucht die fn zusätzlich das Umschichten fürs Sparziel (Journal derisk: Depot -m, Verrechnungskonto +m, m = min(Anteil, Erlös)). Bei Ablehnung -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4

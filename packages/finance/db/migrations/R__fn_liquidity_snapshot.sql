@@ -18,8 +18,8 @@
 --   FREIES CASH (Audit Paket 3; Verbraucherzentrale/Finanztip: Notreserve aufs Tagesgeld, nicht in Aktien):
 --   aktive account_type='cash'-Konten OHNE kind-besessene (core.fn_household_persons(), publiziertes Fenster),
 --   je Konto abzueglich der fuer aktive Sparziele reservierten Summe (account_reserve_status.reserved), hoechstens
---   bis zum positiven Saldo: balance - LEAST(GREATEST(reserved,0), GREATEST(balance,0)). Negative Reserve-Tags
---   (Cash-Bein eines Ziel-Sparplan-Kaufs auf dem Giro) zaehlen 0 -> blaehen das freie Cash nie auf.
+--   bis zum positiven Saldo: balance - LEAST(GREATEST(reserved,0), GREATEST(balance,0)). reserved = Ziel-Anteile
+--   (getaggt + zugeordnet, savings_goal_account_share); ein negativer Anteil zaehlt 0 -> blaeht das freie Cash nie auf.
 --   earmarked_eur = Summe des Abgezogenen. Ein als Sparziel gefuehrter Notgroschen zaehlt damit bewusst NICHT
 --   als freie Reserve (goal_type ist Freitext; der Notgroschen gehoert in den Planfakt emergency_reserve).
 --

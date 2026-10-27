@@ -461,7 +461,7 @@ $nToolBookTransaction = New-ToolWorkflowNode 'tool_book_transaction' `
     ) @(1280, 208)
 
 $nToolBookStockSell = New-ToolWorkflowNode 'tool_book_stock_sell' `
-    'Book a stock, ETF, or crypto sale. Call it directly with the depot name and the position (symbol or ISIN) as the user names them - the tool finds the position itself and checks everything before the approval card (no own lookup, no own shares check). Sells reduce the position and credit the settlement account; the average purchase price does not change. Results: ok:false code=depot_not_found/depot_ambiguous/holding_not_found/holding_ambiguous -> ask the user which one, naming the candidates; ok:false card_sent:false with a reason such as more shares than held -> tell the user the reason (it names the available shares) and ask how many to sell; ok:true -> report proceeds and remaining shares.' `
+    'Book a stock, ETF, or crypto sale. Call it directly with the depot name and the position (symbol or ISIN) as the user names them - the tool finds the position itself and checks everything before the approval card (no own lookup, no own shares check). Sells reduce the position and credit the settlement account; the average purchase price does not change. Results: ok:false code=depot_not_found/depot_ambiguous/holding_not_found/holding_ambiguous -> ask the user which one, naming the candidates; ok:false card_sent:false with a reason such as more shares than held -> tell the user the reason (it names the available shares) and ask how many to sell; ok:true -> report proceeds and remaining shares. SAVINGS GOAL: if the user sells to secure money for a savings goal (e.g. after the advisor suggested shifting depot money to cash before the target date: "verkauf 5 VWCE fuer die Weltreise"), pass savings_goal_name - the proceeds then stay the goal money on the settlement account (the tool moves the goal share from the depot, up to the proceeds; the card shows the amount; derisk_amount in the result).' `
     @(
         ,@('depot_name', 'Name of the depot holding the position (e.g. "Trade Republic Depot")', 'string')
         ,@('symbol', 'Ticker or crypto symbol of the position as the user names it (e.g. VWCE, BTC)', 'string')
@@ -470,6 +470,7 @@ $nToolBookStockSell = New-ToolWorkflowNode 'tool_book_stock_sell' `
         ,@('price_per_share', 'Sale price per share or unit in the position currency', 'number')
         ,@('order_fee', 'Order fee in the position currency, only if the user mentions one (empty = 0; the card shows it)', 'string', '')
         ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
+        ,@('savings_goal_name', 'OPTIONAL: name of the savings goal the sale secures money for (the proceeds stay assigned to that goal). Leave EMPTY for a normal sale.', 'string', '')
     ) @(1440, 208)
 
 $nToolBookLoanPayment = New-ToolWorkflowNode 'tool_book_loan_payment' `

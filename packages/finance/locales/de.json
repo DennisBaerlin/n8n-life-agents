@@ -57,6 +57,8 @@
   "finance.note.deviation_target": "⚠ Abweichung > 5 % vom Soll-Betrag",
   "finance.label.reserved_amount": "Zugeordneter Betrag (insgesamt auf diesem Konto)",
   "finance.note.reserve_fixed": "Hinweis: Der Betrag ist die fixe Reserve fürs Ziel; der Depot-Marktwert ist nur die Deckung (kann schwanken).",
+  "finance.label.derisk_goal": "Für Sparziel",
+  "finance.tpl.derisk_goal": "{amount} des Erlöses werden für „{goal}“ vom Depot aufs Konto umgebucht",
   "finance.label.already_saved": "Schon vorhanden (wird zugeordnet)",
   "finance.note.goal_covered": "Das Ziel ist mit dem schon zugeordneten Geld gedeckt – es wird keine Sparrate angelegt (Rate 0).",
   "finance.note.goal_plan_rate": "Finanziert über den Sparplan {plan}: {monthly} pro Monat, nötig wären {needed} pro Monat.",

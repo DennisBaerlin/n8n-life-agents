@@ -13,6 +13,13 @@
 --   fn_trade_amount_reason) -> {ok:false, reason, ...} OHNE Write
 --   (kein RAISE -> kein Owner-Alert; das Tool reicht reason an den Agenten).
 --   RAISE nur fuer echte Ausnahmen (Holding-not-found = Tool faengt es vor dem Gate ab).
+--   UMSCHICHTEN FUER EIN SPARZIEL (Sparziel-Zweckbindung 2026-10-27, Umschicht-Hilfe vor dem Zieldatum): optional
+--   savings_goal_name (aktives Ziel, fn_resolve_savings_goal). Dann haengt die fn zwei Journal-Zeilen kind='derisk'
+--   an (source_tx_id = Verkauf, value_date = Verkaufsdatum, Waehrung des Verrechnungskontos = Depot-Waehrung): Depot -m,
+--   Verrechnungskonto +m, m = min(Depot-Anteil des Ziels, Erloes) -> das Geld liegt danach als Ziel-Geld auf dem
+--   Konto, der Fortschritt bleibt gleich; ein Void storniert beide (fn_void_transaction). Korrigierbar: Ziel nicht
+--   eindeutig, kein Geld des Ziels in diesem Depot, Waehrung Verrechnungskonto != Depot, fehlender FX-Kurs ->
+--   {ok:false} ohne Verkauf. Rueckgabe dann zusaetzlich derisk_amount (m) und current_amount (Ziel-Stand EUR).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_stock_sell(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -30,6 +37,16 @@ DECLARE
     v_reason  TEXT;
     v_proceeds NUMERIC;
     v_dates   JSONB;
+    v_goal_name TEXT := NULLIF(btrim(p->>'savings_goal_name'), '');
+    v_goal_res RECORD;
+    v_goal    INT;
+    v_depot   INT;
+    v_dccy    TEXT;
+    v_sccy    TEXT;
+    v_dshare  NUMERIC;   -- Depot-Anteil des Ziels in EUR
+    v_rate    NUMERIC;   -- Depot-Waehrung je EUR am Verkaufsdatum (Erloes / Erloes in EUR)
+    v_m       NUMERIC;   -- umgeschichteter Betrag (Depot-/Settlement-Waehrung)
+    v_cur     NUMERIC;
 BEGIN
     -- relative Datumsangabe ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
@@ -73,6 +90,38 @@ BEGIN
             'requested', v_shares);
     END IF;
 
+    -- Umschichten fuer ein Sparziel: alles VOR dem Write pruefen (Ziel, Ziel-Geld im Depot, Waehrung, Kurs).
+    IF v_goal_name IS NOT NULL THEN
+        SELECT r.id, r.hit_count INTO v_goal_res FROM finance.fn_resolve_savings_goal(v_goal_name, TRUE) r;
+        IF v_goal_res.hit_count IS DISTINCT FROM 1 THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'Savings goal "' || v_goal_name || '" resolves to ' || COALESCE(v_goal_res.hit_count, 0)
+                       || ' active goals - ask the user which goal the sale belongs to.');
+        END IF;
+        v_goal := v_goal_res.id;
+        SELECT h.account_id, a.currency INTO v_depot, v_dccy
+        FROM finance.depot_holdings h JOIN finance.accounts a ON a.id = h.account_id WHERE h.id = v_holding;
+        SELECT currency INTO v_sccy FROM finance.accounts WHERE id = v_settle;
+        IF v_sccy IS DISTINCT FROM v_dccy THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'Cross-currency goal-linked sale not supported: the settlement account is ' || COALESCE(v_sccy, '?')
+                       || ' but the depot is ' || COALESCE(v_dccy, '?') || '. Book the sale without the savings goal.');
+        END IF;
+        SELECT share_eur INTO v_dshare FROM finance.savings_goal_account_share WHERE goal_id = v_goal AND account_id = v_depot;
+        IF COALESCE(v_dshare, 0) <= 0 THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'Savings goal "' || v_goal_name || '" has no money in this depot - book the sale without the goal, '
+                       || 'or earmark the money first (tool_book_savings_reservation).');
+        END IF;
+        v_proceeds := round(v_shares * v_price - v_fee, 2);
+        v_rate := v_proceeds / NULLIF(finance.fn_to_eur(v_proceeds, v_sccy, v_date), 0);
+        IF v_rate IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'No exchange rate for ' || v_sccy || ' on ' || v_date || ' - the goal share cannot be moved.');
+        END IF;
+        v_m := round(LEAST(v_dshare * v_rate, v_proceeds), 2);
+    END IF;
+
     -- EINE Verkaufs-Transaktion (Gebuehr in amount gefaltet + separat in order_fee).
     -- amount positiv (credit zum Settlement-Konto); shares negativ (Anteile gehen weg).
     INSERT INTO finance.transactions
@@ -90,6 +139,15 @@ BEGIN
     )
     RETURNING id, amount INTO v_sell, v_proceeds;   -- proceeds = der GEBUCHTE Cent-Betrag (vorher ungerundet)
 
+    -- Umschichten: Depot -m, Verrechnungskonto +m (derisk, append-only, stornierbar ueber source_tx_id).
+    IF v_goal IS NOT NULL AND v_m > 0 THEN
+        INSERT INTO finance.savings_goal_reserve_entries
+            (savings_goal_id, account_id, delta_native, currency, value_date, source_tx_id, kind)
+        VALUES (v_goal, v_depot, -v_m, v_sccy, v_date, v_sell, 'derisk'),
+               (v_goal, v_settle, v_m, v_sccy, v_date, v_sell, 'derisk');
+        SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal;
+    END IF;
+
     -- Post-State (Trigger haben gefeuert): Verrechnungskonto-Saldo + Rest-Stuecke.
     SELECT balance INTO v_bal
     FROM finance.account_balances WHERE account_id = v_settle;
@@ -100,6 +158,9 @@ BEGIN
         'settlement_balance', v_bal,
         'proceeds', v_proceeds,
         'remaining_shares', v_remain,
-        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee));
+        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee))
+        || CASE WHEN v_goal IS NOT NULL
+                THEN jsonb_build_object('derisk_amount', v_m, 'current_amount', round(COALESCE(v_cur, 0), 2))
+                ELSE '{}'::jsonb END;
 END;
 $$;

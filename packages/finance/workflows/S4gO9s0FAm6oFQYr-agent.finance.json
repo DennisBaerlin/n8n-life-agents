@@ -1853,7 +1853,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_book_stock_sell",
-                                         "description":  "Book a stock, ETF, or crypto sale. Call it directly with the depot name and the position (symbol or ISIN) as the user names them - the tool finds the position itself and checks everything before the approval card (no own lookup, no own shares check). Sells reduce the position and credit the settlement account; the average purchase price does not change. Results: ok:false code=depot_not_found/depot_ambiguous/holding_not_found/holding_ambiguous -\u003e ask the user which one, naming the candidates; ok:false card_sent:false with a reason such as more shares than held -\u003e tell the user the reason (it names the available shares) and ask how many to sell; ok:true -\u003e report proceeds and remaining shares.",
+                                         "description":  "Book a stock, ETF, or crypto sale. Call it directly with the depot name and the position (symbol or ISIN) as the user names them - the tool finds the position itself and checks everything before the approval card (no own lookup, no own shares check). Sells reduce the position and credit the settlement account; the average purchase price does not change. Results: ok:false code=depot_not_found/depot_ambiguous/holding_not_found/holding_ambiguous -\u003e ask the user which one, naming the candidates; ok:false card_sent:false with a reason such as more shares than held -\u003e tell the user the reason (it names the available shares) and ask how many to sell; ok:true -\u003e report proceeds and remaining shares. SAVINGS GOAL: if the user sells to secure money for a savings goal (e.g. after the advisor suggested shifting depot money to cash before the target date: \"verkauf 5 VWCE fuer die Weltreise\"), pass savings_goal_name - the proceeds then stay the goal money on the settlement account (the tool moves the goal share from the depot, up to the proceeds; the card shows the amount; derisk_amount in the result).",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "6xKJ0Z1dJbUfB31z",
@@ -1871,6 +1871,7 @@
                                                                               "price_per_share":  "={{ $fromAI(\u0027price_per_share\u0027, \u0027Sale price per share or unit in the position currency\u0027, \u0027number\u0027) }}",
                                                                               "order_fee":  "={{ $fromAI(\u0027order_fee\u0027, \u0027Order fee in the position currency, only if the user mentions one (empty = 0; the card shows it)\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "transaction_date":  "={{ $fromAI(\u0027transaction_date\u0027, \u0027Booking date (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself), only if the user names a date (empty = today)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "savings_goal_name":  "={{ $fromAI(\u0027savings_goal_name\u0027, \u0027OPTIONAL: name of the savings goal the sale secures money for (the proceeds stay assigned to that goal). Leave EMPTY for a normal sale.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -1940,6 +1941,16 @@
                                                                                {
                                                                                    "id":  "transaction_date",
                                                                                    "displayName":  "transaction_date",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "savings_goal_name",
+                                                                                   "displayName":  "savings_goal_name",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,

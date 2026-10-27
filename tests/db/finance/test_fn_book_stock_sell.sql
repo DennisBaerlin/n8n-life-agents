@@ -223,4 +223,69 @@ BEGIN
   RAISE NOTICE 'PASS avg [rueckdatierter Verkauf vor Kauf -> 100, kein Fehler]';
 END $$;
 
+-- Verkauf mit Sparziel (Umschichten Depot -> Konto, Sparziel-Zweckbindung 2026-10-27):
+--  (G1) Ziel hat 1000 EUR im Depot zugeordnet; Verkauf mit Erloes 600 und savings_goal_name -> derisk: Depot -600,
+--       Verrechnungskonto +600 (source_tx_id = Verkauf), Fortschritt unveraendert 1000, derisk_amount 600
+--  (G2) zweiter Verkauf mit Erloes 800 -> nur der Rest 400 wird umgeschichtet (m = min(Anteil, Erloes))
+--  (G3) Ziel ohne Geld in diesem Depot -> ok:false, kein Verkauf
+--  (G4) unbekanntes Ziel -> ok:false
+--  (G5) Verrechnungskonto in anderer Waehrung als das Depot -> ok:false (wie beim Kauf)
+DO $$
+DECLARE v_settle int; v_depot int; v_hold int; v_goal int; v_goal2 int; v_r jsonb; v_cur numeric; v_cnt int; v_sell int;
+        v_usd_depot int; v_usd_hold int;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__sg_sell_settle__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__sg_sell_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
+           'name','iShares MSCI World','shares',20,'price_per_share',100,'order_fee',0,'transaction_date',(CURRENT_DATE - 10)::text));
+  v_hold := (v_r->>'holding_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__sg_sell Auto__', 5000, current_date + 400, 'active') RETURNING id INTO v_goal;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__sg_sell Leer__', 5000, current_date + 400, 'active') RETURNING id INTO v_goal2;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_depot, 'amount', 1000));
+
+  -- (G1)
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',5,'price_per_share',120,
+           'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Auto__'));
+  v_sell := (v_r->>'sell_tx_id')::int;
+  SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'derisk_amount')::numeric IS DISTINCT FROM 600 OR v_cur IS DISTINCT FROM 1000
+     OR (SELECT delta_native FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_sell AND account_id = v_depot AND kind = 'derisk') IS DISTINCT FROM -600
+     OR (SELECT delta_native FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_sell AND account_id = v_settle AND kind = 'derisk') IS DISTINCT FROM 600 THEN
+    RAISE EXCEPTION 'FAIL sell [G1 derisk]: % / current %', v_r, v_cur; END IF;
+  RAISE NOTICE 'PASS sell [G1: Erloes 600 vom Depot aufs Konto umgeschichtet, Ziel 1000]';
+
+  -- (G2)
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',8,'price_per_share',100,
+           'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Auto__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'derisk_amount')::numeric IS DISTINCT FROM 400
+     OR (SELECT share_eur FROM finance.savings_goal_account_share WHERE goal_id = v_goal AND account_id = v_depot) IS DISTINCT FROM 0
+     OR (SELECT current_amount FROM finance.savings_goal_progress WHERE id = v_goal) IS DISTINCT FROM 1000 THEN
+    RAISE EXCEPTION 'FAIL sell [G2 Rest]: %', v_r; END IF;
+  RAISE NOTICE 'PASS sell [G2: nur der Rest 400 umgeschichtet, Depot-Anteil 0]';
+
+  -- (G3)
+  SELECT count(*) INTO v_cnt FROM finance.transactions WHERE holding_id = v_hold AND category = 'sell';
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',100,
+           'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Leer__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false
+     OR (SELECT count(*) FROM finance.transactions WHERE holding_id = v_hold AND category = 'sell') <> v_cnt THEN
+    RAISE EXCEPTION 'FAIL sell [G3 kein Ziel-Geld im Depot]: %', v_r; END IF;
+  -- (G4)
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',100,
+           'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Gibtsnicht__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL sell [G4 unbekanntes Ziel]: %', v_r; END IF;
+  -- (G5)
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('USD', 2) ON CONFLICT (code) DO NOTHING;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__sg_sell_usd_depot__','stocks_depot','USD','active', v_settle) RETURNING id INTO v_usd_depot;
+  INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency)
+    VALUES (v_usd_depot, 'USDX', 'USD Test', 10, 10, 'USD') RETURNING id INTO v_usd_hold;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind) VALUES (v_goal2, v_usd_depot, 50, 'EUR', 'manual');
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_usd_hold,'shares',1,'price_per_share',10,
+           'order_fee',0,'symbol','USDX','savings_goal_name','__sg_sell Leer__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' NOT ILIKE '%currency%' THEN
+    RAISE EXCEPTION 'FAIL sell [G5 Waehrung]: %', v_r; END IF;
+  RAISE NOTICE 'PASS sell [G3 kein Ziel-Geld, G4 unbekanntes Ziel, G5 Waehrung -> ok:false ohne Verkauf]';
+END $$;
+
 ROLLBACK;

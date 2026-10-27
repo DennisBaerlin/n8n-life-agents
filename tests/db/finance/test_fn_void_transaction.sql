@@ -167,12 +167,13 @@ BEGIN
   SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal;
   IF v_cur IS DISTINCT FROM 200 THEN
     RAISE EXCEPTION 'FAIL void [goal-buy]: Sparziel erwartet 200, got % (Journal-Zeile ueberlebt?)', v_cur; END IF;
-  -- append-only: die Kauf-Zeile bleibt, eine Gegenzeile kind=void -50 kommt dazu
-  SELECT count(*), sum(delta_native) FILTER (WHERE kind = 'void') INTO v_cnt, v_delta
+  -- append-only: die beiden Kauf-Zeilen (Depot +50, Verrechnungskonto -50; 2026-10-27) bleiben, je eine Gegenzeile
+  -- kind=void kommt dazu (Depot -50, Verrechnungskonto +50)
+  SELECT count(*), sum(delta_native) FILTER (WHERE kind = 'void' AND account_id = v_depot) INTO v_cnt, v_delta
   FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal;
-  IF v_cnt IS DISTINCT FROM 2 OR v_delta IS DISTINCT FROM -50 THEN
-    RAISE EXCEPTION 'FAIL void [goal-buy journal]: erwartet 2 Zeilen inkl. void -50, got count=% void=%', v_cnt, v_delta; END IF;
-  RAISE NOTICE 'PASS void [goal-buy: Sparziel 200, Journal-Gegenzeile void -50]';
+  IF v_cnt IS DISTINCT FROM 4 OR v_delta IS DISTINCT FROM -50 THEN
+    RAISE EXCEPTION 'FAIL void [goal-buy journal]: erwartet 4 Zeilen inkl. Depot-void -50, got count=% void=%', v_cnt, v_delta; END IF;
+  RAISE NOTICE 'PASS void [goal-buy: Sparziel 200, Journal-Gegenzeilen fuer Depot und Verrechnungskonto]';
 
   -- ===== TEST 6b: Reserve schon freigegeben -> Void wuerde Ziel-Reserve negativ machen -> ok:false =====
   SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
@@ -256,6 +257,50 @@ BEGIN
   IF (v_res->'reverted_real_estate'->>0)::int IS DISTINCT FROM v_re THEN
     RAISE EXCEPTION 'FAIL void [Verkauf return]: reverted_real_estate erwartet [%], got %', v_re, v_res->'reverted_real_estate'; END IF;
   RAISE NOTICE 'PASS void [Immobilienverkauf rueckgaengig -> active]';
+END $$;
+
+-- Sparziel-Zweckbindung 2026-10-27 (Plan-Review B1/M3):
+--  (V1) zwei goal-verknuepfte Kaeufe aus Ziel-Geld, den ZWEITEN stornieren -> ok (der Guard rechnet mit dem vollen
+--       Anteil auf dem Verrechnungskonto, nicht nur mit den Journal-Zeilen), Ziel unveraendert
+--  (V2) Verkauf mit Sparziel stornieren -> die derisk-Zeilen bekommen Gegenzeilen, Anteile wie vorher
+DO $$
+DECLARE v_settle int; v_depot int; v_goal int; v_rp int; v_b1 int; v_b2 int; v_r jsonb; v_cur numeric; v_hold int; v_sell int;
+        v_dep_share numeric; v_set_share numeric;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__vd2_settle__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__vd2_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__vd2 Ziel__', 9000, current_date + 900, 'active') RETURNING id INTO v_goal;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_settle, 'amount', 1000));
+  v_r := finance.fn_create_savings_plan(jsonb_build_object('name','__vd2_plan__','depot_name','__vd2_depot__',
+           'isin','IE00B4L5Y983','symbol','IUSQ','security_name','iShares MSCI World','amount',100,'schedule_interval',1,
+           'schedule_unit','month','first_payment_date',CURRENT_DATE::text));
+  v_rp := (v_r->>'recurring_payment_id')::int;
+  PERFORM finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'link_savings_plan_name', '__vd2_plan__'));
+  v_b1 := (finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
+           'name','iShares MSCI World','shares',1,'price_per_share',100,'order_fee',0,'transaction_date',(CURRENT_DATE - 1)::text,
+           'recurring_payment_id',v_rp))->>'buy_tx_id')::int;
+  v_b2 := (finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
+           'name','iShares MSCI World','shares',1,'price_per_share',100,'order_fee',0,'transaction_date',CURRENT_DATE::text,
+           'recurring_payment_id',v_rp))->>'buy_tx_id')::int;
+  -- (V1)
+  v_r := finance.fn_void_transaction(jsonb_build_object('transaction_id', v_b2));
+  SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_cur IS DISTINCT FROM 1000 THEN
+    RAISE EXCEPTION 'FAIL void [V1 zweiten Kauf stornieren]: % / current %', v_r, v_cur; END IF;
+  RAISE NOTICE 'PASS void [V1: zweiter goal-Kauf stornierbar, Ziel 1000]';
+
+  -- (V2) 1 Stueck zu 150 verkaufen, Erloes dem Ziel zuordnen (Depot-Anteil 100 -> 100 umschichten), dann stornieren
+  SELECT id INTO v_hold FROM finance.depot_holdings WHERE account_id = v_depot;
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',150,
+           'order_fee',0,'symbol','IUSQ','savings_goal_name','__vd2 Ziel__'));
+  v_sell := (v_r->>'sell_tx_id')::int;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL void [V2 setup]: %', v_r; END IF;
+  v_r := finance.fn_void_transaction(jsonb_build_object('transaction_id', v_sell));
+  SELECT share_eur INTO v_dep_share FROM finance.savings_goal_account_share WHERE goal_id = v_goal AND account_id = v_depot;
+  SELECT share_eur INTO v_set_share FROM finance.savings_goal_account_share WHERE goal_id = v_goal AND account_id = v_settle;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_dep_share IS DISTINCT FROM 100 OR v_set_share IS DISTINCT FROM 900 THEN
+    RAISE EXCEPTION 'FAIL void [V2 Verkauf stornieren]: % / depot % settle %', v_r, v_dep_share, v_set_share; END IF;
+  RAISE NOTICE 'PASS void [V2: goal-Verkauf storniert, Anteile Depot 100 / Verrechnungskonto 900 wie vorher]';
 END $$;
 
 ROLLBACK;

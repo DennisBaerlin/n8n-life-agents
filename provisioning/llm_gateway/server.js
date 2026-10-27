@@ -220,6 +220,7 @@ function applyCaching(body) {
 // n8n-Agenten (Tools-Agent, lmChatAnthropic v1.5 auf 2.44.4) mit LEEREN Argumenten beim Werkzeug an ->
 // "Received tool input did not match expected schema" -> Wiederholungen bis maxIterations -> Fehler statt Antwort
 // (bezahlter Lauf 2026-10-23, e2e29: Modell schickte {account_name, amount:100, ...}, das Werkzeug bekam {}).
+// Belegt auf 2.44.4; ob n8n 2.45 (#41241) die Ursache mitbehebt, ist offen -> BACKLOG „Gateway-Erzwingen pruefen".
 // Anthropic-Option tool_choice.disable_parallel_tool_use: hoechstens ein Werkzeug je Antwort, das Modell
 // arbeitet die Schritte nacheinander ab. Nur Agenten-Anfragen (eigenes Werkzeug), nur bei tool_choice auto/
 // fehlend; ein eigener Wert der Anfrage (none/any/tool oder schon gesetzt) bleibt unangetastet.

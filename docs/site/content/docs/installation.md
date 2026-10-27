@@ -43,7 +43,7 @@ Ein einziger Durchlauf richtet alles ein:
 
 - **PostgreSQL 17** (die Datenbank) — die Hauptversion bleibt fest, Sicherheits-Updates innerhalb von 17 spielt `lifeagents update` ein.
 - **Node.js 24** (die Laufzeit, auf der n8n läuft).
-- **n8n 2.44.4** (die Workflow-Engine, auf der Orchestrator und alle Agenten laufen).
+- **n8n 2.45.4** (die Workflow-Engine, auf der Orchestrator und alle Agenten laufen).
 - **Nicht** installiert wird der HTTPS-Zugang selbst: den stellt **dein** Reverse Proxy bereit (bring your own — siehe [„Reverse Proxy"](#reverse-proxy)). Der Installer gibt dafür eine fertige Konfiguration aus, die nach außen ausschließlich den Telegram-Nachrichtenweg durchlässt und alles andere sperrt.
 - Das komplette **Datenbank-Schema** samt Grunddaten (Modell-Liste, zentrale Einstellungen, die englischen Verhaltens-Anweisungen der Agenten — keine persönlichen Daten).
 - Die **Owner-Einrichtung:** dein n8n-Zugang wird angelegt, ein interner Zugriffsschlüssel erzeugt, Lese-Rollen für die Datenbank eingerichtet und der Telegram-Bot vorbereitet.

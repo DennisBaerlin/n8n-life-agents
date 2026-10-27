@@ -22,7 +22,7 @@ Autoren-Regeln für jeden Workflow/Def; Engine-Mechanik → `scripts/build/CLAUD
 - **Feste Nutzertexte nie als Literal:** Katalog-Key + `t`-Map (`Get-UiTextExpr`) bzw. `core.fn_ui_text` mit der Empfänger-Sprache; `ui_literal_lint` (Ratchet, §3.11).
 - **Command-Registry:** Slash-Befehle leben im `commands`-Block des Manifests; `dispatch:{agent,task}` = Code-Pfad-Command (Build-Zeit-Switch), reiner Text-/Callback-Prefix = Laufzeit-`core.callback_handlers`. Switch-Fallback **zuletzt** dynamisch verdrahten (sonst ist jeder Chat-Text still tot). `PACK_BUDGET` → Referenz.
 
-## n8n-Versionshinweise (2.44.4)
+## n8n-Versionshinweise (2.45.4)
 
 - **Typed Sub-Workflow Inputs** im Start-Node des Sub-Workflows deklarieren (`executeWorkflowTrigger` → `workflowInputs.values`), nicht im Aufrufer; immer `inputSource: "workflowInputs"` — `passthrough` unterdrückt jede Schema-Deklaration still. Beispiel → `docs/reference/packages.md`.
 - **Node-`typeVersion`s bleiben beim n8n-Update stehen** (Owner-Phase 2026-10-20, Sprung über 23 Minor-Versionen): n8n führt gespeicherte Versionen unverändert weiter, neuere ändern Verhalten still (`executeWorkflowTrigger` 1.2/1.3 Rückgabe, `scheduleTrigger` 1.4 Nachholen, `lmChatAnthropic` 1.6 eigenes Caching). Ein Bump ist ein eigenes, testpflichtiges Feature. Versionsunabhängig: ein Postgres-SELECT liefert bei 0 Zeilen **kein** Item (seit 2.25 auch mit `WITH`/Kommentar vorn) → aggregieren (`count`/`jsonb_agg`), wenn der Folge-Node laufen muss; Tool-Read per id/Name → `New-RequiredRowGate`.

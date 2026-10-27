@@ -16,7 +16,7 @@ Persönliches Multi-Agent-System auf self-hosted n8n (Debian-LXC im LAN): ein Te
 
 - Neue Oberfläche = bestehendes Analog übernehmen (meist `finance`; Katalog `docs/package-contract.md` §8). Abweichung nur mit belegtem Grund (n8n-Quirk, DB-Gesetz, Single-User), nie „YAGNI". Zweiter Konsument eines Sonderwegs → sofort vereinheitlichen; Core-Single-Paket-Naht → jetzt generisch.
 - Bugs, stille Falschrechnung, toter Code, Drift: sofort fixen. `BACKLOG.md` nur für bewusst vertagte Features und getriggerte Entscheidungen.
-- Recherche vor dem Design bei unklarem Scope, Quellen verlinken. **n8n-Doku vor jedem Node-Bau** (Version 2.44.4): n8n akzeptiert ungültige Parameter beim Publish und failt zur Laufzeit still. Fallen → `packages/CLAUDE.md` *Build-Gotchas*.
+- Recherche vor dem Design bei unklarem Scope, Quellen verlinken. **n8n-Doku vor jedem Node-Bau** (Version 2.45.4): n8n akzeptiert ungültige Parameter beim Publish und failt zur Laufzeit still. Fallen → `packages/CLAUDE.md` *Build-Gotchas*.
 - **Daten-Integrität:** DB-Constraint/Trigger ist Gesetz → `fn_*` ist atomare Durchsetzung → Tool/Prompt sind Komfort und driften. Invariante zuerst als Constraint; Multi-Row-Invarianten nie über Gate-Trigger (MVCC). → `.claude/rules/sql.md` *Integritäts-Konventionen*.
 - **Das LLM rechnet nicht:** Tool-Inputs sind minimale Roh-Werte (nur Nicht-Ableitbares); jede abgeleitete Größe (Rate, Zins/Tilgung, Vorzeichen, Monats-Normalisierung) berechnet eine `fn_*`/GENERATED-Spalte, kein `$fromAI`-Feld. HITL-Preview-Werte read-only aus derselben `fn` (`packages/CLAUDE.md` *Post-State-Vertrag*).
 - Benennung folgt dem etablierten Standard (z. B. Flyway `V__`/`R__`); unklar → recherchieren. Surgical Changes, KISS; YAGNI begrenzt nur den Ausbaugrad, nie Standards oder Bestands-Muster.
@@ -38,7 +38,7 @@ Ausgabesprache zentral in `packages/core/contexts/global_instructions.md` *Langu
 
 ## Versionen & Deploy-Modell
 
-n8n **2.44.4** · PostgreSQL **17**. Keine Instanz ist Sync-Ziel, der getrackte Baum ist die Source of Truth. **Dev/Test** = ephemeres Docker-Substrat (`scripts/dev/bootstrap_test_n8n.ps1 -Reset` fährt `provision.sh`); **Dev-Instanz** = realer LXC für den Install-Test des Owners, nur per `/reset-dev`; **Prod** = Deploy-Ziel (`provision.sh`, `lifeagents update`). → `scripts/CLAUDE.md` *Deploy-Modell*.
+n8n **2.45.4** · PostgreSQL **17**. Keine Instanz ist Sync-Ziel, der getrackte Baum ist die Source of Truth. **Dev/Test** = ephemeres Docker-Substrat (`scripts/dev/bootstrap_test_n8n.ps1 -Reset` fährt `provision.sh`); **Dev-Instanz** = realer LXC für den Install-Test des Owners, nur per `/reset-dev`; **Prod** = Deploy-Ziel (`provision.sh`, `lifeagents update`). → `scripts/CLAUDE.md` *Deploy-Modell*.
 
 ## Telegram-Architektur
 

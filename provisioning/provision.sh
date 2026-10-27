@@ -101,7 +101,7 @@ TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"   # --trusted-proxies: Reverse Proxy auf 
 
 # Version pins (the whole point of reproducible provisioning).
 PG_VERSION="${PG_VERSION:-17}"
-N8N_VERSION="${N8N_VERSION:-2.44.4}"
+N8N_VERSION="${N8N_VERSION:-2.45.4}"
 NODE_MAJOR="${NODE_MAJOR:-24}"
 
 # Fixed paths / identities.

@@ -19,11 +19,10 @@
 # der Leit-Anker fuer die Status-Erkennung.
 N8N_PATCHES=(
   "memory-all-tool-rounds|n8n/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/memoryManagement.js|265e5c43cf6474f882ef03a24bb120579022ac2da2d93a297db865635e7eff73|47358c76e32c0618b7dff6561ecc7285a79cabf20f489e7a5b4f4ccb0baae84c|AI Agent V3 speichert nur die letzte Tool-Runde einer Nachricht im Chat-Gedächtnis (https://github.com/n8n-io/n8n/issues/41554)"   # lint-ignore: npm-Paketpfad unter `npm root -g`, kein Repo-Ordner
-  "thinking-tool-args|n8n/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/buildSteps.js|430fe1a95edf6c85faaa02e32b63dc07bff40ef334e46b53cdf80b773acc8cc2|1339d6c36e52190e8ee292ae691a97a279b7acee0a0860c03191352757c198cf|AI Agent V3 spielt einen Claude-Werkzeugaufruf nach Nachdenken ohne seine Angaben zurueck (input {}), das Modell wiederholt ihn (https://github.com/n8n-io/n8n/pull/41241)"   # lint-ignore: npm-Paketpfad unter `npm root -g`, kein Repo-Ordner
 )
 
 # _n8n_patch_pairs <id> -> JSON-Array der Ersatz-Paare
-#   memory-all-tool-rounds (n8n 2.44.4 / langchain 2.44.2):
+#   memory-all-tool-rounds (n8n 2.44.4 / langchain 2.44.2; in n8n 2.45.4 / langchain 2.45.3 byte-gleiche Datei):
 #   (1) saveToMemory schneidet die Tool-Runden einer Nachricht nicht mehr bis auf die letzte ab (= Upstream-PR #41577);
 #   (2) buildMessagesFromSteps: fruehere Runden kommen ueber die Ausfuehrungs-Metadaten serialisiert zurueck
 #       ({lc, kwargs} statt AIMessage) -> wieder zur AIMessage machen, sonst bricht die Postgres-Chat-Memory mit
@@ -39,19 +38,6 @@ _n8n_patch_pairs() {
 ]
 JSON
       ;;
-    #   thinking-tool-args (n8n 2.44.4 / langchain 2.44.2; = Upstream-PR #41241, erster Teil): buildAnthropicContentBlocks
-    #   las die Angaben aus toolInput.input -- bei Werkzeugen ohne Feld `input` (alle $fromAI-Tools) bzw. mit Text-`input`
-    #   (Agent-Aufrufe des Orchestrators) wurde daraus {}. Live-Befund 2026-10-26: nach einer Bestaetigung sah der
-    #   Finanz-Assistent seinen tool_set_loan-Aufruf leer und rief ihn mit neuer Karte erneut auf. Jetzt: die Angaben
-    #   selbst, ohne das Toolkit-Routing-Feld `tool` (wie upstream). Der zweite Teil des PR (parallele Aufrufe mit einem
-    #   gemeinsamen Denkblock als EINE Nachricht) fehlt bewusst: der LLM-Gateway erzwingt disable_parallel_tool_use.
-    thinking-tool-args) cat <<'JSON'
-[
-  ["    const toolInputData = toolInput.input;\n    const toolUseBlock = {\n        type: 'tool_use',\n        id: toolId,\n        name: toolName,\n        input: toolInputData && typeof toolInputData === 'object'\n            ? toolInputData\n            : {},\n    };",
-   "    const toolUseBlock = {\n        type: 'tool_use',\n        id: toolId,\n        name: toolName,\n        input: Object.fromEntries(Object.entries(toolInput ?? {}).filter(([k]) => k !== 'tool')),\n    };"]
-]
-JSON
-      ;;
     *) return 1 ;;
   esac
 }
@@ -60,7 +46,6 @@ JSON
 _n8n_patch_anchor() {
   case "$1" in
     memory-all-tool-rounds) printf '%s' 'const newSteps = previousStepsCount ? steps.slice(previousStepsCount) : steps;' ;;
-    thinking-tool-args) printf '%s' 'const toolInputData = toolInput.input;' ;;
     *) return 1 ;;
   esac
 }

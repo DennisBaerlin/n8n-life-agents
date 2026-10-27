@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 386 fn-Dateien.
+Umfang: 387 fn-Dateien.
 
 ## finance.fn_account_free_balance (READ, STABLE) — freier Saldo eines saldo-basierten Kontos
 - `finance.fn_account_free_balance(p_account int) -> numeric`
@@ -83,6 +83,11 @@ Umfang: 386 fn-Dateien.
 - `agent.fn_advisor_save_section(p jsonb) -> jsonb`
 - jsonb-Keys: chat_id, domain, person_id, plan_name, section_content, section_data, section_key
 - Upsertet EINE Interview-Sektion in interview_state des Draft-Plans der Domain; existiert kein Draft, wird er angelegt (version = MAX(version)+1 der Domain — die DB zaehlt, nicht das LLM). Aufgerufen vom HITL-gegateten Tool agent.tool_save_plan_section (domain ist dort FIXER Binding-Input, nie $fromAI). P0c PERSON-SCOPE (Paritaet fn_set_context_facts): Plan-Schluessel = (domain, person_id). household-Domains (finance/financial_planning) -> person_id NULL (ein Haushalts-Plan); per_user (career/career_planning, core.context_scopes) -> person_id = der Sender selbst (own_user_only), aus der chat_id via fn_resolve_sender (NIE LLM); unaufgeloester Sender bei per_user -> {ok:false}. Permission via fn_check_write_permission (owner_only delegiert byte-gleich an fn_sender_is_member -> finance unveraendert). Eingabe jsonb: domain (Pflicht — Phase B: kein 'finance'-Default mehr; ein leeres domain landete vorher still im Finanzplan), chat_id (Identitaet), section_key (Pflicht, freier Text), section_content (Pflicht, Markdown-Zusammenfassung der Sektion), section_data (optional; jsonb-Objekt ODER JSON-String — String wird geparst; relative Zeitangaben in *_date/since loest core.fn_resolve_fact_dates auf, jedes Top-Level-Objekt bekommt as_of = heute von der fn), plan_name (optional, nur bei Draft-Neuanlage). RUECKGABE-VERTRAG: Erfolg -> {ok:true, plan_id, version, status:'draft', draft_created, sections, section_count} (Post-State: welche Sektionen der Draft JETZT hat; draft_created = DB-entschieden). Korrigierbar (fehlendes domain, leerer section_key/-content, invalides section_data-JSON) -> {ok:false, reason} OHNE Write (kein RAISE -> kein Owner-Alert).
+
+## finance.fn_app_screen_overview
+- `finance.fn_app_screen_overview(p jsonb) -> jsonb`
+- jsonb-Keys: params, person_id, probe
+- finance.fn_app_screen_overview(p jsonb) — Mini-App-Bildschirm „Vermögen" (READ, View-Modell v1) Handler der Registry app_screens (docs/package-contract.md §3.12): core.fn_app_screen ruft ihn mit {person_id, params} NACH der initData-Pruefung. Liefert Struktur + typisierte Werte (core.fn_ui_tpl/_money/_date), nie Text; die Seite rendert per Get-UiRenderLibJs und rechnet nichts (Summen, Anteile, gap kommen von hier). Quellen: networth_by_asset_class (je bucket summiert, has_fx_gap) + accounts/account_balances (cash, Festgeld, P2P; Kredit- und Depot-Konten nicht, deren Wert steht in den Anlagearten bzw. im Bildschirm Kredite/Depot). ZERO-TRUST-SICHTBARKEIT: die Rolle loest der Handler selbst auf (core.fn_household_persons), nie der Aufrufer. Allow-List: owner/partner sehen den Haushalt; jede andere oder unbekannte Rolle nur owner_person_id = ich (Haushaltszeilen mit NULL bleiben fuer Kinder unsichtbar). Die Antwort traegt keine IDs. params.probe = true -> nur {ok, empty} (Navigation zeigt nur nicht-leere Bildschirme). Fehler als Daten, nie RAISE: Frei-SQL-Sitzung -> forbidden, kaputte Eingabe -> bad_request. SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC (Muster career.fn_read_job_matches); der INVOKER-Bulk- Grant an finance_ro laesst DEFINER-fns aus, EXECUTE bekommt nur finance_rw (Bulk) bzw. der Host als Eigentuemer. Tests: tests/db/finance/test_fn_app_screen_overview.sql
 
 ## core.fn_append_context_note
 - `core.fn_append_context_note(p jsonb) -> jsonb`

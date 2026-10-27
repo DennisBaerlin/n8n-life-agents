@@ -294,6 +294,12 @@ section[id], footer[id] { scroll-margin-top: 84px; }
 .docs-content td { padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
 .docs-content tr:last-child td { border-bottom: none; }
 .docs-content hr { border: none; border-top: 1px solid var(--hairline); margin: 32px 0; }
+/* Bildschirmfotos (Handy-Hochformat): zwei Bilder in einem Absatz stehen nebeneinander. */
+.docs-content img {
+  display: inline-block; vertical-align: top; width: min(280px, calc(50% - 8px)); height: auto;
+  margin: 4px 12px 8px 0; border-radius: 18px; border: 1px solid var(--hairline);
+  box-shadow: 0 6px 20px rgba(33,29,29,.08);
+}
 
 /* ============ Motion (ruhig, CSS-only) ============ */
 @media (prefers-reduced-motion: no-preference) {

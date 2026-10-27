@@ -23,6 +23,8 @@ Nur eine kleine Handvoll Schrägstrich-Befehle (Slash-Commands) hat eine feste, 
 | `/kosten` | nur der Owner | Deutsches Alias von `/costs` — macht exakt dasselbe. |
 | `/notfall` | alle (Owner und Haushaltsmitglieder) | Fester Einstieg für den Ereignisfall: startet den Nachlass-Assistenten direkt — ruft die **Notfallmappe** (das ganze Vorsorge-Register als ein weiterleitbares Dokument) ab oder beginnt die einfühlsame Begleitung im Todes- bzw. Vorsorgefall. Gedacht für den überlebenden Partner, damit er im Ernstfall nicht erst die richtigen Worte finden muss. |
 
+Hast du links neben dem Eingabefeld den Knopf „📊 Übersicht“ (siehe [Übersicht (Mini-App)](uebersicht-app.html)), sitzt er an der Stelle des Menü-Knopfs: Die Befehlsliste öffnest du dann, indem du im Eingabefeld „/“ tippst.
+
 „Wer sieht ihn" bezieht sich nur auf das Befehls-Menü in Telegram (es zeigt nur Befehle installierter, eingeschalteter Pakete — `/notfall` also nur mit dem Nachlass-Paket): dort sehen Owner und eingeladene Mitglieder `/help`, `/onboarding`, `/language`, `/persona`, `/reminders` und `/notfall`, der Owner zusätzlich `/costs`. Getippt funktionieren auch `/start`, `/hilfe`, `/sprache` und `/erinnerungen` für alle, `/kosten` für den Owner. Die Kurzbeschreibungen im Menü erscheinen in der Sprache, auf die das Telegram-Programm des jeweiligen Geräts eingestellt ist (Deutsch, Englisch oder Koreanisch; bei jeder anderen App-Sprache in der Sprache des Owners). Mitglieder richten über `/onboarding` ihre eigenen, persönlichen Bereiche ein (z. B. das Karriere-Profil) — ihr „Weiter"-Knopf führt nur dorthin; Haushaltsbereiche (wer gehört dazu, Finanzen, Nachlass) sind als „richtet der Owner ein" markiert.
 
 ## Was ausdrücklich KEIN Befehl ist

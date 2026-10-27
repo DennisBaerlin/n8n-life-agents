@@ -14,6 +14,8 @@
       title: Chatten & Bestätigen
     - slug: monats-check
       title: Monats-Check
+    - slug: uebersicht-app
+      title: Übersicht (Mini-App)
     - slug: befehle
       title: Befehle
 - group: Die Agenten

@@ -1,0 +1,119 @@
+{
+  "_comment": "Mini-App View-Modell v1 (docs/package-contract.md §3.12). Erfundene Werte (Repo oeffentlich). page_* = Antworten von core.fn_app_screen an die Seite; handler_overview = Ausgabe einer Bildschirm-fn. Die Seite rendert jedes {kind:...}-Objekt mit uiRender(ui).val() (Get-UiRenderLibJs), rohe Strings per textContent.",
+  "page_nav": {
+    "ok": true,
+    "ui": {
+      "lang": "de",
+      "locale": "de-DE",
+      "t": {
+        "core.app.title": "Übersicht",
+        "core.app.reload": "Neu laden",
+        "core.app.gap": "unvollständig – ein Kurs fehlt",
+        "core.fmt.empty": "—",
+        "finance.app.screen.overview": "Vermögen"
+      }
+    },
+    "screens": [
+      { "screen": "overview", "title": { "kind": "tpl", "value": "finance.app.screen.overview", "params": {} }, "icon": "💶" }
+    ]
+  },
+  "page_screen": {
+    "ok": true,
+    "ui": {
+      "lang": "de",
+      "locale": "de-DE",
+      "t": {
+        "core.fmt.empty": "—",
+        "core.app.gap": "unvollständig – ein Kurs fehlt",
+        "finance.app.overview.title": "Vermögen",
+        "finance.app.overview.hero": "Vermögen gesamt",
+        "finance.app.overview.as_of": "Stand {date}",
+        "finance.app.overview.section_classes": "Nach Anlageart",
+        "finance.app.overview.section_accounts": "Konten",
+        "finance.app.overview.empty": "Noch keine Konten angelegt.",
+        "finance.app.overview.balance_as_of": "Saldo vom {date}",
+        "finance.app.pill.price_missing": "Kurs fehlt",
+        "finance.app.pill.ok": "aktuell",
+        "finance.enum.asset_class.cash": "Bargeld & Konten",
+        "finance.enum.asset_class.etf": "ETFs"
+      }
+    },
+    "view": {
+      "ok": true,
+      "title": { "kind": "tpl", "value": "finance.app.overview.title", "params": {} },
+      "hero": {
+        "label": { "kind": "tpl", "value": "finance.app.overview.hero", "params": {} },
+        "value": { "kind": "money", "value": 48250.37, "currency": "EUR" },
+        "gap": false,
+        "note": { "kind": "tpl", "value": "finance.app.overview.as_of", "params": { "date": { "kind": "date", "value": "2026-10-27" } } }
+      },
+      "banners": [],
+      "sections": [
+        {
+          "title": { "kind": "tpl", "value": "finance.app.overview.section_classes", "params": {} },
+          "empty": { "kind": "tpl", "value": "finance.app.overview.empty", "params": {} },
+          "items": [
+            {
+              "label": { "kind": "enum", "enum": "finance.enum.asset_class", "value": "cash" },
+              "sub": null,
+              "value": { "kind": "money", "value": 12250.37, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "progress": { "pct": 25.4, "state": "neutral" },
+              "target": null
+            },
+            {
+              "label": { "kind": "enum", "enum": "finance.enum.asset_class", "value": "etf" },
+              "sub": null,
+              "value": { "kind": "money", "value": 36000.00, "currency": "EUR" },
+              "gap": false,
+              "pill": { "state": "ok", "icon": "check", "text": { "kind": "tpl", "value": "finance.app.pill.ok", "params": {} } },
+              "progress": { "pct": 74.6, "state": "neutral" },
+              "target": null
+            }
+          ]
+        },
+        {
+          "title": { "kind": "tpl", "value": "finance.app.overview.section_accounts", "params": {} },
+          "empty": { "kind": "tpl", "value": "finance.app.overview.empty", "params": {} },
+          "items": [
+            {
+              "label": "Girokonto Beispielbank",
+              "sub": { "kind": "tpl", "value": "finance.app.overview.balance_as_of", "params": { "date": { "kind": "date", "value": "2026-10-25" } } },
+              "value": { "kind": "money", "value": 2310.55, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "progress": null,
+              "target": null
+            },
+            {
+              "label": "Reisekasse USD",
+              "sub": null,
+              "value": { "kind": "money", "value": 1200.00, "currency": "USD" },
+              "gap": true,
+              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.pill.price_missing", "params": {} } },
+              "progress": null,
+              "target": null
+            },
+            {
+              "label": "<img src=x onerror=alert(1)>",
+              "sub": null,
+              "value": { "kind": "money", "value": 0, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "progress": null,
+              "target": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "page_refusal": {
+    "ok": false,
+    "code": "expired",
+    "ui": { "lang": "de", "locale": "de-DE", "t": { "core.app.error.expired": "Die Übersicht ist abgelaufen. Bitte schließen und neu öffnen." } },
+    "text": { "kind": "tpl", "value": "core.app.error.expired", "params": {} }
+  },
+  "handler_probe": { "ok": true, "empty": false }
+}

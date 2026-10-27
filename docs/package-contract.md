@@ -62,6 +62,7 @@ key='core_version')`, seeded from the `.config` block of `packages/core/manifest
 | `backup` | – | Declarative backup surface (§3.7) — which of the package's user-data tables the CLI (`lifeagents backup`) dumps/restores: `{ schema_dump?, exclude_tables[]?, full_tables[]?, filtered_tables{qual→WHERE}? }`. Read by `backup_cli.sh` (jq), not by SQL. |
 | `credentials` | – | Declarative package secrets (§3.8) — the n8n credentials a package needs from external API keys: `{ "<name>": { placeholder, name, type, required?, env{ KEY: {field, validator?, secret?, prompt} } } }`. Read by `inject_credentials.sh` + the stage-4 wizard (jq), never by SQL. |
 | `approval_matrix` | – | Maker-checker tier per HITL-gate caller of this package (§3.10): `{ "<workflow-name>": { tier, reason[, break_glass] } }`. Build data only (`build.ps1` injects the tier, `approval_lint` verifies) — never read by the installer or SQL. |
+| `app_screens` | – | Screens this package contributes to the read-only Telegram Mini App (§3.12): `{ "<screen>": { handler_fn, ord, icon } }`. Host (`_seed_app_screens`) seeds them into `core.app_screens`; `core.fn_app_screen` dispatches generically. Own-schema-scoped, `(jsonb)` arity. |
 | `migrations` | ✓ | Path to the package's `db/` migration set (own schema only; **no core/agent DDL** — DB4/R11). |
 
 The **core is itself a package** (`name: "core"`, always `active`) for homogeneous handling (D1/PM4) — but
@@ -685,6 +686,59 @@ fixed texts.
   (every cron send in the recipient's language, against the mock Telegram/LLM).
 - **Bei uns anders:** plain `{name}` placeholders, no ICU MessageFormat/Fluent (no plural/gender cases in the
   catalog; CLDR: ko has only `other`).
+
+### 3.12 `app_screens` manifest block — screens of the read-only Telegram Mini App
+
+The Mini App (menu button „📊 Übersicht“, workflow `core.main_app_serve`) is a generic shell: it knows no
+package. Each screen is a package read-fn that returns a **view model** (structure + typed values, never text);
+the page renders it with the ONE renderer `Get-UiRenderLibJs` (§3.11), in the viewer's language and locale. The
+page computes nothing — states, progress and sums come from the DB.
+
+```jsonc
+"app_screens": {
+  "_comment": "…",
+  "overview": { "handler_fn": "finance.fn_app_screen_overview", "ord": 10, "icon": "💶" }
+}
+```
+
+- **Registry** (host-seeded like `callback_handlers`, §3.3 — not a §4.2 cross-package read): `seed_data.sh
+  _seed_app_screens` upserts `core.app_screens(screen, package, handler_fn, ord, icon)`; own-schema boundary,
+  `(jsonb)` arity warning; screen keys are unique across packages (`contract_lint`); `fn_pkg_purge_data` deletes
+  the package's rows. The tab title is the catalog key `<pkg>.app.screen.<screen>`.
+- **Dispatcher** `core.fn_app_screen(p text)` (INVOKER under the host credential, pattern
+  `core.fn_dispatch_callback`; never RAISEs): verifies Telegram `initData` (`core.fn_app_verify_init_data`,
+  HMAC with `core.app_secret`, `auth_date` ≤ `app.init_data_max_age_s`), checks `app.enabled`/`app.audience`,
+  re-resolves the person (`agent.fn_resolve_sender`), then calls `handler_fn(jsonb)` of an active package.
+- **Handler contract** `<pkg>.fn_app_screen_<screen>(p jsonb {person_id, params}) RETURNS jsonb`:
+  - SECURITY DEFINER read window (pattern `career.fn_read_job_matches`): pinned `search_path … pg_temp`,
+    `REVOKE ALL FROM PUBLIC`, first statement `core.fn_is_free_sql_session()` → `{ok:false, code:'forbidden'}`.
+  - **Zero-trust visibility:** the handler resolves the role itself (`core.fn_household_persons()`); allow-list —
+    only `owner`/`partner` see the household, every other or unknown role sees only own rows. A row the viewer may
+    not see never appears, not even as a name inside a banner or as a counter-account (use a neutral key).
+  - `params.probe = true` → `{ok:true, empty:<bool>}` only (navigation shows non-empty screens).
+  - Every text is a typed reference (`core.fn_ui_tpl`, keys `<pkg>.app.*` as complete literals); amounts
+    `core.fn_ui_money`, dates `core.fn_ui_date`, numbers `core.fn_ui_num`; raw names from data are plain strings.
+- **View model v1** (handler output; fixture `tests/fixtures/app_view_model_v1.json`):
+
+```jsonc
+{ "ok": true,
+  "title": <tpl>,
+  "hero": { "label": <tpl>, "value": <money>, "gap": false, "note": <tpl>|null } | null,
+  "banners": [ { "state": "alert|warn|ok", "icon": "alert|calendar|clock|check|pause|info", "text": <tpl>,
+                 "target": { "screen": "<screen>", "params": {} } | null } ],
+  "sections": [ { "title": <tpl>, "empty": <tpl>, "items": [ {
+      "label": "<raw name>" | <tpl>, "sub": <tpl>|null, "value": <money>|<number>|null, "gap": false,
+      "pill": { "state": "ok|warn|alert|neutral", "icon": "…", "text": <tpl> } | null,
+      "progress": { "pct": 0-100, "state": "ok|warn|alert|neutral" } | null,
+      "target": { "screen": "<screen>", "params": {} } | null } ] } ] }
+```
+
+  `state` always comes with an `icon` (colour is never the only signal). `gap: true` = an FX rate or price is
+  missing in that sum (`has_fx_gap`), the page marks the value as incomplete.
+- **Page responses** of `core.fn_app_screen` (POST body `{init_data, screen?, params?}`):
+  navigation `{ok:true, ui, screens:[{screen, title:<tpl>, icon}]}`, screen `{ok:true, ui, view}`, refusal
+  `{ok:false, code, ui, text:<tpl>}` — `ui` = `agent.fn_ui_texts_for` (`{lang, locale, t}`) for the viewer, with
+  every key of the response plus the shell keys (`core.app.*`, `core.fmt.*`).
 
 ---
 

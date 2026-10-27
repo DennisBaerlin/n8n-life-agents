@@ -111,6 +111,20 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_validate [savings_goal ohne Sparkonto -> invalid]';
 
+  -- ---------- TEST 5c (Sparziel-Zweckbindung 2026-10-27): Depot als Topf ohne Startbestand/Sparplan -> invalid ----------
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_imp Settle5c', 'cash', 'EUR', 'active');
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__test_imp Depot5c', 'stocks_depot', 'EUR', 'active', (SELECT max(id) FROM finance.accounts WHERE name = '__test_imp Settle5c'));
+  SELECT finance.fn_import_update_row(jsonb_build_object(
+    'batch_id', v_batch, 'row_no', 8,
+    'payload_merge', jsonb_build_object('reserve_account','__test_imp Depot5c')
+  )) INTO v_result;
+  SELECT validation_error INTO v_err FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 8;
+  IF COALESCE(v_err, '') NOT ILIKE '%is a depot%' THEN
+    RAISE EXCEPTION 'FAIL savings_goal-Validierung: Depot-Topf ohne already_saved/savings_plan erwartet Zeilenfehler, got %', v_err;
+  END IF;
+  RAISE NOTICE 'PASS fn_import_validate [Depot-Topf ohne Startbestand/Sparplan -> invalid]';   -- TEST 6 setzt den Topf neu
+
   -- ---------- TEST 6: fn_import_update_row — Korrektur macht Row valid ----------
   SELECT finance.fn_import_update_row(jsonb_build_object(
     'batch_id', v_batch, 'row_no', 8,

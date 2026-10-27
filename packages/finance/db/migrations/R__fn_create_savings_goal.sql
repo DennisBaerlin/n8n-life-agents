@@ -24,9 +24,11 @@
 --   SPARKONTO-PFLICHT (Audit Paket 3): ohne Topf liefe eine Rate als nackte Abbuchung ins Leere -> Fortschritt 0. Der
 --   Topf ist Gesetz in der fn (auch fuer den Import-Pfad), nicht nur im Tool.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, goal_id, recurring_payment_id (NULL ohne Rate), monthly_rate (eigene Rate,
---   0 ohne), target_date, first_payment_date, current_amount (Stand nach dem Startbestand, EUR), savings_plan_id
+--   0 ohne), target_date, first_payment_date, months (Raten-Monate auf dem Rest), current_amount (Stand nach dem
+--   Startbestand, EUR), savings_plan_id
 --   (verknuepft, sonst NULL), required_monthly_rate + plan_monthly_amount (nur mit Sparplan), card_lines,
---   beneficiary_person_id, beneficiary_name (ueber core.fn_household_persons, D10), effective {beneficiary_person_id}}
+--   beneficiary_person_id, beneficiary_name (ueber core.fn_household_persons, D10), effective {beneficiary_person_id,
+--   reserve_currency}}
 --   + optional savings_squeeze (fn_savings_squeeze_fold).
 --   Korrigierbar (Topf fehlt/ungeeignet, Zielbetrag<=0, Startbestand<0 oder mehr als frei, weder Datum noch Rate,
 --   Datum vor first_payment, Rate ohne Abbuchungskonto, Rate in ein Depot, Sparplan nicht gefunden/mehrdeutig/schon
@@ -123,8 +125,13 @@ BEGIN
                        || 'cannot be more than that.');
         END IF;
     END IF;
-    -- Sparziele rechnen in EUR: ein Startbestand auf einem Fremdwaehrungs-Topf zaehlt mit seinem EUR-Wert.
-    v_saved_eur := CASE WHEN v_depot THEN v_saved ELSE COALESCE(finance.fn_to_eur(v_saved, v_rccy), v_saved) END;
+    -- Sparziele rechnen in EUR: ein Startbestand auf einem Fremdwaehrungs-Topf zaehlt mit seinem EUR-Wert; ohne Kurs
+    -- korrigierbar ablehnen statt den nativen Betrag still als EUR zu nehmen.
+    v_saved_eur := CASE WHEN v_depot OR v_saved = 0 THEN v_saved ELSE finance.fn_to_eur(v_saved, v_rccy) END;
+    IF v_saved_eur IS NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'No exchange rate for ' || v_rccy || ' yet - the money already saved cannot be valued in EUR. Try again later.');
+    END IF;
 
     -- Rate ODER Zieldatum deterministisch auf dem Rest ableiten (kein LLM-Rechnen).
     v_sched := finance.fn_savings_rate_schedule(p || jsonb_build_object('already_saved', v_saved_eur));
@@ -222,13 +229,15 @@ BEGIN
     -- cashflow_coverage, sonst bliebe die Anlage ohne jeden Hinweis.
     RETURN jsonb_build_object('ok', true, 'goal_id', v_goal_id, 'recurring_payment_id', v_rp_id,
         'monthly_rate', CASE WHEN v_rp_id IS NOT NULL THEN v_rate ELSE 0 END,
-        'target_date', v_date, 'first_payment_date', v_first,
+        'target_date', v_date, 'first_payment_date', v_first, 'months', (v_sched->>'months')::int,
         'current_amount', round(COALESCE(v_cur, 0), 2),
         'savings_plan_id', v_plan_id,
         'card_lines', v_lines,
         'beneficiary_person_id', v_benef,
         'beneficiary_name', (SELECT hp.full_name FROM core.fn_household_persons() hp WHERE hp.person_id = v_benef),
-        'effective', (v_dates->'resolved') || jsonb_build_object('beneficiary_person_id', v_benef))
+        'effective', (v_dates->'resolved') || jsonb_build_object('beneficiary_person_id', v_benef,
+                         -- Waehrung des Startbestands fuer die Karte (Depot-Zuordnung = EUR, sonst Kontowaehrung)
+                         'reserve_currency', CASE WHEN v_depot THEN 'EUR' ELSE v_rccy END))
         || CASE WHEN v_plan_id IS NOT NULL
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', round(COALESCE(v_plan_monthly, 0), 2))
                 ELSE '{}'::jsonb END

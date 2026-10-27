@@ -23,7 +23,7 @@
 --     + saldo-basiert: free_balance (Saldo - aktive Anteile auf dem Konto, nach dem Append)
 --     + Depot: market_value (Depot-Marktwert EUR, NULL ohne Kurs), shortfall (Depot-Deckungsluecke, depot_reserve_status)
 --     + savings_goal_reached {current_amount, target_amount, note}, wenn eine Erhoehung das Ziel deckt (Event-Fold).
---   Korrigierbar (kein RAISE -> kein Owner-Alert): amount NULL/<0 / Ziel nicht gefunden / Konto nicht gefunden ODER
+--   Korrigierbar (kein RAISE -> kein Owner-Alert): amount NULL/<0 / Ziel nicht gefunden oder nicht aktiv / Konto nicht gefunden ODER
 --     nicht zuordenbar (Kredit) / delta=0 (no-op) / insufficient_free_balance -> {ok:false, reason}.
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_book_savings_reservation.sql
 -- ============================================================
@@ -35,6 +35,7 @@ DECLARE
     v_amount NUMERIC := NULLIF(p->>'amount', '')::numeric;
     v_gname  TEXT;
     v_target NUMERIC;
+    v_gstatus TEXT;
     v_atype  finance.account_type;
     v_aname  TEXT;
     v_ccy    TEXT;
@@ -56,9 +57,15 @@ BEGIN
                    || '. (It can be lowered to 0 to release the earmark; it cannot be negative.)');
     END IF;
 
-    SELECT name, target_amount INTO v_gname, v_target FROM finance.savings_goals WHERE id = v_goal;
+    SELECT name, target_amount, status INTO v_gname, v_target, v_gstatus FROM finance.savings_goals WHERE id = v_goal;
     IF v_gname IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'Savings goal ' || COALESCE(v_goal::text, 'null') || ' not found.');
+    END IF;
+    -- Nur aktive Ziele: die Guards und Waechter zaehlen nur aktive -> eine Zuordnung an ein geschlossenes Ziel waere
+    -- unsichtbar gebunden (Code-Review 2026-10-27).
+    IF v_gstatus IS DISTINCT FROM 'active' THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'Savings goal "' || v_gname || '" is ' || v_gstatus || ' - money can only be earmarked for an active goal (re-open it first).');
     END IF;
 
     -- Konto-Zeile sperren: serialisiert parallele Zuordnungen auf dasselbe Konto (Freier-Saldo-Guard).

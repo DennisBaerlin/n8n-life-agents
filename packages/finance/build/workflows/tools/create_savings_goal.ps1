@@ -111,7 +111,7 @@ function Build-CreateSavingsGoal {
     $Y  = "`$('Dry run').item.json.r"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_savings_goal' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity savings_goal -S (Get-WritePayloadExpr) -D @{
-        Person = "$Y.beneficiary_name"; TargetDate = "$Y.target_date"; MonthlyRate = "$Y.monthly_rate"; Months = "$CS.months"; FirstPayment = "$CS.first_payment_date" })
+        Person = "$Y.beneficiary_name"; TargetDate = "$Y.target_date"; MonthlyRate = "$Y.monthly_rate"; Months = "$Y.months"; FirstPayment = "$CS.first_payment_date" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `

@@ -171,7 +171,16 @@ BEGIN
   PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g2, 'account_id', v_p2p, 'amount', 1000));
   IF (SELECT observed_monthly_rate FROM finance.savings_goal_progress WHERE id = v_g2) IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [H nur Zuordnung -> kein Tempo]'; END IF;
-  RAISE NOTICE 'PASS [H: Hand-Zuordnung zaehlt zum Stand, nicht zum Spartempo]';
+  -- (H3) Zuordnung UNTER schon eingezahltes Geld gesenkt (manual netto negativ): Tempo nicht hoeher als der Stand,
+  --      earmarked_amount nie negativ (Code-Review 2026-10-27)
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_p2p, 1200, current_date - 5, 'transfer', v_g2, gen_random_uuid());
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g2, 'account_id', v_p2p, 'amount', 1000));
+  IF (SELECT current_amount FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 1000
+     OR (SELECT observed_monthly_rate FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 500.00
+     OR (SELECT earmarked_amount FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [H3 negative Zuordnung]: %', (SELECT row_to_json(p) FROM finance.savings_goal_progress p WHERE id = v_g2); END IF;
+  RAISE NOTICE 'PASS [H: Hand-Zuordnung zaehlt zum Stand, nicht zum Spartempo; negative Zuordnung kein Tempo]';
 END $$;
 
 ROLLBACK;

@@ -137,7 +137,10 @@ BEGIN
         IF v_row.recurring_payment_id IS NOT NULL THEN
             v_rate := v_need;
         ELSE
-            v_has_plan := EXISTS (SELECT 1 FROM finance.savings_plans WHERE savings_goal_id = v_id AND status = 'active');
+            -- "laeuft gerade" nur ueber active_recurring_payments (nie payment_status roh, .claude/rules/sql.md)
+            v_has_plan := EXISTS (SELECT 1 FROM finance.savings_plans sp
+                                  JOIN finance.active_recurring_payments a ON a.id = sp.recurring_payment_id
+                                  WHERE sp.savings_goal_id = v_id);
             IF NOT v_has_plan AND v_new_acct IS NOT NULL THEN
                 v_new_pot := COALESCE(v_reserve,
                     (SELECT r.account_id FROM finance.fn_goal_reserve_accounts(v_id) r
@@ -282,6 +285,13 @@ BEGIN
         || CASE WHEN v_code IS NOT NULL THEN jsonb_build_object('code', v_code,
                     'note', 'No monthly rate is running for this goal; it still needs ' || to_char(v_need, 'FM999999990D00')
                             || ' EUR per month. To start one, call again with the account the rate is debited from (account_name).')
+                -- gedeckt, aber eine Rate laeuft weiter (Code-Review 2026-10-27): nicht still weiter einzahlen lassen
+                WHEN v_covered AND v_row.recurring_payment_id IS NOT NULL AND NOT v_stop_funders
+                     AND EXISTS (SELECT 1 FROM finance.active_recurring_payments a
+                                 WHERE a.id = ANY (ARRAY(SELECT finance.fn_recurring_lineage(v_row.recurring_payment_id))))
+                THEN jsonb_build_object('code', 'covered_rate_running',
+                    'note', 'The goal is now covered, but its monthly rate keeps running. Ask the user whether to stop the '
+                            || 'contributions (call again with stop_funders=true); the money stays earmarked.')
                 ELSE '{}'::jsonb END
         -- nur wenn sich die Sparrate aendert (neu gerechnet, angelegt, reaktiviert, Topf gewechselt, Beitraege gestoppt);
         -- reine Stammdaten-/Notiz-/Sparplan-Link-Edits falten nichts

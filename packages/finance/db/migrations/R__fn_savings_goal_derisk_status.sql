@@ -48,7 +48,9 @@ BEGIN
     SELECT c.id, c.name, c.target_date, c.target_amount, c.months_left, c.win,
            round(c.share, 2), c.allowed, round(GREATEST(c.share - c.allowed, 0), 2), c.in_win,
            c.in_win AND c.share > c.allowed + c.target_amount * c.tol / 100,
-           EXISTS (SELECT 1 FROM finance.savings_plans sp WHERE sp.savings_goal_id = c.id AND sp.status = 'active')
+           EXISTS (SELECT 1 FROM finance.savings_plans sp   -- "laeuft gerade" = active_recurring_payments (nie Status roh)
+                   JOIN finance.active_recurring_payments a ON a.id = sp.recurring_payment_id
+                   WHERE sp.savings_goal_id = c.id)
     FROM calc c;
 END;
 $$;

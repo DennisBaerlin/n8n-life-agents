@@ -369,8 +369,9 @@ WITH share AS (
 base AS (
     SELECT g.*,
            coalesce(s.saved, 0) AS saved,
-           -- Spartempo-Basis: was nicht aus Hand-Zuordnung stammt (nie negativ; eine Entnahme senkt es mit)
-           GREATEST(coalesce(s.saved, 0) - coalesce(s.manual, 0), 0) AS paced,
+           -- Spartempo-Basis: was nicht aus Hand-Zuordnung stammt (nie negativ; eine Entnahme senkt es mit). Eine
+           -- NEGATIVE Netto-Zuordnung (Zuordnung unter schon eingezahltes Geld gesenkt) ist kein Spartempo -> bei 0 gekappt.
+           GREATEST(coalesce(s.saved, 0) - GREATEST(coalesce(s.manual, 0), 0), 0) AS paced,
            -- ueber die ganze Vorgaenger-Kette (Paket 2): eine alte, noch laufende Zeile ohne Topf zaehlt mit, auch wenn
            -- der Kopf (auf den das Ziel zeigt) erst spaeter gilt.
            NOT EXISTS (SELECT 1
@@ -468,7 +469,7 @@ SELECT a.id                                             AS account_id,
 FROM finance.accounts a
 LEFT JOIN finance.account_balances b ON b.account_id = a.id
 LEFT JOIN (
-    SELECT s.account_id, sum(s.share_native) AS reserved  -- Tags + Journal je Konto, nur aktive Ziele
+    SELECT s.account_id, sum(GREATEST(s.share_native, 0)) AS reserved  -- Tags + Journal je Konto, nur aktive Ziele; je Ziel bei 0 gekappt
     FROM finance.savings_goal_account_share s
     WHERE s.goal_status = 'active'
     GROUP BY s.account_id

@@ -26,6 +26,12 @@ BEGIN
   UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = v_g1;
   v_free := finance.fn_account_free_balance(v_acct);
   IF v_free IS DISTINCT FROM 5000 THEN RAISE EXCEPTION 'FAIL afb [3]: erwartet 5300 - 300 = 5000, got %', v_free; END IF;
+  -- (3b) ein NEGATIVER Anteil (z. B. Alt-Tag eines Sparplan-Kaufs) erhoeht den freien Saldo nicht (je Ziel bei 0 gekappt)
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind) VALUES (v_g2, v_acct, -2000, 'EUR', 'void');
+  v_free := finance.fn_account_free_balance(v_acct);
+  IF v_free IS DISTINCT FROM 5300 THEN RAISE EXCEPTION 'FAIL afb [3b]: erwartet 5300 (Anteil -1700 zaehlt 0), got %', v_free; END IF;
+  IF (SELECT reserved FROM finance.account_reserve_status WHERE account_id = v_acct) IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL afb [3b reserve_status]: negativer Anteil darf reserved nicht senken'; END IF;
   -- (4)
   v_settle := (finance.fn_create_account('{"name":"__afb_settle__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   v_depot  := (finance.fn_create_account(jsonb_build_object('name','__afb_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;

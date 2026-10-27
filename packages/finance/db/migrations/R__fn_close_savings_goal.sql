@@ -11,8 +11,9 @@
 --
 --   Zaehlt Transaktionen mit recurring_payment_id in der Vorgaenger-Kette der Rate (Audit Paket 2: nach einer
 --   Reaktivierung liegt die Historie auf der alten rp) ODER savings_goal_id = goal.id
---   (WS-A: getaggte Einmal-/Entnahme-/Umschicht-Tx ohne Rate-rp zaehlen ebenfalls); bei outcome='completed' auch
---   Journal-Zeilen des Ziels (Zuordnung, 2026-10-27: Erfuellungs-Historie). Ohne jede Tx/Zeile -> Hard-DELETE.
+--   (WS-A: getaggte Einmal-/Entnahme-/Umschicht-Tx ohne Rate-rp zaehlen ebenfalls) ODER Journal-Zeilen echter
+--   Geldbewegungen (sparplan_buy/derisk/void); bei outcome='completed' auch reine Zuordnungen (manual, 2026-10-27:
+--   Erfuellungs-Historie). Ohne jede Tx/Zeile -> Hard-DELETE.
 --   v_tx_count = 0 -> Hard-DELETE: Sparziel + ggf. verknuepfte RP. Das Reserve-Journal geht per ON DELETE
 --     CASCADE (savings_goal_id) automatisch mit; transactions.savings_goal_id + savings_plans.savings_goal_id
 --     per ON DELETE SET NULL (die Buchungen/Sparplaene selbst bleiben, nur die Zuordnung faellt). FK-Reihenfolge:
@@ -74,17 +75,17 @@ BEGIN
     -- bei recurring_payment_id IS NULL faellt der erste Zweig auf false -> nur der savings_goal_id-Zweig zaehlt.
     -- COUNT zaehlt ZEILEN: die Raten-Haben-Tx traegt beide Felder -> wird einmal gezaehlt (keine Doppelzaehlung).
     -- Audit Paket 2: Rate-Tx ueber die GANZE Vorgaenger-Kette (nach Reaktivierung liegt die Historie auf der alten rp).
-    -- Sparziel-Zweckbindung 2026-10-27: bei ERFUELLT sind auch Journal-Zeilen (Zuordnung ohne Buchung) Historie -> ein
-    -- erfuelltes Ziel, das nur zugeordnetes Geld hatte, schliesst WEICH (Status sichtbar) statt zu verschwinden. Ein
-    -- ABGEBROCHENES Ziel ohne Buchung bleibt Hard-DELETE (es floss kein Geld; die Zuordnung faellt per CASCADE).
+    -- Sparziel-Zweckbindung 2026-10-27: Journal-Zeilen echter Geldbewegungen (sparplan_buy/derisk/void — Sparplan-Kaeufe
+    -- tragen seit 2026-10-27 kein Ziel-Tag mehr) sind immer Historie; bei ERFUELLT auch reine Zuordnungen (manual) ->
+    -- weich schliessen statt verschwinden. Ein ABGEBROCHENES Ziel nur mit Zuordnungen bleibt Hard-DELETE (es floss kein
+    -- Geld; die Zuordnung faellt per CASCADE).
     v_chain := ARRAY(SELECT finance.fn_recurring_lineage(v_goal.recurring_payment_id));
     SELECT COUNT(*) INTO v_tx_count
     FROM finance.transactions
     WHERE recurring_payment_id = ANY(v_chain)
        OR savings_goal_id = v_goal.id;
-    IF v_completed THEN
-        v_tx_count := v_tx_count + (SELECT COUNT(*) FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal.id);
-    END IF;
+    v_tx_count := v_tx_count + (SELECT COUNT(*) FROM finance.savings_goal_reserve_entries
+                                WHERE savings_goal_id = v_goal.id AND (kind <> 'manual' OR v_completed));
 
     IF v_tx_count = 0 THEN
         -- Hard-DELETE: erst Goal (Journal CASCADE; tags/plans SET NULL; FK goal->rp), dann alle Ketten-rps

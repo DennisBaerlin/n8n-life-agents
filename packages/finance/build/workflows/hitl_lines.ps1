@@ -278,7 +278,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.goal_type'            "$S.goal_type" -OmitEmpty)
                 (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel)
                 (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date)
-                (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -EurByModel -OmitEmpty)
+                (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -Currency "($S.reserve_currency || 'EUR')" -OmitEmpty)
                 (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If $hasRate -Params @{
                     value  = (New-HitlValue -Kind money -Value $rate -EurByModel)
                     months = (& $need 'Months') })

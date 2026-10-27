@@ -303,6 +303,12 @@ BEGIN
                = ANY (finance.fn_goal_earmark_account_types()::text[]) THEN
             RETURN format('reserve_account "%s" must be a cash/Tagesgeld, fixed-deposit, P2P or depot account', trim(p->>'reserve_account'));
         END IF;
+        -- Depot als Topf nur mit Startbestand oder Sparplan (eine Rate kann nicht direkt in ein Depot fliessen)
+        IF finance.fn_import_ref_account_type(p_batch_id, trim(p->>'reserve_account')) IN ('stocks_depot', 'crypto_depot')
+           AND COALESCE(NULLIF(p->>'already_saved','')::numeric, 0) <= 0
+           AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL THEN
+            RETURN format('reserve_account "%s" is a depot - give already_saved (money already there) or savings_plan (the plan that buys into it)', trim(p->>'reserve_account'));
+        END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_savings_goal(v_name, FALSE);
         IF v_hits > 0 THEN RETURN format('savings goal "%s" already exists', v_name); END IF;
 

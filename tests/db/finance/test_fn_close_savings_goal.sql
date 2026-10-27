@@ -209,4 +209,20 @@ BEGIN
   RAISE NOTICE 'PASS close [7: nur Zuordnung -> erfuellt weich, abgebrochen hart; Saldo wieder frei]';
 END $$;
 
+-- (8) Ziel nur ueber Sparplan-Kaeufe finanziert (Journal sparplan_buy, keine getaggte Buchung; Code-Review 2026-10-27):
+--     auch abgebrochen WEICH schliessen — echte Geldbewegungen sind Historie, kein referenzfreier Fehlanlage-Fall.
+DO $$
+DECLARE v_settle int; v_depot int; v_goal int; v_r jsonb;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__cl8_settle__","account_type":"cash","opening_balance":1000}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__cl8_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__cl8 Plan__', 5000, current_date + 900, 'active') RETURNING id INTO v_goal;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind) VALUES (v_goal, v_depot, 100, 'EUR', 'sparplan_buy');
+  v_r := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__cl8 Plan__', 'outcome', 'cancelled'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'action' IS DISTINCT FROM 'closed'
+     OR (SELECT status::text FROM finance.savings_goals WHERE id = v_goal) IS DISTINCT FROM 'cancelled' THEN
+    RAISE EXCEPTION 'FAIL close [8 Sparplan-Ziel abgebrochen weich]: %', v_r; END IF;
+  RAISE NOTICE 'PASS close [8: nur ueber Sparplan finanziert -> abgebrochen weich]';
+END $$;
+
 ROLLBACK;

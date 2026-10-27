@@ -358,7 +358,8 @@ BEGIN
            'reserve_account_id',v_p2p2,'already_saved',500));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'monthly_rate')::numeric IS DISTINCT FROM 136.37
      OR (SELECT target_account_id FROM finance.recurring_payments WHERE id = (v_r->>'recurring_payment_id')::int) IS DISTINCT FROM v_p2p2
-     OR (v_r->>'current_amount')::numeric IS DISTINCT FROM 500 THEN
+     OR (v_r->>'current_amount')::numeric IS DISTINCT FROM 500 OR (v_r->>'months')::int IS DISTINCT FROM 11
+     OR v_r->'effective'->>'reserve_currency' IS DISTINCT FROM 'EUR' THEN
     RAISE EXCEPTION 'FAIL create [C2 teilweise]: % (Rate erwartet 1500/11 = 136.37)', v_r; END IF;
   RAISE NOTICE 'PASS create [C2: Rate auf dem Rest 1500/11, rp in den Topf]';
 
@@ -412,6 +413,17 @@ BEGIN
            'target_date','2036-12-31','reserve_account_id',v_depot,'savings_plan','__sgc_plan__'));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL create [C8 Plan schon gebunden]: %', v_r; END IF;
   RAISE NOTICE 'PASS create [C8: schon gebundener Sparplan -> ok:false]';
+
+  -- (C9) Startbestand auf einem Fremdwaehrungs-Topf ohne Kurs -> ok:false (nie den nativen Betrag still als EUR nehmen)
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2) ON CONFLICT (code) DO NOTHING;
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF' OR base_currency = 'CHF';
+  PERFORM finance.fn_create_account('{"name":"__sgc_chf__","account_type":"cash","currency":"CHF","opening_balance":1000}'::jsonb);
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgc Franken__','target_amount',800,
+           'target_date',(core.fn_today() + 200)::text,'reserve_account_id',(SELECT id FROM finance.accounts WHERE name = '__sgc_chf__'),
+           'already_saved',500));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' NOT ILIKE '%exchange rate%' THEN
+    RAISE EXCEPTION 'FAIL create [C9 kein Kurs]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [C9: Fremdwaehrungs-Startbestand ohne Kurs -> ok:false]';
 END $$;
 
 ROLLBACK;

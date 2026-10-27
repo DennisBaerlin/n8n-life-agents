@@ -69,7 +69,7 @@ BEGIN
   SELECT amount INTO v_rpamt FROM finance.recurring_payments WHERE id = v_rp;
   SELECT finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'target_date', '2028-12-31')) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'covered')::boolean IS DISTINCT FROM true
-     OR v_res->>'new_monthly_rate' IS NOT NULL
+     OR v_res->>'new_monthly_rate' IS NOT NULL OR v_res->>'code' IS DISTINCT FROM 'covered_rate_running'
      OR (SELECT target_date FROM finance.savings_goals WHERE id = v_goal) IS DISTINCT FROM DATE '2028-12-31'
      OR (SELECT amount FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM v_rpamt THEN
     RAISE EXCEPTION 'FAIL set_savings_goal [covered: Datum verschieben]: %', v_res; END IF;

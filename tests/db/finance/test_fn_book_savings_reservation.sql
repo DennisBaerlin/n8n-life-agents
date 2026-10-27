@@ -239,6 +239,11 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'free_balance')::numeric IS DISTINCT FROM 100 THEN
     RAISE EXCEPTION 'FAIL [17 cancelled frees]: %', v_res; END IF;
   RAISE NOTICE 'PASS [17: abgebrochenes Ziel gibt den Saldo frei]';
+
+  -- (18) einem abgebrochenen Ziel kann nichts mehr zugeordnet werden (die Guards zaehlen nur aktive Ziele)
+  v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_gb, 'account_id', v_p2p, 'amount', 2500));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [18 nicht aktives Ziel]: %', v_res; END IF;
+  RAISE NOTICE 'PASS [18: abgebrochenes Ziel -> ok:false]';
 END $$;
 
 ROLLBACK;

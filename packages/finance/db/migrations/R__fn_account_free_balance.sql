@@ -11,8 +11,10 @@ RETURNS numeric
 LANGUAGE sql
 STABLE
 AS $$
+    -- je Ziel bei 0 gekappt: ein negativer Anteil (z. B. Alt-Tag eines Sparplan-Kaufs vor 2026-10-27) gibt nie
+    -- zusaetzlichen Saldo frei (gleiche Regel wie account_reserve_status)
     SELECT COALESCE(b.balance, 0)
-           - COALESCE((SELECT sum(s.share_native) FROM finance.savings_goal_account_share s
+           - COALESCE((SELECT sum(GREATEST(s.share_native, 0)) FROM finance.savings_goal_account_share s
                        WHERE s.account_id = a.id AND s.goal_status = 'active'), 0)
     FROM finance.accounts a
     LEFT JOIN finance.account_balances b ON b.account_id = a.id

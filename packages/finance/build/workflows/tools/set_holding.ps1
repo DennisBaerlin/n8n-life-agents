@@ -32,15 +32,23 @@ function Build-SetHolding {
     # roh zurueck, kein Yahoo-Call), damit der nachgelagerte fn-Node den Output sicher referenzieren kann (ein
     # IF-gegateter Sub wuerde am unausgefuehrten Zweig "node not executed" werfen). GENUTZT wird der Vorschlag aber
     # nur, wenn symbol/isin/provider_symbol geaendert wird (s. Set-holding-Payload). Effektive Werte = neu || aktuell.
-    $resolveYahoo = Build-CallWorkflow 'Resolve Yahoo symbol' @(440, -220) $ResolveYahooSymbolId 'agent.finance.sub_resolve_yahoo_symbol' `
-        ([ordered]@{
-            isin            = "={{ `$('Start').item.json.isin || $H.isin }}"
-            raw_symbol      = "={{ `$('Start').item.json.symbol || $H.symbol }}"
-            price_currency  = "={{ `$('Start').item.json.quote_currency || $H.holding_currency }}"
-            price_per_share = "={{ '' }}"
-            provider_symbol = "={{ `$('Start').item.json.provider_symbol }}"
-            chat_id         = "={{ `$('Start').item.json.chat_id }}"
-        })
+    # Plausi-Referenz (Owner 2026-10-27: Plausi-Pflicht fuer jeden Treffer): letzter Kurs der Position (enges Band),
+    # sonst Einstand (grobes Band) + FX-Karte fuer Fremdwaehrungs-Notierungen. Aggregiert -> immer ein Item.
+    $loadRef = Build-Pg 'Load price reference' @(440, -420) `
+        "=SELECT (SELECT jsonb_build_object('price', s.price, 'price_currency', s.price_currency, 'avg', s.avg_price, 'currency', s.currency) FROM finance.fn_holding_price_status(ARRAY[((`$1::jsonb)->>'holding_id')::int]) s) AS ref, finance.fn_fx_rate_map() AS fx;" `
+        ([ordered]@{ holding_id = '$(''Find Holding'').item.json.r.holding_id' })
+    $resolveInputs = [ordered]@{
+        isin            = "={{ `$('Start').item.json.isin || $H.isin }}"
+        raw_symbol      = "={{ `$('Start').item.json.symbol || $H.symbol }}"
+        price_currency  = "={{ (`$('Start').item.json.quote_currency || $H.holding_currency || '').toUpperCase() }}"
+        price_per_share = "={{ '' }}"
+        provider_symbol = "={{ `$('Start').item.json.provider_symbol }}"
+        try_symbols     = "={{ '' }}"
+        chat_id         = "={{ `$('Start').item.json.chat_id }}"
+    }
+    $refIn = Get-FinancePriceRefInputs -RefJs "(`$('Load price reference').item.json.ref || {})" -FxJs "`$('Load price reference').item.json.fx"
+    foreach ($k in $refIn.Keys) { $resolveInputs[$k] = $refIn[$k] }
+    $resolveYahoo = Build-CallWorkflow 'Resolve Yahoo symbol' @(660, -220) $ResolveYahooSymbolId 'agent.finance.sub_resolve_yahoo_symbol' $resolveInputs
 
     # Strukturiertes Summary (Textkatalog). Kurs-Symbol-Zeile = Yahoo-Validierung; die Warnung "nicht verifiziert"
     # steht als Hinweis unter den Zeilen. Preis in der Yahoo-/Kurs-/Positions-Waehrung (Default EUR).
@@ -56,7 +64,11 @@ function Build-SetHolding {
             isin            = '$(''Start'').item.json.isin'
             currency        = '$(''Start'').item.json.currency'
             asset_class     = '$(''Start'').item.json.asset_class'
-            provider_symbol = '($(''Start'').item.json.symbol || $(''Start'').item.json.isin || $(''Start'').item.json.provider_symbol) ? ($(''Resolve Yahoo symbol'').item.json.provider_symbol || $(''Start'').item.json.provider_symbol) : ""'
+            # Ein ausdruecklich genanntes provider_symbol gilt (die Karte warnt, wenn es nicht verifiziert ist). Nach einer
+            # symbol-/ISIN-Aenderung: der Yahoo-Vorschlag, wenn er adoptable ist (Plausi-Pflicht 2026-10-27), sonst das
+            # Standard-Feed-Symbol des NEUEN Tickers (fn_feed_symbol-Regel: Aktie = symbol, Krypto = symbol-EUR) — ein altes
+            # Override darf nicht stehen bleiben (fn_set_holding kann nicht auf NULL setzen, '' hiesse "unveraendert").
+            provider_symbol = '$(''Start'').item.json.provider_symbol ? $(''Start'').item.json.provider_symbol : (($(''Start'').item.json.symbol || $(''Start'').item.json.isin) ? ($(''Resolve Yahoo symbol'').item.json.adoptable === true ? $(''Resolve Yahoo symbol'').item.json.provider_symbol : (($(''Start'').item.json.isin || $(''Find Holding'').item.json.r.isin) ? ($(''Start'').item.json.symbol || $(''Find Holding'').item.json.r.symbol) : ($(''Start'').item.json.symbol || $(''Find Holding'').item.json.r.symbol) + "-EUR")) : "")'
             quote_currency  = '$(''Start'').item.json.quote_currency'
         })
 
@@ -71,11 +83,13 @@ function Build-SetHolding {
         (New-HitlLine 'finance.label.isin'            "'finance.tpl.change'" -Kind tpl -Params @{ from = "$R.isin"; to = "$S.isin" } -If "$S.isin")
         (New-HitlLine 'core.label.currency'           "$S.currency" -If "$S.currency")
         (New-HitlLine 'finance.label.asset_class'     "$S.asset_class" -If "$S.asset_class")
-        (New-HitlLine 'finance.label.quote_symbol'    "($Y.market_price ? 'finance.tpl.quote_symbol_price' : 'finance.tpl.quote_symbol_plain')" -Kind tpl -If $quoted -Params @{
-            symbol = "($Y.provider_symbol || $S.provider_symbol || $R.symbol)"
+        # Die Karte zeigt, was geschrieben wird (Payload provider_symbol oben): genanntes Symbol, sonst der Yahoo-Vorschlag
+        # nur wenn adoptable, sonst das Standard-Symbol des Tickers; den Kurs nur zu einem tatsaechlich gepruefen Symbol.
+        (New-HitlLine 'finance.label.quote_symbol'    "((($S.provider_symbol || $Y.adoptable) && $Y.market_price) ? 'finance.tpl.quote_symbol_price' : 'finance.tpl.quote_symbol_plain')" -Kind tpl -If $quoted -Params @{
+            symbol = "($S.provider_symbol || ($Y.adoptable ? $Y.provider_symbol : ($S.symbol || $R.symbol)))"
             price  = (New-HitlValue -Kind money -Value "$Y.market_price" -Currency "($Y.currency || $S.quote_currency || $R.holding_currency || 'EUR')") })
         (New-HitlLine 'finance.label.quote_currency'  "$S.quote_currency" -If "$S.quote_currency")
-        (New-HitlNote -Key 'finance.note.quote_symbol_unverified' -If "$quoted && !$Y.verified && !($Y.foreign_listing && $Y.plausible)")
+        (New-HitlNote -Key 'finance.note.quote_symbol_unverified' -If "$quoted && !$Y.adoptable")
         (New-HitlNote -Key 'finance.note.quote_symbol_foreign' -If "$quoted && $Y.foreign_listing && $Y.plausible" -Params @{ currency = "$Y.currency" })
     )
 
@@ -115,9 +129,15 @@ function Build-SetHolding {
     $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(2860, -120) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
-    $ret = Build-Return @(3080, 0) @(
+    # Kurs-Status NACH den Sofort-Abrufen (Owner 2026-10-27: die Antwort sagt, ob ein Kurs gefunden wurde).
+    $priceStatus = New-FinancePriceStatusNode -Pos @(3080, -160) -HoldingIdExpr '$(''Set holding (atomic)'').item.json.holding_id'
+    # Die Aenderung ist schon gespeichert: ein Fehler im Kurs-/FX-Abruf darf sie nie als Fehler melden.
+    foreach ($n in @($callPriceRefresh, $callFxRefresh)) { $n['onError'] = 'continueRegularOutput'; $n['alwaysOutputData'] = $true }
+
+    $ret = Build-Return @(3300, 0) @(
         ,@('ok','true','boolean')
         ,@('holding_id', "={{ `$('Set holding (atomic)').item.json.holding_id }}", 'number')
+        ,@('price_status', "={{ `$('Price status').item.json.st || {} }}", 'object')
     )
 
     $stickyDry = Build-Sticky 'Position + Probelauf vor der Karte' @(220, 420) `
@@ -130,19 +150,20 @@ function Build-SetHolding {
 
     $stickyYahoo = Build-Sticky 'Kauf-Zeit-Symbol-Validierung' @(440, -420) `
         'sub_resolve_yahoo_symbol (vor dem Gate, immer-laufend/non-blocking)' `
-        'Läuft IMMER (ISIN leer/Krypto -> Sub gibt sofort roh, kein Yahoo-Call) -> der fn-Node referenziert den Output sicher (ein IF-gegateter Sub würde am unausgeführten Zweig "node not executed" werfen). GENUTZT wird der Vorschlag nur, wenn symbol/isin/provider_symbol geändert wird (Payload + HITL-Zeile bedingt). Yahoo-Ausfall/Timeout (3s) -> {verified:false, provider_symbol:roh}, der Edit läuft trotzdem.' 300 480
+        'Läuft IMMER (ISIN leer/Krypto -> Sub gibt sofort roh, kein Yahoo-Call) -> der fn-Node referenziert den Output sicher (ein IF-gegateter Sub würde am unausgeführten Zweig "node not executed" werfen). Load price reference liefert die Plausi-Referenz (letzter Kurs, sonst Einstand, nur in der gewünschten Währung) + FX-Karte (fn_fx_rate_map). GENUTZT wird ein Yahoo-Vorschlag nur nach symbol-/ISIN-Änderung UND wenn er verifiziert oder eine plausible Fremdwährungs-Notierung ist (Plausi-Pflicht 2026-10-27); ein ausdrücklich genanntes provider_symbol gilt immer (Karte warnt). Yahoo-Ausfall/Timeout (3s) -> {verified:false, provider_symbol:roh}, der Edit läuft trotzdem. NACH den Sofort-Abrufen liefert Price status (fn_holding_price_status) den Kurs-Status für die Antwort.' 300 560
 
-    $nodes = @($trig, $readCur, $ifFound, $errNotFound, $resolveYahoo) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
+    $nodes = @($trig, $readCur, $ifFound, $errNotFound, $loadRef, $resolveYahoo) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ifSymChanged, $callPriceRefresh,
-               $ifForeignCurr, $callFxRefresh, $ret, $stickyDry, $stickyOv, $stickyYahoo)
+               $ifForeignCurr, $callFxRefresh, $priceStatus, $ret, $stickyDry, $stickyOv, $stickyYahoo)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Find Holding' ) ) }
         'Find Holding'           = @{ main = @( ,@( E 'Holding found?' ) ) }
         'Holding found?'         = @{ main = @(
-            @( E 'Resolve Yahoo symbol' ),
+            @( E 'Load price reference' ),
             @( E 'Holding not found' )
         ) }
+        'Load price reference'   = @{ main = @( ,@( E 'Resolve Yahoo symbol' ) ) }
         'Resolve Yahoo symbol'   = @{ main = @( ,@( E 'Dry run' ) ) }
         'Dry run'                = @{ main = @( ,@( E 'Dry run ok?' ) ) }
         'Dry run ok?'            = @{ main = @(
@@ -167,9 +188,10 @@ function Build-SetHolding {
         'Refresh market prices'  = @{ main = @( ,@( E 'Non-EUR currency?' ) ) }
         'Non-EUR currency?'      = @{ main = @(
             @( E 'Refresh FX rates' ),    # true: Fremdwaehrung geaendert -> Sub-Call des FX-Crons
-            @( E 'Return' )                # false: EUR oder unveraendert -> kein Call
+            @( E 'Price status' )          # false: EUR oder unveraendert -> kein Call
         ) }
-        'Refresh FX rates'       = @{ main = @( ,@( E 'Return' ) ) }
+        'Refresh FX rates'       = @{ main = @( ,@( E 'Price status' ) ) }
+        'Price status'           = @{ main = @( ,@( E 'Return' ) ) }
     }
 
     return Build-Workflow 'agent.finance.tool_set_holding' $nodes $conns `

@@ -36,6 +36,9 @@ function Build-BookStockBuy {
             price_currency  = "={{ `$('Start').item.json.quote_currency || `$('Get Settlement Account').item.json.currency }}"
             price_per_share = "={{ `$('Start').item.json.price_per_share }}"
             provider_symbol = "={{ `$('Start').item.json.provider_symbol }}"
+            ref_price       = "={{ '' }}"
+            fx_rates        = "={{ '' }}"
+            try_symbols     = "={{ '' }}"
             chat_id         = "={{ `$('Start').item.json.chat_id }}"
         })
 
@@ -58,7 +61,9 @@ function Build-BookStockBuy {
             order_fee        = '$(''Start'').item.json.order_fee'
             transaction_date = '$(''Start'').item.json.transaction_date'
             asset_class      = '$(''Start'').item.json.asset_class'
-            provider_symbol  = '$(''Resolve Yahoo symbol'').item.json.provider_symbol || $(''Start'').item.json.provider_symbol'
+            # Plausi-Pflicht (2026-10-27): ein Yahoo-Vorschlag wird nur gespeichert, wenn er verifiziert (Waehrung +
+            # Kurs-Groessenordnung) oder eine plausible Fremdwaehrungs-Notierung ist; sonst nur ein vom Nutzer genanntes.
+            provider_symbol  = '$(''Resolve Yahoo symbol'').item.json.adoptable === true ? $(''Resolve Yahoo symbol'').item.json.provider_symbol : ($(''Start'').item.json.provider_symbol || "")'
             quote_currency   = '$(''Start'').item.json.quote_currency'
             existing_position = '$(''Start'').item.json.existing_position'
         })
@@ -107,8 +112,13 @@ function Build-BookStockBuy {
     $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(3300, -280) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
+    # Kurs-Status NACH dem Sofort-Abruf (Owner 2026-10-27: die Antwort sagt, ob ein Kurs gefunden wurde).
+    $priceStatus = New-FinancePriceStatusNode -Pos @(3520, -160) -HoldingIdExpr '$(''Create buy (atomic)'').item.json.holding_id'
+    # Der Kauf ist schon gebucht: ein Fehler im Kurs-/FX-Abruf darf ihn nie als Fehler melden (weiter zum Kurs-Status).
+    foreach ($n in @($callPriceRefresh, $callFxRefresh)) { $n['onError'] = 'continueRegularOutput'; $n['alwaysOutputData'] = $true }
+
     # Post-State kommt aus der fn (settlement_balance/total_shares/avg) — kein separater Read-back noetig.
-    $ret = Build-Return @(3520, 0) @(
+    $ret = Build-Return @(3740, 0) @(
         ,@('ok','true','boolean')
         ,@('holding_id', "={{ `$('Create buy (atomic)').item.json.holding_id }}", 'number')
         ,@('buy_tx_id', "={{ `$('Create buy (atomic)').item.json.buy_tx_id }}", 'number')
@@ -116,6 +126,7 @@ function Build-BookStockBuy {
         ,@('total_shares', "={{ `$('Create buy (atomic)').item.json.total_shares }}", 'number')
         ,@('avg_purchase_price', "={{ `$('Create buy (atomic)').item.json.avg_purchase_price }}", 'number')
         ,@('null_tag', "={{ `$('Create buy (atomic)').item.json.null_tag }}", 'string')
+        ,@('price_status', "={{ `$('Price status').item.json.st || {} }}", 'object')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1440, -340) `
@@ -140,7 +151,7 @@ function Build-BookStockBuy {
 
     $nodes = @($trig, $resDepot, $ifDepot, $errDepot, $getSettle, $resolveYahoo) + $wg.Nodes + @(
                $summary, $reqApproval, $ifApproved, $retCancelled,
-               $ifWriteOk, $errWrite, $callPriceRefresh, $ifForeignQuote, $callFxRefresh, $ret,
+               $ifWriteOk, $errWrite, $callPriceRefresh, $ifForeignQuote, $callFxRefresh, $priceStatus, $ret,
                $stickyDry, $stickyTriggers, $stickyOk, $stickyYahoo, $stickyFx)
 
     $conns = [ordered]@{
@@ -171,9 +182,10 @@ function Build-BookStockBuy {
         'Refresh market prices'  = @{ main = @( ,@( E 'Non-EUR quote?' ) ) }
         'Non-EUR quote?'         = @{ main = @(
             @( E 'Refresh FX rates' ),        # true: fremde Quote-Waehrung -> FX-Sofort-Fetch
-            @( E 'Return' )                    # false: EUR-Quote -> kein FX-Call
+            @( E 'Price status' )              # false: EUR-Quote -> kein FX-Call
         ) }
-        'Refresh FX rates'       = @{ main = @( ,@( E 'Return' ) ) }
+        'Refresh FX rates'       = @{ main = @( ,@( E 'Price status' ) ) }
+        'Price status'           = @{ main = @( ,@( E 'Return' ) ) }
     }
 
     return Build-Workflow 'agent.finance.tool_book_stock_buy' $nodes $conns `

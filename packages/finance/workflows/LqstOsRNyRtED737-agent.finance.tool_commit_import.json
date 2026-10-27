@@ -79,7 +79,10 @@
                                                                               "raw_symbol":  "={{ $(\u0027Each position\u0027).item.json.symbol || \u0027\u0027 }}",
                                                                               "price_currency":  "={{ $(\u0027Each position\u0027).item.json.ccy || \u0027\u0027 }}",
                                                                               "price_per_share":  "={{ $(\u0027Each position\u0027).item.json.price || \u0027\u0027 }}",
-                                                                              "provider_symbol":  "={{ \u0027\u0027 }}"
+                                                                              "provider_symbol":  "={{ \u0027\u0027 }}",
+                                                                              "ref_price":  "={{ \u0027\u0027 }}",
+                                                                              "fx_rates":  "={{ \u0027\u0027 }}",
+                                                                              "try_symbols":  "={{ \u0027\u0027 }}"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -114,7 +117,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "7e64f9e4-bd38-508b-ae73-a8153829ae8e",
-                                                                                   "leftValue":  "={{ ($json.verified === true || ($json.foreign_listing === true \u0026\u0026 $json.plausible === true)) \u0026\u0026 !!$(\u0027Each position\u0027).item.json.row_no }}",
+                                                                                   "leftValue":  "={{ $json.adoptable === true \u0026\u0026 !!$(\u0027Each position\u0027).item.json.row_no }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -744,7 +747,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=WITH ids AS (SELECT (x-\u003e\u003e\u0027holding_id\u0027)::int AS id FROM jsonb_array_elements(COALESCE(($1::jsonb)-\u003e\u0027positions\u0027, \u0027[]\u0027::jsonb)) x) SELECT COALESCE(jsonb_agg(jsonb_build_object(\u0027holding_id\u0027, h.id, \u0027name\u0027, h.name, \u0027isin\u0027, h.isin, \u0027symbol\u0027, h.symbol)) FILTER (WHERE NOT EXISTS (SELECT 1 FROM finance.market_prices mp WHERE mp.symbol = h.symbol)), \u0027[]\u0027::jsonb) AS positions_without_price, COALESCE(jsonb_agg(jsonb_build_object(\u0027holding_id\u0027, h.id, \u0027name\u0027, h.name)) FILTER (WHERE h.asset_class IS NULL), \u0027[]\u0027::jsonb) AS positions_without_asset_class FROM finance.depot_holdings h JOIN ids ON ids.id = h.id;",
+                                         "query":  "=WITH ids AS (SELECT (x-\u003e\u003e\u0027holding_id\u0027)::int AS id FROM jsonb_array_elements(COALESCE(($1::jsonb)-\u003e\u0027positions\u0027, \u0027[]\u0027::jsonb)) x), ps AS (SELECT * FROM finance.fn_holding_price_status(COALESCE((SELECT array_agg(id) FROM ids), \u0027{}\u0027::int[]))) SELECT COALESCE((SELECT jsonb_agg(jsonb_build_object(\u0027holding_id\u0027, ps.holding_id, \u0027name\u0027, ps.name, \u0027isin\u0027, ps.isin, \u0027symbol\u0027, ps.symbol, \u0027feed_symbol\u0027, ps.feed_symbol, \u0027status\u0027, ps.status)) FROM ps WHERE ps.status \u003c\u003e \u0027ok\u0027), \u0027[]\u0027::jsonb) AS positions_without_price, COALESCE((SELECT jsonb_agg(jsonb_build_object(\u0027holding_id\u0027, h.id, \u0027name\u0027, h.name)) FROM finance.depot_holdings h JOIN ids ON ids.id = h.id WHERE h.asset_class IS NULL), \u0027[]\u0027::jsonb) AS positions_without_asset_class;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ positions: $(\u0027Import bundle (atomic)\u0027).first().json.positions || [] }) }}"
                                                      }
@@ -848,7 +851,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Depot-Positionen: Kurs-Symbol vor der Karte, Lücken nach dem Write melden**\n\nMonats-Check WP-G (Owner 2026-10-22: ETF \"P500\" ohne Kurs, \"Anlageklasse: —\"). VOR der Karte: Load positions -\u003e je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -\u003e ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. SPCX/USD; provider_currency kommt mit, die Karte sagt \"wird in € umgerechnet\", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -\u003e leer. NACH dem Write: Refresh market prices (Sub) -\u003e FX refresh needed? (Fremdwährungs-Konto oder -Kurs -\u003e FX-Sofort-Fetch, erst NACH den Kursen) -\u003e Check positions liefert positions_without_price / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -\u003e tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.",
+                                         "content":  "## DB-Automatik\n**Depot-Positionen: Kurs-Symbol vor der Karte, Lücken nach dem Write melden**\n\nMonats-Check WP-G (Owner 2026-10-22: ETF \"P500\" ohne Kurs, \"Anlageklasse: —\"). VOR der Karte: Load positions -\u003e je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -\u003e ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. SPCX/USD; provider_currency kommt mit, die Karte sagt \"wird in € umgerechnet\", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -\u003e leer. NACH dem Write: Refresh market prices (Sub) -\u003e FX refresh needed? (Fremdwährungs-Konto oder -Kurs -\u003e FX-Sofort-Fetch, erst NACH den Kursen) -\u003e Check positions liefert positions_without_price (Status missing/stale aus finance.fn_holding_price_status, dieselbe Regel wie Depot-Übersicht und Kurs-Lücken-Erinnerung) / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -\u003e tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.",
                                          "height":  360,
                                          "width":  640,
                                          "color":  4

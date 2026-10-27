@@ -33,11 +33,14 @@ function Build-CommitImport {
             price_currency  = "={{ `$('Each position').item.json.ccy || '' }}"
             price_per_share = "={{ `$('Each position').item.json.price || '' }}"
             provider_symbol = "={{ '' }}"
+            ref_price       = "={{ '' }}"
+            fx_rates        = "={{ '' }}"
+            try_symbols     = "={{ '' }}"
         })
     # Uebernommen wird ein verifizierter Treffer ODER (2026-10-23) eine plausible Notierung in Fremdwaehrung, wenn es
     # keine in der Wunschwaehrung gibt (SPCX/USD fuer eine EUR-Position) -> provider_currency steht dann mit auf der
     # Karte ("wird in EUR umgerechnet"); fn_import_bundle reicht sie als quote_currency an die Position weiter.
-    $ifVerified = Build-If 'Symbol verified?' @(880, -540) "={{ (`$json.verified === true || (`$json.foreign_listing === true && `$json.plausible === true)) && !!`$('Each position').item.json.row_no }}" 'true' 'equals' 'boolean'
+    $ifVerified = Build-If 'Symbol verified?' @(880, -540) "={{ `$json.adoptable === true && !!`$('Each position').item.json.row_no }}" 'true' 'equals' 'boolean'
     $storeSym = Build-Pg 'Store symbol' @(1100, -620) `
         "=SELECT (finance.fn_import_update_row(`$1::jsonb)->>'ok')::boolean AS ok;" `
         ([ordered]@{
@@ -124,7 +127,7 @@ function Build-CommitImport {
     $callPrices = Build-CallWorkflow 'Refresh market prices' @(1980, -240) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
         ([ordered]@{ chat_id = "={{ `$('Start').first().json.chat_id }}" })
     $checkPos = Build-Pg 'Check positions' @(3080, -120) `
-        "=WITH ids AS (SELECT (x->>'holding_id')::int AS id FROM jsonb_array_elements(COALESCE((`$1::jsonb)->'positions', '[]'::jsonb)) x) SELECT COALESCE(jsonb_agg(jsonb_build_object('holding_id', h.id, 'name', h.name, 'isin', h.isin, 'symbol', h.symbol)) FILTER (WHERE NOT EXISTS (SELECT 1 FROM finance.market_prices mp WHERE mp.symbol = h.symbol)), '[]'::jsonb) AS positions_without_price, COALESCE(jsonb_agg(jsonb_build_object('holding_id', h.id, 'name', h.name)) FILTER (WHERE h.asset_class IS NULL), '[]'::jsonb) AS positions_without_asset_class FROM finance.depot_holdings h JOIN ids ON ids.id = h.id;" `
+        "=WITH ids AS (SELECT (x->>'holding_id')::int AS id FROM jsonb_array_elements(COALESCE((`$1::jsonb)->'positions', '[]'::jsonb)) x), ps AS (SELECT * FROM finance.fn_holding_price_status(COALESCE((SELECT array_agg(id) FROM ids), '{}'::int[]))) SELECT COALESCE((SELECT jsonb_agg(jsonb_build_object('holding_id', ps.holding_id, 'name', ps.name, 'isin', ps.isin, 'symbol', ps.symbol, 'feed_symbol', ps.feed_symbol, 'status', ps.status)) FROM ps WHERE ps.status <> 'ok'), '[]'::jsonb) AS positions_without_price, COALESCE((SELECT jsonb_agg(jsonb_build_object('holding_id', h.id, 'name', h.name)) FROM finance.depot_holdings h JOIN ids ON ids.id = h.id WHERE h.asset_class IS NULL), '[]'::jsonb) AS positions_without_asset_class;" `
         ([ordered]@{ positions = '$(''Import bundle (atomic)'').first().json.positions || []' })
 
     $checkPos['executeOnce'] = $true   # beide Zweige (mit/ohne FX) muenden hier -> EIN Check
@@ -137,7 +140,7 @@ function Build-CommitImport {
     )
     $stickyPos = Build-Sticky 'Kurs-Symbol und Anlageklasse' @(220, -760) `
         'Depot-Positionen: Kurs-Symbol vor der Karte, Lücken nach dem Write melden' `
-        'Monats-Check WP-G (Owner 2026-10-22: ETF "P500" ohne Kurs, "Anlageklasse: —"). VOR der Karte: Load positions -> je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -> ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. SPCX/USD; provider_currency kommt mit, die Karte sagt "wird in € umgerechnet", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -> leer. NACH dem Write: Refresh market prices (Sub) -> FX refresh needed? (Fremdwährungs-Konto oder -Kurs -> FX-Sofort-Fetch, erst NACH den Kursen) -> Check positions liefert positions_without_price / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -> tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.' 360 640
+        'Monats-Check WP-G (Owner 2026-10-22: ETF "P500" ohne Kurs, "Anlageklasse: —"). VOR der Karte: Load positions -> je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -> ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. SPCX/USD; provider_currency kommt mit, die Karte sagt "wird in € umgerechnet", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -> leer. NACH dem Write: Refresh market prices (Sub) -> FX refresh needed? (Fremdwährungs-Konto oder -Kurs -> FX-Sofort-Fetch, erst NACH den Kursen) -> Check positions liefert positions_without_price (Status missing/stale aus finance.fn_holding_price_status, dieselbe Regel wie Depot-Übersicht und Kurs-Lücken-Erinnerung) / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -> tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.' 360 640
 
     $stickyFn = Build-Sticky 'fn_import_bundle: der atomare Commit' @(1320, -300) `
         'Loop über BESTEHENDE fn_* in EINER Transaktion' `

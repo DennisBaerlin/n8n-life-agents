@@ -38,13 +38,10 @@ function Build-CronRefreshMarketPrices {
     # Konvention TICKER-FIAT (BTC-EUR liefert direkt EUR; ein mehrdeutiges Ticker wie UNI setzt der Owner explizit
     # via provider_symbol = UNI7083-USD). CoinGecko entfaellt (Symbol-Batch war kollisionsanfaellig -> Rate-
     # Roulette); Yahoo-Per-Symbol ist kollisionsfrei wie der Aktien-Zweig. Yahoo fehlt ein Coin -> null_price.
+    # Die q-Regel lebt in finance.fn_feed_symbol (Init-Helfer, EINE Adresse mit der Kurs-Status-Anzeige 2026-10-27).
     $getSyms = Build-Pg 'Get held symbols' @(-240, 0) @'
 WITH held AS (
-  SELECT DISTINCT symbol AS s,
-         CASE WHEN isin IS NOT NULL
-              THEN COALESCE(provider_symbol, symbol)
-              ELSE COALESCE(provider_symbol, symbol || '-EUR')
-         END AS q
+  SELECT DISTINCT symbol AS s, finance.fn_feed_symbol(isin, symbol, provider_symbol) AS q
   FROM finance.depot_holdings WHERE shares > 0
 )
 SELECT count(*)::int AS cnt,
@@ -56,8 +53,8 @@ FROM held
 
     # EIN Code-Node (kein LLM, deterministisch): Yahoo-Finance v8/finance/chart PER Symbol fuer ALLES — Aktien/
     # ETF UND Krypto (WP-4: CoinGecko entfaellt, sein Symbol-Batch war kollisionsanfaellig). key-/auth-frei.
-    # try/catch je Symbol -> ein Ausfall killt die anderen nicht; fehlt ein Kurs, faellt das Symbol still raus
-    # (fn_advisor_review meldet es als null_price). Rueckgabe { prices: { SYM: kurs } }, GESCHLUESSELT auf das
+    # try/catch je Symbol -> ein Ausfall killt die anderen nicht; fehlt ein Kurs, faellt das Symbol hier raus und
+    # agent.finance.cron_remind_missing_prices meldet die Luecke (Owner 2026-10-27: nie unentdeckt). Rueckgabe { prices: { SYM: kurs } }, GESCHLUESSELT auf das
     # Holding-symbol (s). q->s ist direkt bekannt (Per-Symbol-Call, kollisionsfrei -> KEIN Rate-Roulette wie beim
     # frueheren CoinGecko-Symbol-Batch). Yahoo liefert in meta.currency die echte Quote-Waehrung (EUR bei
     # BTC-EUR, USD bei UNI7083-USD) -> je Symbol durchgereicht (currencies{}), fn_upsert setzt sie autoritativ
@@ -85,7 +82,7 @@ for (const h of symbols) {
       prices[h.s] = px;
       if (/^[A-Z]{3}$/.test(ccy)) currencies[h.s] = ccy;
     }
-  } catch (e) { /* Symbol-Ausfall -> still ohne Kurs (null_price-Report) */ }
+  } catch (e) { /* Symbol-Ausfall -> ohne Kurs; cron_remind_missing_prices meldet die Luecke */ }
 }
 
 return [{ json: { prices, currencies, source: 'yahoo' } }];
@@ -114,7 +111,7 @@ return [{ json: { prices, currencies, source: 'yahoo' } }];
 
     $stickyFetch = Build-Sticky 'Kurs-Fetch (kein LLM)' @(200, 200) `
         'Yahoo Finance PER Symbol — Aktien/ETF UND Krypto (WP-4)' `
-        'EIN Code-Node, deterministisch: ALLE Symbole -> Yahoo Finance v8/finance/chart PER Symbol (key-/auth-frei; meta.regularMarketPrice). try/catch je Symbol (ein Ausfall killt die anderen nicht). Fehlt ein Kurs -> Symbol fällt still raus, fn_advisor_review meldet es als null_price. Angefragt wird q: Aktie/ETF (ISIN vorhanden) = COALESCE(provider_symbol, symbol) = Yahoo-Ticker mit Börsen-Suffix (VWCE.DE Xetra, VWRL.L London); Krypto (ISIN NULL) = COALESCE(provider_symbol, symbol||''-EUR'') = Yahoos Krypto-Konvention TICKER-FIAT (BTC-EUR liefert direkt EUR; mehrdeutiges Ticker wie UNI -> Owner setzt provider_symbol=UNI7083-USD). PER-Symbol = kollisionsfrei (KEIN Rate-Roulette wie beim früheren CoinGecko-Symbol-Batch). q->s direkt bekannt, keine Rückwärts-Map. Die Kurs-WÄHRUNG kommt je Symbol aus Yahoos meta.currency (currencies{} im Payload; GBp/Pence -> GBP/100 HIER normalisiert), fn_upsert setzt sie autoritativ (Backstop ^[A-Z]{3}$ -> sonst Fallback COALESCE(quote_currency,currency)) -> EUR-Roll-up via fn_to_eur. (Stooq + CoinGecko retired — nicht erneut einbauen.)' 340 640
+        'EIN Code-Node, deterministisch: ALLE Symbole -> Yahoo Finance v8/finance/chart PER Symbol (key-/auth-frei; meta.regularMarketPrice). try/catch je Symbol (ein Ausfall killt die anderen nicht). Fehlt ein Kurs -> Symbol fällt hier raus, agent.finance.cron_remind_missing_prices meldet die Lücke (Karte mit geprüftem Vorschlag, auch ohne Finanzplan). Angefragt wird q = finance.fn_feed_symbol: Aktie/ETF (ISIN vorhanden) = COALESCE(provider_symbol, symbol) = Yahoo-Ticker mit Börsen-Suffix (VWCE.DE Xetra, VWRL.L London); Krypto (ISIN NULL) = COALESCE(provider_symbol, symbol||''-EUR'') = Yahoos Krypto-Konvention TICKER-FIAT (BTC-EUR liefert direkt EUR; mehrdeutiges Ticker wie UNI -> Owner setzt provider_symbol=UNI7083-USD). PER-Symbol = kollisionsfrei (KEIN Rate-Roulette wie beim früheren CoinGecko-Symbol-Batch). q->s direkt bekannt, keine Rückwärts-Map. Die Kurs-WÄHRUNG kommt je Symbol aus Yahoos meta.currency (currencies{} im Payload; GBp/Pence -> GBP/100 HIER normalisiert), fn_upsert setzt sie autoritativ (Backstop ^[A-Z]{3}$ -> sonst Fallback COALESCE(quote_currency,currency)) -> EUR-Roll-up via fn_to_eur. (Stooq + CoinGecko retired — nicht erneut einbauen.)' 340 640
 
     $stickyGate = Build-Sticky 'F9 Cron-Gate' @(-680, -280) `
         'Paket-aktiv (beide) + cron_enable (nur Schedule)' `

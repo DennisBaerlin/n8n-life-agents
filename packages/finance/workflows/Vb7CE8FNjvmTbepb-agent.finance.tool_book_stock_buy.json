@@ -185,6 +185,9 @@
                                                                               "price_currency":  "={{ $(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency }}",
                                                                               "price_per_share":  "={{ $(\u0027Start\u0027).item.json.price_per_share }}",
                                                                               "provider_symbol":  "={{ $(\u0027Start\u0027).item.json.provider_symbol }}",
+                                                                              "ref_price":  "={{ \u0027\u0027 }}",
+                                                                              "fx_rates":  "={{ \u0027\u0027 }}",
+                                                                              "try_symbols":  "={{ \u0027\u0027 }}",
                                                                               "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -214,7 +217,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_stock_buy(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol || $(\u0027Start\u0027).item.json.provider_symbol, quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.adoptable === true ? $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol : ($(\u0027Start\u0027).item.json.provider_symbol || \"\"), quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -320,7 +323,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027holding_id\u0027)::int AS holding_id, (r-\u003e\u003e\u0027buy_tx_id\u0027)::int AS buy_tx_id, (r-\u003e\u003e\u0027settlement_balance\u0027)::numeric AS settlement_balance, (r-\u003e\u003e\u0027total_shares\u0027)::numeric AS total_shares, (r-\u003e\u003e\u0027avg_purchase_price\u0027)::numeric AS avg_purchase_price, COALESCE(r-\u003e\u0027null_tag\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS null_tag FROM finance.fn_book_stock_buy(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol || $(\u0027Start\u0027).item.json.provider_symbol, quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.adoptable === true ? $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol : ($(\u0027Start\u0027).item.json.provider_symbol || \"\"), quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -345,7 +348,7 @@
                                                                                  {
                                                                                      "id":  "a41a2ed1-bcaa-5e9d-ae3e-1e31282f9346",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_stock_buy\u0027, lines: [ { label: \u0027finance.label.security\u0027, kind: \u0027tpl\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin \u0026\u0026 ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin) !== (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin ? \u0027finance.tpl.symbol_isin\u0027 : \u0027finance.tpl.plain\u0027)), params: { isin: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin), symbol: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin)), value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin)) } }, { label: \u0027finance.label.designation\u0027, kind: \u0027text\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).name || ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin))) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).depot_name) }, { label: \u0027finance.label.settlement_account\u0027, kind: \u0027text\u0027, value: ($(\u0027Get Settlement Account\u0027).item.json.settlement_name) }, { label: \u0027finance.label.pieces\u0027, kind: \u0027number\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).shares), digits: -1 }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).price_per_share), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).order_fee || 0)), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.total_cost\u0027, kind: \u0027money\u0027, value: ((Number((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).shares) * Number((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).price_per_share) + Number((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).order_fee || 0))), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.asset_class\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).asset_class) }, { label: \u0027finance.label.quote_symbol\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Resolve Yahoo symbol\u0027).item.json.market_price ? ($(\u0027Resolve Yahoo symbol\u0027).item.json.exchange ? \u0027finance.tpl.quote_symbol_price_exchange\u0027 : \u0027finance.tpl.quote_symbol_price\u0027) : \u0027finance.tpl.quote_symbol_plain\u0027)), params: { exchange: ($(\u0027Resolve Yahoo symbol\u0027).item.json.exchange), price: ({ kind: \u0027money\u0027, value: ($(\u0027Resolve Yahoo symbol\u0027).item.json.market_price), currency: (($(\u0027Resolve Yahoo symbol\u0027).item.json.currency || ($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency))) }), symbol: (($(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol || ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin))) } }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) }, ((!$(\u0027Resolve Yahoo symbol\u0027).item.json.verified \u0026\u0026 !($(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing \u0026\u0026 $(\u0027Resolve Yahoo symbol\u0027).item.json.plausible)) ? { kind: \u0027note\u0027, value: \u0027finance.note.quote_symbol_unverified\u0027 } : null), (($(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing \u0026\u0026 $(\u0027Resolve Yahoo symbol\u0027).item.json.plausible) ? { kind: \u0027note\u0027, value: \u0027finance.note.quote_symbol_foreign\u0027, params: { currency: ($(\u0027Resolve Yahoo symbol\u0027).item.json.currency) } } : null), ((((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).existing_position === true || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).existing_position === \u0027true\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.existing_position\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_stock_buy\u0027, lines: [ { label: \u0027finance.label.security\u0027, kind: \u0027tpl\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin \u0026\u0026 ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin) !== (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin ? \u0027finance.tpl.symbol_isin\u0027 : \u0027finance.tpl.plain\u0027)), params: { isin: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin), symbol: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin)), value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin)) } }, { label: \u0027finance.label.designation\u0027, kind: \u0027text\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).name || ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin))) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).depot_name) }, { label: \u0027finance.label.settlement_account\u0027, kind: \u0027text\u0027, value: ($(\u0027Get Settlement Account\u0027).item.json.settlement_name) }, { label: \u0027finance.label.pieces\u0027, kind: \u0027number\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).shares), digits: -1 }, { label: \u0027finance.label.price\u0027, kind: \u0027money\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).price_per_share), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.order_fee\u0027, kind: \u0027money\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).order_fee || 0)), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.total_cost\u0027, kind: \u0027money\u0027, value: ((Number((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).shares) * Number((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).price_per_share) + Number((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).order_fee || 0))), currency: (($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency)) }, { label: \u0027finance.label.asset_class\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).asset_class) }, { label: \u0027finance.label.quote_symbol\u0027, kind: \u0027tpl\u0027, value: (((!!(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).provider_symbol \u0026\u0026 (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).provider_symbol === $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol \u0026\u0026 !!$(\u0027Resolve Yahoo symbol\u0027).item.json.market_price) ? ($(\u0027Resolve Yahoo symbol\u0027).item.json.exchange ? \u0027finance.tpl.quote_symbol_price_exchange\u0027 : \u0027finance.tpl.quote_symbol_price\u0027) : \u0027finance.tpl.quote_symbol_plain\u0027)), params: { exchange: ($(\u0027Resolve Yahoo symbol\u0027).item.json.exchange), price: ({ kind: \u0027money\u0027, value: ($(\u0027Resolve Yahoo symbol\u0027).item.json.market_price), currency: (($(\u0027Resolve Yahoo symbol\u0027).item.json.currency || ($(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency))) }), symbol: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).provider_symbol || ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).symbol || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).isin))) } }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) }, ((!$(\u0027Resolve Yahoo symbol\u0027).item.json.adoptable) ? { kind: \u0027note\u0027, value: \u0027finance.note.quote_symbol_unverified\u0027 } : null), (($(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing \u0026\u0026 $(\u0027Resolve Yahoo symbol\u0027).item.json.plausible) ? { kind: \u0027note\u0027, value: \u0027finance.note.quote_symbol_foreign\u0027, params: { currency: ($(\u0027Resolve Yahoo symbol\u0027).item.json.currency) } } : null), ((((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).existing_position === true || (Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).existing_position === \u0027true\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.existing_position\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -571,7 +574,9 @@
                                        -160
                                    ],
                       "id":  "ac92388e-6a16-5898-980d-7be82636b103",
-                      "name":  "Refresh market prices"
+                      "name":  "Refresh market prices",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
                   },
                   {
                       "parameters":  {
@@ -641,7 +646,34 @@
                                        -280
                                    ],
                       "id":  "42016a9a-b7e2-5935-a5d8-b9850be0481d",
-                      "name":  "Refresh FX rates"
+                      "name":  "Refresh FX rates",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (SELECT jsonb_build_object(\u0027status\u0027, s.status, \u0027price\u0027, s.price, \u0027price_currency\u0027, s.price_currency, \u0027price_as_of\u0027, s.price_as_of, \u0027feed_symbol\u0027, s.feed_symbol) FROM finance.fn_holding_price_status(ARRAY[(($1::jsonb)-\u003e\u003e\u0027holding_id\u0027)::int]) s) AS st;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ holding_id: $(\u0027Create buy (atomic)\u0027).item.json.holding_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       3520,
+                                       -160
+                                   ],
+                      "id":  "c8ccf9e4-9867-5eeb-998e-f940ab25650e",
+                      "name":  "Price status",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
                   },
                   {
                       "parameters":  {
@@ -688,6 +720,12 @@
                                                                                      "name":  "null_tag",
                                                                                      "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.null_tag }}",
                                                                                      "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4e671090-9aa4-5f13-8ffa-09527944331b",
+                                                                                     "name":  "price_status",
+                                                                                     "value":  "={{ $(\u0027Price status\u0027).item.json.st || {} }}",
+                                                                                     "type":  "object"
                                                                                  }
                                                                              ]
                                                          },
@@ -698,7 +736,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       3520,
+                                       3740,
                                        0
                                    ],
                       "id":  "03a97fbe-d4d7-51c8-ae7a-6d9df4b62c0b",
@@ -969,7 +1007,7 @@
                                                             [
                                                                 {
                                                                     "index":  0,
-                                                                    "node":  "Return",
+                                                                    "node":  "Price status",
                                                                     "type":  "main"
                                                                 }
                                                             ]
@@ -980,12 +1018,23 @@
                                                               [
                                                                   {
                                                                       "index":  0,
-                                                                      "node":  "Return",
+                                                                      "node":  "Price status",
                                                                       "type":  "main"
                                                                   }
                                                               ]
                                                           ]
-                                             }
+                                             },
+                        "Price status":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Return",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         }
                     },
     "settings":  {
                      "executionOrder":  "v1",

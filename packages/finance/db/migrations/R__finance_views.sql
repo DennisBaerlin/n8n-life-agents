@@ -600,7 +600,10 @@ SELECT
     -- Zeile traegt sonst nur die Buchwert-Waehrung (h.currency) -> price_currency macht das fuer freies SQL sichtbar;
     -- asset_class fuer den Anlageklassen-Schritt des Beraters (ungetaggte/unmapped Positionen benennen).
     lp.price_currency,
-    h.asset_class
+    h.asset_class,
+    -- Kurs-Luecken 2026-10-27 (ans Ende angehaengt): ok | stale | missing aus finance.fn_price_status (Init-Helfer,
+    -- dieselbe Regel wie fn_holding_price_status/fn_advisor_review) -> der Agent sagt "Kurs fehlt/veraltet".
+    finance.fn_price_status(lp.as_of)                   AS price_status
 FROM finance.depot_holdings h
 JOIN finance.accounts a ON a.id = h.account_id
 LEFT JOIN latest_price lp ON lp.symbol = h.symbol

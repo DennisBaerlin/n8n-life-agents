@@ -32,6 +32,30 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (SELECT jsonb_build_object(\u0027price\u0027, s.price, \u0027price_currency\u0027, s.price_currency, \u0027avg\u0027, s.avg_price, \u0027currency\u0027, s.currency) FROM finance.fn_holding_price_status() s WHERE s.isin = NULLIF(($1::jsonb)-\u003e\u003e\u0027isin\u0027, \u0027\u0027) ORDER BY s.holding_id LIMIT 1) AS ref, finance.fn_fx_rate_map() AS fx;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ isin: $(\u0027Start\u0027).item.json.isin }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       -200
+                                   ],
+                      "id":  "cb7b29c8-d500-5475-80f0-b5bd47b0dabb",
+                      "name":  "Load price reference",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RO__",
+                                                           "name":  "Postgres finance_ro (read-only)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "SfcrWDA4cwgCsa8T",
@@ -44,9 +68,15 @@
                                                                 "value":  {
                                                                               "isin":  "={{ $(\u0027Start\u0027).item.json.isin || \u0027\u0027 }}",
                                                                               "raw_symbol":  "={{ $(\u0027Start\u0027).item.json.provider_symbol || \u0027\u0027 }}",
-                                                                              "price_currency":  "={{ ($(\u0027Start\u0027).item.json.price_currency || \u0027\u0027).toUpperCase() }}",
+                                                                              "price_currency":  "={{ ($(\u0027Start\u0027).item.json.price_currency || ($(\u0027Load price reference\u0027).item.json.ref || {}).currency || \u0027\u0027).toUpperCase() }}",
                                                                               "price_per_share":  "={{ \u0027\u0027 }}",
-                                                                              "provider_symbol":  "={{ $(\u0027Start\u0027).item.json.provider_symbol || \u0027\u0027 }}"
+                                                                              "provider_symbol":  "={{ $(\u0027Start\u0027).item.json.provider_symbol || \u0027\u0027 }}",
+                                                                              "try_symbols":  "={{ \u0027\u0027 }}",
+                                                                              "ref_price":  "={{ (($(\u0027Load price reference\u0027).item.json.ref || {})).price != null ? String((($(\u0027Load price reference\u0027).item.json.ref || {})).price) : \u0027\u0027 }}",
+                                                                              "ref_currency":  "={{ (($(\u0027Load price reference\u0027).item.json.ref || {})).price_currency || \u0027\u0027 }}",
+                                                                              "cost_price":  "={{ (($(\u0027Load price reference\u0027).item.json.ref || {})).avg != null ? String((($(\u0027Load price reference\u0027).item.json.ref || {})).avg) : \u0027\u0027 }}",
+                                                                              "cost_currency":  "={{ (($(\u0027Load price reference\u0027).item.json.ref || {})).currency || \u0027\u0027 }}",
+                                                                              "fx_rates":  "={{ JSON.stringify($(\u0027Load price reference\u0027).item.json.fx || {}) }}"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -64,7 +94,7 @@
                       "type":  "n8n-nodes-base.executeWorkflow",
                       "typeVersion":  1.2,
                       "position":  [
-                                       220,
+                                       440,
                                        0
                                    ],
                       "id":  "ceb06d74-fa1b-517f-85eb-2b773e713512",
@@ -88,12 +118,24 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "da9fa177-f344-5aef-9123-f31d32eed3d7",
-                                                                                     "name":  "provider_symbol",
-                                                                                     "value":  "={{ $json.verified === true ? $json.provider_symbol : \u0027\u0027 }}",
-                                                                                     "type":  "string"
+                                                                                     "name":  "plausible",
+                                                                                     "value":  "={{ $json.plausible === true }}",
+                                                                                     "type":  "boolean"
                                                                                  },
                                                                                  {
                                                                                      "id":  "53a12ef2-2005-5335-a15e-366f2fe3f5b4",
+                                                                                     "name":  "adoptable",
+                                                                                     "value":  "={{ $json.adoptable === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "698a18a7-11a6-51cd-ac7f-50ff0f8c636d",
+                                                                                     "name":  "provider_symbol",
+                                                                                     "value":  "={{ $json.adoptable === true ? $json.provider_symbol : \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cec2eee5-c9c5-55bb-84f3-791c1a1b0ddd",
                                                                                      "name":  "candidates",
                                                                                      "value":  "={{ $json.candidates || [] }}",
                                                                                      "type":  "array"
@@ -107,7 +149,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       440,
+                                       660,
                                        0
                                    ],
                       "id":  "579977d0-ab3f-53f6-b2aa-ce3472d23bb1",
@@ -115,16 +157,16 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Kurs-Symbol prüfen (Lese-Tool, kein Write, kein LLM)**\n\nInput isin ODER provider_symbol (+ price_currency = gewünschte Kurs-Währung, meist die Depot-Währung). Ruft agent.finance.sub_resolve_yahoo_symbol (Yahoo search + chart, best-effort, 3-s-Timeouts): ISIN -\u003e bis zu 4 Notierungen {symbol, price, currency, exchange}; provider_symbol -\u003e nur dieses prüfen. verified = Treffer in der gewünschten Währung (und plausibel). Kein HITL: es wird nichts gespeichert; der Agent zeigt dem Nutzer die Kandidaten und setzt den gewählten über tool_set_holding (Karte).",
+                                         "content":  "## DB-Automatik\n**Kurs-Symbol prüfen (Lese-Tool, kein Write, kein LLM)**\n\nInput isin ODER provider_symbol (+ price_currency = gewünschte Kurs-Währung, meist die Depot-Währung). Load price reference (finance_ro): Plausi-Referenzen aus der gehaltenen Position mit dieser ISIN (letzter Kurs, enges Band, UND Einstand, grobes Band, je in ihrer Währung; fn_holding_price_status, Get-FinancePriceRefInputs) + FX-Karte (fn_fx_rate_map); ohne gewünschte Währung gilt die der Position. Ruft agent.finance.sub_resolve_yahoo_symbol (Yahoo search + chart, best-effort, 3-s-Timeouts): ISIN -\u003e bis zu 4 Notierungen {symbol, price, currency, exchange, name}; provider_symbol -\u003e nur dieses prüfen. verified = Treffer in der gewünschten Währung UND plausibel (Plausi-Pflicht 2026-10-27; ohne Referenz nie verified, der Agent nennt dann die Kandidaten mit Kurs). Kein HITL: es wird nichts gespeichert; der Agent zeigt dem Nutzer die Kandidaten und setzt den gewählten über tool_set_holding (Karte).",
                                          "height":  300,
-                                         "width":  400,
+                                         "width":  480,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
                       "typeVersion":  1,
                       "position":  [
                                        220,
-                                       -280
+                                       -480
                                    ],
                       "id":  "8fe7dbfc-a976-543b-be7e-3d52474d6ac1",
                       "name":  "Überblick"
@@ -136,12 +178,23 @@
                                                    [
                                                        {
                                                            "index":  0,
-                                                           "node":  "Resolve Yahoo symbol",
+                                                           "node":  "Load price reference",
                                                            "type":  "main"
                                                        }
                                                    ]
                                                ]
                                   },
+                        "Load price reference":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Resolve Yahoo symbol",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
                         "Resolve Yahoo symbol":  {
                                                      "main":  [
                                                                   [

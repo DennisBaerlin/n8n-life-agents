@@ -53,5 +53,28 @@
       "INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim) SELECT id, current_date - 500, 120 FROM finance.pension WHERE name = '__ctf05 bAV';"
     ],
     "expect_keys": ["finance.dialog.pension_statement_intro", "finance.dialog.pension_statement_line", "finance.dialog.pension_statement_howto"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf06",
+    "name": "Kurs-Check an den Owner (ko): Krypto-Position ohne Kurs (keine ISIN -> kein Netz-Abruf) -> Lücken-Kopf + Hinweis; alle anderen Positionen bekommen vorab einen frischen Kurs",
+    "workflow": "agent.finance.cron_remind_missing_prices",
+    "schedule_key": "remind_missing_prices",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM finance.depot_holdings WHERE name = '__ctf06 Testcoin';",
+      "DELETE FROM finance.account_balances WHERE account_id IN (SELECT id FROM finance.accounts WHERE name IN ('__ctf06 Krypto', '__ctf06 Cash'));",
+      "DELETE FROM finance.accounts WHERE name = '__ctf06 Krypto';",
+      "DELETE FROM finance.accounts WHERE name = '__ctf06 Cash';",
+      "DELETE FROM finance.market_prices WHERE source = 'ctf06';",
+      "DELETE FROM core.notification_state WHERE source = 'finance_prices';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.market_prices (symbol, price, currency, as_of, source) SELECT DISTINCT h.symbol, 1, 'EUR', current_date, 'ctf06' FROM finance.depot_holdings h WHERE h.shares > 0 ON CONFLICT (symbol, as_of) DO NOTHING;",
+      "INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ctf06 Cash', 'cash', 'EUR', 'active');",
+      "INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id) SELECT '__ctf06 Krypto', 'crypto_depot', 'EUR', 'active', id FROM finance.accounts WHERE name = '__ctf06 Cash';",
+      "INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency) SELECT id, 'ZZQ', '__ctf06 Testcoin', 2, 10, 'EUR' FROM finance.accounts WHERE name = '__ctf06 Krypto';"
+    ],
+    "expect_keys": ["finance.dialog.price_gap_missing", "finance.dialog.price_gap_none"]
   }
 ]

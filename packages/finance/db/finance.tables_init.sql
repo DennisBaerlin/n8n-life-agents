@@ -2393,6 +2393,41 @@ CREATE OR REPLACE FUNCTION finance.fn_to_eur(
 $$;
 
 -- ============================================================
+-- KURS-FEED-HELFER (Kurs-Luecken 2026-10-27) -- IM INIT, weil depot_holdings_overview (R__finance_views, laeuft
+-- alphabetisch VOR allen R__fn_*) sie beim CREATE VIEW braucht.
+--   fn_feed_symbol(isin, symbol, provider_symbol): das bei Yahoo angefragte Symbol. Aktie/ETF (ISIN vorhanden) =
+--     COALESCE(provider_symbol, symbol); Krypto (ISIN NULL) = COALESCE(provider_symbol, symbol||'-EUR') (Yahoos
+--     TICKER-FIAT). EINE Adresse fuer den Kurs-Cron (Get held symbols) und die Kurs-Status-Anzeige.
+--   fn_price_status(as_of): 'missing' (nie ein Kurs) | 'stale' (juengster Kurs aelter als
+--     core.advisor.price_stale_days, Default 7, Vergleich '>') | 'ok'. EINE Regel fuer depot_holdings_overview,
+--     fn_holding_price_status, fn_advisor_review. as_of ist das ABRUF-Datum (fn_upsert_market_prices) -> ein
+--     Wochenende macht nie stale; ein eingefrorener Kurs eines vom Handel genommenen Papiers bleibt 'ok' (bekannte
+--     Grenze, docs/reference/finance.md).
+-- ============================================================
+CREATE OR REPLACE FUNCTION finance.fn_feed_symbol(p_isin text, p_symbol text, p_provider_symbol text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE WHEN NULLIF(p_isin, '') IS NOT NULL
+                THEN COALESCE(NULLIF(p_provider_symbol, ''), p_symbol)
+                ELSE COALESCE(NULLIF(p_provider_symbol, ''), p_symbol || '-EUR')
+           END;
+$$;
+
+-- plpgsql (late-bound): core.fn_config_get ist eine core-R__ -> beim Init-Apply nicht zwingend schon da.
+CREATE OR REPLACE FUNCTION finance.fn_price_status(p_as_of date)
+RETURNS text LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    IF p_as_of IS NULL THEN
+        RETURN 'missing';
+    END IF;
+    IF (current_date - p_as_of)
+       > COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'price_stale_days'), '')::numeric, 7) THEN
+        RETURN 'stale';
+    END IF;
+    RETURN 'ok';
+END;
+$$;
+
+-- ============================================================
 -- RESTSCHULD-VORSCHAU (WP2 "Finanzen schlank") -- Lese-Helfer ueber die Raten-Kette, IM INIT (loan_overview nutzt sie;
 -- R__finance_views laeuft vor allen R__fn_*), hier am Ende, weil sie transactions/account_balances lesen.
 --   fn_recurring_last_done(rp): juengster erledigter (gebuchter ODER uebersprungener) Faelligkeitstermin der ganzen

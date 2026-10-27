@@ -66,7 +66,6 @@ DECLARE
     v_digest       jsonb;
     v_pace_tol     numeric;
     v_stale_days   numeric;
-    v_price_stale_days numeric;
     v_drift_tol    numeric;
     v_cash_eur     numeric;
     v_er_target    numeric;
@@ -128,7 +127,6 @@ BEGIN
     -- (paket-rollen-sicher, konsistent mit F9; COALESCE-Defaults bleiben). Advisor-Config wohnt im Paket 'core'.
     v_pace_tol         := COALESCE(core.fn_config_get('core', 'advisor', 'drift_pace_pp')::numeric, 10);
     v_stale_days       := COALESCE(core.fn_config_get('core', 'advisor', 'plan_stale_days')::numeric, 365);
-    v_price_stale_days := COALESCE(core.fn_config_get('core', 'advisor', 'price_stale_days')::numeric, 7);
     -- Allokations-Toleranz: aus dem Plan (target_allocation.rebalance_drift_pp), Default 5pp.
     v_drift_tol := COALESCE(NULLIF(v_alloc->>'rebalance_drift_pp','')::numeric, 5);
     -- Audit Paket 3: eine Lese-Adresse fuer freies Cash/Pflicht-Basis und fuer den Monats-Cashflow.
@@ -633,13 +631,16 @@ BEGIN
     FROM finance.depot_holdings h JOIN finance.accounts a ON a.id = h.account_id
     WHERE h.shares > 0 AND h.asset_class IS NULL;
 
-    -- Pflicht-Advisory: null_price (gehaltenes Symbol ohne aktuelle market_prices-Zeile)
+    -- Pflicht-Advisory: null_price = gehaltene Position ohne gueltigen Kurs (missing ODER stale je Position) aus
+    -- finance.fn_holding_price_status (EINE Regel mit Depot-Uebersicht + Kurs-Luecken-Erinnerung, 2026-10-27).
+    -- Bewusst KEIN latch_keys-Eintrag: gemeldet wird die Luecke von agent.finance.cron_remind_missing_prices (auch ohne
+    -- Finanzplan); hier steht sie nur im Datenqualitaets-Text (sonst Doppel-Meldung).
     SELECT count(*)::int,
-           COALESCE(jsonb_agg(jsonb_build_object('symbol', symbol)), '[]'::jsonb)
+           COALESCE(jsonb_agg(jsonb_build_object('holding_id', s.holding_id, 'symbol', s.symbol, 'name', s.name,
+                                                 'status', s.status) ORDER BY s.holding_id), '[]'::jsonb)
     INTO v_null_price_cnt, v_null_price
-    FROM (SELECT DISTINCT h.symbol FROM finance.depot_holdings h
-          WHERE h.shares > 0
-            AND NOT EXISTS (SELECT 1 FROM finance.market_prices mp WHERE mp.symbol = h.symbol)) s;
+    FROM finance.fn_holding_price_status() s
+    WHERE s.status <> 'ok';
 
     -- WP-3c Pflicht-Advisory: null_rate — eine in Nutzung befindliche Fremdwaehrung (Konto-, Holding- ODER
     -- Quote-Waehrung, via fn_active_currencies) OHNE fx_rates-Zeile. fn_to_eur liefert dafuer NULL -> die
@@ -657,8 +658,9 @@ BEGIN
     SELECT max(mp.as_of) INTO v_price_asof
     FROM finance.market_prices mp
     WHERE EXISTS (SELECT 1 FROM finance.depot_holdings h WHERE h.symbol = mp.symbol AND h.shares > 0);
-    v_price_stale := (v_price_asof IS NULL AND EXISTS (SELECT 1 FROM finance.depot_holdings WHERE shares > 0))
-                     OR (v_price_asof IS NOT NULL AND (current_date - v_price_asof) > v_price_stale_days);
+    -- Stale-Regel = finance.fn_price_status (eine Adresse; Schwelle advisor.price_stale_days, Vergleich '>')
+    v_price_stale := EXISTS (SELECT 1 FROM finance.depot_holdings WHERE shares > 0)
+                     AND finance.fn_price_status(v_price_asof) <> 'ok';
 
     -- Zielportfolio-Drift (FIRE-Topf vs. goal.target_portfolio_eur unterer Wert).
     -- WS3 FIRE-Topf-Basis (Owner-Entscheid 2026-06-22; Bengen/Trinity/Big-ERN):
@@ -725,9 +727,11 @@ BEGIN
         END IF;
     END IF;
 
-    -- Datenqualitaet: EIN gelatchter Sammel-Alert (stabiler key) wenn Tag-/Preis-Luecken bestehen; der
-    -- Digest listet sie zusaetzlich unbedingt (nicht-unterdrueckbar im Quartals-Review).
-    IF v_null_tag_cnt > 0 OR v_null_price_cnt > 0 OR v_null_rate_cnt > 0 OR jsonb_array_length(v_unmapped) > 0 THEN
+    -- Datenqualitaet: EIN gelatchter Sammel-Alert (stabiler key) wenn Tag-/Kurs-Luecken bestehen; der
+    -- Digest listet sie zusaetzlich unbedingt (nicht-unterdrueckbar im Quartals-Review). Kurs-Luecken allein loesen den
+    -- Alert NICHT aus (2026-10-27): die meldet agent.finance.cron_remind_missing_prices (sonst Doppel-Meldung); sie stehen
+    -- nur mit im Text, wenn der Alert aus anderem Grund kommt.
+    IF v_null_tag_cnt > 0 OR v_null_rate_cnt > 0 OR jsonb_array_length(v_unmapped) > 0 THEN
         v_dq_msg := jsonb_build_array(
             core.fn_ui_tpl('finance.advisor.dq_intro'),
             -- Namen (bis 5) statt nur Anzahl (2026-10-23); mehr -> eigener Text "und n weitere"
@@ -740,7 +744,11 @@ BEGIN
             CASE WHEN jsonb_array_length(v_unmapped) > 0 THEN core.fn_ui_tpl('finance.advisor.dq_unmapped',
                  jsonb_build_object('n', core.fn_ui_num(jsonb_array_length(v_unmapped)))) END,
             CASE WHEN v_null_price_cnt > 0 THEN core.fn_ui_tpl('finance.advisor.dq_null_price',
-                 jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt))) END,
+                 jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt),
+                     'names', (SELECT string_agg(e->>'name', ', ' ORDER BY ord)
+                               FROM jsonb_array_elements(v_null_price) WITH ORDINALITY t(e, ord) WHERE ord <= 5))) END,
+            CASE WHEN v_null_price_cnt > 5 THEN core.fn_ui_tpl('finance.advisor.dq_null_price_more',
+                 jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt - 5))) END,
             CASE WHEN v_null_rate_cnt > 0 THEN core.fn_ui_tpl('finance.advisor.dq_null_rate',
                  jsonb_build_object('n', core.fn_ui_num(v_null_rate_cnt))) END);
         v_alerts := v_alerts || jsonb_build_object(

@@ -1364,6 +1364,35 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> fn_monitor_ro_eval]: die Frei-SQL-Rolle darf das Monitor-Fenster nicht ausfuehren';
   END IF;
   RAISE NOTICE 'PASS [career_rw -> fn_read_job_matches: kein permission denied; core_ro ohne EXECUTE auf fn_monitor_ro_eval]';
+
+  -- ===== Kurs-Luecken (2026-10-27): die Kurs-Luecken-Erinnerung + Tools laufen unter finance_rw (Latch ueber
+  -- core.fn_should_notify/fn_notify_resolve, fn_apply_price_symbol), die Kurs-Symbol-Pruefung unter finance_ro
+  -- (fn_holding_price_status, fn_fx_rate_map; core.fn_config_get ueber fn_price_status). =====
+  DECLARE
+    v_cash int; v_depot int; v_h int; v_r jsonb;
+  BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_px_cash__', 'cash', 'EUR', 'active') RETURNING id INTO v_cash;
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__rp_px_depot__', 'stocks_depot', 'EUR', 'active', v_cash) RETURNING id INTO v_depot;
+    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
+    VALUES (v_depot, 'IE00TESTRP01', 'RPPX', '__rp_px_fonds__', 1, 10, 'EUR') RETURNING id INTO v_h;
+    SET LOCAL ROLE finance_rw;
+    v_r := finance.fn_price_gaps();
+    PERFORM finance.fn_price_gap_claim(v_h::text);
+    v_r := finance.fn_apply_price_symbol(jsonb_build_object('holding_id', v_h, 'expected_feed_symbol', 'RPPX',
+             'provider_symbol', 'RPPX.DE', 'quote_currency', 'EUR'));
+    RESET ROLE;
+    IF NOT COALESCE((v_r->>'ok')::boolean, false) THEN RAISE EXCEPTION 'FAIL [finance_rw -> fn_apply_price_symbol]: %', v_r; END IF;
+    SET LOCAL ROLE finance_ro;
+    PERFORM * FROM finance.fn_holding_price_status(ARRAY[v_h]);
+    PERFORM finance.fn_fx_rate_map();
+    PERFORM price_status FROM finance.depot_holdings_overview WHERE id = v_h;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [Kurs-Luecken-Rollenpfad]: %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [finance_rw -> fn_price_gaps/fn_price_gap_claim/fn_apply_price_symbol, finance_ro -> fn_holding_price_status/fn_fx_rate_map/price_status]';
 END $$;
 
 ROLLBACK;

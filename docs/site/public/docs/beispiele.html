@@ -250,8 +250,19 @@ Bot: Korrigiert. Import – bitte prüfen: … (neue Karte mit 44 Stück)
 
 Erika: [tippt ✅ Bestätigen]
 
-Bot: 2 Depot-Positionen übernommen.
-</code></pre><p>Bei sehr vielen Einträgen passt die Karte nicht in eine Telegram-Nachricht. Dann kommt sie in mehreren Teilen („Teil 1/3 …“), die Knöpfe hängen am letzten Teil.</p>
+Bot: 2 Depot-Positionen übernommen. Kurs gefunden: VWCE 98,10 € (Stand heute).
+     Für die zweite Position finde ich noch keinen Kurs – soll ich die Börse heraussuchen?
+</code></pre><p>Ob ein Kurs gefunden wurde, sagt der Bot nach jedem Kauf, jeder Korrektur, jedem Import und jeder Sparplan-Ausführung. Bleibt eine Position ohne Kurs (oder kommt seit über einer Woche keiner mehr), meldet sich der <strong>Kurs-Check</strong> von selbst, auch ohne Finanzplan:</p>
+<pre tabindex="0"><code>Bot: 📉 Für S&amp;P 500 (Trade Republic Depot) finde ich keinen Kurs (abgefragt: SPX5).
+
+     Gefunden: SPX5.DE – Beispiel S&amp;P 500 UCITS ETF, GER, aktuell 12,40 €. Als Kursquelle übernehmen?
+     [✅ Übernehmen]  [Nicht jetzt]
+
+Erika: [tippt ✅ Übernehmen]
+
+Bot: Kursquelle für S&amp;P 500 ist jetzt SPX5.DE. Aktueller Kurs: 12,40 € (Stand 27.10.2026).
+</code></pre><p>Vorgeschlagen wird nur eine Notierung, deren Kurs zum bisherigen Kurs bzw. zum Einstand passt. Findet Yahoo über die ISIN nichts Passendes, sucht der Bot per Websuche nach dem Börsen-Kürzel und prüft jeden Fund, bevor er ihn anbietet. Ohne Tipp meldet er sich nach 7 Tagen wieder; abschalten lässt sich der Kurs-Check unter <code>/reminders</code>.</p>
+<p>Bei sehr vielen Einträgen passt die Karte nicht in eine Telegram-Nachricht. Dann kommt sie in mehreren Teilen („Teil 1/3 …“), die Knöpfe hängen am letzten Teil.</p>
 <p><strong>Vermögensübersicht ohne Kürzel und Einstand.</strong> Manche Übersichten (z. B. von Trade Republic) drucken je Position nur die ISIN und den heutigen Kurs. Das reicht: Die ISIN ist dann die Kennung, und den Kurs holt sich das System selbst. Nur den Einstand (was du bezahlt hast) kann das Dokument nicht liefern. Dann fragt der Bot einmal für alle Positionen nach:</p>
 <pre tabindex="0"><code>Bot: Bei beiden Positionen fehlt der Einstand: Space Exploration Techs (1,343429 Stück)
      und S&amp;P 500 (Dist) (42,731759 Stück). Wie hoch war jeweils dein Einstand, je Stück oder gesamt?

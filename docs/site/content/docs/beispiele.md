@@ -58,8 +58,24 @@ Bot: Korrigiert. Import – bitte prüfen: … (neue Karte mit 44 Stück)
 
 Erika: [tippt ✅ Bestätigen]
 
-Bot: 2 Depot-Positionen übernommen.
+Bot: 2 Depot-Positionen übernommen. Kurs gefunden: VWCE 98,10 € (Stand heute).
+     Für die zweite Position finde ich noch keinen Kurs – soll ich die Börse heraussuchen?
 ```
+
+Ob ein Kurs gefunden wurde, sagt der Bot nach jedem Kauf, jeder Korrektur, jedem Import und jeder Sparplan-Ausführung. Bleibt eine Position ohne Kurs (oder kommt seit über einer Woche keiner mehr), meldet sich der **Kurs-Check** von selbst, auch ohne Finanzplan:
+
+```
+Bot: 📉 Für S&P 500 (Trade Republic Depot) finde ich keinen Kurs (abgefragt: SPX5).
+
+     Gefunden: SPX5.DE – Beispiel S&P 500 UCITS ETF, GER, aktuell 12,40 €. Als Kursquelle übernehmen?
+     [✅ Übernehmen]  [Nicht jetzt]
+
+Erika: [tippt ✅ Übernehmen]
+
+Bot: Kursquelle für S&P 500 ist jetzt SPX5.DE. Aktueller Kurs: 12,40 € (Stand 27.10.2026).
+```
+
+Vorgeschlagen wird nur eine Notierung, deren Kurs zum bisherigen Kurs bzw. zum Einstand passt. Findet Yahoo über die ISIN nichts Passendes, sucht der Bot per Websuche nach dem Börsen-Kürzel und prüft jeden Fund, bevor er ihn anbietet. Ohne Tipp meldet er sich nach 7 Tagen wieder; abschalten lässt sich der Kurs-Check unter `/reminders`.
 
 Bei sehr vielen Einträgen passt die Karte nicht in eine Telegram-Nachricht. Dann kommt sie in mehreren Teilen („Teil 1/3 …“), die Knöpfe hängen am letzten Teil.
 

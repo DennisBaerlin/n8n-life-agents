@@ -1,0 +1,1628 @@
+{
+    "id":  "R4pHbfPOFeCMJdiE",
+    "name":  "agent.finance.cron_remind_missing_prices",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REMIND_MISSING_PRICES__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "72349b2c-cb6b-501d-b43f-a06d38aa6f3e",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_missing_prices\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -920,
+                                       0
+                                   ],
+                      "id":  "8077aceb-472d-570c-9e4d-92adb911c5fd",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "2df3613c-ee6f-51e9-ae90-cca000031c00",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -760,
+                                       -40
+                                   ],
+                      "id":  "c7a117db-f3be-50d6-9b01-52b5d0b3e994",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -760,
+                                       200
+                                   ],
+                      "id":  "c60e8d8e-2367-5bf8-b580-a2346d9e51de",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT x.r AS doc, core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.dialog.price_gap_missing\u0027,\u0027finance.dialog.price_gap_stale\u0027,\u0027finance.dialog.price_gap_found\u0027,\u0027finance.dialog.price_gap_none\u0027,\u0027finance.dialog.price_gap_maybe\u0027,\u0027finance.dialog.price_gap_btn_apply\u0027,\u0027finance.dialog.price_gap_btn_later\u0027,\u0027finance.dialog.price_gap_applied\u0027,\u0027finance.dialog.price_gap_applied_noprice\u0027,\u0027finance.dialog.price_gap_already\u0027,\u0027finance.dialog.price_gap_failed\u0027,\u0027finance.dialog.price_gap_later\u0027,\u0027finance.dialog.price_feed_down\u0027,\u0027core.reminders.card_footer\u0027,\u0027core.hitl.unauthorized\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027]::text[]))) AS ui\nFROM (SELECT finance.fn_price_gaps() AS r) x;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -560,
+                                       0
+                                   ],
+                      "id":  "ef335f60-251a-5bba-a4f7-c57bad32b528",
+                      "name":  "Find gaps",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $(\u0027Find gaps\u0027).first().json;\nconst doc = m.doc || {};\nconst U = uiRender(m.ui || {});\nif (doc.feed_down) {\n  return [{ json: { mode: \u0027feed_down\u0027, text: U.fill(U.t(\u0027finance.dialog.price_feed_down\u0027), { date: { kind: \u0027date\u0027, value: doc.stale_since } })\n                                          + \u0027\\n\\n\u0027 + U.t(\u0027core.reminders.card_footer\u0027) } }];\n}\nconst fx = JSON.stringify(doc.fx || {});\nreturn (Array.isArray(doc.gaps) ? doc.gaps : []).map((g) =\u003e ({ json: Object.assign({ mode: \u0027gap\u0027, fx_json: fx }, g) }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -340,
+                                       0
+                                   ],
+                      "id":  "2e7b316b-3a3e-5bd9-8886-9078901baa86",
+                      "name":  "Plan items"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7e32d12a-bd4b-550a-8fa4-80fd00489af8",
+                                                                                   "leftValue":  "={{ $json.mode === \u0027feed_down\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -140,
+                                       0
+                                   ],
+                      "id":  "92399f02-cd0d-5bec-8aa6-fb1176e8b0f3",
+                      "name":  "Feed down?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT finance.fn_price_gap_claim(\u0027feed_down\u0027) AS due;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       60,
+                                       -260
+                                   ],
+                      "id":  "ba188020-448e-54ff-8bdf-c9445ede4623",
+                      "name":  "Claim feed down",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "689a1c96-90fa-5367-9711-48a73693451e",
+                                                                                   "leftValue":  "={{ $json.due }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       260,
+                                       -260
+                                   ],
+                      "id":  "4b96e912-597f-59d5-a3d5-bbf1769b0aea",
+                      "name":  "Feed due?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($(\u0027Plan items\u0027).first().json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       460,
+                                       -320
+                                   ],
+                      "id":  "06de80a2-7699-52a5-a405-6f94f8865b35",
+                      "name":  "Notify feed down",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       60,
+                                       100
+                                   ],
+                      "id":  "2992c791-4a3f-5e9c-a6d3-1a441e3164f2",
+                      "name":  "Loop Over Items"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       260,
+                                       -60
+                                   ],
+                      "id":  "17c07368-dbe8-50a3-8b82-bf7e2d4377de",
+                      "name":  "Done"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_price_gap_claim(($1::jsonb)-\u003e\u003e\u0027key\u0027) AS due;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ key: String($(\u0027Loop Over Items\u0027).first().json.holding_id) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       260,
+                                       160
+                                   ],
+                      "id":  "78c74c90-6afc-5f30-be62-ea496b729891",
+                      "name":  "Claim gap",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "873a54fd-06c2-5acd-a703-427fb642b9cb",
+                                                                                   "leftValue":  "={{ $json.due }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       460,
+                                       160
+                                   ],
+                      "id":  "e74fe18f-18b2-527d-8bc1-955a4c864354",
+                      "name":  "Gap due?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "SfcrWDA4cwgCsa8T",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/SfcrWDA4cwgCsa8T",
+                                                            "cachedResultName":  "agent.finance.sub_resolve_yahoo_symbol"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "isin":  "={{ $(\u0027Loop Over Items\u0027).first().json.isin || \u0027\u0027 }}",
+                                                                              "raw_symbol":  "={{ $(\u0027Loop Over Items\u0027).first().json.symbol || \u0027\u0027 }}",
+                                                                              "price_currency":  "={{ $(\u0027Loop Over Items\u0027).first().json.currency || \u0027\u0027 }}",
+                                                                              "price_per_share":  "={{ \u0027\u0027 }}",
+                                                                              "provider_symbol":  "={{ \u0027\u0027 }}",
+                                                                              "ref_price":  "={{ $(\u0027Loop Over Items\u0027).first().json.price != null ? String($(\u0027Loop Over Items\u0027).first().json.price) : \u0027\u0027 }}",
+                                                                              "ref_currency":  "={{ $(\u0027Loop Over Items\u0027).first().json.price_currency || \u0027\u0027 }}",
+                                                                              "cost_price":  "={{ $(\u0027Loop Over Items\u0027).first().json.avg_price != null ? String($(\u0027Loop Over Items\u0027).first().json.avg_price) : \u0027\u0027 }}",
+                                                                              "cost_currency":  "={{ $(\u0027Loop Over Items\u0027).first().json.currency || \u0027\u0027 }}",
+                                                                              "fx_rates":  "={{ $(\u0027Loop Over Items\u0027).first().json.fx_json || \u0027{}\u0027 }}",
+                                                                              "try_symbols":  "={{ \u0027\u0027 }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       660,
+                                       100
+                                   ],
+                      "id":  "994740ca-8ad9-59d6-84e3-8a5f1053657f",
+                      "name":  "Resolve Yahoo symbol"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $(\u0027Find gaps\u0027).first().json;\nconst U = uiRender(m.ui || {});\nconst g = $(\u0027Loop Over Items\u0027).first().json;\nconst y = $input.first().json || {};\nconst WEB = false;\nconst cur = String(g.feed_symbol || \u0027\u0027).toUpperCase();\nconst sym = String(y.provider_symbol || \u0027\u0027).toUpperCase();\nconst hasQuote = !!g.isin \u0026\u0026 !!sym \u0026\u0026 sym !== cur \u0026\u0026 Number(y.market_price) \u003e 0;\nconst accept = hasQuote \u0026\u0026 y.adoptable === true;\nconst head = g.status === \u0027stale\u0027\n  ? U.fill(U.t(\u0027finance.dialog.price_gap_stale\u0027), { name: g.name, account: g.account_name, feed: g.feed_symbol, date: { kind: \u0027date\u0027, value: g.price_as_of } })\n  : U.fill(U.t(\u0027finance.dialog.price_gap_missing\u0027), { name: g.name, account: g.account_name, feed: g.feed_symbol });\nconst price = { kind: \u0027money\u0027, value: y.market_price, currency: y.currency };\nconst footer = U.t(\u0027core.reminders.card_footer\u0027);\nconst card = head + \u0027\\n\\n\u0027 + U.fill(U.t(\u0027finance.dialog.price_gap_found\u0027), { symbol: sym, listing: y.name || sym, exchange: y.exchange || \u0027\u0027, price: price })\n           + \u0027\\n\\n\u0027 + footer;\nconst maybe = (!accept \u0026\u0026 hasQuote) ? U.fill(U.t(\u0027finance.dialog.price_gap_maybe\u0027), { symbol: sym, listing: y.name || y.exchange || sym, price: price }) + \u0027\\n\\n\u0027 : \u0027\u0027;\nconst none = head + \u0027\\n\\n\u0027 + maybe + U.fill(U.t(\u0027finance.dialog.price_gap_none\u0027), { name: g.name }) + \u0027\\n\\n\u0027 + footer;\nreturn [{ json: { accept: accept, try_web: !accept \u0026\u0026 !WEB \u0026\u0026 !!g.isin, cand_symbol: sym, cand_currency: String(y.currency || \u0027\u0027),\n                  text_card: card, text_none: none } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       860,
+                                       100
+                                   ],
+                      "id":  "6414977d-2ccc-5329-9985-d63766ced6cd",
+                      "name":  "Pick candidate"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5b3e0281-a2d4-5862-96e7-35230dcff618",
+                                                                                   "leftValue":  "={{ $json.accept }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1060,
+                                       100
+                                   ],
+                      "id":  "f1e33cca-85bc-5d53-bf73-342028766b28",
+                      "name":  "Accept?"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "06d7337b-da91-5220-b1a7-51bc346bdcc4",
+                                                                                   "leftValue":  "={{ $json.try_web }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1260,
+                                       300
+                                   ],
+                      "id":  "2f6c72fc-277f-56bb-8ba5-17a14b7bef01",
+                      "name":  "Try web?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "iArgQhPnv72v3cSw",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/iArgQhPnv72v3cSw",
+                                                            "cachedResultName":  "agent.tool_web_search"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "query":  "={{ \u0027Yahoo Finance ticker symbols with exchange suffix (for example .DE Xetra, .F Frankfurt, .L London, .AS Amsterdam, .MI Milan) for the security with ISIN \u0027 + $(\u0027Loop Over Items\u0027).first().json.isin + \u0027 (\u0027 + $(\u0027Loop Over Items\u0027).first().json.name + \u0027). List the symbols.\u0027 }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1460,
+                                       220
+                                   ],
+                      "id":  "c32bc93b-8137-5037-bb40-98cce9819295",
+                      "name":  "Web search",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const w = $input.first().json || {};\nconst g = $(\u0027Loop Over Items\u0027).first().json;\nconst cur = String(g.feed_symbol || \u0027\u0027).toUpperCase();\n// Nur der Antwort-Teil, ohne Quellenliste und ohne URLs/Domains: sonst zaehlten boerse-frankfurt.de, onvista.de \u0026 Co.\n// als \".DE\"-Ticker und verbrauchten das 3er-Budget (Code-Review 2026-10-27).\nconst answer = String(w.ok === false ? \u0027\u0027 : (w.results || \u0027\u0027)).split(\u0027=== SOURCES ===\u0027)[0];\nconst txt = answer.replace(/https?:\\/\\/\\S+/gi, \u0027 \u0027).replace(/\\bwww\\.\\S+/gi, \u0027 \u0027).replace(/\\b[\\w-]+\\.(?:com|net|org|io|eu|info)\\b/gi, \u0027 \u0027);\n// Yahoo-Format mit Boersen-Suffix; erfundene Ticker scheitern danach am Chart-Abruf bzw. an der Plausi-Pruefung.\nconst RX = /\\b([A-Z0-9]{1,12}\\.(?:DE|F|SG|MU|BE|DU|HM|HA|L|AS|PA|MI|SW|VI|BR|MC|LS|IR|CO|ST|OL|HE|TO|AX|HK|T))\\b/g;\nconst out = [];\nlet mm;\nwhile ((mm = RX.exec(txt)) !== null \u0026\u0026 out.length \u003c 3) {\n  const s = mm[1];\n  if (s !== cur \u0026\u0026 !out.includes(s)) out.push(s);\n}\nreturn [{ json: Object.assign({}, $(\u0027Pick candidate\u0027).first().json, { tickers: out.join(\u0027,\u0027), ticker_count: out.length }) }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1660,
+                                       220
+                                   ],
+                      "id":  "de1a66f6-50ad-5015-af7f-eb8f1569678a",
+                      "name":  "Parse tickers"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "02c2ac20-b223-56af-b1a9-bd777907c40b",
+                                                                                   "leftValue":  "={{ $json.ticker_count }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1860,
+                                       220
+                                   ],
+                      "id":  "33b0c78c-e32d-5793-8941-5d29f6c51dc3",
+                      "name":  "Any ticker?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "SfcrWDA4cwgCsa8T",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/SfcrWDA4cwgCsa8T",
+                                                            "cachedResultName":  "agent.finance.sub_resolve_yahoo_symbol"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "isin":  "={{ $(\u0027Loop Over Items\u0027).first().json.isin || \u0027\u0027 }}",
+                                                                              "raw_symbol":  "={{ $(\u0027Loop Over Items\u0027).first().json.symbol || \u0027\u0027 }}",
+                                                                              "price_currency":  "={{ $(\u0027Loop Over Items\u0027).first().json.currency || \u0027\u0027 }}",
+                                                                              "price_per_share":  "={{ \u0027\u0027 }}",
+                                                                              "provider_symbol":  "={{ \u0027\u0027 }}",
+                                                                              "ref_price":  "={{ $(\u0027Loop Over Items\u0027).first().json.price != null ? String($(\u0027Loop Over Items\u0027).first().json.price) : \u0027\u0027 }}",
+                                                                              "ref_currency":  "={{ $(\u0027Loop Over Items\u0027).first().json.price_currency || \u0027\u0027 }}",
+                                                                              "cost_price":  "={{ $(\u0027Loop Over Items\u0027).first().json.avg_price != null ? String($(\u0027Loop Over Items\u0027).first().json.avg_price) : \u0027\u0027 }}",
+                                                                              "cost_currency":  "={{ $(\u0027Loop Over Items\u0027).first().json.currency || \u0027\u0027 }}",
+                                                                              "fx_rates":  "={{ $(\u0027Loop Over Items\u0027).first().json.fx_json || \u0027{}\u0027 }}",
+                                                                              "try_symbols":  "={{ $(\u0027Parse tickers\u0027).first().json.tickers }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2060,
+                                       140
+                                   ],
+                      "id":  "20963926-162c-5c8c-acf3-a0e7f7676859",
+                      "name":  "Resolve web tickers"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $(\u0027Find gaps\u0027).first().json;\nconst U = uiRender(m.ui || {});\nconst g = $(\u0027Loop Over Items\u0027).first().json;\nconst y = $input.first().json || {};\nconst WEB = true;\nconst cur = String(g.feed_symbol || \u0027\u0027).toUpperCase();\nconst sym = String(y.provider_symbol || \u0027\u0027).toUpperCase();\nconst hasQuote = !!g.isin \u0026\u0026 !!sym \u0026\u0026 sym !== cur \u0026\u0026 Number(y.market_price) \u003e 0;\nconst accept = hasQuote \u0026\u0026 y.adoptable === true;\nconst head = g.status === \u0027stale\u0027\n  ? U.fill(U.t(\u0027finance.dialog.price_gap_stale\u0027), { name: g.name, account: g.account_name, feed: g.feed_symbol, date: { kind: \u0027date\u0027, value: g.price_as_of } })\n  : U.fill(U.t(\u0027finance.dialog.price_gap_missing\u0027), { name: g.name, account: g.account_name, feed: g.feed_symbol });\nconst price = { kind: \u0027money\u0027, value: y.market_price, currency: y.currency };\nconst footer = U.t(\u0027core.reminders.card_footer\u0027);\nconst card = head + \u0027\\n\\n\u0027 + U.fill(U.t(\u0027finance.dialog.price_gap_found\u0027), { symbol: sym, listing: y.name || sym, exchange: y.exchange || \u0027\u0027, price: price })\n           + \u0027\\n\\n\u0027 + footer;\nconst maybe = (!accept \u0026\u0026 hasQuote) ? U.fill(U.t(\u0027finance.dialog.price_gap_maybe\u0027), { symbol: sym, listing: y.name || y.exchange || sym, price: price }) + \u0027\\n\\n\u0027 : \u0027\u0027;\nconst none = head + \u0027\\n\\n\u0027 + maybe + U.fill(U.t(\u0027finance.dialog.price_gap_none\u0027), { name: g.name }) + \u0027\\n\\n\u0027 + footer;\nreturn [{ json: { accept: accept, try_web: !accept \u0026\u0026 !WEB \u0026\u0026 !!g.isin, cand_symbol: sym, cand_currency: String(y.currency || \u0027\u0027),\n                  text_card: card, text_none: none } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2260,
+                                       140
+                                   ],
+                      "id":  "df551484-01df-5b4b-82ab-9798ba35ccf3",
+                      "name":  "Pick web candidate"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.text_none).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2060,
+                                       420
+                                   ],
+                      "id":  "d8ed9757-20f7-5a54-9550-59a8b20c0b64",
+                      "name":  "Notify no source",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendAndWait",
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "message":  "={{ ($json.text_card).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "approvalOptions":  {
+                                                                 "values":  {
+                                                                                "approvalType":  "double",
+                                                                                "approveLabel":  "={{ String((($(\u0027Find gaps\u0027).first().json.ui.t) || {})[\u0027finance.dialog.price_gap_btn_apply\u0027] || \u0027finance.dialog.price_gap_btn_apply\u0027) }}",
+                                                                                "disapproveLabel":  "={{ String((($(\u0027Find gaps\u0027).first().json.ui.t) || {})[\u0027finance.dialog.price_gap_btn_later\u0027] || \u0027finance.dialog.price_gap_btn_later\u0027) }}"
+                                                                            }
+                                                             },
+                                         "chatApproval":  "__HITL_CHAT_APPROVAL__",
+                                         "approverIds":  "__OWNER_CHAT_ID__",
+                                         "unauthorizedReplyText":  "={{ String((($(\u0027Find gaps\u0027).first().json.ui.t) || {})[\u0027core.hitl.unauthorized\u0027] || \u0027core.hitl.unauthorized\u0027) }}",
+                                         "postDecisionBehavior":  "removeButtons",
+                                         "options":  {
+                                                         "appendAttribution":  false,
+                                                         "limitWaitTime":  {
+                                                                               "values":  {
+                                                                                              "limitType":  "afterTimeInterval",
+                                                                                              "resumeAmount":  480,
+                                                                                              "resumeUnit":  "minutes"
+                                                                                          }
+                                                                           }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1260,
+                                       -40
+                                   ],
+                      "id":  "edc23ea6-ec61-5210-9304-398bced52302",
+                      "name":  "Ask price symbol",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "webhookId":  "5b4220db-8cee-5fdd-9815-b17064f89549"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "9409c63e-bf70-537d-98a6-af4de8f75284",
+                                                                                   "leftValue":  "={{ $json.data \u0026\u0026 $json.data.approved === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1820,
+                                       -160
+                                   ],
+                      "id":  "128b8ad2-06ae-5f91-bc9f-62355fbcacc6",
+                      "name":  "Apply?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027code\u0027 AS code FROM finance.fn_apply_price_symbol($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ holding_id: $(\u0027Loop Over Items\u0027).first().json.holding_id, expected_feed_symbol: $(\u0027Loop Over Items\u0027).first().json.feed_symbol, provider_symbol: $(\u0027Accept?\u0027).first().json.cand_symbol, quote_currency: $(\u0027Accept?\u0027).first().json.cand_currency }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2020,
+                                       -260
+                                   ],
+                      "id":  "61dd5971-5230-58b7-83e4-924bfbdf55cb",
+                      "name":  "Apply symbol",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e28769c7-921a-5454-a16d-c895a66955dc",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2220,
+                                       -260
+                                   ],
+                      "id":  "eed0fc8e-7932-539b-bb24-5bea97256db6",
+                      "name":  "Applied?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "V8FSoH9jFdqjAx2g",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/V8FSoH9jFdqjAx2g",
+                                                            "cachedResultName":  "agent.finance.cron_refresh_market_prices"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ \u0027\u0027 }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2420,
+                                       -380
+                                   ],
+                      "id":  "e495288a-5d6f-51e7-8890-d2ebd3db4f7d",
+                      "name":  "Refresh market prices",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1d12e7f4-0039-5814-817e-2cafc0245776",
+                                                                                   "leftValue":  "={{ $(\u0027Accept?\u0027).first().json.cand_currency !== \u0027EUR\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2620,
+                                       -380
+                                   ],
+                      "id":  "861fc9ea-20f8-577a-add2-5565a73b38ac",
+                      "name":  "Foreign quote?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "OhOudXoO9SuOxnIP",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/OhOudXoO9SuOxnIP",
+                                                            "cachedResultName":  "agent.finance.cron_refresh_fx_rates"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ \u0027\u0027 }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2820,
+                                       -460
+                                   ],
+                      "id":  "361cf300-25c0-50d8-9b8b-638398684f15",
+                      "name":  "Refresh FX rates",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (SELECT to_jsonb(s) FROM finance.fn_holding_price_status(ARRAY[(($1::jsonb)-\u003e\u003e\u0027holding_id\u0027)::int]) s) AS st;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ holding_id: $(\u0027Loop Over Items\u0027).first().json.holding_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       3020,
+                                       -380
+                                   ],
+                      "id":  "3f41e539-9385-533d-9a7c-a8f99c9f8837",
+                      "name":  "Read new price",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $(\u0027Find gaps\u0027).first().json;\nconst U = uiRender(m.ui || {});\nconst g = $(\u0027Loop Over Items\u0027).first().json;\nconst a = $(\u0027Accept?\u0027).first().json;\nconst st = ($input.first().json || {}).st || {};\nconst text = (st.price !== null \u0026\u0026 st.price !== undefined \u0026\u0026 st.status === \u0027ok\u0027)\n  ? U.fill(U.t(\u0027finance.dialog.price_gap_applied\u0027), { name: g.name, symbol: a.cand_symbol,\n      price: { kind: \u0027money\u0027, value: st.price, currency: st.price_currency }, date: { kind: \u0027date\u0027, value: st.price_as_of } })\n  : U.fill(U.t(\u0027finance.dialog.price_gap_applied_noprice\u0027), { name: g.name, symbol: a.cand_symbol });\nreturn [{ json: { text: text } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       3220,
+                                       -380
+                                   ],
+                      "id":  "6312e0b5-17e1-5d4e-9e69-4336569e3e70",
+                      "name":  "Compose applied"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $(\u0027Find gaps\u0027).first().json;\nconst U = uiRender(m.ui || {});\nconst g = $(\u0027Loop Over Items\u0027).first().json;\nconst r = $input.first().json || {};\nconst key = (r.code === \u0027already_resolved\u0027 || r.code === \u0027not_found\u0027) ? \u0027finance.dialog.price_gap_already\u0027 : \u0027finance.dialog.price_gap_failed\u0027;\nreturn [{ json: { text: U.fill(U.t(key), { name: g.name }) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2420,
+                                       -160
+                                   ],
+                      "id":  "b9c07a25-fc3d-5a07-8ec3-a18075134cab",
+                      "name":  "Compose not applied"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  function money(v, c) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027}); } catch (e) { return String(v) + \u0027 \u0027 + cur; }\n  }\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency);\n      case \u0027date\u0027: return date(v);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $(\u0027Find gaps\u0027).first().json;\nconst U = uiRender(m.ui || {});\nconst g = $(\u0027Loop Over Items\u0027).first().json;\nreturn [{ json: { text: U.fill(U.t(\u0027finance.dialog.price_gap_later\u0027), { name: g.name }) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2020,
+                                       -40
+                                   ],
+                      "id":  "3e835ae2-b6ce-5d22-8478-385f2dfd2c58",
+                      "name":  "Compose later"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       3420,
+                                       -160
+                                   ],
+                      "id":  "f93959b2-d98b-5485-8713-e899497291c7",
+                      "name":  "Notify result",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Kurs-Lücken-Erinnerung (Owner 2026-10-27: nie unentdeckt)**\n\nSchedule (core.config schedule.remind_missing_prices, Standard 25 10 * * * = im Erinnerungsfenster). Find gaps = finance.fn_price_gaps(): gehaltene Positionen ohne gültigen Kurs (missing = nie einer, stale = älter als advisor.price_stale_days; EINE Regel fn_price_status wie Depot-Übersicht und Berater), Referenzkurs für die Plausi-Prüfung, FX-Sätze; Seiteneffekt: behobene Lücken re-armen (core.fn_notify_resolve, source finance_prices). Plan items: Feed-Ausfall (keine Position ok, \u003e= 2 stale) -\u003e EINE Meldung (Latch feed_down, 7 Tage), sonst ein Item je Lücke. Ohne Lücke: Ende. Meldet unabhängig vom Finanzplan (der Berater-Drift-Check ist opt-in und war der Grund, dass eine Lücke unbemerkt blieb).",
+                                         "height":  340,
+                                         "width":  620,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -920,
+                                       -460
+                                   ],
+                      "id":  "e40592d0-b9a0-5e40-ba97-eb4f18ec374c",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_price_gap_claim direkt vor dem Versand**\n\nClaim gap = core.fn_should_notify(finance_prices, holding_id, 7 Tage): erste Meldung sofort, dann höchstens alle 7 Tage, solange die Lücke besteht. Gesetzt wird er je Position erst in ihrer Schleifen-Runde: eine nicht angetippte Karte verschluckt so keine spätere (die Karte wartet höchstens 8 h, dann weiter wie \"Nicht jetzt\"). Bewusst kein fn_notify_reconcile (advisor-only, kein Paket-Grant).",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       260,
+                                       340
+                                   ],
+                      "id":  "ea959de5-b307-5bb3-8a6a-86cbe2414da1",
+                      "name":  "Latch je Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Yahoo-ISIN-Suche, dann Websuche, beides geprüft**\n\nResolve Yahoo symbol = derselbe Sub wie Kauf/Korrektur/Import (provider_symbol leer -\u003e immer ISIN-Suche; Plausi gegen letzten Kurs, Band 0,8-1,25, ODER Einstand, Band 0,2-5, je in ihrer Währung, sonst in EUR verglichen). Pick candidate: übernehmbar nur mit ISIN, anderem Symbol als dem heutigen Feed-Symbol und adoptable (Sub). Sonst (nur mit ISIN) Websuche über core:web_search (bezahlte Anthropic-API, Anfrage = ISIN + Name, keine Bestände) -\u003e Parse tickers (bis 3 Ticker mit Börsen-Suffix, nur aus dem Antwort-Teil, URLs/Domains entfernt; Websuche-Ticker nur in Positions-Währung) -\u003e dieselbe Sub mit try_symbols prüft sie per Chart-Abruf + Plausi -\u003e Pick web candidate. Ein erfundener Ticker scheitert dort; den Rest prüft der Owner auf der Karte (Name, Börse, Kurs). Krypto (ohne ISIN) -\u003e nur Text-Hinweis.",
+                                         "height":  340,
+                                         "width":  620,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       660,
+                                       -320
+                                   ],
+                      "id":  "58c7ae60-694c-58c4-ad13-ac1d73ed1271",
+                      "name":  "Symbol-Suche mit Plausi-Pflicht"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**fn_apply_price_symbol + Sofort-Kurs**\n\nDer Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -\u003e \"nichts überschrieben\"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices (+ Refresh FX rates bei Fremdwährung, beide alwaysOutputData) -\u003e Read new price (fn_holding_price_status, aggregiert -\u003e immer ein Item) -\u003e Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -\u003e nur Hinweis \"in 7 Tagen wieder\".",
+                                         "height":  340,
+                                         "width":  440,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2020,
+                                       -660
+                                   ],
+                      "id":  "3a275fea-de5b-5683-b9d7-8e8ab058822c",
+                      "name":  "Übernehmen"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Mehrere Karten in einer Execution**\n\nn8n bindet einen Tipp an die Execution, nicht an die Nachricht. Hinter der Karte merkt sich \"(tap check)\" die beantworteten Nachrichten; ein Tipp auf eine schon beantwortete Karte stellt die aktuelle neu (New-StaleTapGuard, Muster cron_remind_interest).",
+                                         "height":  300,
+                                         "width":  260,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1460,
+                                       -480
+                                   ],
+                      "id":  "ced4dca3-1805-5f9b-b805-ab3fd260a306",
+                      "name":  "Doppel-Tipp-Schutz"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Paket aktiv UND cron_enable.remind_missing_prices**\n\ncore.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_missing_prices\u0027)=\u0027true\u0027 (DB entscheidet, fail-closed). Läuft unter finance_rw (Latch + fn_apply_price_symbol). Toggle: /reminders oder lifeagents config set cron_enable remind_missing_prices false.",
+                                         "height":  300,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1100,
+                                       -260
+                                   ],
+                      "id":  "30eaaad7-00d3-5cf8-9a14-2fadef524749",
+                      "name":  "F9 Cron-Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForEachItem",
+                                         "jsCode":  "// Stale-Tap-Schutz (New-StaleTapGuard): Tipp auf eine schon beantwortete Nachricht?\nconst d = ($input.item.json || {}).data || {};\nconst id = (d.messageId === undefined || d.messageId === null) ? \u0027\u0027 : String(d.messageId);\nconst seen = String($execution.customData.get(\u0027hitl_seen\u0027) || \u0027\u0027).split(\u0027,\u0027).filter(Boolean);\nconst stale = id !== \u0027\u0027 \u0026\u0026 seen.includes(id);\nif (!stale \u0026\u0026 id !== \u0027\u0027) $execution.customData.set(\u0027hitl_seen\u0027, seen.concat(id).slice(-20).join(\u0027,\u0027));\nreturn { json: Object.assign({}, $input.item.json, { stale_tap: stale }) };"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1460,
+                                       -160
+                                   ],
+                      "id":  "cb0b0673-6ccb-5486-b053-9d57ee5ec578",
+                      "name":  "Ask price symbol (tap check)"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "39ff2331-fb36-5969-9fe3-94ad9272d2bc",
+                                                                                   "leftValue":  "={{ $json.stale_tap }}",
+                                                                                   "rightValue":  false,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1640,
+                                       -160
+                                   ],
+                      "id":  "d0b7f42b-72b4-58ec-8ce2-b754baa6f4db",
+                      "name":  "Ask price symbol (fresh tap?)"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1100,
+                                       180
+                                   ],
+                      "id":  "cd71fb3f-d629-5f86-904e-c6b2f91668a5",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       300
+                                   ],
+                      "id":  "ef7b7acc-cb4f-594f-997d-75227fa1198e",
+                      "name":  "Test run (Doc)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Find gaps",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Find gaps":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Plan items",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Plan items":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Feed down?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Feed down?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Claim feed down",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Loop Over Items",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Claim feed down":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Feed due?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Feed due?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Notify feed down",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+
+                                                       ]
+                                                   ]
+                                      },
+                        "Loop Over Items":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Done",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Claim gap",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Claim gap":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Gap due?",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Gap due?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Resolve Yahoo symbol",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Loop Over Items",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Resolve Yahoo symbol":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Pick candidate",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Pick candidate":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Accept?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Accept?":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Ask price symbol",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Try web?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Try web?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Web search",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Notify no source",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Web search":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Parse tickers",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Parse tickers":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Any ticker?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Any ticker?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Resolve web tickers",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Notify no source",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Resolve web tickers":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Pick web candidate",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Pick web candidate":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Accept?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Notify no source":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Loop Over Items",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Apply?":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Apply symbol",
+                                                            "type":  "main"
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Compose later",
+                                                            "type":  "main"
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Apply symbol":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Applied?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Applied?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Refresh market prices",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Compose not applied",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Refresh market prices":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Foreign quote?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Foreign quote?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Refresh FX rates",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Read new price",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Refresh FX rates":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Read new price",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Read new price":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Compose applied",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Compose applied":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Notify result",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Compose not applied":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Notify result",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Compose later":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Notify result",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Notify result":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Loop Over Items",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Ask price symbol":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Ask price symbol (tap check)",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Ask price symbol (tap check)":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Ask price symbol (fresh tap?)",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Ask price symbol (fresh tap?)":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Apply?",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ],
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Ask price symbol",
+                                                                                   "type":  "main"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -6,6 +6,7 @@ function Build-BookSavingsPlanExecution {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
+    $MarketPricesCronId = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-BookSavingsPlanExecution' -Soft
     $trig = Build-Trigger @('savings_plan_name','shares','price_per_share','order_fee')
 
     # Plan-Details fuer HITL-Summary aus DERSELBEN fn wie die Buchung (Audit Paket 2, Punkt 3): naechste offene
@@ -69,13 +70,25 @@ function Build-BookSavingsPlanExecution {
     $errWrite = Build-ToolError 'Execution rejected' @(2200, 240) `
         "={{ `$('Book execution (atomic)').item.json.reason }}"
 
-    $ret = Build-Return @(2200, 0) @(
+    # Kurs-Einrichtung (Owner 2026-10-27): die erste Ausfuehrung legt die Position oft erst an -> Kurs sofort holen
+    # (Dual-Trigger des Markt-Preis-Crons, Muster book_stock_buy) und den Status in die Antwort. Der Sparplan kennt
+    # nur das rohe Symbol: fehlt der Kurs, bietet der Agent tool_verify_price_symbol an, sonst meldet ihn
+    # cron_remind_missing_prices mit geprueftem Vorschlag. FX-Kurse braucht es hier nicht neu (Plan-Waehrung = Depot).
+    $callPriceRefresh = Build-CallWorkflow 'Refresh market prices' @(2200, -160) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
+        ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
+    # Die Ausfuehrung ist schon gebucht: ein Fehler im Kurs-Abruf darf sie nie als Fehler melden.
+    $callPriceRefresh['alwaysOutputData'] = $true
+    $callPriceRefresh['onError'] = 'continueRegularOutput'
+    $priceStatus = New-FinancePriceStatusNode -Pos @(2420, -160) -HoldingIdExpr '$(''Book execution (atomic)'').item.json.holding_id'
+
+    $ret = Build-Return @(2640, 0) @(
         ,@('ok','true','boolean')
         ,@('holding_id', "={{ `$('Book execution (atomic)').item.json.holding_id }}", 'number')
         ,@('buy_tx_id', "={{ `$('Book execution (atomic)').item.json.buy_tx_id }}", 'number')
         ,@('due_date', "={{ `$('Book execution (atomic)').item.json.due_date }}", 'string')
         ,@('total_cost', "={{ `$('Book execution (atomic)').item.json.total_cost }}", 'number')
         ,@('variance', "={{ `$('Book execution (atomic)').item.json.variance }}", 'number')
+        ,@('price_status', "={{ `$('Price status').item.json.st || {} }}", 'object')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(500, -320) `
@@ -84,14 +97,14 @@ function Build-BookSavingsPlanExecution {
 
     $stickyFn = Build-Sticky 'fn_book_savings_plan_execution: Cron-Verknüpfung' @(1760, -260) `
         'fn: auto-due_date + rp_id-Stempel' `
-        'Karte (Read Plan) und Buchung lesen dieselbe fn_savings_plan_next_execution: frühestes offenes Vorkommen über ALLE Glieder der Vorgänger-Kette des Plans (nach einer Betragsänderung mit Stichtag in der Zukunft liegt die noch anstehende Ausführung auf der alten Zeile, mit altem Betrag). Kauf-Transaktion bekommt recurring_payment_id = genau dieses Ketten-Glied + transaction_date = due_date. Dadurch verschwindet das Vorkommen beim nächsten Cron-Lauf automatisch aus der offenen Liste -- kein Write an fn_recurring_due_open nötig. DB-Trigger: shares + avg_purchase_price via Trigger (nie manuell schreiben).' 260 560
+        'Karte (Read Plan) und Buchung lesen dieselbe fn_savings_plan_next_execution: frühestes offenes Vorkommen über ALLE Glieder der Vorgänger-Kette des Plans (nach einer Betragsänderung mit Stichtag in der Zukunft liegt die noch anstehende Ausführung auf der alten Zeile, mit altem Betrag). Kauf-Transaktion bekommt recurring_payment_id = genau dieses Ketten-Glied + transaction_date = due_date. Dadurch verschwindet das Vorkommen beim nächsten Cron-Lauf automatisch aus der offenen Liste -- kein Write an fn_recurring_due_open nötig. DB-Trigger: shares + avg_purchase_price via Trigger (nie manuell schreiben). NACH dem Write: Refresh market prices (Sofort-Kurs, die erste Ausführung legt die Position oft erst an) -> Price status (fn_holding_price_status) -> price_status in der Antwort (Read nach HTTP, bewusst außerhalb der Write-fn).' 260 640
 
     $stickyOk = Build-Sticky 'Execution open? / Write ok? (korrigierbare Ablehnung)' @(2200, -240) `
         'fn-Rückgabe {ok:false, reason}' `
         'Execution open? (vor der Karte): Plan nicht gefunden/mehrdeutig/nicht aktiv oder kein offenes Vorkommen (bereits gebucht oder noch nicht fällig) -> ToolError, keine Bestätigung. Dry run ok? (vor der Karte): shares<=0/price<=0 oder Depot-Ablehnung -> Dry run rejected, keine Karte. Write ok? (nach der Karte): dieselben Fälle erneut, falls sich seit der Karte etwas geändert hat -> {ok:false, reason}. Abweichung > 5 % wird in der Summary als Warnung angezeigt (kein harter Block).' 220 480
 
     $nodes = @($trig, $readPlan, $ifOpen, $errOpen) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
-               $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn, $stickyOk)
+               $ifWriteOk, $errWrite, $callPriceRefresh, $priceStatus, $ret, $stickyDry, $stickyFn, $stickyOk)
 
     $conns = [ordered]@{
         'Start'                      = @{ main = @( ,@( E 'Read Plan' ) ) }
@@ -113,9 +126,11 @@ function Build-BookSavingsPlanExecution {
         ) }
         'Book execution (atomic)'    = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                  = @{ main = @(
-            @( E 'Return' ),
+            @( E 'Refresh market prices' ),
             @( E 'Execution rejected' )
         ) }
+        'Refresh market prices'      = @{ main = @( ,@( E 'Price status' ) ) }
+        'Price status'               = @{ main = @( ,@( E 'Return' ) ) }
     }
 
     return Build-Workflow 'agent.finance.tool_book_savings_plan_execution' $nodes $conns `

@@ -158,9 +158,13 @@ function Get-FinanceHitlLines {
             } else {
                 $lines += (New-HitlLine 'finance.label.asset_class'  "$S.asset_class")
                 $Y = & $need 'Quote'
-                $symKey = "($Y.market_price ? ($Y.exchange ? 'finance.tpl.quote_symbol_price_exchange' : 'finance.tpl.quote_symbol_price') : 'finance.tpl.quote_symbol_plain')"
+                # Die Karte zeigt, was geschrieben wird: $S.provider_symbol IST der Write-Payload (nur ein adoptable Yahoo-
+                # Vorschlag oder ein genanntes Symbol, Plausi-Pflicht 2026-10-27); Kurs/Boerse nur, wenn er zu genau
+                # diesem Symbol gehoert.
+                $quoteOk = "(!!$S.provider_symbol && $S.provider_symbol === $Y.provider_symbol && !!$Y.market_price)"
+                $symKey = "($quoteOk ? ($Y.exchange ? 'finance.tpl.quote_symbol_price_exchange' : 'finance.tpl.quote_symbol_price') : 'finance.tpl.quote_symbol_plain')"
                 $lines += (New-HitlLine 'finance.label.quote_symbol' $symKey -Kind tpl -Params @{
-                    symbol   = "($Y.provider_symbol || $sym)"
+                    symbol   = "($S.provider_symbol || $sym)"
                     price    = (New-HitlValue -Kind money -Value "$Y.market_price" -Currency "($Y.currency || $ccy)")
                     exchange = "$Y.exchange" })
             }
@@ -168,7 +172,7 @@ function Get-FinanceHitlLines {
             if (-not $Import) {
                 # Fremdwaehrungs-Notierung (keine in Depot-Waehrung, plausibel; 2026-10-23) ist kein "nicht verifiziert"-Fall,
                 # sondern ein Umrechnungs-Hinweis
-                $lines += (New-HitlNote -Key 'finance.note.quote_symbol_unverified' -If "!$Y.verified && !($Y.foreign_listing && $Y.plausible)")
+                $lines += (New-HitlNote -Key 'finance.note.quote_symbol_unverified' -If "!$Y.adoptable")
                 $lines += (New-HitlNote -Key 'finance.note.quote_symbol_foreign' -If "$Y.foreign_listing && $Y.plausible" -Params @{ currency = "$Y.currency" })
                 $lines += (New-HitlNote -Key 'finance.note.existing_position' -If "($S.existing_position === true || $S.existing_position === 'true')")
             }

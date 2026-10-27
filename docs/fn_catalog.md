@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 372 fn-Dateien.
+Umfang: 377 fn-Dateien.
 
 ## finance.fn_account_interest_defaults (READ, STABLE) -- die vorgeschlagenen Zins-Werte eines NEUEN Kontos
 - `finance.fn_account_interest_defaults(p jsonb) -> jsonb`
@@ -93,6 +93,11 @@ Umfang: 372 fn-Dateien.
 - `finance.fn_apply_goal_reserve(p_goal int, p_account int) -> void`
 - jsonb-Keys: --
 - Der Topf eines Sparziels ist das Zielkonto seiner Sparrate (recurring_payments.target_account_id). Die RESERVE ist der Topf plus jedes Konto, auf dem noch getaggtes Geld des Ziels liegt (Paket DB-ist-das-Gesetz Nachtrag D). Familie: fn_goal_reserve_accounts / fn_goal_reserve_account_reason / fn_goal_reserve_reason / fn_apply_goal_reserve; Konsumenten: fn_book_savings_goal_transfer, fn_set_savings_goal. Setzt den Topf auf die Raten-Zeile des Ziels (auch eine beendete: das Wiedereroeffnen kopiert ihr Zielkonto, und der Topf bleibt die Adresse fuer Einzahlungen) und auf ALLE noch laufenden Zeilen der Raten-Kette (fn_recurring_lineage; nach einer Raten-Aenderung laeuft die Vorgaengerzeile bis zum Stichtag weiter).
+
+## finance.fn_apply_price_symbol
+- `finance.fn_apply_price_symbol(p jsonb) -> jsonb`
+- jsonb-Keys: expected_feed_symbol, holding_id, ok, provider_symbol, quote_currency
+- finance.fn_apply_price_symbol(p jsonb) — Kurs-Symbol aus der Luecken-Karte uebernehmen (ATOMIC WRITE, 2026-10-27) Laeuft hinter dem [Uebernehmen]-Tipp der Karte aus agent.finance.cron_remind_missing_prices (der Tipp ist das HITL). Zwischen Karte und Tipp koennen Stunden liegen -> Guard ZUERST: die Position ist noch gehalten, ihre Kurs-Luecke besteht noch (fn_holding_price_status <> ok) und ihr Feed-Symbol ist noch das der Karte (expected_feed_symbol). Sonst {ok:false, code:'already_resolved'} (der Owner hat inzwischen selbst korrigiert) bzw. code:'not_found'. Dann Delegation an fn_set_holding (Waehrungs-Validierung, Dubletten-Abfang). quote_currency wird IMMER gesetzt (auch EUR): fn_set_holding kann sie nicht leeren, ein altes USD bliebe sonst. Eingabe: holding_id, expected_feed_symbol, provider_symbol (Yahoo-Ticker, wird gross geschrieben), quote_currency. RUECKGABE ok:true: { holding_id, feed_symbol } (Post-State: das jetzt angefragte Symbol). Tests: tests/db/finance/test_fn_apply_price_symbol.sql
 
 ## agent.fn_approve_learn_candidate
 - `agent.fn_approve_learn_candidate(p jsonb) -> jsonb`
@@ -551,6 +556,11 @@ Umfang: 372 fn-Dateien.
 - jsonb-Keys: --
 - core.fn_fmt_date (read-only, Datum fuer SQL-gerenderte Dokumente) Formatiert ein Datum im Muster der Sprache (core.ui_languages.date_pattern, Quelle: Core-Manifest languages.list[].date_pattern). Die Muster liefern dieselbe Ausgabe wie Fmt-DateJs mit Intl im Workflow (de 31.12.2026, en-GB 31/12/2026, ko 2026. 12. 31.). Bei uns anders: PostgreSQL hat kein Intl; Workflows formatieren immer per Intl, nur ganze Dokumente aus SQL (Notfallmappe) nutzen diese fn. Fehlt das Muster oder die Sprache -> ISO 'YYYY-MM-DD'. NULL -> NULL. Kein Grant: einzige Aufrufer sind SECURITY-DEFINER-fns (estate.fn_render_emergency_binder) bzw. das Haupt-Credential; ein Paket-Rollen-Aufrufer braeuchte erst ein Fenster. Tests: tests/db/core/test_fn_fmt_date.sql
 
+## finance.fn_fx_rate_map
+- `finance.fn_fx_rate_map() -> jsonb`
+- jsonb-Keys: --
+- finance.fn_fx_rate_map() — juengster EUR-Kurs je Fremdwaehrung als jsonb {CCY: rate, EUR: 1} (READ, 2026-10-27) Fuer den Plausi-Check eines Kurs-Symbol-Kandidaten in Fremdwaehrung (agent.finance.sub_resolve_yahoo_symbol, Input fx_rates): Kandidaten-Kurs und Referenzkurs werden in EUR verglichen. rate = Einheiten der Waehrung je 1 EUR (finance.fx_rates base EUR), wie fn_to_eur. EINE Adresse fuer fn_price_gaps (Kurs-Luecken-Erinnerung) und tool_set_holding/tool_verify_price_symbol. Tests: tests/db/finance/test_fn_price_gaps.sql
+
 ## estate.fn_gap_report
 - `estate.fn_gap_report() -> jsonb`
 - jsonb-Keys: beneficiary, claim_deadline_hours, has_transmortal_poa, insurance_type, name, ownership, policy_number
@@ -630,6 +640,11 @@ Umfang: 372 fn-Dateien.
 - `core.fn_hitl_texts(p jsonb) -> jsonb`
 - jsonb-Keys: _, chat_id, found, full_name, role, summary, t
 - core.fn_hitl_texts (read-only, Text-Buendel des HITL-Gates agent.tool_human_approval) Liefert je MOEGLICHEM Empfaenger die Sprache, das Intl-Locale und alle Texte, die der Gate-Renderer ('Compose messages', Get-HitlComposeJs) braucht: die Gate-Chrome-Keys (Hinweis, Knoepfe, Mitglied-Texte, "Teil n/N" langer Karten, Format-Woerter) + jeden key-foermigen String des strukturierten Summary (New-HitlSummary: title, labels, note-/key-/tpl-Werte, Parameter) und bei kind=enum den Wert-Key <enum>.<wert> (Wert lower + Nicht-[a-z0-9_] -> '_', dieselbe Regel im Renderer). Ein Lookup-Pfad: beide Buendel kommen aus agent.fn_ui_texts_for (dieselbe Key-Sammlung + Sprach-Kette wie die Cron-/Gate-Texte), ohne den DEFINER-Wrapper -> das Gate braucht unter core_ro keinen weiteren Grant. owner = Sprache des Owners (agent.fn_person_lang, Kette Person -> Owner -> en) member = nur wenn chat_id numerisch ist UND zu einem Nicht-Owner aufloest (agent.fn_resolve_sender — dieselbe Quelle wie der Gate-Zweig 'Is member?'), sonst null; traegt den Namen fuer die Owner-Texte "Mitglied X beantragt" / "X hat bestaetigt". SICHERHEIT: liefert NIE eine chat_id — Texte entscheiden nie ueber Empfaenger/approverIds (die bleiben im Gate an Resolve sender/$OWNER_CHAT_ID gebunden). Wirft nie bei kaputtem/String-Summary (dann nur die Chrome-Keys); ein DB-Fehler stoppt das Gate fail-closed (kein onError am Knoten). languages = Code -> Eigenname (Zeilen kind=language). p: {summary, chat_id} RUECKGABE: {owner:{lang, locale, t:{key:text}}, member:{lang, locale, name, t}|null, languages:{code:name}} Tests: tests/db/core/test_fn_hitl_texts.sql; core_ro-Perspektive tests/db/cross/test_role_permissions.sql
+
+## finance.fn_holding_price_status
+- `finance.fn_holding_price_status(p_holding_ids int[] DEFAULT NULL) -> TABLE ( holding_id int, name text, symbol text, isin text, feed_symbol text, account_name text, currency text, avg_price numeric, price numeric, price_currency text, price_as_of date, status text )`
+- jsonb-Keys: --
+- finance.fn_holding_price_status(p_holding_ids) — Kurs-Status je gehaltener Position (READ, Kurs-Luecken 2026-10-27) EINE Adresse fuer "hat diese Position einen Kurs?": Kurs-Luecken-Erinnerung (fn_price_gaps), Tool-Antworten nach dem Sofort-Kursabruf (book_stock_buy/set_holding/commit_import/book_savings_plan_execution), fn_apply_price_symbol (Guard) und fn_advisor_review (null_price). Status-Regel = finance.fn_price_status (Init-Helfer; missing | stale | ok), angefragtes Symbol = finance.fn_feed_symbol. Nur gehaltene Positionen (shares > 0); p_holding_ids NULL = alle. RUECKGABE je Zeile: holding_id, name, symbol, isin, feed_symbol, account_name, currency (Holding/Buchwert), avg_price, price (juengster market_prices-Kurs, NULL ohne Kurs), price_currency, price_as_of, status. plpgsql (late-bound, Muster R__-Reihenfolge), STABLE, INVOKER: liest nur finance.* (+ core.fn_config_get ueber fn_price_status, beide Paket-Rollen haben den Grant). Tests: tests/db/finance/test_fn_holding_price_status.sql
 
 ## finance.fn_holding_symbol (READ, IMMUTABLE) -- die Kennung einer Depot-Position (depot_holdings.symbol)
 - `finance.fn_holding_symbol(p_symbol text, p_isin text) -> text`
@@ -1095,6 +1110,16 @@ Umfang: 372 fn-Dateien.
 - `estate.fn_preview_case(p jsonb) -> jsonb`
 - jsonb-Keys: bundesland, case_type, chat_id, event_date, flags, knowledge_date, ok, resolved, subject_person_id
 - estate.fn_preview_case (WS-3 — read-only Dry-Run + Validierung; DIE HITL-Preview-Quelle) Berechnet, was fn_create_case anlegen WUERDE, ohne zu schreiben: validiert alle Eingaben und gibt die Task-ZAHL je Phase zurueck (Trauer-UX: die HITL-Summary zeigt eine Zusammenfassung, keine Voll-Liste). Der create_case-Tool ruft sie VOR dem Gate fuer die Bestaetigungs-Nachricht; fn_create_ case ruft sie zur Write-Zeit erneut (re-validiert -> eine Quelle, kein TOCTOU). STABLE (kein Write). VALIDIERUNG (alle korrigierbar -> {ok:false, reason}, kein RAISE): * adults_only-Backstop (core.fn_check_write_permission; Kind -> reject). * case_type ∈ {death, incapacity}; subject_person_id Pflicht + muss ein Haushaltsmitglied sein (core.fn_household_persons, NIE agent.persons direkt, D10). * subject == Sender selbst -> {ok:false, subject_is_sender} (v1-Grenze; nur numerischer Pfad). * event_date Pflicht, nicht in der Zukunft; knowledge_date >= event_date (Default = event_date); beide YYYY-MM-DD oder relativ (core.fn_resolve_input_dates) — die Rueckgabe traegt die AUFGELOESTEN Daten, die der Tool-Write danach unveraendert uebernimmt (Karte = Speicher). * intake_facts / unknown_flags: Intake-Merkmale des Falltyps, wirksam true bzw. unbekannt (Register via estate.fn_case_register_flags, ueberstimmt von p.flags). * bundesland FAIL-CLOSED: Parameter -> Config estate.general.bundesland -> sonst {ok:false, bundesland_required}; unbekannter Slug -> reject. (Der Agent fragt dann nach.) * offener Fall derselben Person: gleicher Typ -> reject (Idempotenz); death ueber offenem incapacity -> supersede_case_id gesetzt (Auto-Supersede in fn_create_case); incapacity ueber offenem death -> reject. Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_preview_case.sql
+
+## finance.fn_price_gap_claim
+- `finance.fn_price_gap_claim(p_key text) -> boolean`
+- jsonb-Keys: --
+- finance.fn_price_gap_claim(p_key) — Latch der Kurs-Luecken-Erinnerung (Kurs-Luecken 2026-10-27) true GENAU DANN, wenn die Luecke <p_key> (holding_id als Text oder 'feed_down') jetzt gemeldet werden soll: erste Meldung oder 7 Tage nach der letzten (core.fn_should_notify mit TTL, source 'finance_prices'). Der Cron ruft das je Position DIREKT vor dem eigenen Versand (nie fuer alle vorab: eine nicht angetippte Karte darf die naechste nicht verschlucken). Re-Arm nach Behebung macht fn_price_gaps. VERTRAG (wie fn_should_notify): nur fuer eine Luecke aufrufen, die laut fn_price_gaps gerade besteht. Tests: tests/db/finance/test_fn_price_gaps.sql
+
+## finance.fn_price_gaps
+- `finance.fn_price_gaps() -> jsonb`
+- jsonb-Keys: holding_id
+- finance.fn_price_gaps() — Kurs-Luecken fuer die taegliche Erinnerung (Kurs-Luecken 2026-10-27) Liefert die gehaltenen Positionen ohne gueltigen Kurs (status missing|stale aus fn_holding_price_status) samt den Plausi-Referenzen eines Symbol-Kandidaten (letzter Kurs price/price_currency, Einstand avg_price in currency) und die EUR-FX-Saetze (fn_fx_rate_map; Kandidat in anderer Waehrung -> Vergleich in EUR). FEED-AUSFALL: hat keine gehaltene Position einen gueltigen Kurs, aber >= 2 hatten schon einen (stale), liefert Yahoo offenbar gar nichts -> feed_down=true, stale_since = juengster Kurs; der Cron sendet dann EINE Meldung statt einer Karte je Position (die Symbol-Suche fiele ohnehin aus). RE-ARM (Seiteneffekt, darum VOLATILE): jede Position OHNE Luecke (auch verkaufte) bekommt core.fn_notify_resolve('finance_prices', <id>), ohne Feed-Ausfall auch der Key 'feed_down' -> eine spaeter neu entstehende Luecke meldet sofort. Bewusst NICHT core.fn_notify_reconcile: das ist advisor-only (kein Paket-Grant, R__fn_provision_package_roles). Gemeldet (gelatcht) wird erst im Cron je Karte via fn_price_gap_claim. RUECKGABE jsonb: { feed_down, stale_since, fx:{CCY: rate EUR->CCY, EUR:1}, gaps:[{holding_id, name, isin, symbol, feed_symbol, account_name, currency, status, price, price_currency, price_as_of, avg_price}] } Tests: tests/db/finance/test_fn_price_gaps.sql
 
 ## core.fn_provision_package_roles (ATOMIC, privilegiert — per-Paket-Rollen anlegen, D10)
 - `core.fn_provision_package_roles(p jsonb) -> jsonb`

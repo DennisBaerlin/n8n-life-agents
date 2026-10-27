@@ -16,6 +16,14 @@ if (-not $msgPath -or -not (Test-Path $msgPath)) {
 }
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+# BOM vorn: ReadAllText entfernt es still (Encoding-Erkennung), git speichert es aber im Subject -> ein unsichtbares
+# Zeichen vor dem type im oeffentlichen Log. Quelle meist PS 5.1 `Set-Content -Encoding utf8` (schreibt immer ein BOM).
+$head = [System.IO.File]::ReadAllBytes($msgPath) | Select-Object -First 3
+if ($head.Count -eq 3 -and $head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF) {
+    Write-Host "COMMIT ABGELEHNT: die Message-Datei beginnt mit einem UTF-8-BOM (git uebernimmt es ins Subject)." -ForegroundColor Red
+    Write-Host "  Datei ohne BOM schreiben: NEUE Datei mit dem Write-Tool (Ueberschreiben behaelt ein vorhandenes BOM) bzw. [System.IO.File]::WriteAllText(<pfad>, <text>, (New-Object System.Text.UTF8Encoding(`$false)))" -ForegroundColor Yellow
+    exit 1
+}
 $raw = [System.IO.File]::ReadAllText($msgPath, $Utf8NoBom)
 $lines = $raw -split "`r?`n"
 

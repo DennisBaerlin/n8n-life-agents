@@ -1,5 +1,12 @@
 {
   "_comment": "core 패키지의 고정 사용자 문구, 한국어 (docs/package-contract.md §3.11). 키 하나 = 완결된 문장 하나, 자리표시자 {name}. 이름 뒤에는 항상 '님'을 붙여 조사(이/가)가 고정되도록 한다. de.json/en.json과 같은 키와 자리표시자 (locale_lint).",
+  "core.app.menu_button": "📊 개요",
+  "core.app.title": "개요",
+  "core.app.reload": "새로고침",
+  "core.app.gap": "불완전 – 시세 또는 환율이 없습니다",
+  "core.app.error.expired": "개요가 만료되었습니다. 닫은 뒤 버튼으로 다시 열어 주세요.",
+  "core.app.error.denied": "이 개요에 대한 접근 권한이 없습니다.",
+  "core.app.error.unavailable": "지금은 개요를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
   "core.hitl.hint": "버튼으로 확인하거나 취소해 주세요. 수정하려면 취소한 뒤 수정 내용을 새 메시지로 보내 주세요 (텍스트로 답장하면 대기 중인 이 요청에 전달되지 않습니다).",
   "core.hitl.approve": "✅ 확인",
   "core.hitl.cancel": "❌ 취소",

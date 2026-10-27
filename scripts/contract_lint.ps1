@@ -1802,6 +1802,52 @@ foreach ($sf in (Get-ChildItem (Join-Path $pkgDir '*\onboarding\sections.json') 
 }
 
 # ---------------------------------------------------------------
+# (29) MINI-APP-BILDSCHIRME (docs/package-contract.md §3.12): jeder app_screens-Eintrag ist ein Objekt {handler_fn,
+#     ord, icon}; handler_fn zeigt ins eigene Paket-Schema (core: core.*/agent.*) und hat eine R__fn-Datei; der
+#     Bildschirm-Key ist paket-uebergreifend eindeutig (core.app_screens.screen ist PK, der Seeder wuerde sonst
+#     still umhaengen); der Tab-Titel <pkg>.app.screen.<screen> steht im Katalog (de.json; locale_lint haelt en/ko
+#     gleich). (29b) Die Seite rendert Namen aus Importen -> kein HTML-Parser auf Daten: innerHTML/outerHTML/
+#     insertAdjacentHTML/document.write/eval sind in packages/*/build/app/*.html verboten (XSS: die Seite haelt
+#     die initData, ein eingeschleustes Skript koennte Daten abziehen).
+# ---------------------------------------------------------------
+$appScreenOwner = @{}
+foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
+    $pkg = $pdir.Name
+    $mf  = Read-Manifest $pkg
+    if ($null -eq $mf -or -not $mf.app_screens) { continue }
+    $deF  = Join-Path $pdir.FullName 'locales\de.json'
+    $deLc = if (Test-Path $deF) { [System.IO.File]::ReadAllText($deF, $Utf8NoBom) | ConvertFrom-Json } else { [pscustomobject]@{} }
+    foreach ($p in $mf.app_screens.PSObject.Properties) {
+        if ($p.Name -eq '_comment') { continue }
+        $ctx = "APP-SCREEN: packages/$pkg/manifest.json app_screens '$($p.Name)'"
+        if ($p.Name -notmatch '^[a-z][a-z0-9_]*$') { $errors.Add("${ctx}: Key muss ^[a-z][a-z0-9_]*$ sein.") }
+        if ($appScreenOwner.ContainsKey($p.Name)) { $errors.Add("${ctx}: Key schon von Paket '$($appScreenOwner[$p.Name])' belegt (Bildschirm-Keys sind paket-uebergreifend eindeutig).") }
+        else { $appScreenOwner[$p.Name] = $pkg }
+        $v = $p.Value
+        if ($v -isnot [System.Management.Automation.PSCustomObject]) { $errors.Add("${ctx}: muss ein Objekt { handler_fn, ord, icon } sein."); continue }
+        $fn = [string]$v.handler_fn
+        if ($fn -notmatch '^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$') { $errors.Add("${ctx}: handler_fn fehlt/ungueltig (schema.fn erwartet)."); continue }
+        $sch = $Matches[1]; $fname = $Matches[2]
+        $okSchema = if ($pkg -eq 'core') { $sch -in @('core', 'agent') } else { $sch -eq $pkg }
+        if (-not $okSchema) { $errors.Add("${ctx}: handler_fn '$fn' liegt nicht im eigenen Schema (Boundary wie callback_handlers).") }
+        elseif (-not (Test-Path (Join-Path $pdir.FullName "db\migrations\R__$fname.sql"))) { $errors.Add("${ctx}: handler_fn '$fn' hat keine Datei packages/$pkg/db/migrations/R__$fname.sql.") }
+        if ($null -ne $v.ord -and $v.ord -isnot [int] -and $v.ord -isnot [long]) { $errors.Add("${ctx}: ord muss eine ganze Zahl sein.") }
+        if ([string]$v.icon -and ([string]$v.icon).Length -gt 16) { $errors.Add("${ctx}: icon laenger als 16 Zeichen.") }
+        if ([string]::IsNullOrWhiteSpace([string]$deLc."$pkg.app.screen.$($p.Name)")) { $errors.Add("${ctx}: Tab-Titel '$pkg.app.screen.$($p.Name)' fehlt in packages/$pkg/locales/de.json.") }
+    }
+}
+$htmlParserRe = '\b(innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval)\b'
+foreach ($hf in (Get-ChildItem (Join-Path $pkgDir '*\build\app\*.html') -ErrorAction SilentlyContinue)) {
+    $rel = $hf.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
+    foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($hf.FullName, $Utf8NoBom), $htmlParserRe)) {
+        $errors.Add("APP-XSS: $rel nutzt '$($m.Value)' -- Daten nur per createElement/textContent in die Seite (Namen kommen aus Importen).")
+    }
+}
+foreach ($sa in @(@{ t = 'el.innerHTML = x'; want = 1 }, @{ t = 'el.textContent = x'; want = 0 }, @{ t = 'document.write(x)'; want = 1 })) {
+    if ([regex]::Matches($sa.t, $htmlParserRe).Count -ne $sa.want) { $errors.Add("APP-XSS SELBST-ASSERT '$($sa.t)': Check 29b ist defekt.") }
+}
+
+# ---------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------
 Write-Host ""

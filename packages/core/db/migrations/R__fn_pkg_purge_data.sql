@@ -13,7 +13,7 @@
 --        Transaktion sichtbar -> der Trigger findet kein EXISTS mehr).
 --     2. agent.core_contexts      — Instructions + facts-Sidecars (finance_profile) + agent-Plan-Docs.
 --     3. core.context_validators + core.context_scopes + core.context_renderers + core.advisors +
---        core.cron_labels + core.callback_handlers — VOR dem (CLI-seitigen) DROP SCHEMA, sonst zeigen validate_fn/render_fn/
+--        core.cron_labels + core.callback_handlers + core.app_screens — VOR dem (CLI-seitigen) DROP SCHEMA, sonst zeigen validate_fn/render_fn/
 --        review_fn/handler_fn auf eine gedroppte fn (Orphan-Dispatch-Ziel in den generischen Core-Wrappern).
 --        renderers + advisors kamen mit WS1/WS2 dazu, core.cron_labels (Toggle-/Label-Registry) +
 --        core.callback_handlers (Callback-Dispatch-Registry) mit Phase 0 WS-0c (sonst leakt ein Paket-
@@ -42,7 +42,7 @@
 --     Fenster (es loescht in core UND agent, beide gehoeren dem Host). search_path=pg_catalog gepinnt
 --     (alle Objekte schema-qualifiziert, CVE-2018-1058-Hygiene).
 --   RUECKGABE: {ok:true, package, protected, contexts, validators, scopes, renderers, advisors, cron_labels,
---     callback_handlers, monitor_triggers, method_triggers, acquisition_methods, services, config,
+--     callback_handlers, app_screens, monitor_triggers, method_triggers, acquisition_methods, services, config,
 --     schema_version} (Lösch-Counts).
 --   ATOMAR: RAISE -> Rollback (Trigger laufen in derselben Transaktion).
 -- ============================================================
@@ -62,6 +62,7 @@ DECLARE
     v_advisors   INT;
     v_cronlabels INT;
     v_cbhandlers INT;
+    v_appscreens INT;
     v_triggers   INT;
     v_mtriggers  INT;
     v_methods    INT;
@@ -110,6 +111,9 @@ BEGIN
     -- sonst zeigt handler_fn auf eine gedroppte Paket-fn (Orphan-Dispatch-Ziel im generischen Dispatcher).
     DELETE FROM core.callback_handlers WHERE package = v_pkg;
     GET DIAGNOSTICS v_cbhandlers = ROW_COUNT;
+    -- core.app_screens (Mini-App, §3.12): Bildschirm-Registry; gleiche Begruendung wie callback_handlers.
+    DELETE FROM core.app_screens WHERE package = v_pkg;
+    GET DIAGNOSTICS v_appscreens = ROW_COUNT;
 
     -- 3b. Paket-besessene Monitor-Trigger (Host-Tabelle agent.monitor_triggers, von DROP SCHEMA <pkg>
     --     NICHT erreicht — Advisor<->Monitor-Integration). `AND origin='user'` ist Invarianten-Pflicht:
@@ -147,6 +151,7 @@ BEGIN
         'advisors',         v_advisors,
         'cron_labels',      v_cronlabels,
         'callback_handlers', v_cbhandlers,
+        'app_screens',      v_appscreens,
         'monitor_triggers', v_triggers,
         'method_triggers',  v_mtriggers,
         'acquisition_methods', v_methods,

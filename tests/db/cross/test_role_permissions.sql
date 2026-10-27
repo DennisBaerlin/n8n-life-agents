@@ -1393,6 +1393,24 @@ BEGIN
   RAISE NOTICE 'PASS [Rollen-Zaun generisch: % Paket-Rollen ohne agent-USAGE / Host-Tabellen / unpublizierte core-fns]', v_n;
 END $$;
 
+-- ===== Mini-App (docs/package-contract.md §3.12): der Eingang laeuft nur unter der Host-Credential (Workflow
+-- core.main_app_serve). Keine Leserolle darf ihn oder die initData-Pruefung ausfuehren; core.app_secret bleibt allen
+-- Leserollen verwehrt (test_core_app_secret_acl.sql). Zusaetzlich gibt der Eingang einer Frei-SQL-Sitzung nichts. =====
+DO $$
+DECLARE v_role text; v_fn text;
+BEGIN
+  FOREACH v_role IN ARRAY ARRAY['core_ro', 'context_ro', 'finance_ro', 'finance_rw', 'career_ro', 'estate_ro'] LOOP
+    CONTINUE WHEN NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role);
+    FOREACH v_fn IN ARRAY ARRAY['core.fn_app_screen(text)', 'core.fn_app_verify_init_data(text, timestamptz)',
+                                'core.fn_app_refusal(text, text)'] LOOP
+      IF has_function_privilege(v_role, v_fn, 'EXECUTE') THEN
+        RAISE EXCEPTION 'FAIL [Mini-App: % darf % ausfuehren]', v_role, v_fn;
+      END IF;
+    END LOOP;
+  END LOOP;
+  RAISE NOTICE 'PASS [Mini-App: Eingang + initData-Pruefung fuer keine Leser-/Paket-Rolle ausfuehrbar]';
+END $$;
+
 -- ===== Security-Audit 2026-10: gebundene Fenster unter der echten Rolle =====
 --   career.fn_read_job_matches (read_job_matches unter career_rw) -> kein permission denied
 --   agent.fn_monitor_ro_eval   (Monitor-Specs; DEFINER, Eigentuemer core_ro_eval) -> die Frei-SQL-Rolle core_ro

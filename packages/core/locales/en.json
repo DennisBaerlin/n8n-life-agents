@@ -1,5 +1,12 @@
 {
   "_comment": "Fixed user-facing texts of the core package, English (docs/package-contract.md §3.11). One key = one whole sentence, placeholders {name}. Same keys + placeholders as de.json/ko.json (locale_lint). Also the runtime fallback language.",
+  "core.app.menu_button": "📊 Overview",
+  "core.app.title": "Overview",
+  "core.app.reload": "Reload",
+  "core.app.gap": "incomplete – a price or exchange rate is missing",
+  "core.app.error.expired": "This overview has expired. Please close it and open it again with the button.",
+  "core.app.error.denied": "You do not have access to this overview.",
+  "core.app.error.unavailable": "The overview is not available right now. Please try again later.",
   "core.hitl.hint": "Please confirm or cancel using the buttons. To change something: cancel and send the correction as a new message (a text reply does not reach this pending request).",
   "core.hitl.approve": "✅ Confirm",
   "core.hitl.cancel": "❌ Cancel",

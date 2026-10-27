@@ -38,6 +38,8 @@ BEGIN
   VALUES ('zz_cron', 'zz');
   INSERT INTO core.callback_handlers (prefix, handler_fn, package)
   VALUES ('zz', 'zz.fn_handle_zz', 'zz');
+  INSERT INTO core.app_screens (screen, package, handler_fn)
+  VALUES ('zz_screen', 'zz', 'zz.fn_app_screen_zz');
   -- Textkatalog: Abbild der GEBUENDELTEN Dateien, unabhaengig vom Installationsstand (Menue/Vermittler nennen auch
   -- nicht installierte Pakete beim Namen) -> MUSS die Purge UEBERLEBEN (der Seed raeumt Pakete, die das Release verlassen).
   INSERT INTO core.ui_texts (key, lang, text, package)
@@ -92,6 +94,7 @@ BEGIN
   IF (v_res->>'advisors')::int   <> 1 THEN RAISE EXCEPTION 'FAIL purge: advisors-Count != 1 (%)', v_res; END IF;
   IF (v_res->>'cron_labels')::int <> 1 THEN RAISE EXCEPTION 'FAIL purge: cron_labels-Count != 1 (%)', v_res; END IF;
   IF (v_res->>'callback_handlers')::int <> 1 THEN RAISE EXCEPTION 'FAIL purge: callback_handlers-Count != 1 (%)', v_res; END IF;
+  IF (v_res->>'app_screens')::int <> 1 THEN RAISE EXCEPTION 'FAIL purge: app_screens-Count != 1 (%)', v_res; END IF;
   IF v_res ? 'ui_texts' THEN RAISE EXCEPTION 'FAIL purge: ui_texts gehoert nicht mehr zur Purge (%)', v_res; END IF;
   IF (v_res->>'services')::int   <> 1 THEN RAISE EXCEPTION 'FAIL purge: services-Count != 1 (%)', v_res; END IF;
   IF (v_res->>'config')::int     <> 1 THEN RAISE EXCEPTION 'FAIL purge: config-Count != 1 (%)', v_res; END IF;
@@ -110,6 +113,7 @@ BEGIN
   OR EXISTS (SELECT 1 FROM core.advisors            WHERE package='zz')
   OR EXISTS (SELECT 1 FROM core.cron_labels         WHERE package='zz')
   OR EXISTS (SELECT 1 FROM core.callback_handlers   WHERE package='zz')
+  OR EXISTS (SELECT 1 FROM core.app_screens         WHERE package='zz')
   OR EXISTS (SELECT 1 FROM core.services            WHERE package='zz')
   OR EXISTS (SELECT 1 FROM core.config              WHERE package='zz')
   OR EXISTS (SELECT 1 FROM core.schema_version      WHERE package='zz')
@@ -138,7 +142,7 @@ BEGIN
   IF NOT (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL purge [idempotent]: ok=false (%)', v_res; END IF;
   IF (v_res->>'protected')::int + (v_res->>'contexts')::int + (v_res->>'validators')::int
    + (v_res->>'scopes')::int + (v_res->>'renderers')::int + (v_res->>'advisors')::int + (v_res->>'cron_labels')::int
-   + (v_res->>'callback_handlers')::int + (v_res->>'monitor_triggers')::int
+   + (v_res->>'callback_handlers')::int + (v_res->>'app_screens')::int + (v_res->>'monitor_triggers')::int
    + (v_res->>'services')::int + (v_res->>'config')::int + (v_res->>'schema_version')::int <> 0
      THEN RAISE EXCEPTION 'FAIL purge [idempotent]: 2. Lauf loeschte noch Zeilen (%)', v_res; END IF;
 

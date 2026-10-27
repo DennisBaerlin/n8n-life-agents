@@ -680,6 +680,42 @@ _seed_callback_handlers() {
   done
 }
 
+# --- (4e2) core.app_screens — Bildschirme der Mini-App „Übersicht“ (docs/package-contract.md §3.12) -----
+# Jedes Paket DEKLARIERT im manifest.json einen "app_screens"-Block { "<screen>": { handler_fn, ord, icon } };
+# der HOST ersetzt die Zeilen des Pakets (DELETE + INSERT in der Seed-Transaktion -> ein aus dem Manifest
+# entfernter Bildschirm verschwindet, statt als tote Registry-Zeile zu bleiben). core.fn_app_screen dispatcht
+# generisch. BOUNDARY wie _seed_callback_handlers (handler_fn im eigenen Schema; core darf core.*/agent.*),
+# Signatur fn(jsonb)->jsonb. Bildschirm-Keys sind paket-uebergreifend eindeutig (contract_lint).
+_seed_app_screens() {
+  local mf pkg screen fn ord icon
+  for mf in "$REPO_ROOT"/packages/*/manifest.json; do
+    [ -f "$mf" ] || continue
+    pkg="$(jq -r '.name // empty' "$mf")"
+    _seed_skip_pkg "$pkg" && continue
+    printf 'DELETE FROM core.app_screens WHERE package = %s;\n' "$(_sql_str "$pkg")"
+    jq -r '.name as $pkg | (.app_screens // {}) | to_entries[]
+           | select(.key != "_comment")
+           | [.key, (.value.handler_fn // ""), ((.value.ord // 100) | tostring), (.value.icon // ""), $pkg]
+           | @tsv' "$mf" |
+    while IFS=$'\t' read -r screen fn ord icon pkg; do
+      [ -n "$screen" ] || continue
+      [ -n "$fn" ] || { warn "app_screen '$screen' ($pkg): handler_fn fehlt — uebersprungen."; continue; }
+      if [ "$pkg" = core ]; then
+        case "$fn" in core.*|agent.*) : ;; *) warn "app_screen '$screen' -> '$fn' zeigt nicht ins Core-Schema — uebersprungen (Boundary)."; continue ;; esac
+      else
+        case "$fn" in "$pkg".*) : ;; *) warn "app_screen '$screen' -> '$fn' zeigt nicht ins Paket-Schema '$pkg' — uebersprungen (Boundary)."; continue ;; esac
+      fi
+      case "$ord" in ''|*[!0-9]*) ord=100 ;; esac
+      printf 'INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon)\n'
+      printf 'VALUES (%s, %s, %s, %s, %s)\n' "$(_sql_str "$screen")" "$(_sql_str "$pkg")" "$(_sql_str "$fn")" "$ord" "$(_sql_str "$icon")"
+      printf 'ON CONFLICT (screen) DO UPDATE SET package=EXCLUDED.package, handler_fn=EXCLUDED.handler_fn, ord=EXCLUDED.ord, icon=EXCLUDED.icon, updated_at=now();\n'
+      # shellcheck disable=SC2016  # $as$ ist ein literales SQL-Dollar-Quote-Tag, KEINE Shell-Expansion.
+      printf 'DO $as$ BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; END IF; END $as$;\n' \
+        "$(_sql_str "$fn(jsonb)")" "$(_sql_str "app_screen $screen -> $fn(jsonb) nicht gefunden (Manifest-Typo/Apply-Order?)")"
+    done
+  done
+}
+
 # --- (4f) core.monitor_acquisition_methods — Monitor-Beschaffungs-Methoden der Pakete (Phase B) -----
 # Jedes Paket DEKLARIERT im manifest.json einen "monitor_acquisition_methods"-Block, VERSCHACHTELT:
 #   { "<method>": { "acquire_fn": "<pkg>.<fn>", "validate_fn": "<pkg>.<fn>", "label": "...", "params_description": "..." } }
@@ -894,6 +930,7 @@ seed_data() {
     _seed_advisors             # core.advisors aus den Paket-Manifesten (WS2 Core-Advisor-Engine)
     _seed_cron_labels          # core.cron_labels aus den Paket-Manifesten (Phase 0 WS-0c #2/#3 Cron-Toggle-Registry)
     _seed_callback_handlers    # core.callback_handlers aus den Paket-Manifesten (Phase 0 WS-0c CB Callback-Dispatch-Registry)
+    _seed_app_screens          # core.app_screens aus den Paket-Manifesten (Mini-App „Übersicht“, §3.12)
     _seed_monitor_acquisition_methods  # core.monitor_acquisition_methods aus den Paket-Manifesten (Phase B Monitor-Methoden)
     _seed_protected_contexts  # core.protected_contexts aus den Paket-Manifesten (WS-B2b Loeschschutz)
     _seed_onboarding_sections  # <pkg>.onboarding_state aus packages/<pkg>/onboarding/sections.json (WS-B3)

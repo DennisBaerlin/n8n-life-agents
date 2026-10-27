@@ -1,5 +1,12 @@
 {
   "_comment": "Feste Nutzertexte des core-Pakets, Deutsch (docs/package-contract.md §3.11). Ein Key = ein ganzer Satz, Platzhalter {name}. Gleiche Keys + Platzhalter in en.json/ko.json (locale_lint). Echte Umlaute, keine Ersatzschreibweise.",
+  "core.app.menu_button": "📊 Übersicht",
+  "core.app.title": "Übersicht",
+  "core.app.reload": "Neu laden",
+  "core.app.gap": "unvollständig – ein Kurs oder Wechselkurs fehlt",
+  "core.app.error.expired": "Die Übersicht ist abgelaufen. Bitte schließen und über den Knopf neu öffnen.",
+  "core.app.error.denied": "Für diese Übersicht hast du keinen Zugriff.",
+  "core.app.error.unavailable": "Die Übersicht ist gerade nicht verfügbar. Bitte später noch einmal versuchen.",
   "core.hitl.hint": "Bitte über die Knöpfe bestätigen oder abbrechen. Zum Ändern: abbrechen und die Korrektur als neue Nachricht senden (eine Textantwort erreicht diesen wartenden Vorgang nicht).",
   "core.hitl.approve": "✅ Bestätigen",
   "core.hitl.cancel": "❌ Abbrechen",

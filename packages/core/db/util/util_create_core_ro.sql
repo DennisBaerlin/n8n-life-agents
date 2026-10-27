@@ -59,6 +59,11 @@ DO $$ BEGIN
     IF to_regclass('core.backup_key') IS NOT NULL THEN
         REVOKE ALL ON core.backup_key FROM core_ro;
     END IF;
+    -- Gleiches Gesetz fuer den Pruef-Schluessel der Mini-App (wer ihn liest, faelscht jede Telegram-initData).
+    -- test_core_app_secret_acl.sql asserted das.
+    IF to_regclass('core.app_secret') IS NOT NULL THEN
+        REVOKE ALL ON core.app_secret FROM core_ro;
+    END IF;
 END $$;
 
 -- DENY-LISTE (Security-Audit 2026-10, Owner-Entscheid "strikt privat"): Tabellen mit fremden Gespraechen, Einmal-Codes

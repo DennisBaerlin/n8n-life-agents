@@ -78,7 +78,22 @@ BEGIN
             v_x := v_x || (SELECT jsonb_build_object('period_amount', f->'premium_amount', 'annual_premium', f->'annual_premium')
                            FROM finance.fn_insurance_fields(v_p) f);
         ELSIF v_row.entity_type = 'savings_goal' THEN
-            v_x := v_x || jsonb_build_object('schedule', finance.fn_savings_rate_schedule(v_p));
+            -- Rate/Datum/erste Rate aus DERSELBEN Ableitung wie der Commit (fn_create_savings_goal ->
+            -- fn_savings_goal_funding): Sparplaene, fortgefuehrter Dauerauftrag, Rest. Topf/Abbuchungskonto als id nur,
+            -- wenn sie schon existieren; ein im Batch neues Abbuchungskonto hat noch keinen Dauerauftrag
+            -- (replace_transfer=false, wie der Commit es mit der neuen id sieht).
+            v_x := v_x || jsonb_build_object('schedule', finance.fn_savings_goal_funding(
+                v_p || CASE WHEN NULLIF(trim(COALESCE(v_p->>'account', '')), '') IS NOT NULL
+                                 AND finance.fn_import_ref_account(p_batch_id, trim(v_p->>'account')) IS DISTINCT FROM 'db'
+                            THEN jsonb_build_object('replace_transfer', 'false') ELSE '{}'::jsonb END,
+                CASE WHEN finance.fn_import_ref_account(p_batch_id, trim(COALESCE(v_p->>'reserve_account', ''))) = 'db'
+                     THEN (SELECT r.id FROM finance.fn_resolve_account(trim(v_p->>'reserve_account'), NULL, TRUE) r) END,
+                COALESCE(finance.fn_import_ref_account_type(p_batch_id, trim(COALESCE(v_p->>'reserve_account', ''))), '')
+                    IN ('stocks_depot', 'crypto_depot'),
+                CASE WHEN NULLIF(trim(COALESCE(v_p->>'account', '')), '') IS NOT NULL
+                          AND finance.fn_import_ref_account(p_batch_id, trim(v_p->>'account')) = 'db'
+                     THEN (SELECT r.id FROM finance.fn_resolve_account(trim(v_p->>'account'), NULL, TRUE) r) END,
+                COALESCE(NULLIF(v_p->>'already_saved', '')::numeric, 0)));
             -- Keine Person genannt -> Inhaber des Spartopfs, wie fn_create_savings_goal beim Write
             -- (fn_default_beneficiary): batch-interner Topf (dessen owner_person) vor bestehendem Konto.
             IF v_person IS NULL AND NULLIF(trim(COALESCE(v_p->>'reserve_account', '')), '') IS NOT NULL THEN

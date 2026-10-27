@@ -121,10 +121,14 @@ BEGIN
      OR v_r->'x'->>'person' IS DISTINCT FROM 'Icra Kartentest' OR v_r->'x'->>'ccy' IS DISTINCT FROM 'EUR' THEN
     RAISE EXCEPTION 'FAIL [insurance]: %', v_r;
   END IF;
-  -- Sparziel: Plan aus fn_savings_rate_schedule; keine Person genannt -> Inhaber des (batch-internen) Spartopfs,
+  -- Sparziel: Plan aus fn_savings_goal_funding (dieselbe Ableitung wie fn_create_savings_goal; ohne Sparplan und
+  -- Dauerauftrag = fn_savings_rate_schedule); keine Person genannt -> Inhaber des (batch-internen) Spartopfs,
   -- wie fn_create_savings_goal beim Write (fn_default_beneficiary)
   v_r := v_rows->5;
-  IF v_r->'x'->'schedule' IS DISTINCT FROM finance.fn_savings_rate_schedule(v_r->'p')
+  IF (v_r->'x'->'schedule'->>'ok')::boolean IS DISTINCT FROM true
+     OR v_r->'x'->'schedule'->'monthly_rate' IS DISTINCT FROM finance.fn_savings_rate_schedule(v_r->'p')->'monthly_rate'
+     OR v_r->'x'->'schedule'->'target_date' IS DISTINCT FROM finance.fn_savings_rate_schedule(v_r->'p')->'target_date'
+     OR v_r->'x'->'schedule'->'first_payment_date' IS DISTINCT FROM finance.fn_savings_rate_schedule(v_r->'p')->'first_payment_date'
      OR v_r->'x'->>'person' IS DISTINCT FROM 'Icra Kartentest' THEN
     RAISE EXCEPTION 'FAIL [savings_goal]: %', v_r;
   END IF;

@@ -29,7 +29,7 @@
 --   BESTEHENDER DAUERAUFTRAG (2026-10-27, wie fn_create_savings_goal): fliesst vom Abbuchungskonto schon ein
 --   freistehender Dauerauftrag in den Topf (fn_goal_transfer_candidates) -> ohne replace_transfer {ok:false,
 --   code:'existing_transfer', transfers}; replace_transfer=true -> die neue Rate fuehrt ihn fort (sein Monatsbetrag, Tag,
---   naechster Termin; er endet dann, fn_end_recurring_chain), Rueckgabe replaced_transfer_id + required_monthly_rate
+--   naechster Termin; er endet dann, fn_goal_end_transfer; Entscheidung fn_goal_transfer_choice), Rueckgabe replaced_transfer_id + required_monthly_rate
 --   (falls abweichend) + card_lines (Hinweis); false -> zusaetzliche Rate; nicht monatlich -> code transfer_not_monthly.
 --   RUECKGABE: {ok:true, goal_id, recurring_payment_id, new_monthly_rate (nur wenn eine Rate gesetzt/angelegt wurde),
 --   covered?, required_monthly_rate?, code?, linked_savings_plan_id, paused_cash_rate, paused_plan_count} + optional
@@ -169,36 +169,16 @@ BEGIN
                     RETURN jsonb_build_object('ok', false, 'reason', v_funding_reason);
                 END IF;
                 v_rate := v_need;
-                -- Bestehender Dauerauftrag vom Abbuchungskonto in den Topf (wie fn_create_savings_goal, eine Adresse
-                -- fn_goal_transfer_candidates): ohne Antwort existing_transfer; true -> die Rate fuehrt ihn fort (sein
+                -- Bestehender Dauerauftrag vom Abbuchungskonto in den Topf (dieselbe Entscheidung wie beim Anlegen,
+                -- fn_goal_transfer_choice): ohne Antwort existing_transfer; true -> die Rate fuehrt ihn fort (sein
                 -- Betrag, Tag, naechster Termin), er endet dann; false -> zusaetzliche Rate.
-                IF v_replace IS DISTINCT FROM false THEN
-                    v_cands := finance.fn_goal_transfer_candidates(v_new_pot, v_new_acct);
-                    IF jsonb_array_length(v_cands) > 0 AND v_replace IS NULL THEN
-                        RETURN jsonb_build_object('ok', false, 'code', 'existing_transfer', 'transfers', v_cands,
-                            'reason', 'A standing transfer from this account already pays into the savings account: '
-                                   || (SELECT string_agg('"' || (e->>'name') || '" (' || to_char((e->>'amount')::numeric, 'FM999999990D00')
-                                                         || ' ' || (e->>'currency') || ', ' || (e->>'rhythm') || ')', '; ')
-                                       FROM jsonb_array_elements(v_cands) e)
-                                   || '. Do NOT delete it. Ask the user whether it IS the savings rate of this goal: yes -> '
-                                   || 'call again with replace_transfer=true (the goal continues it on the same day); no -> '
-                                   || 'replace_transfer=false.');
-                    END IF;
-                    IF v_replace THEN
-                        IF jsonb_array_length(v_cands) <> 1 THEN
-                            RETURN jsonb_build_object('ok', false, 'code', 'existing_transfer', 'transfers', v_cands,
-                                'reason', CASE WHEN jsonb_array_length(v_cands) = 0
-                                               THEN 'There is no standing transfer from this account into the savings account to continue - leave replace_transfer empty.'
-                                               ELSE 'Several standing transfers match - ask the user which one.' END);
-                        END IF;
-                        v_old := v_cands->0;
-                        IF (v_old->>'replaceable')::boolean IS DISTINCT FROM true OR v_old->>'next_due' IS NULL THEN
-                            RETURN jsonb_build_object('ok', false, 'code', 'transfer_not_monthly',
-                                'reason', 'The standing transfer "' || (v_old->>'name') || '" runs ' || (v_old->>'rhythm')
-                                       || ' - a savings goal rate is monthly, so it cannot continue it.');
-                        END IF;
-                        v_rate := (v_old->>'monthly_amount')::numeric;
-                    END IF;
+                v_cands := finance.fn_goal_transfer_choice(v_new_pot, v_new_acct, v_replace);
+                IF (v_cands->>'ok')::boolean IS DISTINCT FROM true THEN
+                    RETURN v_cands;
+                END IF;
+                IF jsonb_typeof(v_cands->'transfer') = 'object' THEN
+                    v_old  := v_cands->'transfer';
+                    v_rate := (v_old->>'monthly_amount')::numeric;
                 END IF;
             ELSIF NOT v_has_plan THEN
                 v_code := 'no_rate_running';
@@ -304,13 +284,7 @@ BEGIN
         -- der fortgefuehrte Dauerauftrag endet am ersten Termin der Rate (nie gueltig + ohne Buchung -> geloescht)
         IF v_old IS NOT NULL THEN
             v_old_id := (v_old->>'id')::int;
-            IF v_first <= (SELECT valid_from FROM finance.recurring_payments WHERE id = v_old_id)
-               AND NOT EXISTS (SELECT 1 FROM finance.transactions t
-                               WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_old_id))) THEN
-                DELETE FROM finance.recurring_payments WHERE id = v_old_id;
-            ELSE
-                PERFORM finance.fn_end_recurring_chain(v_old_id, v_first);
-            END IF;
+            PERFORM finance.fn_goal_end_transfer(v_old_id, v_first);
         END IF;
     END IF;
 

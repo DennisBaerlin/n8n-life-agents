@@ -7,8 +7,8 @@
 --   Kandidat = Kopf seiner Kette (fn_recurring_lineage_head), keiner Entitaet gehoerend (fn_recurring_owner NULL),
 --   status active, nicht beendet (valid_to NULL oder > heute; ein kuenftiger Start zaehlt), amount < 0 (Quelle).
 --   replaceable = monatlich mit hoechstens einem Tag (month/1, keine festen Tage) -> eine Ziel-Rate (immer monatlich)
---   kann ihn nahtlos fortfuehren; day = sein Abbuchungstag (NULL = Tag der ersten Ausfuehrung), next_due = naechster
---   offener Termin (fn_recurring_next_due).
+--   kann ihn nahtlos fortfuehren; day = sein Abbuchungstag (ohne festen Tag der Tag der ersten Ausfuehrung, 29.-31. ->
+--   -1 = Monatsletzter), next_due = naechster offener Termin (fn_recurring_next_due).
 --   plpgsql (late-bound): fn_recurring_owner/fn_recurring_next_due sortieren alphabetisch spaeter.
 --   RUECKGABE: jsonb-Array [{id, name, account_id, amount (>0, je Ausfuehrung), monthly_amount, currency, rhythm, day,
 --   replaceable, next_due}] nach id; leer = '[]'.
@@ -26,7 +26,11 @@ BEGIN
                    'currency', a.currency,
                    'rhythm', finance.fn_schedule_label(r.schedule_unit, r.schedule_interval, r.schedule_day_of_month,
                                                        r.schedule_days_of_month),
-                   'day', r.schedule_day_of_month,
+                   -- Abbuchungstag: fester Tag, sonst der Tag der ersten Ausfuehrung (29.-31. -> Monatsletzter, damit
+                   -- eine Fortfuehrung ab einem kurzen Monat nicht dauerhaft auf den 30. rutscht)
+                   'day', COALESCE(r.schedule_day_of_month,
+                                   CASE WHEN EXTRACT(DAY FROM r.first_payment_date) <= 28
+                                        THEN EXTRACT(DAY FROM r.first_payment_date)::smallint ELSE -1::smallint END),
                    'replaceable', r.schedule_unit = 'month' AND r.schedule_interval = 1 AND r.schedule_days_of_month IS NULL,
                    'next_due', finance.fn_recurring_next_due(r.id, current_date))
                ORDER BY r.id)

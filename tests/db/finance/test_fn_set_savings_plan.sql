@@ -463,6 +463,14 @@ BEGIN
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR (v_result->>'split')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL fn_set_savings_plan [echter Betrag]: %', v_result; END IF;
   RAISE NOTICE 'PASS fn_set_savings_plan [monatlich: gleicher Rhythmus no_change, anderer Betrag splittet]';
+
+  -- geplante Aenderung (80 ab 15.02.) noch nicht gueltig am Stichtag 20.01. -> "80" ist dort eine echte Aenderung,
+  -- kein no_change (Code-Review 2026-10-27: Vergleich gegen das am Stichtag gueltige Glied)
+  SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_monthly__',
+    'new_amount',80,'valid_from','2027-01-20')) INTO v_result;
+  IF v_result->>'code' IS NOT DISTINCT FROM 'no_change' THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [geplante Aenderung]: no_change gegen den kuenftigen Kopf: %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_set_savings_plan [geplante Aenderung am Stichtag noch nicht gueltig -> kein no_change]';
 END $$;
 
 ROLLBACK;

@@ -490,10 +490,14 @@ BEGIN
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_rp.amount <> -100 OR v_rp.schedule_day_of_month IS DISTINCT FROM 1::smallint
      OR EXTRACT(DAY FROM v_due) <> 1 OR v_due < current_date
      OR (SELECT valid_to FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM v_due
-     OR (SELECT status FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM 'paused'
+     OR (SELECT status FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM 'active'
      OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_transfer_rate"}]'::jsonb) THEN
     RAISE EXCEPTION 'FAIL create [R3 laufender Dauerauftrag]: % rp=%', v_r, row_to_json(v_rp); END IF;
-  RAISE NOTICE 'PASS create [R3: laufender Dauerauftrag endet am ersten Ziel-Termin, Rate = sein Betrag, noetige Rate auf der Karte]';
+  -- noch nicht gebuchte, ueberfaellige Termine des alten Dauerauftrags bleiben offen (Code-Review 2026-10-27)
+  IF NOT EXISTS (SELECT 1 FROM finance.fn_recurring_due_open(current_date) o
+                 WHERE o.recurring_payment_id = v_old AND o.due_date < v_due) THEN
+    RAISE EXCEPTION 'FAIL create [R3 offene Termine]: ueberfaellige Termine des alten Dauerauftrags verschwunden'; END IF;
+  RAISE NOTICE 'PASS create [R3: laufender Dauerauftrag endet am ersten Ziel-Termin, offene Termine bleiben, Rate = sein Betrag]';
 
   -- (R4) replace_transfer=false -> zusaetzliche Rate, der Dauerauftrag bleibt unberuehrt
   v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__sgr_uebertrag3__','from_account_id',v_from,
@@ -568,6 +572,21 @@ BEGIN
      OR jsonb_array_length(v_r->'savings_plan_ids') <> 2 THEN
     RAISE EXCEPTION 'FAIL create [P2 pausiert]: %', v_r; END IF;
   RAISE NOTICE 'PASS create [P2: Name mit Komma = ein Plan; pausierter Plan zaehlt nicht zum Monatsbetrag]';
+
+  -- (P3) Plan mit Fremdwaehrungs-Verrechnungskonto ohne Kurs -> ok:false (faellt nie still aus der Summe)
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('NOK', 2) ON CONFLICT (code) DO NOTHING;
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'NOK' OR base_currency = 'NOK';
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sgr_nok_cash__', 'cash', 'NOK', 'active');
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__sgr_nok_depot__', 'stocks_depot', 'NOK', 'active', (SELECT id FROM finance.accounts WHERE name = '__sgr_nok_cash__'));
+  PERFORM finance.fn_create_savings_plan(jsonb_build_object('name','__sgr_plan_nok__','depot_name','__sgr_nok_depot__',
+    'isin','NO0010096985','symbol','EQNR','security_name','Beispiel NOK','amount',500,'schedule_unit','month',
+    'first_payment_date',v_next1 + 14));
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr NOK__','target_amount',3000,
+           'reserve_account_id',(SELECT id FROM finance.accounts WHERE name = '__sgr_nok_depot__'),'savings_plan','__sgr_plan_nok__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' NOT ILIKE '%exchange rate%' THEN
+    RAISE EXCEPTION 'FAIL create [P3 Plan ohne Kurs]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [P3: Sparplan ohne Wechselkurs -> ok:false statt still aus der Summe]';
 END $$;
 
 ROLLBACK;

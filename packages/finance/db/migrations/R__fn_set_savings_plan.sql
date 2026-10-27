@@ -106,7 +106,10 @@ BEGIN
     -- NO-CHANGE (Livebefund 2026-10-27): genannter Rhythmus/Betrag = gespeichert -> kein Split. VOR den Split-
     -- Vorbedingungen (der Livefall scheiterte sonst schon am Stichtag und der Agent bot einen identischen Split an).
     -- Nichts anderes genannt -> {ok:false, code:'no_change'} mit Rhythmus + Monatsbetrag; sonst weiter in-place.
+    -- Nur wenn der Kopf am Stichtag schon gilt: eine geplante, noch nicht gueltige Aenderung (Kopf ab spaeter) ist NICHT
+    -- das, was am Stichtag laeuft -> dann die normalen Split-Pruefungen (Code-Review 2026-10-27).
     IF (v_amount IS NOT NULL OR v_unit_new IS NOT NULL OR v_interval_new IS NOT NULL) AND v_cal_in IS NULL
+       AND finance.fn_recurring_current(v_rp.id, v_from) = v_rp.id
        AND (v_amount IS NULL OR v_amount = abs(v_rp.amount))
        AND COALESCE(v_unit_new, v_user_unit) = v_user_unit
        AND COALESCE(v_interval_new, v_user_int) = v_user_int THEN

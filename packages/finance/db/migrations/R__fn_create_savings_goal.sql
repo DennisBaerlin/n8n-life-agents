@@ -19,7 +19,8 @@
 --   BESTEHENDER DAUERAUFTRAG in den Topf (fn_goal_transfer_candidates; Livebefund 2026-10-27): im Raten-Pfad ohne
 --   replace_transfer -> {ok:false, code:'existing_transfer', transfers}; replace_transfer=true -> die Ziel-Rate fuehrt
 --   ihn fort (sein Konto, Tag, naechster Termin = erste Rate, Betrag = sein Monatsbetrag; bei genanntem Datum zeigt die
---   Karte die noetige Rate), er endet an diesem Tag (fn_end_recurring_chain; nie gueltig + ohne Buchung -> geloescht);
+--   Karte die noetige Rate), er endet an diesem Tag (fn_goal_end_transfer: offene Termine davor bleiben faellig; nie gueltig + ohne Buchung ->
+--   geloescht); Quellen + Rate/Datum aus fn_savings_goal_funding (eine Ableitung mit der Import-Karte);
 --   nicht monatlich -> code transfer_not_monthly; replace_transfer=false -> zusaetzliche Rate.
 --   Karten-Hinweise (card_lines): aehnliches Ziel, "gedeckt, Rate 0", Sparplan-Betrag vs. noetige Rate, und bei
 --   Depot-Topf/Sparplan ein Ziel im Umschicht-Fenster (advisor.derisk_window_months) -> Kursrisiko-Hinweis.
@@ -56,8 +57,6 @@ DECLARE
     v_reserve INT      := NULLIF(p->>'reserve_account_id', '')::int;   -- WS-A: Ziel-Topf (Reserve-Konto)
     v_saved   NUMERIC  := COALESCE(NULLIF(p->>'already_saved', '')::numeric, 0);
     v_saved_eur NUMERIC;
-    v_plan_name TEXT   := NULLIF(btrim(p->>'savings_plan'), '');
-    v_plan    RECORD;
     v_plan_id INT;
     v_plan_monthly NUMERIC;
     v_rtype   finance.account_type;
@@ -73,13 +72,8 @@ DECLARE
     v_dates   JSONB;
     v_cur     NUMERIC;
     v_lines   JSONB;
-    v_plan_ids   INT[];     -- 2026-10-27: ein oder mehrere Sparplaene
+    v_plan_ids   INT[];     -- 2026-10-27: ein oder mehrere Sparplaene (fn_savings_goal_funding)
     v_plan_names TEXT;
-    v_part       TEXT;
-    v_date_given BOOLEAN;
-    v_replace    BOOLEAN := CASE lower(btrim(COALESCE(p->>'replace_transfer', '')))
-                                 WHEN 'true' THEN true WHEN 'false' THEN false END;
-    v_cands      JSONB;     -- fn_goal_transfer_candidates
     v_old        JSONB;     -- fortgefuehrter Dauerauftrag
     v_old_id     INT;
     v_need       NUMERIC;   -- noetige Rate bei genanntem Datum (nur Karten-Hinweis)
@@ -118,52 +112,6 @@ BEGIN
         END IF;
     END IF;
 
-    -- Sparplaene als Quelle (2026-10-27: einer oder mehrere): erst der ganze Text als EIN Name (ein Name mit Komma
-    -- bleibt heil), nur bei 0 Treffern an Kommas getrennt; ids dedupliziert; auch pausierte aufloesbar. Ein Plan gehoert
-    -- zu EINEM Ziel (wie fn_set_savings_goal).
-    IF v_plan_name IS NOT NULL THEN
-        SELECT r.id, r.hit_count INTO v_plan FROM finance.fn_resolve_savings_plan(v_plan_name, FALSE) r;
-        IF COALESCE(v_plan.hit_count, 0) = 1 THEN
-            v_plan_ids := ARRAY[v_plan.id];
-        ELSIF COALESCE(v_plan.hit_count, 0) > 1 THEN
-            RETURN jsonb_build_object('ok', false,
-                'reason', 'Multiple savings plans match "' || v_plan_name || '" - ask the user which one.');
-        ELSE
-            v_plan_ids := '{}';
-            FOR v_part IN SELECT btrim(x) FROM regexp_split_to_table(v_plan_name, ',') x WHERE btrim(x) <> '' LOOP
-                SELECT r.id, r.hit_count INTO v_plan FROM finance.fn_resolve_savings_plan(v_part, FALSE) r;
-                IF COALESCE(v_plan.hit_count, 0) <> 1 THEN
-                    RETURN jsonb_build_object('ok', false,
-                        'reason', CASE WHEN COALESCE(v_plan.hit_count, 0) = 0 THEN 'No savings plan found matching "' || v_part || '".'
-                                       ELSE 'Multiple savings plans match "' || v_part || '" - ask the user which one.' END);
-                END IF;
-                IF NOT (v_plan.id = ANY (v_plan_ids)) THEN
-                    v_plan_ids := v_plan_ids || v_plan.id;
-                END IF;
-            END LOOP;
-            IF cardinality(v_plan_ids) = 0 THEN
-                RETURN jsonb_build_object('ok', false, 'reason', 'No savings plan found matching "' || v_plan_name || '".');
-            END IF;
-        END IF;
-        SELECT sp.name INTO v_part FROM finance.savings_plans sp
-         WHERE sp.id = ANY (v_plan_ids) AND sp.savings_goal_id IS NOT NULL ORDER BY sp.id LIMIT 1;
-        IF v_part IS NOT NULL THEN
-            RETURN jsonb_build_object('ok', false,
-                'reason', 'Savings plan "' || v_part || '" already funds another goal. Unlink it there first.');
-        END IF;
-        v_plan_id := v_plan_ids[1];
-        -- Monatsbetrag der Plaene in EUR: heute gueltiges Glied (fn_recurring_current; eine geplante Aenderung zaehlt
-        -- erst ab ihrem Stichtag), nur AKTIVE Plaene (ein pausierter Plan spart nicht).
-        SELECT round(sum(finance.fn_to_eur(abs(c.monthly_equivalent), a.currency)), 2),
-               string_agg(sp.name, ', ' ORDER BY sp.id)
-          INTO v_plan_monthly, v_plan_names
-        FROM finance.savings_plans sp
-        JOIN finance.recurring_payments c ON c.id = finance.fn_recurring_current(sp.recurring_payment_id, current_date)
-        JOIN finance.accounts a ON a.id = c.account_id
-        WHERE sp.id = ANY (v_plan_ids) AND sp.status = 'active';
-        v_plan_monthly := COALESCE(v_plan_monthly, 0);
-    END IF;
-
     -- Startbestand: hoechstens der freie Saldo des Topfs (saldo-basiert; eine Adresse fn_account_free_balance).
     IF v_saved > 0 AND NOT v_depot THEN
         v_free := finance.fn_account_free_balance(v_reserve);
@@ -183,73 +131,26 @@ BEGIN
             'reason', 'No exchange rate for ' || v_rccy || ' yet - the money already saved cannot be valued in EUR. Try again later.');
     END IF;
 
-    v_date_given := NULLIF(p->>'target_date', '') IS NOT NULL;
-    -- Sparplaene ohne Datum und Rate (2026-10-27): das Zieldatum folgt aus ihrem Monatsbetrag (DB, nicht das LLM).
-    IF v_plan_ids IS NOT NULL AND NOT v_date_given AND NULLIF(p->>'monthly_savings_rate', '') IS NULL
-       AND v_plan_monthly > 0 THEN
-        p := p || jsonb_build_object('monthly_savings_rate', v_plan_monthly);
-    END IF;
-
-    -- BESTEHENDER DAUERAUFTRAG in den Topf (Livebefund 2026-10-27: der Agent loeschte ihn und legte die Rate ohne Tag
-    -- neu an). Nur im Raten-Pfad (Rest > 0, kein Sparplan, saldo-basierter Topf) und VOR jeder anderen Raten-Pruefung:
-    -- ohne Antwort -> {ok:false, code:'existing_transfer'}; replace_transfer=true -> die Ziel-Rate fuehrt ihn nahtlos
-    -- fort (Konto, Tag, erster Termin = sein naechster Termin, Betrag = sein Monatsbetrag), er endet an diesem Tag;
-    -- replace_transfer=false -> zusaetzliche Rate wie bisher.
-    IF v_plan_ids IS NULL AND NOT v_depot AND v_replace IS DISTINCT FROM false
-       AND NULLIF(p->>'target_amount', '')::numeric - v_saved_eur > 0 THEN
-        v_cands := finance.fn_goal_transfer_candidates(v_reserve, v_acct);
-        IF jsonb_array_length(v_cands) > 0 AND v_replace IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'existing_transfer', 'transfers', v_cands,
-                'reason', 'A standing transfer already pays into this savings account: '
-                       || (SELECT string_agg('"' || (e->>'name') || '" (' || to_char((e->>'amount')::numeric, 'FM999999990D00')
-                                             || ' ' || (e->>'currency') || ', ' || (e->>'rhythm') || ', next on '
-                                             || COALESCE(e->>'next_due', '-') || ')', '; ')
-                           FROM jsonb_array_elements(v_cands) e)
-                       || '. Do NOT delete it. Ask the user whether it IS the savings rate of this goal: yes -> call again '
-                       || 'with replace_transfer=true (the goal continues it on the same day, it ends then, nothing is '
-                       || 'counted twice); no, the goal rate comes on top -> replace_transfer=false.');
-        END IF;
-        IF v_replace THEN
-            IF jsonb_array_length(v_cands) = 0 THEN
-                RETURN jsonb_build_object('ok', false,
-                    'reason', 'There is no standing transfer into this savings account to continue - leave replace_transfer empty.');
-            END IF;
-            IF jsonb_array_length(v_cands) > 1 THEN
-                RETURN jsonb_build_object('ok', false, 'code', 'existing_transfer', 'transfers', v_cands,
-                    'reason', 'Several standing transfers pay into this savings account - name the debit account '
-                           || '(account_name) of the one the goal continues.');
-            END IF;
-            v_old := v_cands->0;
-            IF (v_old->>'replaceable')::boolean IS DISTINCT FROM true OR v_old->>'next_due' IS NULL THEN
-                RETURN jsonb_build_object('ok', false, 'code', 'transfer_not_monthly',
-                    'reason', 'The standing transfer "' || (v_old->>'name') || '" runs ' || (v_old->>'rhythm')
-                           || ' - a savings goal rate is monthly, so it cannot continue it. Ask the user whether the goal '
-                           || 'rate comes on top (replace_transfer=false) or to change the transfer first.');
-            END IF;
-            v_acct  := COALESCE(v_acct, (v_old->>'account_id')::int);
-            v_dom   := NULLIF(v_old->>'day', '')::smallint;
-            p := p || jsonb_build_object('first_payment_date', v_old->>'next_due',
-                                         'schedule_day_of_month', COALESCE(v_old->>'day', ''));
-            IF NOT v_date_given THEN
-                p := p || jsonb_build_object('monthly_savings_rate', (v_old->>'monthly_amount')::numeric);
-            END IF;
-        END IF;
-    END IF;
-
-    -- Rate ODER Zieldatum deterministisch auf dem Rest ableiten (kein LLM-Rechnen).
-    v_sched := finance.fn_savings_rate_schedule(p || jsonb_build_object('already_saved', v_saved_eur));
+    -- Quellen + Rate/Zieldatum: EINE Ableitung mit der Import-Karte (fn_savings_goal_funding): Sparplaene (einer oder
+    -- mehrere, Datum aus ihrem Monatsbetrag), ein bestehender Dauerauftrag in den Topf (existing_transfer /
+    -- replace_transfer, VOR jeder anderen Raten-Pruefung), dann fn_savings_rate_schedule auf dem Rest.
+    v_sched := finance.fn_savings_goal_funding(p, v_reserve, v_depot, v_acct, v_saved_eur);
     IF (v_sched->>'ok')::boolean IS DISTINCT FROM true THEN
-        RETURN v_sched;   -- {ok:false, reason} unveraendert durchreichen
+        RETURN v_sched;   -- {ok:false, reason[, code]} unveraendert durchreichen
     END IF;
     v_rate  := (v_sched->>'monthly_rate')::numeric;
+    v_need  := (v_sched->>'needed_rate')::numeric;
     v_date  := (v_sched->>'target_date')::date;
     v_first := (v_sched->>'first_payment_date')::date;
-    -- Fortgefuehrter Dauerauftrag: die Rate ist SEIN Betrag (die Bank ueberweist ihn weiter); bei genanntem Datum zeigt
-    -- die Karte nur, welche Rate noetig waere.
-    IF v_old IS NOT NULL THEN
-        v_need := v_rate;
-        v_rate := (v_old->>'monthly_amount')::numeric;
+    v_acct  := (v_sched->>'account_id')::int;
+    v_dom   := (v_sched->>'schedule_day_of_month')::smallint;
+    v_old   := CASE WHEN jsonb_typeof(v_sched->'transfer') = 'object' THEN v_sched->'transfer' END;
+    IF jsonb_typeof(v_sched->'plan_ids') = 'array' THEN
+        v_plan_ids := ARRAY(SELECT x::int FROM jsonb_array_elements_text(v_sched->'plan_ids') x);
     END IF;
+    v_plan_id      := v_plan_ids[1];
+    v_plan_names   := v_sched->>'plan_names';
+    v_plan_monthly := (v_sched->>'plan_monthly')::numeric;
 
     -- Eigene Rate nur fuer einen Rest > 0 ohne Sparplan: sie fliesst in einen saldo-basierten Topf, vom Abbuchungskonto.
     IF v_rate > 0 AND v_plan_id IS NULL THEN
@@ -308,13 +209,7 @@ BEGIN
         -- gegolten und keine Buchung, verschwindet er ganz (keine leere Zeile).
         IF v_old IS NOT NULL THEN
             v_old_id := (v_old->>'id')::int;
-            IF v_first <= (SELECT valid_from FROM finance.recurring_payments WHERE id = v_old_id)
-               AND NOT EXISTS (SELECT 1 FROM finance.transactions t
-                               WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_old_id))) THEN
-                DELETE FROM finance.recurring_payments WHERE id = v_old_id;
-            ELSE
-                PERFORM finance.fn_end_recurring_chain(v_old_id, v_first);
-            END IF;
+            PERFORM finance.fn_goal_end_transfer(v_old_id, v_first);
         END IF;
     END IF;
 
@@ -371,11 +266,13 @@ BEGIN
         -- Mitternacht); Waehrung des Startbestands fuer die Karte (Depot-Zuordnung = EUR, sonst Kontowaehrung).
         'effective', (v_dates->'resolved') || jsonb_strip_nulls(jsonb_build_object('beneficiary_person_id', v_benef,
                          'first_payment_date', to_char(v_first, 'YYYY-MM-DD'),
+                         -- erste Rate weder genannt noch vom Dauerauftrag -> Karte markiert sie als Vorgabe
+                         'first_payment_defaulted', (v_sched->>'first_defaulted')::boolean,
                          'reserve_currency', CASE WHEN v_depot THEN 'EUR' ELSE v_rccy END,
-                         -- fortgefuehrter Dauerauftrag: Abbuchungskonto + Tag fuer die Karte (die fn leitet sie im Write
-                         -- erneut gleich ab)
+                         -- fortgefuehrter Dauerauftrag: Abbuchungskonto + Tag fuer die Karte ('' statt NULL, damit kein
+                         -- genannter Tag aus Start durchscheint; die fn leitet beide im Write erneut gleich ab)
                          'account_name', CASE WHEN v_old IS NOT NULL THEN (SELECT a.name FROM finance.accounts a WHERE a.id = v_acct) END,
-                         'schedule_day_of_month', CASE WHEN v_old IS NOT NULL THEN v_dom END)))
+                         'schedule_day_of_month', CASE WHEN v_old IS NOT NULL THEN COALESCE(v_dom::text, '') END)))
         || CASE WHEN v_plan_id IS NOT NULL
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', v_plan_monthly)
                 ELSE '{}'::jsonb END

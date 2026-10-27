@@ -59,6 +59,17 @@ BEGIN
      OR (v_r->0->>'monthly_amount')::numeric <> 100.00 THEN
     RAISE EXCEPTION 'FAIL fn_goal_transfer_candidates [quartalsweise]: %', v_r; END IF;
   RAISE NOTICE 'PASS fn_goal_transfer_candidates [quartalsweise -> nicht ersetzbar, Monatsbetrag]';
+
+  -- ohne festen Tag, erste Ausfuehrung am 31. -> Tag -1 (Monatsletzter), nicht dauerhaft der 30. eines kurzen Monats
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_gtc_pot31__', 'cash', 'EUR', 'active');
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+         first_payment_date, valid_from, status)
+  VALUES ('__test_gtc_ultimo__', v_from, (SELECT id FROM finance.accounts WHERE name = '__test_gtc_pot31__'), -60, 1, 'month',
+          DATE '2027-01-31', DATE '2027-01-31', 'active');
+  v_r := finance.fn_goal_transfer_candidates((SELECT id FROM finance.accounts WHERE name = '__test_gtc_pot31__'), NULL);
+  IF (v_r->0->>'day')::int IS DISTINCT FROM -1 THEN
+    RAISE EXCEPTION 'FAIL fn_goal_transfer_candidates [Anker 31.]: %', v_r; END IF;
+  RAISE NOTICE 'PASS fn_goal_transfer_candidates [Anker 31. ohne festen Tag -> Monatsletzter]';
 END $$;
 
 ROLLBACK;

@@ -772,6 +772,8 @@ BEGIN
   BEGIN
     SET LOCAL ROLE finance_rw;
     PERFORM finance.fn_goal_transfer_candidates(NULL, NULL);
+    PERFORM finance.fn_goal_transfer_choice(NULL, NULL, NULL);
+    PERFORM finance.fn_savings_goal_funding('{"target_amount":1000,"target_date":"2099-01-01"}'::jsonb, NULL, false, NULL, 0);
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;

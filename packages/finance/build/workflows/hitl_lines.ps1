@@ -290,8 +290,9 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.reserve_pot'          "'finance.tpl.reserve_pot'" -Kind tpl -If $hasRate -Params @{ name = "$S.reserve_account_name" })
                 (New-HitlLine 'finance.label.reserve_pot'          "$S.reserve_account_name" -If "!($hasRate)")
                 (New-HitlLine 'finance.label.debit_day'            (Get-FinanceDomTpl "$S.schedule_day_of_month" -DayTpl 'finance.tpl.day_ordinal' -Empty "'finance.value.relative_to_start'") -Kind tpl -If $hasRate -Params @{ day = "$S.schedule_day_of_month" })
-                # WP2: ohne genanntes Datum die erste Rate aus fn_savings_rate_schedule (naechster Termin ab heute)
-                (New-HitlLine 'finance.label.first_booking'        "($S.first_payment_date || $(& $need 'FirstPayment'))" -Kind date -If $hasRate -IsDefault "!$S.first_payment_date")
+                # WP2: ohne genanntes Datum die erste Rate aus fn_savings_rate_schedule (naechster Termin ab heute); das
+                # Einzel-Tool pinnt sie ueber r.effective und meldet first_payment_defaulted (Vorgabe-Markierung bleibt)
+                (New-HitlLine 'finance.label.first_booking'        "($S.first_payment_date || $(& $need 'FirstPayment'))" -Kind date -If $hasRate -IsDefault "($S.first_payment_defaulted === true || !$S.first_payment_date)")
                 (& $own 'finance.label.beneficiary_person' (& $need 'Person'))
                 (New-HitlLine 'finance.label.priority'             "($S.priority ? 'finance.tpl.priority_hint' : null)" -Kind tpl -Params @{ value = "$S.priority" } -OmitEmpty)
                 (New-HitlLine 'core.label.note'                    "$S.notes" -OmitEmpty)

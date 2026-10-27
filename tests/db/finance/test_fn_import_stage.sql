@@ -135,7 +135,7 @@ BEGIN
     'first_payment_date',(date_trunc('month', current_date) + interval '1 month')::date));
   SELECT finance.fn_import_update_row(jsonb_build_object(
     'batch_id', v_batch, 'row_no', 8,
-    'payload_merge', jsonb_build_object('reserve_account','__test_imp Topf5d')
+    'payload_merge', jsonb_build_object('reserve_account','__test_imp Topf5d','account','__test_imp Quelle5d')
   )) INTO v_result;
   SELECT validation_error INTO v_err FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 8;
   IF COALESCE(v_err, '') NOT ILIKE '%replace_transfer%' THEN
@@ -148,6 +148,15 @@ BEGIN
   SELECT validation_error INTO v_err FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 8;
   IF COALESCE(v_err, '') ILIKE '%standing transfer%' THEN
     RAISE EXCEPTION 'FAIL savings_goal-Validierung: replace_transfer=false muss den Fehler aufloesen, got %', v_err;
+  END IF;
+  -- ein im Batch neues Abbuchungskonto hat noch keinen Dauerauftrag -> kein Fehler (der Commit filtert nach ihm)
+  SELECT finance.fn_import_update_row(jsonb_build_object(
+    'batch_id', v_batch, 'row_no', 8,
+    'payload_merge', jsonb_build_object('account','__test_imp Giro','replace_transfer','')
+  )) INTO v_result;
+  SELECT validation_error INTO v_err FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 8;
+  IF COALESCE(v_err, '') ILIKE '%standing transfer%' THEN
+    RAISE EXCEPTION 'FAIL savings_goal-Validierung: Batch-neues Abbuchungskonto darf keinen Dauerauftrag-Fehler geben, got %', v_err;
   END IF;
   RAISE NOTICE 'PASS fn_import_validate [Topf mit Dauerauftrag -> replace_transfer noetig, Antwort loest den Fehler]';
 

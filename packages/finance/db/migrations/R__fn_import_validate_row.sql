@@ -322,10 +322,11 @@ BEGIN
         IF NULLIF(p->>'replace_transfer','') IS NULL AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL
            AND COALESCE(NULLIF(p->>'already_saved','')::numeric, 0) < v_num
            AND finance.fn_import_ref_account(p_batch_id, trim(p->>'reserve_account')) = 'db'
+           -- ein im Batch neues Abbuchungskonto hat noch keinen Dauerauftrag (der Commit filtert nach seiner neuen id)
+           AND (v_ref IS NULL OR finance.fn_import_ref_account(p_batch_id, v_ref) = 'db')
            AND jsonb_array_length(finance.fn_goal_transfer_candidates(
                    (SELECT r.id FROM finance.fn_resolve_account(trim(p->>'reserve_account'), NULL, TRUE) r),
-                   CASE WHEN v_ref IS NOT NULL AND finance.fn_import_ref_account(p_batch_id, v_ref) = 'db'
-                        THEN (SELECT r.id FROM finance.fn_resolve_account(v_ref, NULL, TRUE) r) END)) > 0 THEN
+                   CASE WHEN v_ref IS NOT NULL THEN (SELECT r.id FROM finance.fn_resolve_account(v_ref, NULL, TRUE) r) END)) > 0 THEN
             RETURN format('a standing transfer already pays into "%s" - set replace_transfer to true (the goal continues it) or false (the goal rate comes on top)', trim(p->>'reserve_account'));
         END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_savings_goal(v_name, FALSE);

@@ -16,7 +16,7 @@ a personal project — but credit is given on request.
 
 ## Scope
 
-The supported version is the current `main` branch. n8n is pinned to **2.44.4** and PostgreSQL to
+The supported version is the current `main` branch. n8n is pinned to **2.45.4** and PostgreSQL to
 **17**; issues that only reproduce on other versions are still welcome but may not be actionable.
 
 Highest-value areas: anything touching credentials, the Telegram ingress (reverse proxy / webhook routes),

@@ -6,7 +6,7 @@ Fast onboarding surface for contributors — human or coding agent. The conventi
 
 ## What this project is
 
-A personal multi-agent system on self-hosted **n8n 2.44.4** + **PostgreSQL 17**. One Telegram bot feeds
+A personal multi-agent system on self-hosted **n8n 2.45.4** + **PostgreSQL 17**. One Telegram bot feeds
 an orchestrator that routes to specialist agent sub-workflows. Agent instructions and cross-agent memory
 live in PostgreSQL (`agent.core_contexts`); workflows are build-generated into
 `packages/<pkg>/workflows/*.json` and deployed from the tracked tree (no live sync). Full picture: root

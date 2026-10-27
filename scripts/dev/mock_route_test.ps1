@@ -300,7 +300,7 @@ foreach ($tc in $cases) {
     if ($pass -and $isOrch) { $pass = Test-ThinkingAfterAnswer $chatId }
 
     # Zurueckgespielte Werkzeugaufrufe muessen ihre Angaben behalten (der Mock schickt vor jedem Aufruf einen Denkblock;
-    # n8n-Korrektur thinking-tool-args). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
+    # n8n-Fix #41241 ab 2.45, Regressionswache). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
     if ($pass) {
         $lost = @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ })
         if ($lost.Count -gt 0) { $pass = $false; Write-Host "    FEHLER: Aufruf ohne Angaben zurueckgespielt: $($lost -join ', ')" -ForegroundColor Red }

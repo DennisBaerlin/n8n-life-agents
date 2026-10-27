@@ -158,8 +158,8 @@ function fromSchema(s) {
 // ---- Response-Builder ---------------------------------------------------------------------------
 // thinking (Default an, Szenario `thinking: false` schaltet ab): ein Denkblock VOR jedem tool_use, wie ihn die
 // 5.5-Modelle von sich aus senden. n8n spielt den Aufruf danach ueber einen anderen Weg zurueck (buildSteps:
-// Anthropic-Inhaltsbloecke statt tool_calls) -- genau dort gingen die Angaben verloren (n8n-Korrektur
-// thinking-tool-args, provisioning/lib/n8n_patches.sh). Default an = jeder Mock-Tier faehrt den Live-Weg.
+// Anthropic-Inhaltsbloecke statt tool_calls) -- genau dort gingen bis n8n 2.44 die Angaben verloren (n8n-Fix
+// #41241 ab 2.45, Regressionswache). Default an = jeder Mock-Tier faehrt den Live-Weg.
 function anthropicToolUse(call, k, thinking) {
   const blocks = [{ type: 'tool_use', id: 'toolu_' + k, name: call.tool, input: call.args || {} }];
   if (thinking) blocks.unshift({ type: 'thinking', thinking: '', signature: 'mock-signature-' + k });

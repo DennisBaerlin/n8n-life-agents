@@ -380,7 +380,7 @@ Write-Host "Real-Ingress-Test (echter Telegram-Webhook des Orchestrators) -- $($
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0
 
-# Zurueckgespielte Werkzeugaufrufe ohne Angaben (Mock-Feld replay_lost; n8n-Korrektur thinking-tool-args): ueber den
+# Zurueckgespielte Werkzeugaufrufe ohne Angaben (Mock-Feld replay_lost; n8n-Fix #41241 ab 2.45, Regressionswache): ueber den
 # ganzen Lauf gesammelt -- auch vor jedem Leeren des Mock-Protokolls (Persona-Faelle) -- und am Ende als ein Fall gewertet.
 $replayLost = @()
 function Save-ReplayLost { $script:replayLost += @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ }) }

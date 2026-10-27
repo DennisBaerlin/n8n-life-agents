@@ -20,7 +20,7 @@ You: (taps ✅)
 Bot: Booked. New balance Checking: €1,234.56
 ```
 
-Personal project · self-hosted · specialist agents on n8n 2.44.4 + PostgreSQL 17.
+Personal project · self-hosted · specialist agents on n8n 2.45.4 + PostgreSQL 17.
 
 ## What it is — and who it is for
 
@@ -73,7 +73,7 @@ Step-by-step guide including reverse proxy, router (FritzBox) and Telegram bot s
 <details>
 <summary><strong>What the run does in detail</strong></summary>
 
-`install.sh` downloads the release, verifies its SHA256 checksum and hands over to the actual installer (`provision.sh`). It installs PostgreSQL 17 and n8n 2.44.4, loads the database schema and seeds, sets up the owner, injects the credentials, deploys the core workflows and installs the operations CLI (packages: `--packages all|a,b`, or later `lifeagents package install`). HTTPS is provided by your own reverse proxy. Pin a specific version with `--version vX.Y.Z`. Schedules and "today" run in the household time zone (default Europe/Berlin, configurable via `HOUSEHOLD_TIMEZONE`), never in the container clock. Flow and release process: [provisioning/CLAUDE.md](provisioning/CLAUDE.md).
+`install.sh` downloads the release, verifies its SHA256 checksum and hands over to the actual installer (`provision.sh`). It installs PostgreSQL 17 and n8n 2.45.4, loads the database schema and seeds, sets up the owner, injects the credentials, deploys the core workflows and installs the operations CLI (packages: `--packages all|a,b`, or later `lifeagents package install`). HTTPS is provided by your own reverse proxy. Pin a specific version with `--version vX.Y.Z`. Schedules and "today" run in the household time zone (default Europe/Berlin, configurable via `HOUSEHOLD_TIMEZONE`), never in the container clock. Flow and release process: [provisioning/CLAUDE.md](provisioning/CLAUDE.md).
 
 </details>
 
@@ -135,7 +135,7 @@ Three decisions make the difference: **the model proposes — the database decid
 ```mermaid
 flowchart TD
     TG["Telegram (one central bot)"] -->|Webhook| RP["your reverse proxy (HTTPS – /webhook* routes only)"]
-    RP --> N8N["n8n 2.44.4 (self-hosted)"]
+    RP --> N8N["n8n 2.45.4 (self-hosted)"]
     N8N --> ORCH["agent.orchestrator – LLM router"]
     ORCH --> FIN["📒 agent.finance"]
     ORCH --> ADV["🧭 agent.finance_advisor"]
@@ -170,7 +170,7 @@ The README stays an overview — details live at exactly one address:
 
 ## Stack and quality
 
-n8n 2.44.4 · PostgreSQL 17 · reverse proxy (recommended: Caddy, bring your own) · Bash provisioning · PowerShell dev tooling · Docker test substrate · Telegram Bot API · Anthropic Claude for all language work, Google Gemini only for voice transcription.
+n8n 2.45.4 · PostgreSQL 17 · reverse proxy (recommended: Caddy, bring your own) · Bash provisioning · PowerShell dev tooling · Docker test substrate · Telegram Bot API · Anthropic Claude for all language work, Google Gemini only for voice transcription.
 
 Quality is enforced by tools, not discipline: five test tiers (deterministic DB tests up to end-to-end with real writes), local prek hooks identical to CI, secret scans over the full history. The current numbers live in the test and CI files themselves — deliberately none here that would go stale.
 

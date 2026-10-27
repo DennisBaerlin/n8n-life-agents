@@ -7,7 +7,9 @@
 #     language_code (Fallback = Owner-Sprache); ist der Owner verbunden, dieselben vier Owner-Chat-Menues;
 #   - die Beschreibungen kommen aus dem Textkatalog der jeweiligen Sprache (<pkg>.cmd.<name>);
 #   - der Sofort-Verify (getMyCommands je Scope + Sprache; der Mock speichert wie die Bot-API) meldet jedes Menue
-#     als gesetzt.
+#     als gesetzt;
+#   - der Mini-App-Knopf „Übersicht“ (setChatMenuButton) nur pro Chat, bei audience=owner nur fuer den Owner, Text aus
+#     dem Katalog, URL https + /webhook/app-<uuid>; nie als Standard-Knopf.
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1. Kein LLM, kein echtes Telegram.
 # Usage:  .\scripts\dev\bot_menu_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
@@ -93,6 +95,28 @@ if ($owner.Count -gt 0) {
 } else {
     Write-Host "  (Owner nicht verbunden -> keine Owner-Menues erwartet)" -ForegroundColor DarkGray
 }
+
+# (2b) Mini-App-Knopf „Übersicht“ (docs/package-contract.md §3.12): NIE als Standard-Knopf (ohne chat_id waere er fuer
+# Fremde sichtbar); web_app nur pro Chat einer berechtigten Person (Substrat-Default app.audience=owner -> nur der
+# Owner), Text = core.app.menu_button in der Owner-Sprache, URL = https-WEBHOOK_URL + /webhook/app-<uuid>.
+$btn = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'setChatMenuButton' })
+if (@($btn | Where-Object { $null -eq $_.body.chat_id }).Count -gt 0) { Fail 'setChatMenuButton ohne chat_id (Standard-Knopf fuer alle, auch Fremde)' }
+$web = @($btn | Where-Object { $_.body.menu_button.type -eq 'web_app' })
+if ($owner.Count -gt 0) {
+    $ownerChat = [string]$owner[0].body.scope.chat_id
+    $mine = @($web | Where-Object { [string]$_.body.chat_id -eq $ownerChat })
+    if ($mine.Count -ne 1) { Fail "Übersicht-Knopf fuer den Owner $($mine.Count)x gesetzt (erwartet 1)" }
+    else {
+        $q2 = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT agent.fn_person_lang(agent.fn_owner_person_id())->>'lang';")
+        $ol = ($q2.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^[a-z]{2}$' } | Select-Object -First 1)
+        if (-not $ol) { $ol = 'de' }
+        $wantBtn = [string](Get-Loc 'core' $ol).'core.app.menu_button'
+        if ([string]$mine[0].body.menu_button.text -ne $wantBtn) { Fail "Übersicht-Knopf: Text '$($mine[0].body.menu_button.text)' != Katalog '$wantBtn'" }
+        if ([string]$mine[0].body.menu_button.web_app.url -notmatch '^https://[^ ]+/webhook/app-[0-9a-f-]{36}$') { Fail "Übersicht-Knopf: URL '$($mine[0].body.menu_button.web_app.url)'" }
+    }
+    if (@($web | Where-Object { [string]$_.body.chat_id -ne $ownerChat }).Count -gt 0) { Fail 'Übersicht-Knopf bei audience=owner auch fuer Nicht-Owner gesetzt' }
+    Write-Host "  setChatMenuButton: $($web.Count) Übersicht-Knopf, $($btn.Count - $web.Count) Befehlsmenü"
+} elseif ($web.Count -gt 0) { Fail 'Übersicht-Knopf gesetzt, obwohl der Owner nicht verbunden ist' }
 
 # (3) Sofort-Verify: jedes gesetzte Menue wurde per getMyCommands verifiziert (Mock speichert je Scope + Sprache).
 $verified = @($out | Where-Object { "$_" -match 'verifiziert' }).Count

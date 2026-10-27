@@ -328,6 +328,18 @@ main() {
     else
       _warn "Bestätigen im Chat ist aus (Knöpfe öffnen eine Webseite): ${_whurl%/}${HITL_ROUTE_SUFFIX} erreicht n8n nicht — im Reverse Proxy ergänzen, dann 'lifeagents update'"
     fi
+
+    # (5) Mini-App „Übersicht“ (docs/package-contract.md §3.12): die Seite muss VOM SERVER SELBST ueber die Domain
+    # laden (gleicher Weg wie das Handy: Proxy -> /webhook/<Pfad je Instanz>). Nur WARN: die App ist optional, der Chat
+    # laeuft auch ohne sie. Nichts aendern, nur lesen (GET liefert eine statische Seite ohne Daten).
+    local _app _app_code
+    _app="$(_app_path)"
+    if [ -z "$_whurl" ] || [ -z "$_app" ]; then _skip "Übersicht-Check (keine WEBHOOK_URL bzw. kein INGRESS_ID_KEY)"
+    else
+      _app_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${_whurl%/}/webhook/${_app}" 2>/dev/null || true)"
+      if [ "$_app_code" = "200" ]; then _pass "Übersicht (Mini-App) lädt über ${_whurl%/}/webhook/…"
+      else _warn "Übersicht (Mini-App) lädt nicht (HTTP ${_app_code:-000}) — 'lifeagents update' ausführen; der Chat ist davon nicht betroffen"; fi
+    fi
   else
     _skip "Kein Public-Ingress (keine Domain) — Orchestrator-/HTTPS-Checks übersprungen (dev/Substrat)"
   fi

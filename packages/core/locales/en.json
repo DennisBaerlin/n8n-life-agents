@@ -3,6 +3,7 @@
   "core.app.menu_button": "📊 Overview",
   "core.app.title": "Overview",
   "core.app.reload": "Reload",
+  "core.app.nothing": "Nothing to show yet. As soon as accounts or goals are set up in the chat, they appear here.",
   "core.app.gap": "incomplete – a price or exchange rate is missing",
   "core.app.error.expired": "This overview has expired. Please close it and open it again with the button.",
   "core.app.error.denied": "You do not have access to this overview.",

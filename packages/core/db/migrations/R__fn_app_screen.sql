@@ -34,7 +34,7 @@ DECLARE
     v_res    jsonb;
     v_probe  jsonb;
     v_nav    jsonb := '[]'::jsonb;
-    v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap',
+    v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing',
                                      'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes',
                                      'core.fmt.no', 'core.fmt.removed']);
 BEGIN

@@ -246,7 +246,7 @@ function Test-RawMoneyDate([string]$Text) {
 }
 
 $ORCH_ID = 'A6iPk9ezRzKzLbTj'
-$vChatCond = @(); $vChatExpr = @(); $vExprProto = @(); $vCodeShape = @(); $vSrcBind = @()
+$vChatCond = @(); $vChatExpr = @(); $vExprProto = @(); $vCodeShape = @(); $vSrcBind = @(); $vWebhookPath = @()
 $vTgAttr = @(); $vTgRetry = @(); $vTgEscape = @(); $vConnRef = @(); $vConnShape = @(); $vCronTestRun = @(); $vTgFmt = @(); $vNoSticky = @(); $vTgApprover = @(); $vStaleTap = @(); $vHitlStruct = @(); $vUmlaut = @(); $vTgWaitLimit = @(); $vTgEmptyParse = @()
 # Ausnahmen vom Stale-Tap-Guard (10), je mit Grund:
 $staleTapExempt = @(
@@ -329,6 +329,14 @@ foreach ($wfFile in (Get-AllWfFiles)) {
                     if ($h.Count) { $vUmlaut += "$($w.name) :: $($n.name) ($($h -join ', '))" }
                 }
             }
+        }
+
+        # (12) Produktiver Webhook (Mini-App, docs/package-contract.md §3.12): der Pfad ist ein Deploy-Platzhalter
+        # __<NAME>_PATH__ (deploy_workflows.sh setzt die Adresse je Instanz ein), nie ein Literal im oeffentlichen Repo;
+        # Test-Harnesses (*.test_harness, nur Test-Instanzen) sind ausgenommen. Builder: New-WebhookNode.
+        if ($n.type -eq 'n8n-nodes-base.webhook' -and "$($w.name)" -notlike '*.test_harness' -and
+            "$($n.parameters.path)" -notmatch '^__[A-Z][A-Z0-9_]*_PATH__$') {
+            $vWebhookPath += "$($w.name) :: $($n.name)"
         }
 
         # (5) runOnceForEachItem-Code-Node darf kein Array returnen
@@ -463,7 +471,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
     }
 }
 
-foreach ($v in ($vChatCond + $vChatExpr + $vExprProto + $vCodeShape + $vSrcBind + $vTgAttr + $vTgRetry + $vTgEscape + $vConnRef + $vConnShape + $vTgFmt + $vNoSticky + $vTgApprover + $vStaleTap + $vHitlStruct + $vUmlaut + $vTgWaitLimit + $vTgEmptyParse + $vCronTestRun | Sort-Object -Unique)) {
+foreach ($v in ($vChatCond + $vChatExpr + $vExprProto + $vCodeShape + $vSrcBind + $vTgAttr + $vTgRetry + $vTgEscape + $vConnRef + $vConnShape + $vTgFmt + $vNoSticky + $vTgApprover + $vStaleTap + $vHitlStruct + $vUmlaut + $vTgWaitLimit + $vTgEmptyParse + $vCronTestRun + $vWebhookPath | Sort-Object -Unique)) {
     Write-Host "    OFFENDER: $v" -ForegroundColor Yellow
 }
 Check 'Stickies: jeder Workflow traegt >= 1 Sticky-Note (Workflows sind die Doku)' { $vNoSticky.Count -eq 0 }
@@ -472,6 +480,7 @@ Check 'chat_id: .startsWith-Expressions String()-gewrappt'              { $vChat
 Check 'Ausdruecke: kein "prototype" (n8n sperrt es zur Laufzeit)'      { $vExprProto.Count -eq 0 }
 Check 'chat_id: Orchestrator-Bindings stringifiziert (Quelle)'          { $vSrcBind.Count -eq 0 }
 Check 'Code-Nodes: runOnceForEachItem returnt Einzel-Item (kein Array)' { $vCodeShape.Count -eq 0 }
+Check 'Produktive Webhooks: Pfad ist ein Deploy-Platzhalter __<NAME>_PATH__ (New-WebhookNode)' { $vWebhookPath.Count -eq 0 }
 Check 'Telegram: appendAttribution=false an JEDEM Send'                 { $vTgAttr.Count -eq 0 }
 Check 'Telegram: retryOnFail an JEDEM Send'                             { $vTgRetry.Count -eq 0 }
 Check 'Telegram: dynamischer Text escapt Markdown-Entities (_ * ` [)'   { $vTgEscape.Count -eq 0 }

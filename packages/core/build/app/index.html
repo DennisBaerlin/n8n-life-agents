@@ -277,7 +277,7 @@ button.row:active, button.banner:active { opacity: .6; }
       renderTabs(screens);
       if (screens.length) { open({ screen: screens[0].screen, params: {} }, true); return; }
       clear(app);
-      app.appendChild(el('p', 'card refusal', navR.empty));
+      app.appendChild(el('p', 'card refusal', navR.has('core.app.nothing') ? navR.t('core.app.nothing') : navR.empty));
     }).catch(() => {
       if (my !== seq) return;
       busy(false);

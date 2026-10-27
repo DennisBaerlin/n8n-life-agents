@@ -105,15 +105,6 @@ _resolve_owner_chat_id() {
   printf '%s' "$v"
 }
 
-# _ingress_uuid <key> <seed> -> UUID (Version-4-Form), deterministisch je Instanz aus sha256(key:seed). Fuer die
-#   telegramTrigger-ids (s. deploy_workflows): stabil ueber Deploys (Fingerprint/Only-changed), aber ohne den
-#   Instanz-Schluessel nicht aus dem oeffentlichen Repo ableitbar. printf ist ein Builtin -> der Schluessel steht in
-#   keiner Prozess-Argumentliste.
-_ingress_uuid() {
-  local h; h="$(printf '%s:%s' "$1" "$2" | sha256sum | cut -c1-32)"
-  printf '%s-%s-4%s-%x%s-%s' "${h:0:8}" "${h:8:4}" "${h:13:3}" $(( (16#${h:16:1} & 3) | 8 )) "${h:17:3}" "${h:20:12}"
-}
-
 # _ingress_id_map <workflow.json> <key> -> JSON-Objekt {Repo-id: Instanz-id} fuer id + webhookId jedes telegramTrigger.
 _ingress_id_map() {
   local f="$1" key="$2" v
@@ -508,6 +499,7 @@ deploy_workflows() {
   # beim ersten Trigger-Workflow, nie ein Rueckfall auf die oeffentlichen ids.
   local ingress_key; ingress_key="$(read_env_value "${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" INGRESS_ID_KEY || true)"
   local hitl_chat; _hitl_chat_approval "$scope" >/dev/null; hitl_chat="$_HITL_CHAT_APPROVAL_VAL"   # Cache im Eltern-Prozess setzen
+  local app_path; app_path="$(_app_path)"
 
   local staging; staging="$(mktemp -d /tmp/n8n_wf_deploy.XXXXXX)"; chmod 0755 "$staging"
   log "Workflows patchen (Scope '$scope': Credential-Remap + Zeitplaene + Owner-chat_id) -> $staging ..."
@@ -539,8 +531,13 @@ deploy_workflows() {
         fi
         ing_map="$(_ingress_id_map "$f" "$ingress_key")"
       fi
+      if [ -z "$app_path" ] && grep -q '"__APP_PATH__"' "$f"; then
+        rm -rf "$staging"
+        die "Eingangs-Schlüssel INGRESS_ID_KEY fehlt in core.env — ohne ihn wäre die Adresse der Übersicht öffentlich ableitbar. Abhilfe: 'lifeagents update' (bzw. provision.sh) erneut ausführen."
+      fi
       # Zeitplan-Platzhalter: NUR exakte String-Werte ersetzen (jq --argjson, kein sed — ein Cron enthaelt '/').
-      jq --argjson map "$remap_json" --argjson cfg "$cfg_map" --argjson hitl "$hitl_chat" --argjson ing "$ing_map" '
+      jq --argjson map "$remap_json" --argjson cfg "$cfg_map" --argjson hitl "$hitl_chat" --argjson ing "$ing_map" \
+         --arg app "$app_path" '
         walk(
           if (type == "object") and (has("credentials")) and ((.credentials | type) == "object")
           then .credentials |= map_values(
@@ -548,6 +545,7 @@ deploy_workflows() {
                  then .id = $map[.id] else . end)
           elif (type == "string") and ($cfg[.] != null) then $cfg[.]
           elif . == "__HITL_CHAT_APPROVAL__" then $hitl
+          elif . == "__APP_PATH__" then $app
           else . end)
         | if has("nodes") then .nodes |= map(
             if .type == "n8n-nodes-base.telegramTrigger"
@@ -567,7 +565,7 @@ deploy_workflows() {
   fi
   # Rest-Platzhalter = ein Zeitplan ohne Wert in core.config (Seed fehlt/DB nicht lesbar) -> abbrechen, BEVOR
   # irgendetwas live geaendert wird (ein Platzhalter als Cron-Ausdruck liesse den Workflow nie oder falsch laufen).
-  local missing; missing="$(grep -oh '__CFG_[A-Z0-9_]*__' "$staging"/*.json 2>/dev/null | sort -u | tr '\n' ' ' || true)"
+  local missing; missing="$(grep -oh '__CFG_[A-Z0-9_]*__\|"__APP_PATH__"' "$staging"/*.json 2>/dev/null | sort -u | tr '\n' ' ' || true)"
   if [ -n "$missing" ]; then
     rm -rf "$staging"
     die "Workflow-Einstellung(en) ohne Wert in core.config: ${missing}— die Paket-Einstellungen sind nicht eingespielt (Seed). Abhilfe: 'lifeagents update'."
@@ -813,6 +811,103 @@ _set_bot_command_menus() {
   else
     note "Telegram-Owner-Menue noch nicht gesetzt (Owner noch nicht verbunden) — das Pairing setzt es danach automatisch."
   fi
+  # Mini-App „Übersicht“ (docs/package-contract.md §3.12): Pruef-Schluessel + Menue-Knoepfe haengen an denselben
+  # Aufrufern (Install, Update, Pairing, Paket-Statuswechsel) wie das Befehlsmenue.
+  _ensure_app_secret "$token"
+  _set_bot_menu_buttons "$token"
+}
+
+# _ensure_app_secret <bot-token> — Pruef-Schluessel der Mini-App = HMAC_SHA256(key="WebAppData", msg=Bot-Token)
+#   (core.telegram.org/bots/webapps) nach core.app_secret (ACL wie core.backup_key). Bei JEDEM Lauf neu abgeleitet ->
+#   ein Token-Wechsel greift sofort; geschrieben nur bei Aenderung. Token nur per stdin an openssl (printf = Builtin),
+#   der Schluessel nur per stdin an psql — nie im argv. Best-effort: Fehler -> warn (die App lehnt dann mit no_secret ab).
+_ensure_app_secret() {
+  local token="$1" key
+  need_cmd openssl || { warn "openssl fehlt -> Schlüssel der Übersicht nicht gesetzt."; return 0; }
+  key="$(printf '%s' "$token" | openssl dgst -sha256 -hmac 'WebAppData' -r 2>/dev/null | cut -c1-64)" || key=''
+  printf '%s' "$key" | grep -qE '^[0-9a-f]{64}$' || { warn "Schlüssel der Übersicht nicht ableitbar (openssl) — die Übersicht lehnt bis zum nächsten Update ab."; return 0; }
+  if printf "INSERT INTO core.app_secret (id, webapp_key) VALUES (TRUE, decode('%s', 'hex'))
+ON CONFLICT (id) DO UPDATE SET webapp_key = EXCLUDED.webapp_key, updated_at = now()
+WHERE core.app_secret.webapp_key IS DISTINCT FROM EXCLUDED.webapp_key;\n" "$key" |
+     runuser -u "$DB_SUPERUSER" -- psql -X -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" >/dev/null 2>&1; then
+    ok "Schlüssel der Übersicht (Mini-App) gesetzt."
+  else
+    warn "Schlüssel der Übersicht nicht gespeichert (DB) — die Übersicht lehnt bis zum nächsten Update ab."
+  fi
+  key=''
+}
+
+# _set_bot_menu_buttons <bot-token> — der dauerhafte Knopf „📊 Übersicht“ links neben dem Eingabefeld
+#   (setChatMenuButton mit chat_id, Typ web_app; Text = core.app.menu_button in der Sprache der Person). NUR pro Chat
+#   fuer berechtigte Personen (app.enabled, app.audience owner|household, mind. ein Bildschirm eines aktiven Pakets),
+#   nie als Standard-Knopf: der waere fuer jeden Fremden sichtbar. Alle anderen bekannten Chats und alle Chats, die
+#   einmal einen Knopf bekamen und jetzt nicht mehr berechtigt bzw. nicht mehr im Haushalt sind (Merkliste
+#   $LIFEAGENTS_DIR/app-menu-chats), bekommen das Befehlsmenue zurueck. URL = WEBHOOK_URL + webhook/<_app_path>, nur
+#   https (Telegram verlangt es). Best-effort, nie fatal.
+_set_bot_menu_buttons() {
+  local token="$1" wh path url enabled audience screens rows tid role lang text tj uj body kind ok_n=0 reset_n=0
+  local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc
+  need_cmd jq || return 0
+  wh="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"
+  path="$(_app_path)"
+  url=''
+  case "$wh" in https://*) [ -n "$path" ] && url="${wh%/}/webhook/${path}" ;; esac
+  # Ein psql-Aufruf liefert Schalter + Personen (tid \t role \t lang); DB nicht lesbar -> nichts aendern.
+  rows="$(runuser -u "$DB_SUPERUSER" -- psql -X -tA -F $'\t' -d "$N8N_DB_NAME" -c "
+    SELECT 'cfg', COALESCE(core.fn_config_get('core','app','enabled'), ''), COALESCE(core.fn_config_get('core','app','audience'), ''),
+           (SELECT count(*) FROM core.app_screens s WHERE core.fn_package_active(s.package))::text
+    UNION ALL
+    SELECT p->>'telegram_user_id', COALESCE(p->>'role', ''), COALESCE(agent.fn_person_lang(p->>'person_id')->>'lang', 'en'), ''
+      FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) p
+     WHERE c.name = 'family' AND COALESCE(p->>'telegram_user_id', '') ~ '^[0-9]{1,18}\$'" 2>/dev/null)" || { warn "Übersicht-Knopf: DB nicht lesbar — Knöpfe unverändert."; return 0; }
+  enabled="$(printf '%s\n' "$rows" | awk -F'\t' '$1=="cfg"{print $2}')"
+  audience="$(printf '%s\n' "$rows" | awk -F'\t' '$1=="cfg"{print $3}')"
+  screens="$(printf '%s\n' "$rows" | awk -F'\t' '$1=="cfg"{print $4}')"
+  case "$screens" in ''|*[!0-9]*) screens=0 ;; esac
+  [ -n "$url" ] || [ "$enabled" != true ] || [ "$screens" -eq 0 ] || note "Übersicht-Knopf: keine https-WEBHOOK_URL bzw. kein INGRESS_ID_KEY — nur Befehlsmenüs."
+  uj="$(jq -Rn --arg u "$url" '$u')"
+  core_loc="$REPO_ROOT/packages/core/locales"
+  local seen=' '
+  while IFS=$'\t' read -r tid role lang _; do
+    [ "$tid" = cfg ] && continue
+    printf '%s' "$tid" | grep -qE '^[0-9]{1,18}$' || continue
+    seen="${seen}${tid} "
+    kind=commands
+    if [ -n "$url" ] && [ "$enabled" = true ] && [ "$screens" -gt 0 ] && { [ "$audience" = household ] || [ "$role" = owner ]; }; then
+      kind=web_app
+    fi
+    if [ "$kind" = web_app ]; then
+      printf '%s' "$lang" | grep -qE '^[a-z]{2}$' || lang=en
+      text="$(jq -r '."core.app.menu_button" // empty' "$core_loc/$lang.json" 2>/dev/null)"
+      [ -n "$text" ] || text="$(jq -r '."core.app.menu_button" // empty' "$core_loc/en.json" 2>/dev/null)"
+      [ -n "$text" ] || text='📊'
+      tj="$(jq -Rn --arg t "$text" '$t')"
+      body="{\"chat_id\":${tid},\"menu_button\":{\"type\":\"web_app\",\"text\":${tj},\"web_app\":{\"url\":${uj}}}}"
+    else
+      body="{\"chat_id\":${tid},\"menu_button\":{\"type\":\"commands\"}}"
+    fi
+    if tg_api_curl "$token" setChatMenuButton -fsS --max-time 10 -X POST -H 'content-type: application/json' --data "$body" >/dev/null 2>&1; then
+      if [ "$kind" = web_app ]; then ok_n=$((ok_n + 1)); else reset_n=$((reset_n + 1)); fi
+    else
+      warn "Übersicht-Knopf für einen Chat nicht gesetzt (Token/Netz/Chat?) — unkritisch, das nächste Update versucht es erneut."
+    fi
+  done <<EOF
+$rows
+EOF
+  # Chats, die frueher einen Knopf bekamen, aber nicht mehr im Haushalt sind -> Befehlsmenue zurueck.
+  if [ -r "$state" ]; then
+    while IFS= read -r tid; do
+      printf '%s' "$tid" | grep -qE '^[0-9]{1,18}$' || continue
+      case "$seen" in *" $tid "*) continue ;; esac
+      tg_api_curl "$token" setChatMenuButton -fsS --max-time 10 -X POST -H 'content-type: application/json' \
+        --data "{\"chat_id\":${tid},\"menu_button\":{\"type\":\"commands\"}}" >/dev/null 2>&1 && reset_n=$((reset_n + 1))
+    done < "$state"
+  fi
+  if [ -d "$(dirname "$state")" ]; then
+    # shellcheck disable=SC2086  # $seen ist eine Leerzeichen-Liste numerisch geprüfter ids -> bewusst aufgeteilt
+    { printf '%s\n' $seen > "$state" && chmod 0600 "$state"; } 2>/dev/null || true
+  fi
+  ok "Übersicht-Knopf: ${ok_n} Chat(s) mit Knopf, ${reset_n} mit Befehlsmenü."
 }
 
 # refresh_bot_command_menus — Menue nach einem Paket-Statuswechsel neu setzen (pkg_lifecycle.sh). Token aus

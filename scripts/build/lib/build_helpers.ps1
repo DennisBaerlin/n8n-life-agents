@@ -408,6 +408,52 @@ function Build-CallWorkflow {
     }
 }
 
+# New-WebhookNode — produktiver HTTP-Eingang (Webhook v2, n8n 2.45.4). -Path ist PFLICHT ein Deploy-Platzhalter
+#   (__<NAME>_PATH__, deploy_workflows.sh setzt die Adresse je Instanz aus INGRESS_ID_KEY ein; workflow_lint prueft es),
+#   nie ein Literal: das Repo ist oeffentlich. -Methods > 1 -> multipleMethods, ein Ausgang je Methode in dieser
+#   Reihenfolge. Antwort immer ueber einen New-RespondNode (responseMode responseNode). Ein text/plain-Body kommt als
+#   String in $json.body an (n8n body-parser), JSON als Objekt.
+function New-WebhookNode {
+    param([string]$Name, [int[]]$Pos, [Parameter(Mandatory)][string]$Path, [string[]]$Methods = @('POST'))
+    if ($Path -notmatch '^__[A-Z][A-Z0-9_]*_PATH__$') { throw "New-WebhookNode '$Name': -Path muss ein Deploy-Platzhalter __<NAME>_PATH__ sein, kein Literal ('$Path')." }
+    $p = [ordered]@{}
+    if ($Methods.Count -gt 1) { $p['multipleMethods'] = $true; $p['httpMethod'] = @($Methods) }
+    else { $p['httpMethod'] = $Methods[0] }
+    $p['path'] = $Path; $p['responseMode'] = 'responseNode'; $p['options'] = [ordered]@{}
+    [ordered]@{
+        parameters  = $p
+        type        = 'n8n-nodes-base.webhook'
+        typeVersion = 2
+        position    = $Pos
+        id          = (New-Id)
+        name        = $Name
+        webhookId   = (New-Id)
+    }
+}
+
+# New-RespondNode — Antwort eines New-WebhookNode (Respond to Webhook 1.5). -Kind text: -Body ist ein STATISCHER
+#   String (kein '='-Ausdruck -> n8n wertet ihn nie aus, '{{' darin ist harmlos); -Kind json: -Body ist ein n8n-Ausdruck,
+#   der ein Objekt liefert. -Headers = geordnete Name->Wert-Map (Content-Type immer explizit, die Node-Doku verlangt es).
+function New-RespondNode {
+    param([string]$Name, [int[]]$Pos, [ValidateSet('text', 'json')][string]$Kind, [Parameter(Mandatory)][string]$Body,
+          [System.Collections.IDictionary]$Headers = [ordered]@{})
+    if ($Kind -eq 'text' -and $Body.StartsWith('=')) { throw "New-RespondNode '$Name': -Kind text braucht einen statischen Body (beginnt mit '=')." }
+    if ($Kind -eq 'json' -and -not $Body.StartsWith('={{')) { throw "New-RespondNode '$Name': -Kind json braucht einen Ausdruck '={{ ... }}'." }
+    $entries = @($Headers.Keys | ForEach-Object { [ordered]@{ name = [string]$_; value = [string]$Headers[$_] } })
+    [ordered]@{
+        parameters  = [ordered]@{
+            respondWith  = $Kind
+            responseBody = $Body
+            options      = [ordered]@{ responseHeaders = [ordered]@{ entries = $entries } }
+        }
+        type        = 'n8n-nodes-base.respondToWebhook'
+        typeVersion = 1.5
+        position    = $Pos
+        id          = (New-Id)
+        name        = $Name
+    }
+}
+
 # Set node helper (named) — assignments is array of @(name, value, type)
 function Build-Set {
     param([string]$Name, [int[]]$Pos, [array]$Assignments)

@@ -3,6 +3,7 @@
   "core.app.menu_button": "📊 개요",
   "core.app.title": "개요",
   "core.app.reload": "새로고침",
+  "core.app.nothing": "아직 표시할 내용이 없습니다. 채팅에서 계좌나 목표를 등록하면 여기에 표시됩니다.",
   "core.app.gap": "불완전 – 시세 또는 환율이 없습니다",
   "core.app.error.expired": "개요가 만료되었습니다. 닫은 뒤 버튼으로 다시 열어 주세요.",
   "core.app.error.denied": "이 개요에 대한 접근 권한이 없습니다.",

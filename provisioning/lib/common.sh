@@ -898,6 +898,25 @@ tg_api_curl() {
   curl_cfg url "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}/bot${token}/${method}" | curl_secret "$@"
 }
 
+# _ingress_uuid <key> <seed> -> UUID (Version-4-Form), deterministisch je Instanz aus sha256(key:seed). Fuer die
+#   telegramTrigger-ids (s. deploy_workflows): stabil ueber Deploys (Fingerprint/Only-changed), aber ohne den
+#   Instanz-Schluessel nicht aus dem oeffentlichen Repo ableitbar. printf ist ein Builtin -> der Schluessel steht in
+#   keiner Prozess-Argumentliste.
+_ingress_uuid() {
+  local h; h="$(printf '%s:%s' "$1" "$2" | sha256sum | cut -c1-32)"
+  printf '%s-%s-4%s-%x%s-%s' "${h:0:8}" "${h:8:4}" "${h:13:3}" $(( (16#${h:16:1} & 3) | 8 )) "${h:17:3}" "${h:20:12}"
+}
+
+# _app_path -> Pfad der Mini-App „Übersicht“ unter /webhook/ (docs/package-contract.md §3.12), je Instanz aus
+#   INGRESS_ID_KEY abgeleitet wie die Telegram-Eingangs-ids: das Repo nennt nur den Platzhalter __APP_PATH__, die echte
+#   Adresse kennt nur diese Instanz (Verteidigung in der Tiefe; den Zugriff schuetzt die initData-Pruefung in der DB).
+#   Leer, wenn der Schluessel fehlt. EINE Adresse fuer den Workflow-Patch und den Menue-Knopf.
+_app_path() {
+  local k; k="$(read_env_value "${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" INGRESS_ID_KEY || true)"
+  [ -n "$k" ] || return 0
+  printf 'app-%s' "$(_ingress_uuid "$k" app_path)"
+}
+
 # --- Paket-Baum + Textkatalog (docs/package-contract.md §3.11) ----------------------------------------------
 # _pkg_dir -> Paket-Quelle: der gespiegelte Runtime-Baum (`/usr/local/lib/lifeagents/packages/<pkg>/…`) bzw. im
 # Dev der Repo-Baum. v1 = lokaler Baum (D13); kuenftige Per-Paket-Release-Quellen abstrahiert der `pkg_source`-

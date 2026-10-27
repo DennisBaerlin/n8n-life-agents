@@ -3,6 +3,7 @@
   "core.app.menu_button": "📊 Übersicht",
   "core.app.title": "Übersicht",
   "core.app.reload": "Neu laden",
+  "core.app.nothing": "Hier gibt es noch nichts zu sehen. Sobald im Chat Konten oder Ziele angelegt sind, erscheinen sie hier.",
   "core.app.gap": "unvollständig – ein Kurs oder Wechselkurs fehlt",
   "core.app.error.expired": "Die Übersicht ist abgelaufen. Bitte schließen und über den Knopf neu öffnen.",
   "core.app.error.denied": "Für diese Übersicht hast du keinen Zugriff.",

@@ -53,6 +53,7 @@ $Gates = [ordered]@{
     hitl_gate     = @{ Script = 'scripts\dev\hitl_gate_test.ps1' }
     cron_text     = @{ Script = 'scripts\dev\cron_text_test.ps1' }
     bot_menu      = @{ Script = 'scripts\dev\bot_menu_test.ps1' }
+    app_endpoint  = @{ Script = 'scripts\dev\app_endpoint_test.ps1' }   # Mini-App-Eingang (HTTP, initData, CORS)
     update_chat   = @{ Script = 'scripts\dev\update_chat_test.ps1' }   # Update im Chat gegen Mock-GitHub + Mock-Telegram
     llm_gateway   = @{ Script = 'scripts\dev\llm_gateway_test.ps1' }
     # Mock-Routing je Agent-Ziel (Default-Erkennung tool_* deckt alle Write-Tools; -WriteTools wuerde nur verengen).
@@ -70,7 +71,7 @@ $Gates = [ordered]@{
 # nach B; Richtwerte mr_orch ~3,6, real_ingress ~3,7, cron_text ~3,2, mr_finance ~3,0).
 $GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
             'mr_monitor', 'mr_career', 'mr_paperless')
-$GroupB = @('release_fetch', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress')
+$GroupB = @('release_fetch', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint')
 $unknown = @($GroupA + $GroupB + $Suites | Where-Object { -not $Gates.Contains($_) })
 if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
 if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }

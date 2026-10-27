@@ -37,6 +37,10 @@ Host-Paket: Agent-Plattform (Schemas `agent` + `core`) — Orchestrator, Guide, 
 - Der Claim nimmt per eigener Anweisung zuerst den Advisory-Lock je Chat und liest erst danach (frischer Schnappschuss). Das Fenster gilt relativ zur eigenen Ankunft und reicht von 2 s davor bis 10 s danach. Eine ältere unbeanspruchte Zeile gehört zu einem Lauf, der nach einem DB-Fehler schon allein lief, und wird darum nicht ein zweites Mal verarbeitet. Die Zeitbasis ist `clock_timestamp()`. Fail-open: Bei jedem DB-Fehler läuft die Nachricht einzeln. Die Schleifen-Bremse sitzt zusätzlich im Graphen.
 - **Bei uns anders** (arch-challenge 2026-10-23): kein Wiederaufnahme-Cron für Zeilen, deren Lauf während der 1,5–5 s stirbt. Ein n8n-Neustart verliert ohnehin jeden laufenden Lauf, und ein Lauf, der nach dem Zugriff stirbt, verliert die mit-beanspruchten Teile genauso wie heute seinen eigenen.
 
+## Mini-App (`core.app_*`)
+
+- Sichtbarkeit nur in der Bildschirm-fn (Rolle selbst auflösen, nur owner/partner = Haushalt); `core.fn_app_screen` wirft nie. → `docs/reference/core.md` *Mini-App*.
+
 ## Backup/Restore
 
 CLI-only (`lifeagents backup`), nie über den Chat; `core.backup_key` nie rotieren. Mechanik → `provisioning/CLAUDE.md` *Backup/Restore*.

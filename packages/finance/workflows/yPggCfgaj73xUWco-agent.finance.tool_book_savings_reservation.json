@@ -10,7 +10,7 @@
                                                                                    "name":  "savings_goal_name"
                                                                                },
                                                                                {
-                                                                                   "name":  "depot_account_name"
+                                                                                   "name":  "account_name"
                                                                                },
                                                                                {
                                                                                    "name":  "amount"
@@ -121,9 +121,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027depot_account_name\u0027, ARRAY[\u0027stocks_depot\u0027,\u0027crypto_depot\u0027]);",
+                                         "query":  "=SELECT r.id, r.hit_count, r.candidates, a.currency, (a.account_type IN (\u0027stocks_depot\u0027,\u0027crypto_depot\u0027)) AS is_depot FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027account_name\u0027, finance.fn_goal_earmark_account_types()::text[]) r LEFT JOIN finance.accounts a ON a.id = r.id;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ depot_account_name: $(\u0027Start\u0027).item.json.depot_account_name }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).item.json.account_name }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -132,8 +132,8 @@
                                        660,
                                        0
                                    ],
-                      "id":  "bdd07f75-8337-502f-900e-cadcbed2f770",
-                      "name":  "Resolve Depot",
+                      "id":  "31a7232c-3fa4-5055-a749-e7c22f91fd59",
+                      "name":  "Resolve Account",
                       "credentials":  {
                                           "postgres":  {
                                                            "id":  "__CRED_POSTGRES_FINANCE_RW__",
@@ -151,7 +151,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "ebe04b90-0fc4-5dde-b415-289198e6f12c",
+                                                                                   "id":  "56df9139-20ec-5a41-82de-2c0ddc973ea4",
                                                                                    "leftValue":  "={{ $json.hit_count }}",
                                                                                    "rightValue":  1,
                                                                                    "operator":  {
@@ -172,23 +172,23 @@
                                        880,
                                        0
                                    ],
-                      "id":  "7b8bde30-7400-5379-8e47-84b46d0d1dd3",
-                      "name":  "Depot unique?"
+                      "id":  "86468b43-5509-58a7-a73a-743555c95e2a",
+                      "name":  "Account unique?"
                   },
                   {
                       "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "96ece89b-c760-5a78-8f63-ac0abdda44b2",
+                                                                                     "id":  "c8ef77b7-7edf-5847-97a4-1bb83dd10579",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "2338743c-3b31-5beb-b107-6dcde6f2c60f",
+                                                                                     "id":  "6a39c53a-89fc-590c-ae49-5155df037a6c",
                                                                                      "name":  "error",
-                                                                                     "value":  "=Depot account \u0027{{ $(\u0027Start\u0027).item.json.depot_account_name }}\u0027 resolves to {{ $(\u0027Resolve Depot\u0027).item.json.hit_count }} matches. Candidates: {{ JSON.stringify($(\u0027Resolve Depot\u0027).item.json.candidates) }}. Ask the user which exact depot.",
+                                                                                     "value":  "=Account \u0027{{ $(\u0027Start\u0027).item.json.account_name }}\u0027 resolves to {{ $(\u0027Resolve Account\u0027).item.json.hit_count }} matches among cash, fixed-deposit, P2P and depot accounts. Candidates: {{ JSON.stringify($(\u0027Resolve Account\u0027).item.json.candidates) }}. Ask the user which exact account.",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -203,15 +203,15 @@
                                        1100,
                                        200
                                    ],
-                      "id":  "4119a28e-11f7-5e12-9af6-da1775b88230",
-                      "name":  "Depot ambiguous"
+                      "id":  "10c4ed58-63e9-5d41-8649-302639005165",
+                      "name":  "Account ambiguous"
                   },
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_savings_reservation(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, depot_account_id: $(\u0027Resolve Depot\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, account_id: $(\u0027Resolve Account\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -315,9 +315,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027entry_id\u0027)::int AS entry_id, (r-\u003e\u003e\u0027delta\u0027)::numeric AS delta, (r-\u003e\u003e\u0027reserved\u0027)::numeric AS reserved, (r-\u003e\u003e\u0027market_value\u0027)::numeric AS market_value, (r-\u003e\u003e\u0027shortfall\u0027)::numeric AS shortfall FROM finance.fn_book_savings_reservation(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027entry_id\u0027)::int AS entry_id, (r-\u003e\u003e\u0027delta\u0027)::numeric AS delta, (r-\u003e\u003e\u0027reserved\u0027)::numeric AS reserved, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027free_balance\u0027)::numeric AS free_balance, (r-\u003e\u003e\u0027market_value\u0027)::numeric AS market_value, (r-\u003e\u003e\u0027shortfall\u0027)::numeric AS shortfall, COALESCE(r-\u003e\u0027savings_goal_reached\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_goal_reached FROM finance.fn_book_savings_reservation(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, depot_account_id: $(\u0027Resolve Depot\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, account_id: $(\u0027Resolve Account\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -326,8 +326,8 @@
                                        2420,
                                        0
                                    ],
-                      "id":  "c037b440-351d-5281-b6d0-86aa58a01ea4",
-                      "name":  "Book depot reservation (atomic)",
+                      "id":  "6ee9f2d4-ccde-53c3-97e6-952d05c80c73",
+                      "name":  "Book earmark (atomic)",
                       "credentials":  {
                                           "postgres":  {
                                                            "id":  "__CRED_POSTGRES_FINANCE_RW__",
@@ -342,7 +342,7 @@
                                                                                  {
                                                                                      "id":  "c07d3e07-65b7-5ecf-a117-33926cc34ddf",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_savings_reservation\u0027, lines: [ { label: \u0027finance.label.savings_goal\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.savings_goal_name) }, { label: \u0027finance.label.depot\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.depot_account_name) }, { label: \u0027finance.label.reserved_amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: (\u0027EUR\u0027) }, { kind: \u0027note\u0027, value: \u0027finance.note.reserve_fixed\u0027 } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_savings_reservation\u0027, lines: [ { label: \u0027finance.label.savings_goal\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.savings_goal_name) }, { label: \u0027finance.label.account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.account_name) }, { label: \u0027finance.label.reserved_amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: (($(\u0027Resolve Account\u0027).item.json.is_depot ? \u0027EUR\u0027 : $(\u0027Resolve Account\u0027).item.json.currency)) }, { kind: \u0027note\u0027, value: (($(\u0027Resolve Account\u0027).item.json.is_depot ? \u0027finance.note.reserve_fixed\u0027 : \u0027finance.note.earmark_balance\u0027)) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -516,7 +516,7 @@
                                                                                  {
                                                                                      "id":  "72802ee4-4aee-51bc-8152-b062ae4a1d81",
                                                                                      "name":  "error",
-                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.reason }}",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.reason }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -547,32 +547,50 @@
                                                                                  {
                                                                                      "id":  "f05681e4-ea23-5cdd-b980-538ef181623a",
                                                                                      "name":  "entry_id",
-                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.entry_id }}",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.entry_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
                                                                                      "id":  "0584ea4a-3e79-5f76-8ff5-3ea1909f9ad8",
                                                                                      "name":  "delta",
-                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.delta }}",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.delta }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
                                                                                      "id":  "839d7fd9-318a-58e3-ab85-4da48ed793b7",
                                                                                      "name":  "reserved",
-                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.reserved }}",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.reserved }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
                                                                                      "id":  "48aa0262-b71e-5465-9d3d-6e7513cf05ee",
-                                                                                     "name":  "market_value",
-                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.market_value }}",
+                                                                                     "name":  "current_amount",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.current_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
                                                                                      "id":  "8bc43115-7009-504a-bcfc-a5daa3612a9f",
-                                                                                     "name":  "shortfall",
-                                                                                     "value":  "={{ $(\u0027Book depot reservation (atomic)\u0027).item.json.shortfall }}",
+                                                                                     "name":  "free_balance",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.free_balance }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8736b1b4-0435-59bc-b32b-4dd1818cf0ac",
+                                                                                     "name":  "market_value",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.market_value }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "dfc92ce5-edcb-5501-8273-ddf28649a3dd",
+                                                                                     "name":  "shortfall",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.shortfall }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3b55d972-1e54-5c7b-aa13-9ef3b62fe153",
+                                                                                     "name":  "savings_goal_reached",
+                                                                                     "value":  "={{ $(\u0027Book earmark (atomic)\u0027).item.json.savings_goal_reached }}",
+                                                                                     "type":  "string"
                                                                                  }
                                                                              ]
                                                          },
@@ -591,9 +609,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Depot-Anteil einer Sparziel-Reserve buchen (Phase S WS-B)**\n\nReserviert einen ABSOLUTEN €-Betrag des DEPOTS für ein Sparziel — der Depot-Anteil der Reserve (der Cash-Anteil läuft über tool_book_savings_goal_transfer). Eingänge: savings_goal_name, depot_account_name (stocks_depot/crypto_depot), amount (absoluter Ziel-Betrag). Ablauf: Resolve Ziel + Depot -\u003e Probelauf (Dry run, ohne Karte bei Ablehnung) -\u003e HITL-Gate -\u003e atomarer Write via fn_book_savings_reservation (rechnet delta = amount - Σ Journal, hängt EINE Zeile an -\u003e append-only, driftfrei). Der Marktwert ist Deckel/Deckung (depot_reserve_status), NIE die gespeicherte Reserve. Ausgang {ok:true, entry_id, delta, reserved (= amount), market_value, shortfall} bzw. {ok:false} (korrigierbar) / {cancelled} (Decline).",
+                                         "content":  "## DB-Automatik\n**Geld einem Sparziel zuordnen (Zweckbindung ohne Überweisung)**\n\nOrdnet einen ABSOLUTEN Betrag eines Kontos einem Sparziel zu, ohne Geld zu bewegen (YNAB-Assign/Firefly-Piggy). Konten: Giro/Tagesgeld, Festgeld, P2P (Betrag in Kontowährung) und Depots (Betrag in EUR) — finance.fn_goal_earmark_account_types. Eingänge: savings_goal_name, account_name, amount. Ablauf: Resolve Ziel + Konto -\u003e Probelauf (Dry run, ohne Karte bei Ablehnung) -\u003e HITL-Gate -\u003e atomarer Write via fn_book_savings_reservation (delta = amount - aktueller Anteil inkl. eingezahltem Geld, EINE Journal-Zeile -\u003e append-only, driftfrei). Saldo-Konto: die fn lehnt ab, wenn mehr zugeordnet würde als frei auf dem Konto liegt. Depot: Marktwert ist nur Deckung. Ausgang {ok:true, entry_id, delta, reserved, current_amount, free_balance | market_value+shortfall} bzw. {ok:false} (korrigierbar) / {cancelled} (Decline).",
                                          "height":  260,
-                                         "width":  460,
+                                         "width":  500,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -607,9 +625,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_savings_reservation mit denselben Werten, immer zurückgerollt. ok:false (Betrag negativ, Ziel nicht gefunden, Konto kein Depot, delta=0 = gleicher Betrag wie bisher) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_book_savings_reservation mit denselben Werten, immer zurückgerollt. ok:false (Betrag negativ, Ziel/Konto nicht gefunden, Kreditkonto, delta=0 = gleicher Betrag wie bisher, mehr als frei auf dem Konto) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  240,
-                                         "width":  460,
+                                         "width":  480,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -623,7 +641,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_book_savings_reservation (atomar, append-only)**\n\nAbsolut-rein -\u003e delta-append (das LLM rechnet NICHT): die fn liest die aktuelle Σ des Journals je (Ziel, Depot), rechnet delta = amount - Σ und hängt GENAU EINE savings_goal_reserve_entries-Zeile (kind=manual) an — NIE UPDATE einer Zahl -\u003e der Stand bleibt DERIVED -\u003e strukturell driftfrei. Marktwert ist Deckel/Deckung, NIE die gespeicherte Reserve. Post-State {reserved (= amount), delta, market_value (Depot-Marktwert EUR, NULL ohne Kurs), shortfall} liest die fn aus depot_reserve_status.",
+                                         "content":  "## DB-Automatik\n**fn_book_savings_reservation (atomar, append-only)**\n\nAbsolut-rein -\u003e delta-append (das LLM rechnet NICHT): die fn liest den aktuellen Anteil des Ziels auf dem Konto (savings_goal_account_share: eingezahltes + zugeordnetes Geld), rechnet delta = amount - Anteil und hängt GENAU EINE savings_goal_reserve_entries-Zeile (kind=manual) an — NIE UPDATE einer Zahl -\u003e der Stand bleibt DERIVED. Saldo-Konto: Betrag in Kontowährung, Konto-Zeile gesperrt, Erhöhung nur bis zum freien Saldo. Depot: Betrag in EUR, Marktwert nur Deckung (depot_reserve_status).",
                                          "height":  240,
                                          "width":  560,
                                          "color":  4
@@ -639,7 +657,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\namount\u003c0 (keine negative Reserve) / Ziel nicht gefunden / Konto kein Depot / delta=0 (no-op, gleicher Betrag) liefert die fn als {ok:false, reason} -\u003e Reservation rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true hängt die Journal-Zeile an. Normalerweise fängt schon der Probelauf das vor der Karte ab.",
+                                         "content":  "## DB-Automatik\n**fn-Rückgabe {ok:false, reason}**\n\namount\u003c0 / Ziel oder Konto nicht gefunden / Kreditkonto / delta=0 (gleicher Betrag) / insufficient_free_balance (mehr als frei) liefert die fn als {ok:false, reason} -\u003e Reservation rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true hängt die Journal-Zeile an. Normalerweise fängt schon der Probelauf das vor der Karte ab.",
                                          "height":  240,
                                          "width":  440,
                                          "color":  4
@@ -682,7 +700,7 @@
                                                           [
                                                               {
                                                                   "index":  0,
-                                                                  "node":  "Resolve Depot",
+                                                                  "node":  "Resolve Account",
                                                                   "type":  "main"
                                                               }
                                                           ],
@@ -695,35 +713,35 @@
                                                           ]
                                                       ]
                                          },
-                        "Resolve Depot":  {
-                                              "main":  [
-                                                           [
-                                                               {
-                                                                   "index":  0,
-                                                                   "node":  "Depot unique?",
-                                                                   "type":  "main"
-                                                               }
-                                                           ]
-                                                       ]
-                                          },
-                        "Depot unique?":  {
-                                              "main":  [
-                                                           [
-                                                               {
-                                                                   "index":  0,
-                                                                   "node":  "Dry run",
-                                                                   "type":  "main"
-                                                               }
-                                                           ],
-                                                           [
-                                                               {
-                                                                   "index":  0,
-                                                                   "node":  "Depot ambiguous",
-                                                                   "type":  "main"
-                                                               }
-                                                           ]
-                                                       ]
-                                          },
+                        "Resolve Account":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account unique?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Account unique?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Dry run",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Account ambiguous",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
                         "Dry run":  {
                                         "main":  [
                                                      [
@@ -780,7 +798,7 @@
                                                        [
                                                            {
                                                                "index":  0,
-                                                               "node":  "Book depot reservation (atomic)",
+                                                               "node":  "Book earmark (atomic)",
                                                                "type":  "main"
                                                            }
                                                        ],
@@ -793,17 +811,17 @@
                                                        ]
                                                    ]
                                       },
-                        "Book depot reservation (atomic)":  {
-                                                                "main":  [
-                                                                             [
-                                                                                 {
-                                                                                     "index":  0,
-                                                                                     "node":  "Write ok?",
-                                                                                     "type":  "main"
-                                                                                 }
-                                                                             ]
-                                                                         ]
-                                                            },
+                        "Book earmark (atomic)":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Write ok?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
                         "Write ok?":  {
                                           "main":  [
                                                        [

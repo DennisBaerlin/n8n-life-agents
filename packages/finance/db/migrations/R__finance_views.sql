@@ -35,6 +35,7 @@ DROP VIEW IF EXISTS finance.pension_overview CASCADE;
 DROP VIEW IF EXISTS finance.real_estate_overview CASCADE;
 DROP VIEW IF EXISTS finance.savings_goal_progress CASCADE;
 DROP VIEW IF EXISTS finance.account_reserve_status CASCADE;
+DROP VIEW IF EXISTS finance.savings_goal_account_share CASCADE;
 DROP VIEW IF EXISTS finance.account_overview CASCADE;
 DROP VIEW IF EXISTS finance.monthly_cashflow_overview CASCADE;
 DROP VIEW IF EXISTS finance.recurring_cashflow_classified CASCADE;
@@ -286,6 +287,46 @@ LEFT JOIN finance.account_balances b ON b.account_id = a.id
 LEFT JOIN core.fn_household_persons() ap ON ap.person_id = a.owner_person_id;
 
 -- ============================================================
+-- VIEW: Savings goal account share  (Sparziel-Zweckbindung 2026-10-27 — die EINE Quelle des Ziel-Anteils je Konto)
+-- Je (Ziel, Konto): Anteil = getaggte Transfers (transactions.savings_goal_id: Raten-Haben-Bein, deposit/withdrawal/
+-- relocate) + Journal savings_goal_reserve_entries (Zuordnung ohne Geldbewegung, Sparplan-Kauf, Umschichten, void).
+-- Beide Quellen sind vorzeichen-roh und derived (YNAB-Assign/Firefly-Piggy: Zuordnung != Geldbewegung).
+--   share_eur    = Summe je Zeile fn_to_eur(Betrag, Waehrung, Datum) — dieselbe Live-Semantik fuer beide Quellen
+--                  (die Legs eines goal-Kaufs kuerzen sich nach EUR exakt).
+--   share_native = Anteil in KONTOWAEHRUNG, nur fuer saldo-basierte Konten (fn_goal_pot_account_types): Tag-Legs sind
+--                  per Definition in Kontowaehrung, Journal-Zeilen dort laut fn_book_savings_reservation ebenfalls.
+--                  Depot: NULL (manual = EUR, sparplan_buy = Depot-Waehrung -> nativ nicht addierbar).
+--   manual_eur   = Anteil aus Hand-Zuordnungen (kind='manual'): Startbestand/spaetere Zuordnung, KEIN Spartempo
+--                  (savings_goal_progress rechnet ihn aus observed_monthly_rate heraus).
+-- Konsumenten: savings_goal_progress, account_reserve_status, depot_reserve_status, savings_goal_reserve_breakdown,
+--   fn_goal_reserve_accounts, fn_book_savings_reservation, fn_void_transaction, fn_delete_account.
+-- ============================================================
+CREATE VIEW finance.savings_goal_account_share AS
+WITH legs AS (
+    SELECT t.savings_goal_id AS goal_id, t.account_id, t.amount AS amount, a.currency AS currency,
+           t.transaction_date AS fx_date, false AS is_manual
+    FROM finance.transactions t
+    JOIN finance.accounts a ON a.id = t.account_id
+    WHERE t.savings_goal_id IS NOT NULL
+    UNION ALL
+    SELECT e.savings_goal_id, e.account_id, e.delta_native, e.currency, e.value_date, e.kind = 'manual'
+    FROM finance.savings_goal_reserve_entries e
+)
+SELECT l.goal_id,
+       g.status                                                       AS goal_status,
+       l.account_id,
+       a.name                                                         AS account_name,
+       a.account_type,
+       a.currency                                                     AS account_currency,
+       sum(finance.fn_to_eur(l.amount, l.currency, l.fx_date))        AS share_eur,
+       CASE WHEN a.account_type = ANY (finance.fn_goal_pot_account_types()) THEN sum(l.amount) END AS share_native,
+       COALESCE(sum(finance.fn_to_eur(l.amount, l.currency, l.fx_date)) FILTER (WHERE l.is_manual), 0) AS manual_eur
+FROM legs l
+JOIN finance.savings_goals g ON g.id = l.goal_id
+JOIN finance.accounts a ON a.id = l.account_id
+GROUP BY l.goal_id, g.status, l.account_id, a.name, a.account_type, a.currency;
+
+-- ============================================================
 -- VIEW: Savings goal progress  (WS-A Phase S: RESERVE-Modell, Ziel-Tag-Envelope)
 -- current_amount = aktuelle RESERVE des Ziels = vorzeichen-rohe Summe ALLER mit dem Ziel markierten
 -- Buchungen (transactions.savings_goal_id) — ueber BELIEBIG viele Konten (Tagesgeld + Depot). Reserve-
@@ -295,9 +336,9 @@ LEFT JOIN core.fn_household_persons() ap ON ap.person_id = a.owner_person_id;
 --   * Nur das RESERVE-Bein wird getaggt (das Haben-Bein der Rate-Umbuchung; nie beide Beine -> sonst Netto-0).
 --     Die Stempelung macht fn_book_recurring_transfer (Rate eines Ziels); Entnahme/Einmal tragen das Tag direkt.
 --   * Kein Tag UND kein Journal -> current_amount 0 (Defensiv-Zweig; ein Ziel ohne Reserve-Bewegung hat 0).
---   * WS-B: Depot-Reserve-Term = signed SUM(savings_goal_reserve_entries.delta_native (je Zeile via fn_to_eur nach EUR)) je Ziel (append-only
---     Journal, DERIVED -> driftfrei), ADDITIV zum Cash-Term (current_amount = saved = Cash + Depot-Journal).
---     Der Depot-MARKTWERT ist NUR Deckung (depot_reserve_status), NIE der gespeicherte Reserve-Stand.
+--   * Journal-Term = signed SUM(savings_goal_reserve_entries, je Zeile via fn_to_eur nach EUR) je Ziel (append-only,
+--     DERIVED -> driftfrei), ADDITIV zum Tag-Term; seit 2026-10-27 auf jedem zuordenbaren Konto (Zuordnung ohne
+--     Geldbewegung). Beides liefert savings_goal_account_share. Der Depot-MARKTWERT ist NUR Deckung.
 --   * RETIRED (finance:V008): savings_goal_holdings (Marktwert-Term, doppelzaehl-anfaellig) + savings_goal_
 --     allocations (Earmark/FIRE); das FIRE-Topf-Netting ist nach BACKLOG verschoben (Fundament zuerst).
 -- Erkenntnis-Fakten (DB rechnet, LLM reasoned darueber): expected_percent (Zeit-Pace), pace_drift_pp,
@@ -310,40 +351,26 @@ LEFT JOIN core.fn_household_persons() ap ON ap.person_id = a.owner_person_id;
 -- Output-Spaltennamen current_amount/progress_percent sind consumer-stabil (fn_advisor_review liest sie namentlich).
 -- ============================================================
 CREATE VIEW finance.savings_goal_progress AS
-WITH contrib AS (
-    -- WP-3b: Cash-Term je Konto-Waehrung nach EUR (fn_to_eur mit dem transaction_date-Kurs) — eine Reserve, die
-    -- auf Konten VERSCHIEDENER Waehrungen getaggt ist, wuerde sonst roh gemischt (still falsch). Der Depot-Term
-    -- (reserve-CTE) konvertiert mit DERSELBEN Live-Semantik -> die goal-Kauf-Legs kuerzen sich exakt (Konservierung).
-    SELECT t.savings_goal_id                             AS goal_id,
-           sum(finance.fn_to_eur(t.amount, a.currency, t.transaction_date)) AS booked   -- vorzeichen-roh: Zufluss +, Entnahme -
-    FROM finance.transactions t
-    JOIN finance.accounts a ON a.id = t.account_id
-    WHERE t.savings_goal_id IS NOT NULL
-    GROUP BY t.savings_goal_id
+WITH share AS (
+    -- Tag-Term + Journal-Term je Ziel aus der EINEN Quelle savings_goal_account_share (EUR je Zeile, Live-Semantik).
+    -- Der MARKTWERT eines Depots ist NUR Deckel/Deckung (depot_reserve_status), NIE der Fortschritt -> eine
+    -- Kurs-Explosion blaeht current_amount nicht auf (das fruehere Marktwert-Modell ist mit finance:V008 RETIRED).
+    -- manual = Hand-Zuordnungen (Startbestand), aus dem Spartempo herausgerechnet.
+    SELECT goal_id, sum(share_eur) AS saved, sum(manual_eur) AS manual
+    FROM finance.savings_goal_account_share
+    GROUP BY goal_id
 ),
--- WS-B/WP-3b: Depot-Anteil der Reserve = signed SUM(fn_to_eur(delta_native, currency, value_date)) je Ziel — ein
--- APPEND-ONLY Journal (nativer Betrag je Zeile, EUR-Umrechnung live in der VIEW; DERIVED -> kann strukturell nicht
--- driften). ADDITIV zum Cash-Term. Der MARKTWERT eines Depots ist NUR Deckel/Deckung (depot_reserve_status), NIE der Fortschritt ->
--- eine Kurs-Explosion blaeht current_amount nicht auf (Owner-Einwand; das fruehere savings_goal_holdings-
--- Marktwert-Modell ist mit finance:V008 RETIRED, weil es bei geteiltem/vorbestehendem ISIN doppelzaehlte).
--- COALESCE(depot_reserve,0): kein Journal -> 0 (defensiv, kein Kippen der Summe auf NULL).
-reserve AS (
-    -- WP-3b: jede Journal-Zeile traegt einen NATIVEN Betrag + ihre Waehrung + value_date -> nach EUR via fn_to_eur
-    -- (Live-Semantik wie der Cash-Term). sparplan_buy = Depot-Waehrung, manual = EUR.
-    SELECT savings_goal_id AS goal_id,
-           sum(finance.fn_to_eur(delta_native, currency, value_date)) AS depot_reserve
-    FROM finance.savings_goal_reserve_entries
-    GROUP BY savings_goal_id
-),
--- saved = aktueller Reserve-Stand = Cash-Tag-Term + Depot-Journal-Term. EINE Quelle fuer ALLE Erkenntnis-
--- Fakten unten (sonst driften current_amount und progress/pace auseinander).
+-- saved = aktueller Reserve-Stand (Tags + Journal). EINE Quelle fuer ALLE Erkenntnis-Fakten unten (sonst driften
+-- current_amount und progress/pace auseinander).
 -- Audit Paket 3: measurable = FALSE genau dann, wenn die Raten-rp des Ziels GERADE LAEUFT (Praedikat wie
 -- active_recurring_payments) und KEINEN Topf hat (target_account_id NULL): die Rate geht dann als nackte
 -- Abbuchung unverfolgt vom Konto ab -> Fortschritt/Tempo sind nicht messbar (statt Dauer-"hinter Plan").
 -- Beendete/pausierte Raten + einmalige getaggte Einzahlungen bzw. Journal-Eintraege bleiben messbar.
 base AS (
     SELECT g.*,
-           coalesce(c.booked, 0) + coalesce(r.depot_reserve, 0) AS saved,
+           coalesce(s.saved, 0) AS saved,
+           -- Spartempo-Basis: was nicht aus Hand-Zuordnung stammt (nie negativ; eine Entnahme senkt es mit)
+           GREATEST(coalesce(s.saved, 0) - coalesce(s.manual, 0), 0) AS paced,
            -- ueber die ganze Vorgaenger-Kette (Paket 2): eine alte, noch laufende Zeile ohne Topf zaehlt mit, auch wenn
            -- der Kopf (auf den das Ziel zeigt) erst spaeter gilt.
            NOT EXISTS (SELECT 1
@@ -354,8 +381,7 @@ base AS (
                          AND (rp.valid_to IS NULL OR rp.valid_to > current_date)
                          AND rp.target_account_id IS NULL) AS measurable
     FROM finance.savings_goals g
-    LEFT JOIN contrib c ON c.goal_id = g.id
-    LEFT JOIN reserve r ON r.goal_id = g.id
+    LEFT JOIN share s ON s.goal_id = g.id
 )
 SELECT
     b.id,
@@ -382,18 +408,17 @@ SELECT
                                    / (b.target_date - b.created_at::date), 0), 1) * 100
                     - b.saved / b.target_amount * 100, 2)
          ELSE NULL END                                  AS pace_drift_pp,
-    -- beobachtetes Monatstempo = bisher gespart / vergangene Monate (GREATEST(1,..)-Guard). NULL bei saved<=0:
-    -- im Reserve-Modell kann eine Netto-Entnahme saved unter 0 druecken -> ein NEGATIVES "Spartempo" waere
-    -- semantisch falsch (der Advisor liest die Spalte) -> wie projected_completion_date auf saved>0 geguardet.
-    CASE WHEN b.saved > 0 AND b.measurable
-         THEN round(b.saved
+    -- beobachtetes Monatstempo = bisher GESPART (ohne Hand-Zuordnungen: ein Startbestand von 2000 ist kein Tempo von
+    -- 2000/Monat) / vergangene Monate (GREATEST(1,..)-Guard). NULL bei paced<=0 (kein negatives "Spartempo").
+    CASE WHEN b.paced > 0 AND b.measurable
+         THEN round(b.paced
               / GREATEST(1, ceil((current_date - b.created_at::date)::numeric / finance.fn_days_per_month())), 2)
          ELSE NULL END                                  AS observed_monthly_rate,
     -- voraussichtliches Erreichungs-Datum beim beobachteten Tempo; NULL wenn Tempo 0 ODER bereits gedeckt
-    CASE WHEN b.saved > 0 AND b.target_amount - b.saved > 0 AND b.measurable
+    CASE WHEN b.paced > 0 AND b.target_amount - b.saved > 0 AND b.measurable
          THEN (current_date + (round(
                  (b.target_amount - b.saved)
-                 / (b.saved
+                 / (b.paced
                     / GREATEST(1, ceil((current_date - b.created_at::date)::numeric / finance.fn_days_per_month())))
                  * finance.fn_days_per_month())::int) * interval '1 day')::date
          ELSE NULL END                                  AS projected_completion_date,
@@ -412,11 +437,12 @@ FROM base b;
 
 -- ============================================================
 -- VIEW: Account reserve status  (WS-C2 Phase S — proaktiver Reserve-Waechter)
--- Pro AKTIVEM Konto: live-Saldo vs. der darauf fuer aktive Sparziele RESERVIERTE Betrag.
---   reserved = SUM(transactions.amount WHERE savings_goal_id) ueber AKTIVE Ziele (Join status='active'),
---     in der NATIVE-Waehrung des Kontos (alle Tx eines Kontos teilen dessen Waehrung -> Saldo vs. reserviert
---     ist apfel-zu-apfel, KEIN FX). Quelle ist DIESELBE Tag-Summe wie savings_goal_progress, nur per-Konto
---     statt per-Ziel gruppiert.
+-- Pro AKTIVEM saldo-basiertem Konto (fn_goal_pot_account_types; Depots deckt depot_reserve_status per Marktwert —
+--   ihr Buch-Saldo ~0 laege sonst immer unter der Zuordnung = Schein-Breach): live-Saldo vs. der darauf fuer aktive
+--   Sparziele RESERVIERTE Betrag.
+--   reserved = Summe savings_goal_account_share.share_native (Tags + Journal) ueber AKTIVE Ziele, in der
+--     NATIVE-Waehrung des Kontos -> Saldo vs. reserviert ist apfel-zu-apfel, KEIN FX. Quelle ist DIESELBE wie
+--     savings_goal_progress, nur per-Konto statt per-Ziel gruppiert.
 --   breach = reserved>0 AND balance<reserved -> der Saldo deckt die zurueckgelegte Reserve nicht mehr
 --     (der Owner hat „in seinen Sparbetrag eingegriffen"). Etablierter Standard: YNAB „Warn when target balance
 --     not reached", Firefly „account balance >= sum of piggy allocations" — bei uns ADVISORY (nie blockierend).
@@ -441,13 +467,13 @@ SELECT a.id                                             AS account_id,
 FROM finance.accounts a
 LEFT JOIN finance.account_balances b ON b.account_id = a.id
 LEFT JOIN (
-    SELECT t.account_id, sum(t.amount) AS reserved        -- getaggte Tx je Konto, nur aktive Ziele
-    FROM finance.transactions t
-    JOIN finance.savings_goals g ON g.id = t.savings_goal_id
-    WHERE g.status = 'active'
-    GROUP BY t.account_id
+    SELECT s.account_id, sum(s.share_native) AS reserved  -- Tags + Journal je Konto, nur aktive Ziele
+    FROM finance.savings_goal_account_share s
+    WHERE s.goal_status = 'active'
+    GROUP BY s.account_id
 ) r ON r.account_id = a.id
-WHERE a.status = 'active';
+WHERE a.status = 'active'
+  AND a.account_type = ANY (finance.fn_goal_pot_account_types());
 
 -- ============================================================
 -- VIEW: Real estate overview with associated debt and net equity
@@ -839,12 +865,12 @@ GROUP BY bucket, asset_class, owner_person_id;
 
 -- ============================================================
 -- VIEW: Depot-Reserve-Deckungs-Waechter  (WS-B Phase S)
--- Je AKTIVEM Depot-Konto: der Live-Marktwert vs. der darauf fuer aktive Sparziele RESERVIERTE Betrag (Σ des
--- append-only savings_goal_reserve_entries-Journals). Spiegelt account_reserve_status (Cash, Saldo-basiert),
+-- Je AKTIVEM Depot-Konto: der Live-Marktwert vs. der darauf fuer aktive Sparziele RESERVIERTE Betrag (Σ der
+-- Ziel-Anteile aus savings_goal_account_share, EUR). Spiegelt account_reserve_status (Cash, Saldo-basiert),
 -- aber MARKT-WERT-basiert (ein Depot traegt keine Buchungen -> kein Saldo; der Wert steckt in den shares).
 --   market_value = SUM(depot_holdings_overview.market_value_eur) je Depot (EUR; NULL wenn KEINE gehaltene
 --     Position einen Live-Kurs hat -> Deckung nicht ermittelbar).
---   reserved = Σ savings_goal_reserve_entries.delta_native (je Zeile via fn_to_eur nach EUR) ueber AKTIVE Ziele (Join status='active' -> ein
+--   reserved = Σ savings_goal_account_share.share_eur ueber AKTIVE Ziele (goal_status='active' -> ein
 --     completed/cancelled-Ziel gibt seine Depot-Reserve frei; ein hart-geloeschtes cascadet ohnehin weg).
 --   breach = COALESCE(market_value,0) < reserved  (reserved>0). NULL-Preis -> COALESCE 0 -> breach=TRUE: ein
 --     nicht ermittelbarer Marktwert deckt NICHTS, nie still FALSE (3-wertige Logik vermieden) — Edge-Reviewer-Pflicht.
@@ -871,38 +897,25 @@ LEFT JOIN (
     GROUP BY account_id
 ) mv ON mv.account_id = a.id
 LEFT JOIN (
-    SELECT e.account_id, sum(finance.fn_to_eur(e.delta_native, e.currency, e.value_date)) AS reserved   -- WP-3b: Journal je Depot nach EUR, nur aktive Ziele
-    FROM finance.savings_goal_reserve_entries e
-    JOIN finance.savings_goals g ON g.id = e.savings_goal_id
-    WHERE g.status = 'active'
-    GROUP BY e.account_id
+    SELECT s.account_id, sum(s.share_eur) AS reserved   -- Ziel-Anteile je Depot in EUR (ein Depot traegt nur Journal), nur aktive Ziele
+    FROM finance.savings_goal_account_share s
+    WHERE s.goal_status = 'active'
+    GROUP BY s.account_id
 ) res ON res.account_id = a.id
 WHERE a.status = 'active'
   AND a.account_type IN ('stocks_depot', 'crypto_depot');
 
 -- ============================================================
 -- VIEW: Sparziel-Reserve-Aufschluesselung  (WS-B Phase S — "wo liegt mein Ziel-Geld?")
--- Je (Ziel, Quelle, Konto) eine Zeile: der Cash-Anteil je getaggtem Konto (transactions.savings_goal_id) UND
--- der Depot-Anteil je Depot (Σ savings_goal_reserve_entries). WP-3b: reserved_amount ist in EUR (fn_to_eur je
--- Zeile), damit die Aufschluesselung ueber verschieden-waehrige Konten aufsummiert werden darf (fruehere
--- Roh-Native-Summe mischte still verschiedene Waehrungen). Reiner Drill-down/Anzeige-Helfer fuer den Advisor-Digest.
+-- Je (Ziel, Konto) eine Zeile aus savings_goal_account_share; source = Art des Kontos ('cash' = saldo-basiert,
+-- 'depot' = Depot), nicht die Art der Buchung (Tag vs. Journal). reserved_amount in EUR (fn_to_eur je Zeile), damit
+-- die Aufschluesselung ueber verschieden-waehrige Konten aufsummiert werden darf. Reiner Drill-down/Anzeige-Helfer
+-- fuer den Advisor-Digest.
 -- ============================================================
 CREATE VIEW finance.savings_goal_reserve_breakdown AS
-SELECT t.savings_goal_id          AS goal_id,
-       'cash'::text               AS source,
-       t.account_id,
-       a.name                     AS account_name,
-       sum(finance.fn_to_eur(t.amount, a.currency, t.transaction_date)) AS reserved_amount
-FROM finance.transactions t
-JOIN finance.accounts a ON a.id = t.account_id
-WHERE t.savings_goal_id IS NOT NULL
-GROUP BY t.savings_goal_id, t.account_id, a.name
-UNION ALL
-SELECT e.savings_goal_id          AS goal_id,
-       'depot'::text              AS source,
-       e.account_id,
-       a.name                     AS account_name,
-       sum(finance.fn_to_eur(e.delta_native, e.currency, e.value_date)) AS reserved_amount
-FROM finance.savings_goal_reserve_entries e
-JOIN finance.accounts a ON a.id = e.account_id
-GROUP BY e.savings_goal_id, e.account_id, a.name;
+SELECT s.goal_id,
+       CASE WHEN s.account_type IN ('stocks_depot', 'crypto_depot') THEN 'depot' ELSE 'cash' END AS source,
+       s.account_id,
+       s.account_name,
+       s.share_eur                AS reserved_amount
+FROM finance.savings_goal_account_share s;

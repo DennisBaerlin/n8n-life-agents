@@ -259,7 +259,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027reserve_account_name\u0027, \u0027\u0027), ARRAY[\u0027cash\u0027,\u0027fixed_deposit\u0027]);",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027reserve_account_name\u0027, \u0027\u0027), finance.fn_goal_pot_account_types()::text[]);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ reserve_account_name: $(\u0027Start\u0027).item.json.reserve_account_name }) }}"
                                                      }
@@ -326,7 +326,7 @@
                                                                                  {
                                                                                      "id":  "2c59aa51-d02f-54db-833d-5266c349ca84",
                                                                                      "name":  "error",
-                                                                                     "value":  "=The reserve account \u0027{{ $(\u0027Start\u0027).item.json.reserve_account_name }}\u0027 could not be uniquely resolved ({{ $(\u0027Resolve Reserve\u0027).item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify($(\u0027Resolve Reserve\u0027).item.json.candidates) }}. Ask which exact cash/Tagesgeld account.",
+                                                                                     "value":  "=The reserve account \u0027{{ $(\u0027Start\u0027).item.json.reserve_account_name }}\u0027 could not be uniquely resolved ({{ $(\u0027Resolve Reserve\u0027).item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify($(\u0027Resolve Reserve\u0027).item.json.candidates) }}. Ask which exact cash/Tagesgeld, fixed-deposit or P2P account.",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]

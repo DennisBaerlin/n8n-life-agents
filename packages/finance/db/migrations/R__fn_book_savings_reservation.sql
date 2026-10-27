@@ -1,92 +1,136 @@
 -- ============================================================
--- fn_book_savings_reservation (ATOMIC WRITE) — Phase S WS-B Stufe 1
---   Bucht den DEPOT-Anteil einer Sparziel-Reserve als EINE Zeile ins append-only Journal
---   (finance.savings_goal_reserve_entries). `book_` (nicht `set_`), weil append-only = eine Reserve-BEWEGUNG
---   buchen (Praezedenz fn_book_savings_goal_transfer); Tier `owner_info` im approval_matrix-Block des finance-Manifests.
+-- fn_book_savings_reservation (ATOMIC WRITE) — Zweckbindung vorhandenen Geldes fuer ein Sparziel
+--   Bucht den Anteil eines Kontos an einer Sparziel-Reserve als EINE Zeile ins append-only Journal
+--   (finance.savings_goal_reserve_entries), OHNE Geldbewegung (YNAB-Assign/Firefly-Piggy). Seit 2026-10-27 fuer jedes
+--   zuordenbare Konto (fn_goal_earmark_account_types: cash/Tagesgeld, Festgeld, P2P, Depots), nicht nur Depots.
+--   `book_` (nicht `set_`), weil append-only = eine Reserve-BEWEGUNG buchen (Praezedenz fn_book_savings_goal_transfer);
+--   Tier `owner_info` im approval_matrix-Block des finance-Manifests.
 --
---   ABSOLUT-REIN -> DELTA-APPEND (das LLM rechnet NICHT): Input `amount` ist der ABSOLUTE Ziel-Betrag, den
---   der Owner direkt nennt ("ich moechte 3000 EUR aus dem Depot fuer dieses Ziel reserviert haben"). Die fn
---   rechnet delta = amount - COALESCE(SUM(journal je Ziel+Depot),0) und haengt EINE manual-Zeile (+/-) an.
---   NIE UPDATE einer Zahl -> der Stand bleibt DERIVED -> strukturell driftfrei.
+--   ABSOLUT-REIN -> DELTA-APPEND (das LLM rechnet NICHT): Input `amount` ist der ABSOLUTE Anteil, den der Owner fuer
+--   (Ziel, Konto) nennt ("3000 EUR auf dem Tagesgeld gehoeren zur Reise"). Die fn rechnet delta = amount - aktueller
+--   Anteil aus savings_goal_account_share (getaggte Transfers + Journal, d. h. schon eingezahltes Geld wird
+--   ANGERECHNET) und haengt EINE manual-Zeile (+/-) an. NIE UPDATE einer Zahl -> der Stand bleibt DERIVED.
+--   Waehrung: saldo-basiertes Konto -> Kontowaehrung (amount, Zeile, Saldo-Vergleich nativ); Depot -> EUR (absoluter
+--   EUR-Betrag gegen den EUR-Marktwert, wie bisher).
+--   FREIER-SALDO-GUARD (saldo-basiert, nur bei delta > 0): Summe aller AKTIVEN Ziel-Anteile auf dem Konto nach dem
+--   Append <= Saldo, sonst {ok:false, code:'insufficient_free_balance', free}. Konto-Zeile FOR UPDATE (zwei parallele
+--   Zuordnungen koennen den Guard nicht gemeinsam ueberholen). Senken/Freigeben ist immer erlaubt. Depot: der Marktwert
+--   ist nur Deckungsanzeige (market_value/shortfall), kein Guard (Kurse schwanken).
 --
---   Eingabe jsonb: savings_goal_id, depot_account_id (im n8n aufgeloest), amount (>=0, ABSOLUT).
---   RUECKGABE Erfolg: {ok:true, goal_id, depot_account_id, reserved (neuer Depot-Anteil DIESES Ziels = Σ
---     journal je Ziel+Depot = amount), delta (angehaengte Bewegung), market_value (Depot-Marktwert EUR, NULL
---     ohne Kurs), shortfall (Depot-Deckungsluecke ueber ALLE aktiven Ziele, depot_reserve_status)}.
---   Korrigierbar (kein RAISE -> kein Owner-Alert): amount NULL/<0 (keine negative Reserve) / Ziel nicht
---     gefunden / Konto nicht gefunden ODER kein Depot / delta=0 (no-op) -> {ok:false, reason}.
---   MARKTWERT ist Deckel/Deckung, NIE die gespeicherte Reserve (Kurs-Explosion blaeht den Fortschritt nicht
---     auf) — die Reserve ist der gebuchte €-Betrag; market_value/shortfall sind nur die Deckungs-Anzeige.
+--   Eingabe jsonb: savings_goal_id, account_id (im n8n aufgeloest), amount (>=0, ABSOLUT, Kontowaehrung bzw. EUR).
+--   RUECKGABE Erfolg: {ok:true, goal_id, account_id, entry_id, delta (angehaengte Bewegung), reserved (neuer Anteil
+--     dieses Ziels auf dem Konto = amount), current_amount (neuer Ziel-Stand EUR, Post-State)}
+--     + saldo-basiert: free_balance (Saldo - aktive Anteile auf dem Konto, nach dem Append)
+--     + Depot: market_value (Depot-Marktwert EUR, NULL ohne Kurs), shortfall (Depot-Deckungsluecke, depot_reserve_status)
+--     + savings_goal_reached {current_amount, target_amount, note}, wenn eine Erhoehung das Ziel deckt (Event-Fold).
+--   Korrigierbar (kein RAISE -> kein Owner-Alert): amount NULL/<0 / Ziel nicht gefunden / Konto nicht gefunden ODER
+--     nicht zuordenbar (Kredit) / delta=0 (no-op) / insufficient_free_balance -> {ok:false, reason}.
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_book_savings_reservation.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_savings_reservation(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_goal   INT     := NULLIF(p->>'savings_goal_id', '')::int;
-    v_acct   INT     := NULLIF(p->>'depot_account_id', '')::int;
+    v_acct   INT     := NULLIF(p->>'account_id', '')::int;
     v_amount NUMERIC := NULLIF(p->>'amount', '')::numeric;
     v_gname  TEXT;
+    v_target NUMERIC;
     v_atype  finance.account_type;
+    v_aname  TEXT;
+    v_ccy    TEXT;
+    v_depot  BOOLEAN;
     v_old    NUMERIC;
     v_delta  NUMERIC;
+    v_bal    NUMERIC;
+    v_held   NUMERIC;
+    v_free   NUMERIC;
     v_mv     NUMERIC;
     v_short  NUMERIC;
     v_entry  INT;
+    v_cur    NUMERIC;
+    v_out    JSONB;
 BEGIN
     -- Korrigierbare Input-Pruefungen -> {ok:false} (kein RAISE).
     IF v_amount IS NULL OR v_amount < 0 THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'amount must be a non-negative absolute reserve target, got ' || COALESCE(v_amount::text, 'null')
-                   || '. (Reserve can be lowered to 0 to release it; it cannot be negative.)');
+            'reason', 'amount must be a non-negative absolute amount, got ' || COALESCE(v_amount::text, 'null')
+                   || '. (It can be lowered to 0 to release the earmark; it cannot be negative.)');
     END IF;
 
-    SELECT name INTO v_gname FROM finance.savings_goals WHERE id = v_goal;
+    SELECT name, target_amount INTO v_gname, v_target FROM finance.savings_goals WHERE id = v_goal;
     IF v_gname IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'Savings goal ' || COALESCE(v_goal::text, 'null') || ' not found.');
     END IF;
 
-    SELECT account_type INTO v_atype FROM finance.accounts WHERE id = v_acct;
+    -- Konto-Zeile sperren: serialisiert parallele Zuordnungen auf dasselbe Konto (Freier-Saldo-Guard).
+    SELECT account_type, name, currency INTO v_atype, v_aname, v_ccy FROM finance.accounts WHERE id = v_acct FOR UPDATE;
     IF v_atype IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'Account ' || COALESCE(v_acct::text, 'null') || ' not found.');
     END IF;
-    IF v_atype NOT IN ('stocks_depot', 'crypto_depot') THEN
+    IF NOT v_atype = ANY (finance.fn_goal_earmark_account_types()) THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'Reserve journal applies only to a depot account (stocks_depot/crypto_depot); '
-                   || 'a cash/savings reserve uses book_savings_goal_transfer instead.');
+            'reason', '"' || v_aname || '" cannot hold savings-goal money - earmark a cash/Tagesgeld, fixed-deposit, P2P or depot account.');
     END IF;
+    v_depot := v_atype IN ('stocks_depot', 'crypto_depot');
 
-    -- Absolut-rein -> delta-append. delta = neuer Ziel-Betrag (EUR) - aktuelle Σ je (Ziel, Depot).
-    -- WP-3b: die Journal-Zeilen tragen native Betraege je Waehrung (sparplan_buy = Depot-Waehrung, manual = EUR)
-    -- -> die aktuelle Reserve in EUR ist Σ fn_to_eur(delta_native, currency, value_date). amount ist ein
-    -- absoluter EUR-Ziel-Betrag (Owner nennt EUR); die angehaengte manual-Zeile ist damit selbst EUR.
-    SELECT COALESCE(sum(finance.fn_to_eur(delta_native, currency, value_date)), 0) INTO v_old
-    FROM finance.savings_goal_reserve_entries
-    WHERE savings_goal_id = v_goal AND account_id = v_acct;
-    v_delta := v_amount - v_old;
+    -- Absolut-rein -> delta-append. Aktueller Anteil (Ziel, Konto) inkl. getaggter Transfers: saldo-basiert nativ,
+    -- Depot in EUR (die manual-Zeile ist dort EUR, sparplan_buy Depot-Waehrung -> nur EUR ist addierbar).
+    SELECT CASE WHEN v_depot THEN s.share_eur ELSE s.share_native END INTO v_old
+    FROM finance.savings_goal_account_share s
+    WHERE s.goal_id = v_goal AND s.account_id = v_acct;
+    v_delta := v_amount - COALESCE(v_old, 0);
 
     IF v_delta = 0 THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'The depot reserve for this goal is already ' || to_char(v_amount, 'FM999999990D00') || ' EUR — nothing to change.');
+            'reason', 'The earmark of this goal on "' || v_aname || '" is already ' || to_char(v_amount, 'FM999999990D00')
+                   || ' ' || CASE WHEN v_depot THEN 'EUR' ELSE v_ccy END || ' - nothing to change.');
     END IF;
 
-    -- Atomar: EINE Journal-Zeile anhaengen (NIE UPDATE). kind='manual' (Hand-Zuordnung; sparplan_buy kommt in Stage 2).
-    -- WP-3b: der manuelle Reserve-Betrag ist EUR (amount ist ein absolutes EUR-Ziel) -> currency='EUR',
-    -- value_date=CURRENT_DATE (EUR->EUR ist ohnehin Identitaet, das Datum ist unkritisch).
+    IF NOT v_depot THEN
+        SELECT COALESCE(balance, 0) INTO v_bal FROM finance.account_balances WHERE account_id = v_acct;
+        SELECT COALESCE(sum(s.share_native), 0) INTO v_held
+        FROM finance.savings_goal_account_share s
+        WHERE s.account_id = v_acct AND s.goal_status = 'active';
+        v_bal  := COALESCE(v_bal, 0);
+        v_free := v_bal - v_held;            -- frei VOR dem Append
+        IF v_delta > 0 AND v_delta > v_free THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'insufficient_free_balance',
+                'free', round(GREATEST(v_free, 0), 2), 'balance', round(v_bal, 2),
+                'reason', 'Only ' || to_char(GREATEST(v_free, 0), 'FM999999990D00') || ' ' || v_ccy || ' on "' || v_aname
+                       || '" are not yet earmarked for savings goals (balance ' || to_char(v_bal, 'FM999999990D00')
+                       || ') - earmark at most that, or release another goal''s earmark first.');
+        END IF;
+    END IF;
+
+    -- Atomar: EINE Journal-Zeile anhaengen (NIE UPDATE). Depot = EUR, saldo-basiert = Kontowaehrung.
     INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, value_date, kind)
-    VALUES (v_goal, v_acct, v_delta, 'EUR', CURRENT_DATE, 'manual')
+    VALUES (v_goal, v_acct, v_delta, CASE WHEN v_depot THEN 'EUR' ELSE v_ccy END, CURRENT_DATE, 'manual')
     RETURNING id INTO v_entry;
 
-    -- Post-State: Depot-Deckung (Marktwert vs. Σ Reserve ueber ALLE aktiven Ziele) aus dem Waechter-View.
-    SELECT market_value, shortfall INTO v_mv, v_short
-    FROM finance.depot_reserve_status WHERE account_id = v_acct;
+    SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal;
+    v_out := jsonb_build_object('ok', true,
+        'goal_id',        v_goal,
+        'account_id',     v_acct,
+        'entry_id',       v_entry,
+        'delta',          v_delta,
+        'reserved',       v_amount,
+        'current_amount', round(COALESCE(v_cur, 0), 2));
 
-    RETURN jsonb_build_object('ok', true,
-        'goal_id',          v_goal,
-        'depot_account_id', v_acct,
-        'entry_id',         v_entry,
-        'delta',            v_delta,
-        'reserved',         v_amount,     -- neuer Depot-Anteil DIESES Ziels (= Σ journal je Ziel+Depot)
-        'market_value',     v_mv,         -- Depot-Marktwert EUR (NULL ohne Live-Kurs)
-        'shortfall',        v_short);     -- Depot-Deckungsluecke ueber alle aktiven Ziele
+    IF v_depot THEN
+        -- Post-State: Depot-Deckung (Marktwert vs. Σ Reserve ueber ALLE aktiven Ziele) aus dem Waechter-View.
+        SELECT market_value, shortfall INTO v_mv, v_short FROM finance.depot_reserve_status WHERE account_id = v_acct;
+        v_out := v_out || jsonb_build_object('market_value', v_mv, 'shortfall', v_short);
+    ELSE
+        v_out := v_out || jsonb_build_object('free_balance', round(v_free - v_delta, 2));
+    END IF;
+
+    -- Event-Fold "Sparziel erreicht" (wie fn_book_savings_goal_transfer deposit): nur eine Erhoehung, die das Ziel deckt.
+    IF v_delta > 0 AND v_target > 0 AND v_cur >= v_target THEN
+        v_out := v_out || jsonb_build_object('savings_goal_reached', jsonb_build_object(
+            'current_amount', round(v_cur, 2), 'target_amount', round(v_target, 2),
+            'note', 'Savings goal "' || v_gname || '" is now fully covered (' || round(v_cur, 2) || ' of ' || round(v_target, 2)
+                    || ' EUR). The money stays earmarked until it is used - no further savings rate is needed.'));
+    END IF;
+    RETURN v_out;
 END;
 $$;

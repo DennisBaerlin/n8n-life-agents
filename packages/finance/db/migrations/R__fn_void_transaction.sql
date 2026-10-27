@@ -81,18 +81,22 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 2b. Reserve-Guard (Audit F4): die Gegenzeilen duerfen keine (Ziel, Depot)-Reserve negativ machen.
-    --     Summe in EUR wie fn_book_savings_reservation (Σ fn_to_eur(delta_native, currency, value_date)).
+    -- 2b. Reserve-Guard (Audit F4): die Gegenzeilen duerfen keinen (Ziel, Konto)-Anteil negativ machen. Basis ist der
+    --     VOLLE Anteil aus savings_goal_account_share (getaggte Transfers + Journal, EUR) — nicht nur die Journal-Summe:
+    --     sonst wuerde ein zweiter Kauf mit negativer Verrechnungskonto-Zeile faelschlich abgelehnt (Plan-Review B1).
     FOR v_bad IN
-        SELECT g.name AS goal_name, e.savings_goal_id, e.account_id,
-               (SELECT COALESCE(sum(finance.fn_to_eur(a.delta_native, a.currency, a.value_date)), 0)
-                FROM finance.savings_goal_reserve_entries a
-                WHERE a.savings_goal_id = e.savings_goal_id AND a.account_id = e.account_id)
-               - COALESCE(sum(finance.fn_to_eur(e.delta_native, e.currency, e.value_date)), 0) AS resulting
-        FROM finance.savings_goal_reserve_entries e
-        JOIN finance.savings_goals g ON g.id = e.savings_goal_id
-        WHERE e.source_tx_id = ANY(v_ids)
-        GROUP BY g.name, e.savings_goal_id, e.account_id
+        WITH rev AS (
+            SELECT e.savings_goal_id, e.account_id,
+                   sum(finance.fn_to_eur(e.delta_native, e.currency, e.value_date)) AS removed
+            FROM finance.savings_goal_reserve_entries e
+            WHERE e.source_tx_id = ANY(v_ids)
+            GROUP BY e.savings_goal_id, e.account_id
+        )
+        SELECT g.name AS goal_name, r.savings_goal_id, r.account_id,
+               COALESCE(s.share_eur, 0) - COALESCE(r.removed, 0) AS resulting
+        FROM rev r
+        JOIN finance.savings_goals g ON g.id = r.savings_goal_id
+        LEFT JOIN finance.savings_goal_account_share s ON s.goal_id = r.savings_goal_id AND s.account_id = r.account_id
     LOOP
         IF v_bad.resulting < -0.005 THEN
             RETURN jsonb_build_object('ok', false,

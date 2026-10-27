@@ -136,4 +136,58 @@ BEGIN
   RAISE NOTICE 'PASS goal_reserve [use_relocate, Doppelbuchungs-Hinweis, beendete Rate, Wiedereroeffnen, Altziel ohne Rate]';
 END $$;
 
+-- Saldo-basierte Topf-Typen + Zuordnung (Sparziel-Zweckbindung 2026-10-27):
+--  (12) P2P ist ein erlaubter Topf (Anlegen mit Rate in den P2P-Topf); Namensaufloesung findet P2P-Konten
+--  (13) nur zugeordnetes Geld (Journal, kein Transfer) auf einem P2P-Konto kann entnommen werden (Anteil = Tags + Journal)
+--  (14) Depot-Zuordnungen sind kein Reserve-Konto fuer Geldbewegungen (fn_goal_reserve_accounts nur Topf-Typen)
+--  (15) Kreditkonto bleibt als Topf verboten
+DO $$
+DECLARE
+  v_giro int; v_p2p int; v_p2p2 int; v_depot int; v_loan int; v_goal int; v_goal2 int; v_r jsonb; v_cnt int;
+BEGIN
+  v_giro := (finance.fn_create_account('{"name":"__gr3_giro__","account_type":"cash","opening_balance":9000}'::jsonb)->>'account_id')::int;
+  v_p2p  := (finance.fn_create_account('{"name":"__gr3_p2p__","account_type":"p2p","opening_balance":4000}'::jsonb)->>'account_id')::int;
+
+  -- (12)
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__gr3 Ziel__','target_amount',2000,'target_date','2029-12-31',
+           'account_id',v_giro,'reserve_account_id',v_p2p,'first_payment_date','2026-11-01'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL goal_reserve [12 P2P-Topf]: %', v_r; END IF;
+  v_r := finance.fn_resolve_cash_account('__gr3_p2p__');
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'id')::int IS DISTINCT FROM v_p2p THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [12 P2P aufloesen]: %', v_r; END IF;
+
+  -- (13) Ziel ohne Rate, 1500 auf dem P2P-Konto zugeordnet -> 400 entnehmen aufs Giro
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__gr3 Reise__', 1500, current_date + 300, 'active') RETURNING id INTO v_goal2;
+  v_r := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal2, 'account_id', v_p2p, 'amount', 1500));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL goal_reserve [13 setup]: %', v_r; END IF;
+  v_r := finance.fn_book_savings_goal_transfer(jsonb_build_object('savings_goal_id', v_goal2, 'amount', 400, 'direction', 'withdrawal',
+           'to_account_id', v_giro));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->'effective'->>'from_account_id')::int IS DISTINCT FROM v_p2p
+     OR (v_r->>'current_amount')::numeric IS DISTINCT FROM 1100 THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [13 Entnahme aus Zuordnung]: %', v_r; END IF;
+  v_r := finance.fn_book_savings_goal_transfer(jsonb_build_object('savings_goal_id', v_goal2, 'amount', 1200, 'direction', 'withdrawal',
+           'to_account_id', v_giro));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'code' IS DISTINCT FROM 'insufficient_share' THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [13 Anteil 1100]: %', v_r; END IF;
+
+  -- (14) Depot-Zuordnung zaehlt nicht als Reserve-Konto fuer Geldbewegungen
+  v_depot := (finance.fn_create_account(jsonb_build_object('name','__gr3 Depot__','account_type','stocks_depot','settlement_id',v_giro))->>'account_id')::int;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind)
+    VALUES (v_goal2, v_depot, 5000, 'EUR', 'manual');
+  SELECT count(*) INTO v_cnt FROM finance.fn_goal_reserve_accounts(v_goal2) r WHERE r.account_id = v_depot;
+  IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL goal_reserve [14 Depot in fn_goal_reserve_accounts]'; END IF;
+  v_r := finance.fn_book_savings_goal_transfer(jsonb_build_object('savings_goal_id', v_goal2, 'amount', 100, 'direction', 'withdrawal',
+           'to_account_id', v_giro));
+  IF (v_r->'effective'->>'from_account_id')::int IS DISTINCT FROM v_p2p THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [14 Entnahme darf nicht aus dem Depot kommen]: %', v_r; END IF;
+
+  -- (15)
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__gr3_loan__','loan','EUR','active') RETURNING id INTO v_loan;
+  IF finance.fn_goal_reserve_account_reason(v_loan, v_giro) IS NULL THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [15 Kreditkonto als Topf]'; END IF;
+
+  RAISE NOTICE 'PASS goal_reserve [P2P-Topf, Entnahme aus Zuordnung, Depot kein Reserve-Konto, Kredit verboten]';
+END $$;
+
 ROLLBACK;

@@ -30,18 +30,18 @@ function Build-SetSavingsGoal {
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The beneficiary '{{ `$('Start').item.json.beneficiary_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
-    # WS-A: optionaler Reserve-Topf (Name -> id, cash/fixed_deposit) — OPTIONAL wie beneficiary_person.
+    # WS-A: optionaler Reserve-Topf (Name -> id, saldo-basiert: finance.fn_goal_pot_account_types) — OPTIONAL wie beneficiary_person.
     # Leer -> id NULL -> fn laesst den Topf unveraendert. Gesetzt -> rate.target_account_id zieht mit (Rate wird Umbuchung);
     # ALTE getaggte Buchungen bleiben dem Ziel zugeordnet (nur kuenftiges Routing aendert sich).
     $resReserve = Build-Pg 'Resolve Reserve' @(880, 600) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'reserve_account_name', ''), ARRAY['cash','fixed_deposit']);" `
+        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'reserve_account_name', ''), finance.fn_goal_pot_account_types()::text[]);" `
         ([ordered]@{ reserve_account_name = '$(''Start'').item.json.reserve_account_name' })
 
     $ifReserveBad = Build-If 'Reserve invalid?' @(1100, 600) `
         "={{ !!`$('Start').item.json.reserve_account_name && `$('Resolve Reserve').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'
 
     $errReserve = Build-ToolError 'Reserve unresolved' @(1320, 720) `
-        "=The reserve account '{{ `$('Start').item.json.reserve_account_name }}' could not be uniquely resolved ({{ `$('Resolve Reserve').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Reserve').item.json.candidates) }}. Ask which exact cash/Tagesgeld account."
+        "=The reserve account '{{ `$('Start').item.json.reserve_account_name }}' could not be uniquely resolved ({{ `$('Resolve Reserve').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Reserve').item.json.candidates) }}. Ask which exact cash/Tagesgeld, fixed-deposit or P2P account."
 
     # "DB ist das Gesetz": fn_set_savings_goal laeuft als Probelauf VOR der Karte (Ziel bereits gedeckt, Zieldatum
     # Vergangenheit, Sparplan-Link-Konflikte usw. -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in

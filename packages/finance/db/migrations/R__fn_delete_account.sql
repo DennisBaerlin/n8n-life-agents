@@ -65,13 +65,15 @@ BEGIN
 
     -- (WP2: das Abbuchungskonto einer Versicherung steht nur an ihrer Beitrags-rp -> von der rp-Pruefung oben gedeckt.)
 
-    -- WS-B: der Depot-Reserve-Journal-Guard (savings_goal_reserve_entries.account_id = Depot) — eine
-    -- Fehlanlage mit Reserve-Zuordnung haelt das Konto (FK RESTRICT waere sonst ein harter Fehler statt {ok:false}).
+    -- WS-B: der Reserve-Journal-Guard (savings_goal_reserve_entries.account_id, seit 2026-10-27 jedes zuordenbare
+    -- Konto) — eine Fehlanlage mit Zuordnung haelt das Konto. Bewusst die ZEILEN-Anzahl, nicht der Netto-Anteil: das
+    -- Journal ist append-only und der FK RESTRICT haelt auch eine freigegebene (Netto-0-)Spur fest -> ohne diesen
+    -- Guard waere es ein harter FK-Fehler statt {ok:false}.
     SELECT COUNT(*) INTO v_cnt FROM finance.savings_goal_reserve_entries WHERE account_id = v_id;
     IF v_cnt > 0 THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'This depot has ' || v_cnt || ' savings-goal reserve entr(ies) and cannot be deleted. '
-                   || 'Release the reservation(s) first.', 'reserve_entry_count', v_cnt);
+            'reason', 'This account has ' || v_cnt || ' savings-goal earmark entr(ies) and cannot be deleted '
+                   || '(the earmark history stays). Close the account instead.', 'reserve_entry_count', v_cnt);
     END IF;
 
     SELECT COUNT(*) INTO v_cnt FROM finance.savings_plans WHERE depot_id = v_id;

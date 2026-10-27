@@ -447,6 +447,20 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
     SELECT p_type IN ('cash', 'fixed_deposit', 'p2p');
 $$;
 
+-- fn_goal_pot_account_types / fn_goal_earmark_account_types (Sparziel-Zweckbindung 2026-10-27): die EINE Adresse der
+-- Kontotypen eines Sparziels (Allowlist, sicher-per-Default wie oben). Topf = saldo-basiertes Konto, in das eine Sparrate
+-- fliesst und dessen Saldo die Zuordnungen deckt (cash/fixed_deposit/p2p). Zuordenbar (Journal
+-- savings_goal_reserve_entries) = Topf-Typen + Depots (Marktwert = Deckung). Kredit nie. IM INIT, weil die Views in
+-- R__finance_views (alphabetisch vor R__fn_*) und die n8n-Resolver sie lesen.
+CREATE OR REPLACE FUNCTION finance.fn_goal_pot_account_types()
+RETURNS finance.account_type[] LANGUAGE sql IMMUTABLE AS $$
+    SELECT ARRAY['cash', 'fixed_deposit', 'p2p']::finance.account_type[];
+$$;
+CREATE OR REPLACE FUNCTION finance.fn_goal_earmark_account_types()
+RETURNS finance.account_type[] LANGUAGE sql IMMUTABLE AS $$
+    SELECT finance.fn_goal_pot_account_types() || ARRAY['stocks_depot', 'crypto_depot']::finance.account_type[];
+$$;
+
 -- fn_loan_is_outstanding (Audit Paket 2, Punkt 10): die EINE Schulden-Definition -- ein Kredit ist offene Schuld,
 -- solange er active ODER paused ist (pausiert = Raten ausgesetzt, Restschuld besteht weiter). Vorher zaehlte ein
 -- pausierter Kredit im Vermoegen (Kreditkonto-Saldo), fehlte aber in loan_summary (-> Advisor debt_total) und in
@@ -1447,15 +1461,18 @@ CREATE TABLE IF NOT EXISTS finance.savings_goals (
 ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS priority smallint;
 
 -- ============================================================
--- SAVINGS GOAL RESERVE ENTRIES (WS-B Phase S — Depot-Anteil einer Reserve als APPEND-ONLY Journal)
--- Der Depot-Anteil einer Sparziel-Reserve = SUM(fn_to_eur(delta_native, currency, value_date)) je Ziel (WP-3b).
--- Jede Reserve-Bewegung haengt EINE Zeile
+-- SAVINGS GOAL RESERVE ENTRIES (WS-B Phase S — Zweckbindung einer Reserve als APPEND-ONLY Journal)
+-- Seit 2026-10-27 fuer JEDES zuordenbare Konto (fn_goal_earmark_account_types: Topf-Typen + Depots), nicht nur Depots:
+-- "diese 3000 EUR auf dem Tagesgeld/P2P gehoeren zum Ziel" ohne Geldbewegung (YNAB-Assign/Firefly-Piggy). Der Anteil
+-- eines Ziels je Konto = getaggte Transfers (transactions.savings_goal_id) + Journal, EINE Quelle:
+-- finance.savings_goal_account_share. Jede Reserve-Bewegung haengt EINE Zeile
 -- an (NIE UPDATE/DELETE einer Zahl, ausser CASCADE bei Ziel-Hard-Delete) -> der Stand ist DERIVED -> kann
 -- strukturell nicht driften (loest den Ledger-Korruptions-Vektor des gespeicherten-gebumpten Betrags).
 --   * delta_native + currency (WP-3b): vorzeichenbehaftete Bewegung in der NATIVE-Waehrung `currency` (NICHT der
 --     Stand, NICHT zwingend EUR). sparplan_buy speichert die Depot-Waehrung (fn_book_stock_buy, symmetrisch zum
---     nativen Cash-Bein -> Konservierung); manual speichert EUR (fn_book_savings_reservation, Owner nennt ein
---     absolutes EUR-Ziel). Die EUR-Umrechnung macht erst die VIEW via fn_to_eur(delta_native, currency, value_date)
+--     nativen Cash-Bein -> Konservierung); manual speichert auf einem Depot EUR (Owner nennt ein absolutes EUR-Ziel
+--     gegen den EUR-Marktwert), auf einem saldo-basierten Konto die KONTOWAEHRUNG (account_reserve_status vergleicht
+--     nativ mit dem Saldo; fn_book_savings_reservation ist das Gesetz dafuer). Die EUR-Umrechnung macht erst die VIEW via fn_to_eur(delta_native, currency, value_date)
 --     -> kein fn_to_eur am Insert (waere NULL bei fehlendem Kurs -> NOT-NULL-CHECK-Crash) und beide Reserve-Legs
 --     (Cash+Depot) tragen dieselbe Live-Konvertierungs-Semantik (kein Frozen-vs-Live-Drift). CHECK (delta_native<>0):
 --     eine No-op-Zeile ist sinnlos -> die fn lehnt delta=0 vorher ab; der CHECK ist der strukturelle Backstop.
@@ -1466,18 +1483,20 @@ ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS priority smallint;
 --     via fn_book_savings_reservation), 'derisk' (Absichern/Verkauf -> Reserve senken). CHECK = Backstop.
 --   * source_tx_id: Herkunfts-Buchung (Stage 2 Sparplan-Kauf); NULL bei manueller Zuordnung. ON DELETE SET
 --     NULL — eine spaeter stornierte Kauf-Tx soll das Journal nicht blocken (Provenance-Link entfaellt, Zahl bleibt).
---   * account_id: das Depot-Konto, gegen dessen Gesamt-Marktwert die Reserve gedeckt wird (depot_reserve_status).
---   * Multi-Row-Invariante "SUM(delta) >= 0 je Ziel" ist NICHT per Gate-Trigger erzwungen (MVCC-Race) -> der
---     book-fn-Guard ({ok:false} wenn der Append die Summe negativ machen wuerde) + der Waechter-Advisory tragen sie.
+--   * account_id: das Konto, auf dem das Ziel-Geld liegt. Depot: gedeckt durch den Gesamt-Marktwert
+--     (depot_reserve_status); saldo-basiert: gedeckt durch den Saldo (account_reserve_status).
+--   * Multi-Row-Invarianten "Anteil je (Ziel, Konto) >= 0" und "Summe der aktiven Anteile <= Saldo" (saldo-basiert)
+--     sind NICHT per Gate-Trigger erzwungen (MVCC-Race) -> die book-fn-Guards ({ok:false}, Konto-Zeile FOR UPDATE)
+--     + die Waechter-Advisories tragen sie.
 -- ON DELETE CASCADE (savings_goal_id): die Zuordnung ist Metadaten ohne Eigenwert -> faellt mit dem Ziel weg
 --   (abgebrochen/Hard-Delete); der Bestand selbst (depot_holdings) bleibt IMMER (RESTRICT, nie hier beruehrt).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS finance.savings_goal_reserve_entries (
     id              serial PRIMARY KEY,
     savings_goal_id int           NOT NULL REFERENCES finance.savings_goals(id) ON DELETE CASCADE,
-    account_id      int           NOT NULL REFERENCES finance.accounts(id),       -- Depot-Konto (Marktwert-Deckung)
+    account_id      int           NOT NULL REFERENCES finance.accounts(id),       -- Konto des Ziel-Geldes (Depot: Marktwert-Deckung, saldo-basiert: Saldo-Deckung)
     delta_native    numeric(14,2) NOT NULL CHECK (delta_native <> 0),             -- vorzeichenbehaftete Bewegung in der `currency`-Waehrung (WP-3b)
-    currency        char(3)       NOT NULL DEFAULT 'EUR' REFERENCES finance.currencies(code),  -- Waehrung von delta_native (Depot-Waehrung bei sparplan_buy, EUR bei manual)
+    currency        char(3)       NOT NULL DEFAULT 'EUR' REFERENCES finance.currencies(code),  -- Waehrung von delta_native (Depot: Depot-Waehrung bei sparplan_buy, EUR bei manual; saldo-basiert: Kontowaehrung)
     value_date      date          NOT NULL DEFAULT current_date,                  -- FX-Umrechnungsdatum (= Kauf-transaction_date bzw. CURRENT_DATE)
     source_tx_id    int,          -- Stage 2: Kauf-Tx; NULL bei manual. FK -> finance.transactions UNTEN (die Tabelle entsteht erst spaeter in dieser Datei -> Constraint nachgezogen).
     kind            text          NOT NULL CHECK (kind IN ('sparplan_buy', 'manual', 'derisk', 'void')),

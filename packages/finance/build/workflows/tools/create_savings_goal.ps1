@@ -61,18 +61,18 @@ function Build-CreateSavingsGoal {
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The beneficiary '{{ `$('Start').item.json.beneficiary_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member, or leave empty so the goal belongs to the owner of the savings account."
 
-    # Audit Paket 3: Sparkonto (Reserve-Topf, cash/fixed_deposit) ist PFLICHT — Gesetz in fn_create_savings_goal; hier
+    # Audit Paket 3: Sparkonto (Reserve-Topf, saldo-basiert: fn_goal_pot_account_types) ist PFLICHT — Gesetz in fn_create_savings_goal; hier
     # VOR der Karte geprueft (leer oder nicht eindeutig -> Build-ToolError), damit nie etwas bestaetigt wird, das die fn
     # danach ablehnt (Muster close_account). Die Rate wird eine Umbuchung in den Topf -> Fortschritt messbar.
     $resReserve = Build-Pg 'Resolve Reserve' @(880, 600) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'reserve_account_name', ''), ARRAY['cash','fixed_deposit']);" `
+        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'reserve_account_name', ''), finance.fn_goal_pot_account_types()::text[]);" `
         ([ordered]@{ reserve_account_name = '$(''Start'').item.json.reserve_account_name' })
 
     $ifReserveBad = Build-If 'Reserve invalid?' @(1100, 600) `
         "={{ !`$('Start').item.json.reserve_account_name || `$('Resolve Reserve').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'
 
     $errReserve = Build-ToolError 'Reserve unresolved' @(1320, 720) `
-        "={{ !`$('Start').item.json.reserve_account_name ? 'A savings goal needs a savings account (reserve, e.g. a Tagesgeld) where the money is kept - otherwise the progress cannot be measured. Ask the user which savings account the rate goes to, or offer to create one with tool_create_account first.' : ('The savings account ' + `$('Start').item.json.reserve_account_name + ' could not be uniquely resolved (' + `$('Resolve Reserve').item.json.hit_count + ' match(es)). Candidates: ' + JSON.stringify(`$('Resolve Reserve').item.json.candidates) + '. Ask which exact cash/Tagesgeld or fixed-deposit account.') }}"
+        "={{ !`$('Start').item.json.reserve_account_name ? 'A savings goal needs a savings account (reserve, e.g. a Tagesgeld) where the money is kept - otherwise the progress cannot be measured. Ask the user which savings account the rate goes to, or offer to create one with tool_create_account first.' : ('The savings account ' + `$('Start').item.json.reserve_account_name + ' could not be uniquely resolved (' + `$('Resolve Reserve').item.json.hit_count + ' match(es)). Candidates: ' + JSON.stringify(`$('Resolve Reserve').item.json.candidates) + '. Ask which exact cash/Tagesgeld, fixed-deposit or P2P account.') }}"
 
     # "DB ist das Gesetz": fn_create_savings_goal laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
@@ -142,7 +142,7 @@ function Build-CreateSavingsGoal {
 
     $stickyFn = Build-Sticky 'fn_create_savings_goal: 4 Schritte + Über-Spar-Fold' @(2420, -240) `
         'fn_create_savings_goal (atomar)' `
-        'Schritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv, cash/fixed_deposit, ≠ Abbuchungskonto, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum ableiten), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) recurring_payment INSERT (name=''Sparrate <Ziel>'', amount=-rate, schedule_unit=month, valid_from=fn_recurring_valid_from), (4) UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id). Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen < 0 (Sparraten übersteigen das frei Verfügbare) -> Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.' 230 520
+        'Schritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv, Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum ableiten), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) recurring_payment INSERT (name=''Sparrate <Ziel>'', amount=-rate, schedule_unit=month, valid_from=fn_recurring_valid_from), (4) UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id). Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen < 0 (Sparraten übersteigen das frei Verfügbare) -> Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.' 230 520
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `

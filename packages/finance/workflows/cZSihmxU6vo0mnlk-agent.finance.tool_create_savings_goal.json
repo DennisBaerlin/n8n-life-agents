@@ -412,7 +412,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027reserve_account_name\u0027, \u0027\u0027), ARRAY[\u0027cash\u0027,\u0027fixed_deposit\u0027]);",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF(($1::jsonb)-\u003e\u003e\u0027reserve_account_name\u0027, \u0027\u0027), finance.fn_goal_pot_account_types()::text[]);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ reserve_account_name: $(\u0027Start\u0027).item.json.reserve_account_name }) }}"
                                                      }
@@ -479,7 +479,7 @@
                                                                                  {
                                                                                      "id":  "42253405-9ec7-5cad-a60e-427ff37b6874",
                                                                                      "name":  "error",
-                                                                                     "value":  "={{ !$(\u0027Start\u0027).item.json.reserve_account_name ? \u0027A savings goal needs a savings account (reserve, e.g. a Tagesgeld) where the money is kept - otherwise the progress cannot be measured. Ask the user which savings account the rate goes to, or offer to create one with tool_create_account first.\u0027 : (\u0027The savings account \u0027 + $(\u0027Start\u0027).item.json.reserve_account_name + \u0027 could not be uniquely resolved (\u0027 + $(\u0027Resolve Reserve\u0027).item.json.hit_count + \u0027 match(es)). Candidates: \u0027 + JSON.stringify($(\u0027Resolve Reserve\u0027).item.json.candidates) + \u0027. Ask which exact cash/Tagesgeld or fixed-deposit account.\u0027) }}",
+                                                                                     "value":  "={{ !$(\u0027Start\u0027).item.json.reserve_account_name ? \u0027A savings goal needs a savings account (reserve, e.g. a Tagesgeld) where the money is kept - otherwise the progress cannot be measured. Ask the user which savings account the rate goes to, or offer to create one with tool_create_account first.\u0027 : (\u0027The savings account \u0027 + $(\u0027Start\u0027).item.json.reserve_account_name + \u0027 could not be uniquely resolved (\u0027 + $(\u0027Resolve Reserve\u0027).item.json.hit_count + \u0027 match(es)). Candidates: \u0027 + JSON.stringify($(\u0027Resolve Reserve\u0027).item.json.candidates) + \u0027. Ask which exact cash/Tagesgeld, fixed-deposit or P2P account.\u0027) }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -914,7 +914,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_create_savings_goal (atomar)**\n\nSchritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv, cash/fixed_deposit, ≠ Abbuchungskonto, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum ableiten), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) recurring_payment INSERT (name=\u0027Sparrate \u003cZiel\u003e\u0027, amount=-rate, schedule_unit=month, valid_from=fn_recurring_valid_from), (4) UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id). Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen \u003c 0 (Sparraten übersteigen das frei Verfügbare) -\u003e Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.",
+                                         "content":  "## DB-Automatik\n**fn_create_savings_goal (atomar)**\n\nSchritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv, Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum ableiten), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) recurring_payment INSERT (name=\u0027Sparrate \u003cZiel\u003e\u0027, amount=-rate, schedule_unit=month, valid_from=fn_recurring_valid_from), (4) UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id). Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen \u003c 0 (Sparraten übersteigen das frei Verfügbare) -\u003e Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.",
                                          "height":  230,
                                          "width":  520,
                                          "color":  4

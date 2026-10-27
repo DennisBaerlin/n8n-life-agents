@@ -151,7 +151,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_book_loan_payment` | Kreditrate buchen (Zins/Tilgungs-Split automatisch) |
 | `tool_create_savings_goal` | Sparziel + monatliche Sparrate anlegen |
 | `tool_book_savings_goal_transfer` | Sparziel-Reserve bewegen: einzahlen/entnehmen/umschichten (getaggter Transfer) |
-| `tool_book_savings_reservation` | Depot-Anteil einer Sparziel-Reserve setzen (absoluter €-Betrag → append-only Journal) |
+| `tool_book_savings_reservation` | vorhandenes Geld eines Kontos (Giro/Tagesgeld, Festgeld, P2P, Depot) einem Sparziel zuordnen, ohne Überweisung (absoluter Betrag → append-only Journal) |
 | `tool_reconcile_account` | Ein Konto-Saldo abgleichen (Korrekturbuchung) |
 | `tool_reconcile_accounts_batch` | Mehrere Konten mit einem Sammel-Approval abgleichen |
 | `tool_close_account` | Konto schliessen |

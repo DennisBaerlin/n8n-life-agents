@@ -149,7 +149,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_book_transfer` | Transfer zwischen zwei eigenen Konten buchen |
 | `tool_book_transaction` | Externe Einnahme/Ausgabe (Dritte) buchen |
 | `tool_book_loan_payment` | Kreditrate buchen (Zins/Tilgungs-Split automatisch) |
-| `tool_create_savings_goal` | Sparziel + monatliche Sparrate anlegen |
+| `tool_create_savings_goal` | Sparziel anlegen: Topf, Startbestand, Rate auf dem Rest oder Sparplan(e) als Quelle; ein bestehender Dauerauftrag in den Topf wird auf Wunsch fortgeführt (`replace_transfer`) |
 | `tool_book_savings_goal_transfer` | Sparziel-Reserve bewegen: einzahlen/entnehmen/umschichten (getaggter Transfer) |
 | `tool_book_savings_reservation` | vorhandenes Geld eines Kontos (Giro/Tagesgeld, Festgeld, P2P, Depot) einem Sparziel zuordnen, ohne Überweisung (absoluter Betrag → append-only Journal) |
 | `tool_reconcile_account` | Ein Konto-Saldo abgleichen (Korrekturbuchung) |
@@ -174,7 +174,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_book_savings_plan_execution` | Broker-Ausführung eines Sparplans eintragen |
 | `tool_book_recurring_occurrence` | Fälliges Dauerauftrag-Vorkommen mit angepasstem Ist-Betrag buchen |
 | `tool_book_interest` | Fällige Zinsgutschrift buchen (DB-berechnet oder Override) |
-| `tool_set_savings_plan` | Sparplan ändern (Betrag/Pause/Resume/Notes) |
+| `tool_set_savings_plan` | Sparplan ändern (Betrag/Rhythmus/Pause/Resume/Notes; unveränderter Rhythmus/Betrag → `no_change`) |
 | `tool_close_savings_plan` | Sparplan beenden (Smart-Close) |
 | `tool_close_insurance` | Versicherung beenden (Smart-Close) |
 | `tool_close_pension` | Altersvorsorge beenden (Smart-Close) |
@@ -182,7 +182,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_delete_real_estate` | Immobilie löschen (nur Fehlanlage; „verkauft" → `tool_sell_real_estate`) |
 | `tool_delete_holding` | Depot-Position löschen (nur ohne Trades) |
 | `tool_delete_account` | Konto löschen (nur ohne jede Referenz) |
-| `tool_delete_recurring_payment` | Standalone Dauerauftrag löschen |
+| `tool_delete_recurring_payment` | Standalone Dauerauftrag löschen (Zubringer eines Sparplans/Sparziels nur mit `confirm_feeds_savings`) |
 | `tool_delete_loan` | Kredit löschen (nur ohne gebuchte Raten) |
 | `tool_settle_loan` | Kredit vorzeitig ablösen |
 | `tool_sell_real_estate` | Immobilien-Verkauf buchen |

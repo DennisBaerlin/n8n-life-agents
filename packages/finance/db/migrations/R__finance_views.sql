@@ -50,10 +50,12 @@ DROP VIEW IF EXISTS finance.balance_drift_check CASCADE;
 -- Rohe Betriebssicht ALLER aktiven recurring payments (inkl. interner Transfers, target_account_id
 -- gesetzt, amount Quell-seitig negativ). Fuer Cashflow-Aggregate NICHT diese View summieren -> die
 -- transfer-bereinigten `monthly_cashflow_overview`/`_summary` nutzen (Doppelzaehl-Schutz, WS-2).
+-- rhythm = Klartext-Rhythmus (fn_schedule_label): amount gilt JE AUSFUEHRUNG, monthly_equivalent je Monat.
 -- ============================================================
 CREATE VIEW finance.active_recurring_payments AS
 SELECT *,
-       valid_to - 1 AS last_valid_day   -- valid_to ist exklusiv gespeichert ([valid_from, valid_to)); fuer den Nutzer das inklusive Ende
+       valid_to - 1 AS last_valid_day,  -- valid_to ist exklusiv gespeichert ([valid_from, valid_to)); fuer den Nutzer das inklusive Ende
+       finance.fn_schedule_label(schedule_unit, schedule_interval, schedule_day_of_month, schedule_days_of_month) AS rhythm
 FROM finance.recurring_payments
 WHERE status = 'active'
   AND valid_from <= current_date

@@ -222,4 +222,47 @@ BEGIN
   RAISE NOTICE 'PASS set_savings_goal [ohne Rate: no_rate_running, Rate per account_id starten, ohne Topf abgelehnt]';
 END $$;
 
+-- Livebefund 2026-10-27: Rate nachtraeglich starten, waehrend schon ein Dauerauftrag vom Abbuchungskonto in den Topf
+-- laeuft -> existing_transfer; replace_transfer=true -> die Rate fuehrt ihn fort (Betrag, Tag, naechster Termin).
+DO $$
+DECLARE
+  v_r     JSONB;
+  v_from  INT;
+  v_pot   INT;
+  v_goal  INT;
+  v_old   INT;
+  v_next1 DATE := (date_trunc('month', current_date) + interval '1 month')::date;
+  v_rp    finance.recurring_payments%ROWTYPE;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__ssgr_from__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from;
+  SELECT (finance.fn_create_account('{"name":"__ssgr_pot__","account_type":"cash","account_holder":"Test","currency":"EUR","opening_balance":1000}'::jsonb)->>'account_id')::int INTO v_pot;
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__ssgr_uebertrag__','from_account_id',v_from,
+           'to_account_id',v_pot,'amount',120,'schedule_unit','month','schedule_day_of_month',3,'first_payment_date',v_next1 + 2));
+  v_old := (v_r->>'recurring_payment_id')::int;
+  -- gedecktes Ziel (keine Rate, kein Guard), dann Zielbetrag erhoehen + Abbuchungskonto -> Rate starten
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__ssgr Ziel__','target_amount',500,
+           'target_date',(v_next1 + interval '24 months')::date::text,'reserve_account_id',v_pot,'already_saved',500));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'recurring_payment_id' IS NOT NULL THEN
+    RAISE EXCEPTION 'SETUP FAIL gedecktes Ziel: %', v_r; END IF;
+  v_goal := (v_r->>'goal_id')::int;
+
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id',v_goal,'target_amount',3500,'account_id',v_from));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'code' IS DISTINCT FROM 'existing_transfer'
+     OR (SELECT target_amount FROM finance.savings_goals WHERE id = v_goal) <> 500 THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [existing_transfer]: %', v_r; END IF;
+  RAISE NOTICE 'PASS set_savings_goal [Rate starten neben Dauerauftrag -> existing_transfer, kein Write]';
+
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id',v_goal,'target_amount',4500,'account_id',v_from,
+           'replace_transfer','true'));
+  SELECT * INTO v_rp FROM finance.recurring_payments WHERE id = (v_r->>'recurring_payment_id')::int;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'new_monthly_rate')::numeric <> 120
+     OR (v_r->>'replaced_transfer_id')::int IS DISTINCT FROM v_old
+     OR (v_r->>'required_monthly_rate')::numeric IS NULL
+     OR v_rp.amount <> -120 OR v_rp.schedule_day_of_month IS DISTINCT FROM 3::smallint
+     OR v_rp.first_payment_date <> v_next1 + 2 OR v_rp.target_account_id <> v_pot
+     OR EXISTS (SELECT 1 FROM finance.recurring_payments WHERE id = v_old) THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [replace]: % rp=%', v_r, row_to_json(v_rp); END IF;
+  RAISE NOTICE 'PASS set_savings_goal [replace -> Rate = Dauerauftrag (Betrag, Tag, Termin), noetige Rate zurueck, Alt weg]';
+END $$;
+
 ROLLBACK;

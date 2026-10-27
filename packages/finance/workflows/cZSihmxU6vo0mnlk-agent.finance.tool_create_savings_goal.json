@@ -49,6 +49,9 @@
                                                                                    "name":  "savings_plan_name"
                                                                                },
                                                                                {
+                                                                                   "name":  "replace_transfer"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -242,94 +245,6 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS sched_ok, r-\u003e\u003e\u0027reason\u0027 AS sched_reason, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, (r-\u003e\u003e\u0027months\u0027)::int AS months, r-\u003e\u003e\u0027first_payment_date\u0027 AS first_payment_date FROM finance.fn_savings_rate_schedule($1::jsonb) AS r;",
-                                         "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, already_saved: $(\u0027Start\u0027).item.json.already_saved }) }}"
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       660,
-                                       0
-                                   ],
-                      "id":  "970275e1-a607-5b3d-aff3-eec5f4c37d55",
-                      "name":  "Compute Schedule",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
-                                                           "name":  "Postgres finance_rw (read-write)"
-                                                       }
-                                      }
-                  },
-                  {
-                      "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "bad2d59f-1bd7-5050-b5bd-b40f84cc96d9",
-                                                                                   "leftValue":  "={{ $json.sched_ok }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       880,
-                                       0
-                                   ],
-                      "id":  "5b1f7237-9ee3-5ffa-8c60-a4b867389dfa",
-                      "name":  "Schedule ok?"
-                  },
-                  {
-                      "parameters":  {
-                                         "assignments":  {
-                                                             "assignments":  [
-                                                                                 {
-                                                                                     "id":  "984e9eb0-b745-5f94-b8c2-af91529cbc51",
-                                                                                     "name":  "ok",
-                                                                                     "value":  "false",
-                                                                                     "type":  "boolean"
-                                                                                 },
-                                                                                 {
-                                                                                     "id":  "f7872e27-007b-5159-823c-652b25701cf7",
-                                                                                     "name":  "error",
-                                                                                     "value":  "={{ $(\u0027Compute Schedule\u0027).item.json.sched_reason }}",
-                                                                                     "type":  "string"
-                                                                                 }
-                                                                             ]
-                                                         },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.set",
-                      "typeVersion":  3.4,
-                      "position":  [
-                                       1100,
-                                       200
-                                   ],
-                      "id":  "d5e2ec8c-dc61-5871-8643-a3df10b39d92",
-                      "name":  "Schedule rejected"
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "executeQuery",
                                          "query":  "=SELECT person_id, full_name, hit_count, candidates FROM core.fn_resolve_person(NULLIF(($1::jsonb)-\u003e\u003e\u0027beneficiary_person\u0027, \u0027\u0027), ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ beneficiary_person: $(\u0027Start\u0027).item.json.beneficiary_person, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
@@ -508,7 +423,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_create_savings_goal(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Compute Schedule\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, already_saved: $(\u0027Start\u0027).item.json.already_saved, savings_plan: $(\u0027Start\u0027).item.json.savings_plan_name }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, already_saved: $(\u0027Start\u0027).item.json.already_saved, savings_plan: $(\u0027Start\u0027).item.json.savings_plan_name, replace_transfer: $(\u0027Start\u0027).item.json.replace_transfer }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -612,9 +527,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027savings_plan_id\u0027)::int AS savings_plan_id, (r-\u003e\u003e\u0027required_monthly_rate\u0027)::numeric AS required_monthly_rate, (r-\u003e\u003e\u0027plan_monthly_amount\u0027)::numeric AS plan_monthly_amount, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze FROM finance.fn_create_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027savings_plan_id\u0027)::int AS savings_plan_id, (r-\u003e\u003e\u0027required_monthly_rate\u0027)::numeric AS required_monthly_rate, (r-\u003e\u003e\u0027plan_monthly_amount\u0027)::numeric AS plan_monthly_amount, (r-\u003e\u003e\u0027replaced_transfer_id\u0027)::int AS replaced_transfer_id, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze FROM finance.fn_create_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Compute Schedule\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, already_saved: $(\u0027Start\u0027).item.json.already_saved, savings_plan: $(\u0027Start\u0027).item.json.savings_plan_name, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, already_saved: $(\u0027Start\u0027).item.json.already_saved, savings_plan: $(\u0027Start\u0027).item.json.savings_plan_name, replace_transfer: $(\u0027Start\u0027).item.json.replace_transfer, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -639,7 +554,7 @@
                                                                                  {
                                                                                      "id":  "9f083e62-4535-5956-940b-025e01eb7ab2",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.create_savings_goal\u0027, lines: [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_name) }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type))) ? { label: \u0027finance.label.goal_type\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type) } : null), { label: \u0027finance.label.target_amount\u0027, kind: \u0027money\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).target_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.target_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.target_date) }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))(((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).already_saved || null)))) ? { label: \u0027finance.label.already_saved\u0027, kind: \u0027money\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).already_saved || null)), currency: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_currency || \u0027EUR\u0027)) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.rate_computed\u0027), params: { months: ($(\u0027Dry run\u0027).item.json.r.months), value: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.monthly_rate), currency: (\u0027EUR\u0027) }) } } : null), ((!((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name) ? { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027money\u0027, value: (0), currency: (\u0027EUR\u0027) } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name))) ? { label: \u0027finance.label.link_savings_plan\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).account_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.reserve_pot\u0027), params: { name: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_account_name) } } : null), ((!((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name))) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_account_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-2\u0027 ? \u0027finance.value.second_to_last_day_of_month\u0027 : ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ? \u0027finance.tpl.day_ordinal\u0027 : \u0027finance.value.relative_to_start\u0027)))), params: { day: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month) } } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.first_booking\u0027, kind: \u0027date\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date || $(\u0027Compute Schedule\u0027).item.json.first_payment_date)), is_default: !!(!(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date) } : null), { label: \u0027finance.label.beneficiary_person\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Dry run\u0027).item.json.r.beneficiary_name ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Dry run\u0027).item.json.r.beneficiary_name) } }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))(((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)) \u0026\u0026 ![((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority)].every(((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))))) ? { label: \u0027finance.label.priority\u0027, kind: \u0027tpl\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)), params: { value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority) } } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes))) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.create_savings_goal\u0027, lines: [ { label: \u0027core.label.name\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_name) }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type))) ? { label: \u0027finance.label.goal_type\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).goal_type) } : null), { label: \u0027finance.label.target_amount\u0027, kind: \u0027money\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).target_amount), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.target_date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.target_date) }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))(((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).already_saved || null)))) ? { label: \u0027finance.label.already_saved\u0027, kind: \u0027money\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).already_saved || null)), currency: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_currency || \u0027EUR\u0027)) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.rate_computed\u0027), params: { months: ($(\u0027Dry run\u0027).item.json.r.months), value: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.monthly_rate), currency: (\u0027EUR\u0027) }) } } : null), ((!((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name) ? { label: \u0027finance.label.monthly_savings_rate\u0027, kind: \u0027money\u0027, value: (0), currency: (\u0027EUR\u0027) } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name))) ? { label: \u0027finance.label.link_savings_plan\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name) } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).replace_transfer) === \u0027true\u0027 ? \u0027finance.value.transfer_continued\u0027 : (String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).replace_transfer) === \u0027false\u0027 ? \u0027finance.value.transfer_additional\u0027 : null))))) ? { label: \u0027finance.label.standing_transfer\u0027, kind: \u0027key\u0027, value: ((String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).replace_transfer) === \u0027true\u0027 ? \u0027finance.value.transfer_continued\u0027 : (String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).replace_transfer) === \u0027false\u0027 ? \u0027finance.value.transfer_additional\u0027 : null))) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).account_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.reserve_pot\u0027), params: { name: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_account_name) } } : null), ((!((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name))) ? { label: \u0027finance.label.reserve_pot\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).reserve_account_name) } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.debit_day\u0027, kind: \u0027tpl\u0027, value: ((String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-1\u0027 ? \u0027finance.value.last_day_of_month\u0027 : (String((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ?? \u0027\u0027) === \u0027-2\u0027 ? \u0027finance.value.second_to_last_day_of_month\u0027 : ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month ? \u0027finance.tpl.day_ordinal\u0027 : \u0027finance.value.relative_to_start\u0027)))), params: { day: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).schedule_day_of_month) } } : null), (((Number($(\u0027Dry run\u0027).item.json.r.monthly_rate) \u003e 0 \u0026\u0026 !(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).savings_plan_name)) ? { label: \u0027finance.label.first_booking\u0027, kind: \u0027date\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date || $(\u0027Dry run\u0027).item.json.r.first_payment_date)), is_default: !!(!(Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).first_payment_date) } : null), { label: \u0027finance.label.beneficiary_person\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Dry run\u0027).item.json.r.beneficiary_name ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Dry run\u0027).item.json.r.beneficiary_name) } }, (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))(((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)) \u0026\u0026 ![((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority)].every(((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))))) ? { label: \u0027finance.label.priority\u0027, kind: \u0027tpl\u0027, value: (((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority ? \u0027finance.tpl.priority_hint\u0027 : null)), params: { value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).priority) } } : null), (((!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes))) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ((Object.assign({}, $(\u0027Start\u0027).item.json, $(\u0027Dry run\u0027).item.json.r.effective || {})).notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -891,6 +806,12 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "a2f3f629-9457-50a6-9437-896331d9b8aa",
+                                                                                     "name":  "replaced_transfer_id",
+                                                                                     "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.replaced_transfer_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b4c2b51c-f30c-5985-8189-4b17cffa4941",
                                                                                      "name":  "savings_squeeze",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.savings_squeeze }}",
                                                                                      "type":  "string"
@@ -928,7 +849,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_savings_rate_schedule (read-only) + Root-CLAUDE.md *Das LLM rechnet NICHT***\n\nDer Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}, optional already_saved (Geld, das schon auf dem Topf liegt). Dieser read-only Aufruf leitet die fehlende Größe deterministisch auf dem REST ab (Ziel-getrieben: Rate=Rest/Monate; Raten-getrieben: Zieldatum=first+ceil(Rest/Rate); Rest \u003c= 0 -\u003e Rate 0, Zieldatum Pflicht). Derselbe Helper läuft autoritativ in der Write-fn -\u003e der Preview zeigt exakt den Schreibwert. Ohne first_payment_date liefert er den nächsten Termin des Abbuchungstags ab heute (WP2); genau dieses Datum zeigt die Karte und bekommt der Write. fehlt beides / Datum vor first_payment -\u003e {ok:false} -\u003e Schedule rejected.",
+                                         "content":  "## DB-Automatik\n**fn_create_savings_goal -\u003e fn_savings_rate_schedule + Root-CLAUDE.md *Das LLM rechnet NICHT***\n\nKein Vorab-Rechenschritt: der Probelauf (Dry run) liefert Rate, Zieldatum, Monate und erste Rate für die Karte. Der Nutzer nennt target_amount + Datum ODER Rate; mit Sparplänen darf beides fehlen (Datum aus ihrem Monatsbetrag). Gerechnet wird auf dem REST (Ziel - already_saved; Rest \u003c= 0 -\u003e Rate 0, Datum Pflicht). Ohne first_payment_date nimmt die fn den nächsten Termin des Abbuchungstags ab heute (WP2) und gibt ihn in r.effective zurück -\u003e der echte Write bekommt genau dieses Datum (Karte = Write, auch nach Mitternacht). Ablehnungen (weder Datum noch Rate, Datum vor erster Rate) -\u003e Dry run rejected.",
                                          "height":  220,
                                          "width":  520,
                                          "color":  4
@@ -944,9 +865,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_create_savings_goal (atomar)**\n\nSchritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv: Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto; Depot nur mit Startbestand/Sparplan; Startbestand höchstens der freie Saldo, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum auf dem Rest), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) Startbestand zuordnen (fn_book_savings_reservation), (4) nur bei Rest \u003e 0 ohne Sparplan: recurring_payment INSERT (name=\u0027Sparrate \u003cZiel\u003e\u0027, amount=-rate, valid_from=fn_recurring_valid_from) + UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id); mit Sparplan: Plan an das Ziel binden, Karte zeigt Plan-Betrag vs. nötige Rate. Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen \u003c 0 (Sparraten übersteigen das frei Verfügbare) -\u003e Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.",
+                                         "content":  "## DB-Automatik\n**fn_create_savings_goal (atomar)**\n\nSchritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv: Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto; Depot nur mit Startbestand/Sparplan; Startbestand höchstens der freie Saldo, sonst {ok:false}); Sparpläne auflösen (einer oder mehrere, komma-getrennt; Monatsbetrag aktiver Pläne in EUR). (1) Bestehender Dauerauftrag in den Topf (fn_goal_transfer_candidates, nur Raten-Pfad): ohne replace_transfer -\u003e existing_transfer; true -\u003e die Ziel-Rate führt ihn fort (sein Konto, Tag, nächster Termin, Betrag), er endet dann. (2) fn_savings_rate_schedule (Rate/Datum auf dem Rest), (3) Sparziel INSERT, (4) Startbestand zuordnen (fn_book_savings_reservation), (5) nur bei Rest \u003e 0 ohne Sparplan: recurring_payment INSERT (name=\u0027Sparrate \u003cZiel\u003e\u0027) als Transfer in den Topf + goal.recurring_payment_id; alter Dauerauftrag beendet (fn_end_recurring_chain); mit Sparplänen: alle an das Ziel binden, Karte zeigt Plan-Betrag vs. nötige Rate nur bei Abweichung. Fortschritt live aus finance.savings_goal_progress. Am Ende fn_savings_squeeze_fold (Sparraten übersteigen das frei Verfügbare -\u003e Note in savings_squeeze). Bookkeeper relayed.",
                                          "height":  230,
-                                         "width":  520,
+                                         "width":  600,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -955,8 +876,8 @@
                                        2420,
                                        -240
                                    ],
-                      "id":  "6b06249f-6a5b-5cb8-8d15-5b77383c4b8d",
-                      "name":  "fn_create_savings_goal: 4 Schritte + Über-Spar-Fold"
+                      "id":  "9c2efa79-1c4e-5527-9e1a-1d425752d219",
+                      "name":  "fn_create_savings_goal: Schritte + Über-Spar-Fold"
                   },
                   {
                       "parameters":  {
@@ -992,9 +913,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_create_savings_goal mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (weder Zieldatum noch Rate, nicht-positiver Betrag, Sparkonto-Pflicht, Rest ohne Abbuchungskonto, Startbestand größer als frei, Sparplan schon gebunden) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_create_savings_goal mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (weder Zieldatum noch Rate, nicht-positiver Betrag, Sparkonto-Pflicht, Rest ohne Abbuchungskonto, Startbestand größer als frei, Sparplan schon gebunden, existing_transfer = ein Dauerauftrag fließt schon in den Topf, transfer_not_monthly) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason/code an den Agenten. ok:true -\u003e Karte aus r (Rate, Datum, Monate, erste Rate); Hinweis-Zeilen der fn (card_lines) hängen unten an; r.effective (erste Rate) geht fest in den Write. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  220,
-                                         "width":  440,
+                                         "width":  480,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -1071,41 +992,12 @@
                                                               [
                                                                   {
                                                                       "index":  0,
-                                                                      "node":  "Compute Schedule",
+                                                                      "node":  "Resolve Person",
                                                                       "type":  "main"
                                                                   }
                                                               ]
                                                           ]
                                              },
-                        "Compute Schedule":  {
-                                                 "main":  [
-                                                              [
-                                                                  {
-                                                                      "index":  0,
-                                                                      "node":  "Schedule ok?",
-                                                                      "type":  "main"
-                                                                  }
-                                                              ]
-                                                          ]
-                                             },
-                        "Schedule ok?":  {
-                                             "main":  [
-                                                          [
-                                                              {
-                                                                  "index":  0,
-                                                                  "node":  "Resolve Person",
-                                                                  "type":  "main"
-                                                              }
-                                                          ],
-                                                          [
-                                                              {
-                                                                  "index":  0,
-                                                                  "node":  "Schedule rejected",
-                                                                  "type":  "main"
-                                                              }
-                                                          ]
-                                                      ]
-                                         },
                         "Resolve Person":  {
                                                "main":  [
                                                             [

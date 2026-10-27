@@ -426,4 +426,148 @@ BEGIN
   RAISE NOTICE 'PASS create [C9: Fremdwaehrungs-Startbestand ohne Kurs -> ok:false]';
 END $$;
 
+-- Livebefund 2026-10-27: (a) ein bestehender Dauerauftrag in den Topf wurde geloescht und als Ziel-Rate ohne Tag neu
+-- angelegt -> Guard existing_transfer + Fortfuehren (replace_transfer); (b) ein Kinder-Depot-Ziel mit Sparplaenen
+-- brauchte Datum oder Rate -> mehrere Plaene, Datum aus ihrem Monatsbetrag.
+DO $$
+DECLARE
+  v_r      JSONB;
+  v_from   INT; v_from2 INT;
+  v_pot1   INT; v_pot2 INT; v_pot3 INT; v_pot4 INT; v_pot5 INT;
+  v_depot  INT;
+  v_next1  DATE := (date_trunc('month', current_date) + interval '1 month')::date;   -- der 1. des Folgemonats
+  v_old    INT;
+  v_rp     finance.recurring_payments%ROWTYPE;
+  v_p1 INT; v_p2 INT; v_p3 INT; v_p4 INT; v_pk INT;
+  v_due    DATE;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__sgr_from__","account_type":"cash","account_holder":"Test","currency":"EUR","opening_balance":5000}'::jsonb)->>'account_id')::int INTO v_from;
+  SELECT (finance.fn_create_account('{"name":"__sgr_from2__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from2;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot1__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot1;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot2__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot2;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot3__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot3;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot4__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot4;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot5__","account_type":"p2p","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot5;
+
+  -- (R1) freistehender Dauerauftrag (Start kuenftig) in pot1 -> Ziel mit Rate: existing_transfer VOR dem Konto-Check
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__sgr_uebertrag1__','from_account_id',v_from,
+           'to_account_id',v_pot1,'amount',150,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',v_next1));
+  v_old := (v_r->>'recurring_payment_id')::int;
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Ziel1__','target_amount',3000,
+           'monthly_savings_rate',150,'reserve_account_id',v_pot1));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'code' IS DISTINCT FROM 'existing_transfer'
+     OR jsonb_array_length(v_r->'transfers') <> 1 OR (v_r->'transfers'->0->>'id')::int <> v_old
+     OR EXISTS (SELECT 1 FROM finance.savings_goals WHERE name = '__sgr Ziel1__') THEN
+    RAISE EXCEPTION 'FAIL create [R1 existing_transfer]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [R1: bestehender Dauerauftrag -> existing_transfer vor dem Konto-Check, kein Write]';
+
+  -- (R2) replace_transfer=true ohne Datum/Rate/Konto: Ziel-Rate fuehrt ihn fort (Konto, Tag 1, erster Termin = sein
+  --      naechster), Rate = sein Monatsbetrag, Datum daraus; er hat nie gegolten und keine Buchung -> geloescht.
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Ziel1__','target_amount',3000,
+           'reserve_account_id',v_pot1,'replace_transfer','true'));
+  SELECT * INTO v_rp FROM finance.recurring_payments WHERE id = (v_r->>'recurring_payment_id')::int;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'monthly_rate')::numeric <> 150
+     OR (v_r->>'replaced_transfer_id')::int IS DISTINCT FROM v_old
+     OR v_rp.account_id <> v_from OR v_rp.target_account_id <> v_pot1 OR v_rp.amount <> -150
+     OR v_rp.schedule_day_of_month IS DISTINCT FROM 1::smallint OR v_rp.first_payment_date <> v_next1
+     OR (v_r->>'target_date')::date <> (v_next1 + interval '20 months')::date
+     OR EXISTS (SELECT 1 FROM finance.recurring_payments WHERE id = v_old)
+     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_replaces_transfer"}]'::jsonb) THEN
+    RAISE EXCEPTION 'FAIL create [R2 replace]: % rp=%', v_r, row_to_json(v_rp); END IF;
+  RAISE NOTICE 'PASS create [R2: replace -> gleiches Konto/Tag/erster Termin, Rate = Dauerauftrag, Alt geloescht]';
+
+  -- (R3) laufender Dauerauftrag (Start in der Vergangenheit) + Datum genannt: er endet am naechsten Termin (bleibt als
+  --      Historie), die Rate bleibt SEIN Betrag, die Karte zeigt die noetige Rate.
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+         schedule_day_of_month, first_payment_date, valid_from, status)
+  VALUES ('__sgr_uebertrag2__', v_from, v_pot2, -100, 1, 'month', 1,
+          (date_trunc('month', current_date) - interval '2 months')::date,
+          (date_trunc('month', current_date) - interval '2 months')::date, 'active') RETURNING id INTO v_old;
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Ziel2__','target_amount',6000,
+           'target_date',(v_next1 + interval '24 months')::date::text,'reserve_account_id',v_pot2,'replace_transfer','true'));
+  SELECT * INTO v_rp FROM finance.recurring_payments WHERE id = (v_r->>'recurring_payment_id')::int;
+  v_due := v_rp.first_payment_date;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_rp.amount <> -100 OR v_rp.schedule_day_of_month IS DISTINCT FROM 1::smallint
+     OR EXTRACT(DAY FROM v_due) <> 1 OR v_due < current_date
+     OR (SELECT valid_to FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM v_due
+     OR (SELECT status FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM 'paused'
+     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_transfer_rate"}]'::jsonb) THEN
+    RAISE EXCEPTION 'FAIL create [R3 laufender Dauerauftrag]: % rp=%', v_r, row_to_json(v_rp); END IF;
+  RAISE NOTICE 'PASS create [R3: laufender Dauerauftrag endet am ersten Ziel-Termin, Rate = sein Betrag, noetige Rate auf der Karte]';
+
+  -- (R4) replace_transfer=false -> zusaetzliche Rate, der Dauerauftrag bleibt unberuehrt
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__sgr_uebertrag3__','from_account_id',v_from,
+           'to_account_id',v_pot3,'amount',80,'schedule_unit','month','schedule_day_of_month',5,'first_payment_date',v_next1 + 4));
+  v_old := (v_r->>'recurring_payment_id')::int;
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Ziel3__','target_amount',2000,
+           'monthly_savings_rate',50,'account_id',v_from2,'reserve_account_id',v_pot3,'replace_transfer','false'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'monthly_rate')::numeric <> 50
+     OR (SELECT valid_to FROM finance.recurring_payments WHERE id = v_old) IS NOT NULL
+     OR (SELECT status FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'FAIL create [R4 zusaetzlich]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [R4: replace_transfer=false -> zusaetzliche Rate, Dauerauftrag unberuehrt]';
+
+  -- (R5) quartalsweiser Dauerauftrag -> nicht fortfuehrbar
+  PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name','__sgr_quartal__','from_account_id',v_from,
+           'to_account_id',v_pot4,'amount',300,'schedule_unit','month','schedule_interval',3,'schedule_day_of_month',1,
+           'first_payment_date',v_next1));
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Ziel4__','target_amount',2000,
+           'monthly_savings_rate',100,'reserve_account_id',v_pot4,'replace_transfer','true'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'code' IS DISTINCT FROM 'transfer_not_monthly' THEN
+    RAISE EXCEPTION 'FAIL create [R5 quartalsweise]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [R5: quartalsweiser Dauerauftrag -> transfer_not_monthly]';
+
+  -- (R6) P2P-Topf mit Dauerauftrag: Guard greift auch dort (Ziel mit Datum, Rest > 0)
+  PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name','__sgr_p2p__','from_account_id',v_from,
+           'to_account_id',v_pot5,'amount',40,'schedule_unit','month','schedule_day_of_month',10,'first_payment_date',v_next1 + 9));
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Ziel5__','target_amount',500,
+           'target_date',(v_next1 + 300)::text,'reserve_account_id',v_pot5));
+  IF v_r->>'code' IS DISTINCT FROM 'existing_transfer' THEN
+    RAISE EXCEPTION 'FAIL create [R6 Guard p2p-Topf]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [R6: Guard auch auf einem P2P-Topf]';
+
+  -- (P1) Kinder-Depot: zwei Sparplaene als Liste, Startbestand, ohne Datum/Rate -> Datum aus der Summe (50 + 30)
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__sgr_depot__', 'stocks_depot', 'EUR', 'active', v_from) RETURNING id INTO v_depot;
+  SELECT (finance.fn_create_savings_plan(jsonb_build_object('name','__sgr_plan_a__','depot_name','__sgr_depot__',
+    'isin','IE00B4L5Y983','symbol','IWDA','security_name','Beispiel World','amount',50,'schedule_unit','month',
+    'first_payment_date',v_next1 + 14))->>'savings_plan_id')::int INTO v_p1;
+  SELECT (finance.fn_create_savings_plan(jsonb_build_object('name','__sgr_plan_b__','depot_name','__sgr_depot__',
+    'isin','IE00B5BMR087','symbol','CSPX','security_name','Beispiel S&P','amount',30,'schedule_unit','month',
+    'first_payment_date',v_next1 + 14))->>'savings_plan_id')::int INTO v_p2;
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Kinderdepot__','target_amount',9000,
+           'reserve_account_id',v_depot,'already_saved',1000,'savings_plan','__sgr_plan_a__, __sgr_plan_b__, __sgr_plan_a__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'recurring_payment_id' IS NOT NULL
+     OR jsonb_array_length(v_r->'savings_plan_ids') <> 2 OR (v_r->>'plan_monthly_amount')::numeric <> 80
+     OR (v_r->>'current_amount')::numeric <> 1000
+     OR (v_r->>'target_date')::date <> (core.fn_today() + interval '100 months')::date
+     OR (SELECT count(*) FROM finance.savings_plans WHERE savings_goal_id = (v_r->>'goal_id')::int) <> 2
+     OR v_r->'card_lines' @> '[{"value":"finance.note.goal_plan_rate"}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL create [P1 zwei Plaene]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [P1: zwei Plaene (dedupliziert) verknuepft, Datum aus 80/Monat, kein Vergleichshinweis]';
+
+  -- (P2) Name mit Komma bleibt ein Name; pausierter Plan zaehlt nicht zum Monatsbetrag
+  SELECT (finance.fn_create_savings_plan(jsonb_build_object('name','__sgr Plan, mit Komma__','depot_name','__sgr_depot__',
+    'isin','IE00B3RBWM25','symbol','VWCE','security_name','Beispiel All-World','amount',40,'schedule_unit','month',
+    'first_payment_date',v_next1 + 14))->>'savings_plan_id')::int INTO v_pk;
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Komma__','target_amount',4000,
+           'reserve_account_id',v_depot,'savings_plan','__sgr Plan, mit Komma__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'savings_plan_id')::int IS DISTINCT FROM v_pk
+     OR (v_r->>'plan_monthly_amount')::numeric <> 40 THEN
+    RAISE EXCEPTION 'FAIL create [P2 Name mit Komma]: %', v_r; END IF;
+  SELECT (finance.fn_create_savings_plan(jsonb_build_object('name','__sgr_plan_c__','depot_name','__sgr_depot__',
+    'isin','IE00BK5BQT80','symbol','VWRA','security_name','Beispiel Acc','amount',25,'schedule_unit','month',
+    'first_payment_date',v_next1 + 14))->>'savings_plan_id')::int INTO v_p3;
+  SELECT (finance.fn_create_savings_plan(jsonb_build_object('name','__sgr_plan_d__','depot_name','__sgr_depot__',
+    'isin','IE00BFY0GT14','symbol','SPPW','security_name','Beispiel Swap','amount',60,'schedule_unit','month',
+    'first_payment_date',v_next1 + 14))->>'savings_plan_id')::int INTO v_p4;
+  PERFORM finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__sgr_plan_c__','status','paused'));
+  v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgr Pausiert__','target_amount',6000,
+           'reserve_account_id',v_depot,'savings_plan','__sgr_plan_c__,__sgr_plan_d__'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'plan_monthly_amount')::numeric <> 60
+     OR jsonb_array_length(v_r->'savings_plan_ids') <> 2 THEN
+    RAISE EXCEPTION 'FAIL create [P2 pausiert]: %', v_r; END IF;
+  RAISE NOTICE 'PASS create [P2: Name mit Komma = ein Plan; pausierter Plan zaehlt nicht zum Monatsbetrag]';
+END $$;
+
 ROLLBACK;

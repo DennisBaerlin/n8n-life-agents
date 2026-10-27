@@ -10,6 +10,9 @@
                                                                                    "name":  "recurring_payment_name"
                                                                                },
                                                                                {
+                                                                                   "name":  "confirm_feeds_savings"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -118,7 +121,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_delete_recurring_payment(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ recurring_payment_name: $(\u0027Start\u0027).item.json.recurring_payment_name }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ recurring_payment_name: $(\u0027Start\u0027).item.json.recurring_payment_name, confirm_feeds_savings: $(\u0027Start\u0027).item.json.confirm_feeds_savings }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -224,7 +227,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027action\u0027 AS action, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id FROM finance.fn_delete_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ recurring_payment_name: $(\u0027Start\u0027).item.json.recurring_payment_name, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ recurring_payment_name: $(\u0027Start\u0027).item.json.recurring_payment_name, confirm_feeds_savings: $(\u0027Start\u0027).item.json.confirm_feeds_savings, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -480,7 +483,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_delete_recurring_payment mit denselben Werten, immer zurückgerollt. ok:false (Dauerauftrag gehört einer Entität oder hat gebuchte Transaktionen) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception (mehrdeutig; nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler) -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_delete_recurring_payment mit denselben Werten, immer zurückgerollt. ok:false (Dauerauftrag gehört einer Entität, hat gebuchte Transaktionen oder füllt als Zubringer das Verrechnungskonto eines Sparplans bzw. den Topf eines Sparziels ohne confirm_feeds_savings=true -\u003e code feeds_savings) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception (mehrdeutig; nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler) -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4
@@ -496,7 +499,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Hard-DELETE nur für standalone, referenzfrei**\n\nfn_delete_recurring_payment löscht NUR standalone Dauerauftraege. Entitäts-besessen (Versicherung/Kredit/Pension/Sparziel/Sparplan referenziert die rp) -\u003e {ok:false, owner} -\u003e set_/close_-Tool der Entität. Gebuchte Transaktionen (recurring_payment_id) -\u003e {ok:false} (erst voiden). Sonst: DELETE recurring_payment (skips per ON DELETE CASCADE). RAISE bei nicht gefunden/mehrdeutig (nicht gefunden fängt vorher das Found?-Gate des Tools) (Resolver p_active_only=FALSE -\u003e findet auch pausierte).",
+                                         "content":  "## DB-Automatik\n**Hard-DELETE nur für standalone, referenzfrei**\n\nfn_delete_recurring_payment löscht NUR standalone Dauerauftraege. Entitäts-besessen (Versicherung/Kredit/Pension/Sparziel/Sparplan referenziert die rp) -\u003e {ok:false, owner} -\u003e set_/close_-Tool der Entität. Gebuchte Transaktionen (recurring_payment_id) -\u003e {ok:false} (erst voiden). Zubringer (Transfer ins Verrechnungskonto eines aktiven Sparplans oder in den Topf eines aktiven Sparziels) -\u003e {ok:false, code:\u0027feeds_savings\u0027}, nur mit confirm_feeds_savings=true (Nutzer bestätigt, dass es ihn nicht mehr gibt) gelöscht. Sonst: DELETE recurring_payment (skips per ON DELETE CASCADE). RAISE bei nicht gefunden/mehrdeutig (nicht gefunden fängt vorher das Found?-Gate des Tools) (Resolver p_active_only=FALSE -\u003e findet auch pausierte).",
                                          "height":  260,
                                          "width":  520,
                                          "color":  4

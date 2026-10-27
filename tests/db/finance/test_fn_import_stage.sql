@@ -125,6 +125,32 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_validate [Depot-Topf ohne Startbestand/Sparplan -> invalid]';   -- TEST 6 setzt den Topf neu
 
+  -- ---------- TEST 5d (Livebefund 2026-10-27): Topf mit bestehendem Dauerauftrag -> replace_transfer noetig ----------
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_imp Quelle5d', 'cash', 'EUR', 'active');
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_imp Topf5d', 'cash', 'EUR', 'active');
+  PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name','__test_imp Uebertrag5d',
+    'from_account_id',(SELECT max(id) FROM finance.accounts WHERE name = '__test_imp Quelle5d'),
+    'to_account_id',(SELECT max(id) FROM finance.accounts WHERE name = '__test_imp Topf5d'),
+    'amount',100,'schedule_unit','month','schedule_day_of_month',1,
+    'first_payment_date',(date_trunc('month', current_date) + interval '1 month')::date));
+  SELECT finance.fn_import_update_row(jsonb_build_object(
+    'batch_id', v_batch, 'row_no', 8,
+    'payload_merge', jsonb_build_object('reserve_account','__test_imp Topf5d')
+  )) INTO v_result;
+  SELECT validation_error INTO v_err FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 8;
+  IF COALESCE(v_err, '') NOT ILIKE '%replace_transfer%' THEN
+    RAISE EXCEPTION 'FAIL savings_goal-Validierung: Topf mit Dauerauftrag erwartet replace_transfer-Fehler, got %', v_err;
+  END IF;
+  SELECT finance.fn_import_update_row(jsonb_build_object(
+    'batch_id', v_batch, 'row_no', 8,
+    'payload_merge', jsonb_build_object('replace_transfer','false')
+  )) INTO v_result;
+  SELECT validation_error INTO v_err FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 8;
+  IF COALESCE(v_err, '') ILIKE '%standing transfer%' THEN
+    RAISE EXCEPTION 'FAIL savings_goal-Validierung: replace_transfer=false muss den Fehler aufloesen, got %', v_err;
+  END IF;
+  RAISE NOTICE 'PASS fn_import_validate [Topf mit Dauerauftrag -> replace_transfer noetig, Antwort loest den Fehler]';
+
   -- ---------- TEST 6: fn_import_update_row — Korrektur macht Row valid ----------
   SELECT finance.fn_import_update_row(jsonb_build_object(
     'batch_id', v_batch, 'row_no', 8,

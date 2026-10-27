@@ -284,6 +284,8 @@ function Get-FinanceHitlLines {
                     months = (& $need 'Months') })
                 (New-HitlLine 'finance.label.monthly_savings_rate' "0" -Kind money -EurByModel -If "!($hasRate) && !$S.savings_plan_name")
                 (New-HitlLine 'finance.label.link_savings_plan'    "$S.savings_plan_name" -OmitEmpty)
+                # 2026-10-27: Antwort auf existing_transfer (fortfuehren oder zusaetzlich); Konto/Tag kommen dann aus r.effective
+                (New-HitlLine 'finance.label.standing_transfer'    "(String($S.replace_transfer) === 'true' ? 'finance.value.transfer_continued' : (String($S.replace_transfer) === 'false' ? 'finance.value.transfer_additional' : null))" -Kind key -OmitEmpty)
                 (New-HitlLine 'finance.label.debit_account'        "$S.account_name" -If $hasRate)
                 (New-HitlLine 'finance.label.reserve_pot'          "'finance.tpl.reserve_pot'" -Kind tpl -If $hasRate -Params @{ name = "$S.reserve_account_name" })
                 (New-HitlLine 'finance.label.reserve_pot'          "$S.reserve_account_name" -If "!($hasRate)")

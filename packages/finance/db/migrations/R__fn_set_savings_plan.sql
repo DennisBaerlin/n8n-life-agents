@@ -34,6 +34,9 @@
 --   bei Reaktivierung einer beendeten rp zusaetzlich reopened=true + previous_rp_id; optional savings_squeeze
 --   (fn_savings_squeeze_fold: Sparraten leeren das Girokonto) - nur wenn sich die laufende Rate aendert (Split/
 --   Reaktivierung mit Stichtag <= heute, Status-Wechsel), nie bei reinen Notiz-/Anlageklasse-/Person-Edits.
+--   NO-CHANGE (Livebefund 2026-10-27): genannter Rhythmus/Betrag gleich den gespeicherten Bedingungen (feste Tage =
+--   Nutzer-Rhythmus week/1 bzw. week/2) -> kein Split; ohne weitere Felder {ok:false, code:'no_change', rhythm,
+--   amount_per_execution, monthly_amount} (geprueft VOR den Split-Vorbedingungen).
 --   Korrigierbar (nicht gefunden, new_amount<=0, Stichtag<=aktueller valid_from, asset_class-Format) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_savings_plan(p jsonb)
@@ -59,6 +62,9 @@ DECLARE
     v_days      SMALLINT[];
     v_dom       SMALLINT;
     v_dates     JSONB;
+    v_user_unit finance.schedule_unit;
+    v_user_int  SMALLINT;
+    v_label     TEXT;
 BEGIN
     -- relative Datumsangabe ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from']);
@@ -86,6 +92,39 @@ BEGIN
     IF v_asset_cls IS NOT NULL AND v_asset_cls !~ '^[a-z0-9_]+$' THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'asset_class tag must be lowercase letters/digits/underscore (e.g. sp500), got: ' || v_asset_cls);
+    END IF;
+
+    -- NUTZER-Rhythmus der Kopf-Zeile (die Bedingungen ab jedem gueltigen Stichtag, der Split setzt immer nach ihrem
+    -- valid_from an): feste Monatstage sind fuer den Nutzer "woechentlich" (>= 4 Tage) bzw. "zweimal im Monat" -> week/1
+    -- bzw. week/2; sonst die gespeicherten Werte. Eine Adresse fuer den No-Change-Vergleich und den Resolver-Aufruf.
+    v_user_unit := CASE WHEN v_rp.schedule_days_of_month IS NOT NULL THEN 'week'::finance.schedule_unit
+                        ELSE v_rp.schedule_unit END;
+    v_user_int  := CASE WHEN v_rp.schedule_days_of_month IS NOT NULL
+                        THEN (CASE WHEN cardinality(v_rp.schedule_days_of_month) >= 4 THEN 1 ELSE 2 END)::smallint
+                        ELSE v_rp.schedule_interval END;
+
+    -- NO-CHANGE (Livebefund 2026-10-27): genannter Rhythmus/Betrag = gespeichert -> kein Split. VOR den Split-
+    -- Vorbedingungen (der Livefall scheiterte sonst schon am Stichtag und der Agent bot einen identischen Split an).
+    -- Nichts anderes genannt -> {ok:false, code:'no_change'} mit Rhythmus + Monatsbetrag; sonst weiter in-place.
+    IF (v_amount IS NOT NULL OR v_unit_new IS NOT NULL OR v_interval_new IS NOT NULL) AND v_cal_in IS NULL
+       AND (v_amount IS NULL OR v_amount = abs(v_rp.amount))
+       AND COALESCE(v_unit_new, v_user_unit) = v_user_unit
+       AND COALESCE(v_interval_new, v_user_int) = v_user_int THEN
+        IF v_status IS NULL AND NULLIF(p->>'notes', '') IS NULL AND NULLIF(p->>'beneficiary_person_id', '') IS NULL
+           AND v_asset_cls IS NULL THEN
+            v_label := finance.fn_schedule_label(v_rp.schedule_unit, v_rp.schedule_interval, v_rp.schedule_day_of_month,
+                                                 v_rp.schedule_days_of_month);
+            RETURN jsonb_build_object('ok', false, 'code', 'no_change',
+                'rhythm', v_label,
+                'amount_per_execution', abs(v_rp.amount),
+                'monthly_amount', abs(v_rp.monthly_equivalent),
+                'reason', 'Nothing to change: savings plan "' || v_plan.name || '" is already stored as ' || v_label
+                       || ' with ' || to_char(abs(v_rp.amount), 'FM999999990D00') || ' '
+                       || (SELECT a.currency FROM finance.accounts a WHERE a.id = v_rp.account_id)
+                       || ' per execution = ' || to_char(abs(v_rp.monthly_equivalent), 'FM999999990D00')
+                       || ' per month. Tell the user it already runs that way; do not offer a change.');
+        END IF;
+        v_amount := NULL; v_unit_new := NULL; v_interval_new := NULL;
     END IF;
 
     -- WS-B Stufe 2: Betrags- ODER Kadenz-Aenderung loest den Validity-Split aus (nicht-genannte Felder
@@ -132,12 +171,7 @@ BEGIN
             -- "woechentlich" (4 Tage) bzw. "zweimal im Monat" (2 Tage) -> week/1 bzw. week/2; sonst die gespeicherten
             -- Werte ("alle zwei Wochen" bei einem 2./9./16./23.-Plan wird so nie "alle zwei Monate").
             v_sched := finance.fn_resolve_plan_schedule(v_plan.depot_id,
-                COALESCE(v_unit_new, CASE WHEN v_rp.schedule_days_of_month IS NOT NULL THEN 'week'::finance.schedule_unit
-                                          ELSE v_rp.schedule_unit END),
-                COALESCE(v_interval_new, CASE WHEN v_rp.schedule_days_of_month IS NOT NULL
-                                              THEN (CASE WHEN cardinality(v_rp.schedule_days_of_month) >= 4 THEN 1 ELSE 2 END)::smallint
-                                              ELSE v_rp.schedule_interval END),
-                NULL, v_from, v_cal_in);
+                COALESCE(v_unit_new, v_user_unit), COALESCE(v_interval_new, v_user_int), NULL, v_from, v_cal_in);
             IF (v_sched->>'ok')::boolean IS DISTINCT FROM true THEN
                 RETURN v_sched;
             END IF;

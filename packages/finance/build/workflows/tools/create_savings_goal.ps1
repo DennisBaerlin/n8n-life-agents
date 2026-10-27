@@ -6,7 +6,7 @@ function Build-CreateSavingsGoal {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name')
+    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer')
 
     # Duplicate-name guard (Backstop wie bei den anderen create_*-Tools): ein create_* darf kein
     # zweites Sparziel gleichen Namens still anlegen (name hat keine UNIQUE-Constraint). Existiert ein
@@ -35,26 +35,10 @@ function Build-CreateSavingsGoal {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # Rate ODER Zieldatum DETERMINISTISCH in der DB berechnen (LLM rechnet nicht, Root-CLAUDE.md).
-    # READ-ONLY-Aufruf desselben Helpers, den auch die Write-fn nutzt -> eine Quelle, der HITL-Preview
-    # zeigt den exakt zu schreibenden Wert. target_amount + GENAU EINES von {target_date, monthly_savings_rate}.
-    # WP2: ohne first_payment_date liefert der Helper den naechsten Termin des Abbuchungstags ab heute; genau dieses Datum
-    # geht in den Write (Karte = Write).
-    $computeSched = Build-Pg 'Compute Schedule' @(660, 0) `
-        "=SELECT (r->>'ok')::boolean AS sched_ok, r->>'reason' AS sched_reason, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'months')::int AS months, r->>'first_payment_date' AS first_payment_date FROM finance.fn_savings_rate_schedule(`$1::jsonb) AS r;" `
-        ([ordered]@{
-            target_amount        = '$(''Start'').item.json.target_amount'
-            target_date          = '$(''Start'').item.json.target_date'
-            monthly_savings_rate = '$(''Start'').item.json.monthly_savings_rate'
-            first_payment_date   = '$(''Start'').item.json.first_payment_date'
-            schedule_day_of_month = '$(''Start'').item.json.schedule_day_of_month'
-            already_saved        = '$(''Start'').item.json.already_saved'
-        })
-
-    $ifSchedOk = Build-If 'Schedule ok?' @(880, 0) "={{ `$json.sched_ok }}" 'true' 'equals' 'boolean'
-
-    $errSched = Build-ToolError 'Schedule rejected' @(1100, 200) `
-        "={{ `$('Compute Schedule').item.json.sched_reason }}"
+    # Rate ODER Zieldatum rechnet allein fn_create_savings_goal (LLM rechnet nicht, Root-CLAUDE.md): der Probelauf
+    # liefert Rate, Datum, Monate und erste Rate fuer die Karte; die erste Rate geht ueber r.effective fest in den
+    # echten Write (Karte = Write, auch nach Mitternacht). Kein separater Vorab-Rechenschritt mehr (2026-10-27: die fn
+    # leitet das Datum auch aus Sparplaenen ab und fuehrt einen bestehenden Dauerauftrag fort).
 
     # WS-4: beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
     # Beim Sparziel ist die Person der BEGUENSTIGTE (z. B. Kind), unabhaengig vom Abbuchungskonto.
@@ -84,7 +68,7 @@ function Build-CreateSavingsGoal {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_savings_goal' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create savings goal (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
         -Params ([ordered]@{
             name                  = '$(''Start'').item.json.goal_name'
             goal_type             = '$(''Start'').item.json.goal_type'
@@ -93,25 +77,24 @@ function Build-CreateSavingsGoal {
             monthly_savings_rate  = '$(''Start'').item.json.monthly_savings_rate'
             account_id            = '$(''Resolve Account'').item.json.id'
             schedule_day_of_month = '$(''Start'').item.json.schedule_day_of_month'
-            first_payment_date    = '$(''Compute Schedule'').item.json.first_payment_date'
+            first_payment_date    = '$(''Start'').item.json.first_payment_date'
             notes                 = '$(''Start'').item.json.notes'
             beneficiary_person_id = '$(''Resolve Person'').item.json.person_id'
             reserve_account_id    = '$(''Resolve Reserve'').item.json.id'
             priority              = '$(''Start'').item.json.priority'
             already_saved         = '$(''Start'').item.json.already_saved'
             savings_plan          = '$(''Start'').item.json.savings_plan_name'
+            replace_transfer      = '$(''Start'').item.json.replace_transfer'
         })
 
-    # --- HITL approval gate (Rate + Zieldatum aus Compute Schedule, nicht aus dem Prompt) ---
-    # Strukturiertes Summary (Textkatalog): Zielbetrag + berechnete Sparrate sind EUR per Konvention -> Literal 'EUR';
-    # Zieldatum + erste Buchung (genannt oder Default) aus Compute Schedule.
+    # --- HITL approval gate (Rate, Zieldatum, erste Rate aus dem Probelauf, nicht aus dem Prompt) ---
+    # Strukturiertes Summary (Textkatalog): Zielbetrag + berechnete Sparrate sind EUR per Konvention -> Literal 'EUR'.
     $S  = "`$('Start').item.json"
-    $CS = "`$('Compute Schedule').item.json"
-    # Begünstigte(r) aus dem Probelauf: genannt, sonst Inhaber des Spartopfs (fn_default_beneficiary) -> Karte = Write.
+    # Probelauf: Begünstigte(r) (genannt, sonst Inhaber des Spartopfs), Rate, Datum, Monate, erste Rate -> Karte = Write.
     $Y  = "`$('Dry run').item.json.r"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_savings_goal' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity savings_goal -S (Get-WritePayloadExpr) -D @{
-        Person = "$Y.beneficiary_name"; TargetDate = "$Y.target_date"; MonthlyRate = "$Y.monthly_rate"; Months = "$Y.months"; FirstPayment = "$CS.first_payment_date" })
+        Person = "$Y.beneficiary_name"; TargetDate = "$Y.target_date"; MonthlyRate = "$Y.monthly_rate"; Months = "$Y.months"; FirstPayment = "$Y.first_payment_date" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `
@@ -145,16 +128,17 @@ function Build-CreateSavingsGoal {
         ,@('savings_plan_id', "={{ `$('Create savings goal (atomic)').item.json.savings_plan_id }}", 'number')
         ,@('required_monthly_rate', "={{ `$('Create savings goal (atomic)').item.json.required_monthly_rate }}", 'number')
         ,@('plan_monthly_amount', "={{ `$('Create savings goal (atomic)').item.json.plan_monthly_amount }}", 'number')
+        ,@('replaced_transfer_id', "={{ `$('Create savings goal (atomic)').item.json.replaced_transfer_id }}", 'number')
         ,@('savings_squeeze', "={{ `$('Create savings goal (atomic)').item.json.savings_squeeze }}", 'string')
     )
 
     $stickyCompute = Build-Sticky 'Rate/Zieldatum: DB rechnet (nicht das LLM)' @(660, -240) `
-        'fn_savings_rate_schedule (read-only) + Root-CLAUDE.md *Das LLM rechnet NICHT*' `
-        'Der Nutzer nennt target_amount + GENAU EINES von {target_date, monthly_savings_rate}, optional already_saved (Geld, das schon auf dem Topf liegt). Dieser read-only Aufruf leitet die fehlende Größe deterministisch auf dem REST ab (Ziel-getrieben: Rate=Rest/Monate; Raten-getrieben: Zieldatum=first+ceil(Rest/Rate); Rest <= 0 -> Rate 0, Zieldatum Pflicht). Derselbe Helper läuft autoritativ in der Write-fn -> der Preview zeigt exakt den Schreibwert. Ohne first_payment_date liefert er den nächsten Termin des Abbuchungstags ab heute (WP2); genau dieses Datum zeigt die Karte und bekommt der Write. fehlt beides / Datum vor first_payment -> {ok:false} -> Schedule rejected.' 220 520
+        'fn_create_savings_goal -> fn_savings_rate_schedule + Root-CLAUDE.md *Das LLM rechnet NICHT*' `
+        'Kein Vorab-Rechenschritt: der Probelauf (Dry run) liefert Rate, Zieldatum, Monate und erste Rate für die Karte. Der Nutzer nennt target_amount + Datum ODER Rate; mit Sparplänen darf beides fehlen (Datum aus ihrem Monatsbetrag). Gerechnet wird auf dem REST (Ziel - already_saved; Rest <= 0 -> Rate 0, Datum Pflicht). Ohne first_payment_date nimmt die fn den nächsten Termin des Abbuchungstags ab heute (WP2) und gibt ihn in r.effective zurück -> der echte Write bekommt genau dieses Datum (Karte = Write, auch nach Mitternacht). Ablehnungen (weder Datum noch Rate, Datum vor erster Rate) -> Dry run rejected.' 220 520
 
-    $stickyFn = Build-Sticky 'fn_create_savings_goal: 4 Schritte + Über-Spar-Fold' @(2420, -240) `
+    $stickyFn = Build-Sticky 'fn_create_savings_goal: Schritte + Über-Spar-Fold' @(2420, -240) `
         'fn_create_savings_goal (atomar)' `
-        'Schritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv: Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto; Depot nur mit Startbestand/Sparplan; Startbestand höchstens der freie Saldo, sonst {ok:false}), (1) fn_savings_rate_schedule (Rate/Datum auf dem Rest), (2) Sparziel INSERT (status=active, target_date aufgelöst), (3) Startbestand zuordnen (fn_book_savings_reservation), (4) nur bei Rest > 0 ohne Sparplan: recurring_payment INSERT (name=''Sparrate <Ziel>'', amount=-rate, valid_from=fn_recurring_valid_from) + UPDATE goal.recurring_payment_id + Rate wird Transfer in den Topf (target_account_id); mit Sparplan: Plan an das Ziel binden, Karte zeigt Plan-Betrag vs. nötige Rate. Fortschritt live aus finance.savings_goal_progress-View. Am Ende liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen < 0 (Sparraten übersteigen das frei Verfügbare) -> Note in savings_squeeze (gelatcht 24 h, sonst leer). Bookkeeper relayed.' 230 520
+        'Schritte in EINER DB-Transaktion: (0) Sparkonto-Pflicht (Topf aktiv: Giro/Tagesgeld/Festgeld/P2P, ≠ Abbuchungskonto; Depot nur mit Startbestand/Sparplan; Startbestand höchstens der freie Saldo, sonst {ok:false}); Sparpläne auflösen (einer oder mehrere, komma-getrennt; Monatsbetrag aktiver Pläne in EUR). (1) Bestehender Dauerauftrag in den Topf (fn_goal_transfer_candidates, nur Raten-Pfad): ohne replace_transfer -> existing_transfer; true -> die Ziel-Rate führt ihn fort (sein Konto, Tag, nächster Termin, Betrag), er endet dann. (2) fn_savings_rate_schedule (Rate/Datum auf dem Rest), (3) Sparziel INSERT, (4) Startbestand zuordnen (fn_book_savings_reservation), (5) nur bei Rest > 0 ohne Sparplan: recurring_payment INSERT (name=''Sparrate <Ziel>'') als Transfer in den Topf + goal.recurring_payment_id; alter Dauerauftrag beendet (fn_end_recurring_chain); mit Sparplänen: alle an das Ziel binden, Karte zeigt Plan-Betrag vs. nötige Rate nur bei Abweichung. Fortschritt live aus finance.savings_goal_progress. Am Ende fn_savings_squeeze_fold (Sparraten übersteigen das frei Verfügbare -> Note in savings_squeeze). Bookkeeper relayed.' 230 600
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `
@@ -170,10 +154,10 @@ function Build-CreateSavingsGoal {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1100, -480) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_create_savings_goal mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (weder Zieldatum noch Rate, nicht-positiver Betrag, Sparkonto-Pflicht, Rest ohne Abbuchungskonto, Startbestand größer als frei, Sparplan schon gebunden) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
+        'Dry run = fn_create_savings_goal mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (weder Zieldatum noch Rate, nicht-positiver Betrag, Sparkonto-Pflicht, Rest ohne Abbuchungskonto, Startbestand größer als frei, Sparplan schon gebunden, existing_transfer = ein Dauerauftrag fließt schon in den Topf, transfer_not_monthly) -> Dry run rejected: KEINE Karte, card_sent:false + reason/code an den Agenten. ok:true -> Karte aus r (Rate, Datum, Monate, erste Rate); Hinweis-Zeilen der fn (card_lines) hängen unten an; r.effective (erste Rate) geht fest in den Write. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 480
 
     $nodes = @($trig, $checkDup, $ifExists, $errExists, $resAcct, $ifAcct, $errAcct,
-               $computeSched, $ifSchedOk, $errSched, $resPerson, $ifPersonBad, $errPerson,
+               $resPerson, $ifPersonBad, $errPerson,
                $resReserve, $ifReserveBad, $errReserve) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret,
                $stickyDup, $stickyCompute, $stickyFn, $stickyOk, $stickyReserve,
                $stickyDry)
@@ -188,12 +172,7 @@ function Build-CreateSavingsGoal {
         'Resolve Account'                = @{ main = @( ,@( E 'Account invalid?' ) ) }
         'Account invalid?'               = @{ main = @(
             @( E 'Account ambiguous' ),
-            @( E 'Compute Schedule' )
-        ) }
-        'Compute Schedule'               = @{ main = @( ,@( E 'Schedule ok?' ) ) }
-        'Schedule ok?'                   = @{ main = @(
-            @( E 'Resolve Person' ),
-            @( E 'Schedule rejected' )
+            @( E 'Resolve Person' )
         ) }
         'Resolve Person'                 = @{ main = @( ,@( E 'Person invalid?' ) ) }
         'Person invalid?'                = @{ main = @(

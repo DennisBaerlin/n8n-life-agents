@@ -423,6 +423,36 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
             AND p_days = ARRAY(SELECT DISTINCT d FROM unnest(p_days) d ORDER BY d));
 $$;
 
+-- fn_schedule_label (Live-Befund 2026-10-27): der Rhythmus einer Dauerzahlung in Klartext (englisch, Modell-Text) --
+-- die EINE Uebersetzung des Intervall-Trios + fester Monatstage. Anlass: ein woechentlicher Trade-Republic-Sparplan
+-- steht als month/1 + {2,9,16,23}; der Agent las nur amount und meldete "50 pro Monat" statt 4 x 50. Feste Tage:
+-- 4 = "weekly", 2 = "twice a month" (Nutzer-Rhythmus wie in fn_resolve_plan_schedule), sonst "n times a month";
+-- immer mit Anzahl je Monat und den Tagen, damit niemand den Monatsbetrag selbst hochrechnet. IM INIT, weil
+-- R__finance_views (active_recurring_payments) vor den R__fn_*-Dateien laeuft.
+CREATE OR REPLACE FUNCTION finance.fn_schedule_label(p_unit finance.schedule_unit, p_interval smallint,
+                                                     p_dom smallint, p_days smallint[])
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE
+        WHEN cardinality(p_days) > 0 THEN
+            CASE cardinality(p_days) WHEN 4 THEN 'weekly (4 times a month, ' WHEN 2 THEN 'twice a month ('
+                 ELSE cardinality(p_days) || ' times a month (' END
+            || 'on day ' || array_to_string(p_days, ', ') || ')'
+        ELSE
+            CASE p_unit
+                WHEN 'day'   THEN CASE WHEN COALESCE(p_interval, 1) = 1 THEN 'daily' ELSE 'every ' || p_interval || ' days' END
+                WHEN 'week'  THEN CASE WHEN COALESCE(p_interval, 1) = 1 THEN 'weekly' ELSE 'every ' || p_interval || ' weeks' END
+                WHEN 'month' THEN CASE COALESCE(p_interval, 1) WHEN 1 THEN 'monthly' WHEN 3 THEN 'quarterly'
+                                       WHEN 6 THEN 'half-yearly' WHEN 12 THEN 'yearly'
+                                       ELSE 'every ' || p_interval || ' months' END
+                WHEN 'year'  THEN CASE WHEN COALESCE(p_interval, 1) = 1 THEN 'yearly' ELSE 'every ' || p_interval || ' years' END
+            END
+            || CASE WHEN p_unit = 'month' AND p_dom = -1 THEN ', on the last day'
+                    WHEN p_unit = 'month' AND p_dom = -2 THEN ', on the second-to-last day'
+                    WHEN p_unit = 'month' AND p_dom IS NOT NULL THEN ', on day ' || p_dom
+                    ELSE '' END
+        END;
+$$;
+
 -- fn_loan_monthly_interest (Audit Paket 3): die EINE Zinsformel einer Kreditrate = positive Restschuld *
 -- Jahreszins / 1200 * Monate der Raten-Periode (Default 1 = Monatszins), einmal auf Cent gerundet. Genutzt von
 -- der Cashflow-Klassifikation (finance.recurring_cashflow_classified: Zins = Konsum, Rest = Tilgung; monatlich),

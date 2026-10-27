@@ -211,6 +211,20 @@
         "notes":  "Sparziel-Zweckbindung 2026-10-27, nachgebaut aus einem Live-Befund mit erfundenen Werten: das Geld liegt schon auf dem Topf, der Nutzer will keine Rate. Vorher fragte der Agent nach einer Rate und lehnte ein P2P-Konto ab. Judge: actual_tool_input enthaelt already_saved=3000 und kein account_name."
     },
     {
+        "id":  "tc81",
+        "name":  "Depot-Sparziel ueber Sparplan (Kinder-Depot-Muster)",
+        "task":  "Neues Sparziel 'Depotaufbau 20.000': 20.000 Euro Depotbestand. Das Geld geht jeden Monat vom DKB Giro aufs Trade Republic Cash und von dort per Sparplan 'VWCE Bestandsplan' ins Trade Republic Depot. Der heutige Depotwert zaehlt als Startbestand mit.",
+        "chat_id":  "test_tc81",
+        "expected_tool":  "tool_create_savings_goal",
+        "expected_tool_args":  {
+                                   "target_amount":  20000,
+                                   "reserve_account_name":  "Trade Republic Depot",
+                                   "savings_plan_name":  "VWCE Bestandsplan"
+                               },
+        "expected_behavior":  "Liest den heutigen Marktwert des Trade Republic Depot (z. B. finance.depot_reserve_status.market_value) und ruft tool_create_savings_goal auf: goal_name='Depotaufbau 20.000', target_amount=20000, reserve_account_name='Trade Republic Depot', savings_plan_name='VWCE Bestandsplan', already_saved = dieser Marktwert. KEIN account_name, KEINE monthly_savings_rate und KEIN target_date (die DB leitet das Datum aus dem Sparplan ab). Der Agent fragt NICHT nach Datum oder Rate und loescht oder legt keinen Dauerauftrag fuer den Uebertrag aufs Cash-Konto an.",
+        "notes":  "Livebefund 2026-10-27 mit erfundenen Werten nachgebaut (Kinder-Depot: Uebertrag aufs Verrechnungskonto, Sparplan ins Depot). Vorher las der Agent den woechentlichen Plan als monatlich, loeschte den Uebertrag als Duplikat, legte eine Ziel-Rate ohne Tag an und fragte nach Datum/Rate. Judge: actual_tool_input mit Depot-Topf + savings_plan_name, ohne account_name/monthly_savings_rate."
+    },
+    {
         "id":  "tc19",
         "name":  "Kontoabgleich (Saldo-Abgleich)",
         "task":  "Gleiche mein DKB Giro ab: laut Banking-App beträgt der Saldo heute genau 1.234,56 Euro.",

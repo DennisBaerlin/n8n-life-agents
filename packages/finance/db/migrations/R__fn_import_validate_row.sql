@@ -273,8 +273,16 @@ BEGIN
         v_num := NULLIF(p->>'target_amount','')::numeric;
         IF v_num IS NULL OR v_num <= 0 THEN RETURN 'target_amount must be a positive number'; END IF;
         -- WP2: first_payment_date optional (fn_savings_rate_schedule: naechster Abbuchungstag ab heute)
-        IF (NULLIF(p->>'target_date','') IS NULL) = (NULLIF(p->>'monthly_savings_rate','') IS NULL) THEN
+        -- 2026-10-27: mit Sparplan(en) darf beides fehlen (das Datum folgt aus ihrem Monatsbetrag, fn_create_savings_goal)
+        IF NULLIF(p->>'target_date','') IS NOT NULL AND NULLIF(p->>'monthly_savings_rate','') IS NOT NULL THEN
             RETURN 'provide EXACTLY ONE of target_date or monthly_savings_rate (the DB derives the other)';
+        END IF;
+        IF NULLIF(p->>'target_date','') IS NULL AND NULLIF(p->>'monthly_savings_rate','') IS NULL
+           AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL THEN
+            RETURN 'provide target_date or monthly_savings_rate (the DB derives the other), or savings_plan';
+        END IF;
+        IF lower(COALESCE(NULLIF(p->>'replace_transfer',''), 'true')) NOT IN ('true', 'false') THEN
+            RETURN 'replace_transfer must be true or false';
         END IF;
         -- Sparziel-Zweckbindung 2026-10-27: das Abbuchungskonto ist nur fuer eine Rate noetig -> optional, wenn ein
         -- Startbestand (already_saved) das Ziel deckt oder ein Sparplan es finanziert (fn_create_savings_goal ist das Gesetz).
@@ -308,6 +316,17 @@ BEGIN
            AND COALESCE(NULLIF(p->>'already_saved','')::numeric, 0) <= 0
            AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL THEN
             RETURN format('reserve_account "%s" is a depot - give already_saved (money already there) or savings_plan (the plan that buys into it)', trim(p->>'reserve_account'));
+        END IF;
+        -- Bestehender Dauerauftrag in einen Topf aus der DB (wie fn_create_savings_goal, Livebefund 2026-10-27): vor dem
+        -- Gate als Zeilenfehler statt erst beim Commit; die Zeile braucht replace_transfer (true = fortfuehren).
+        IF NULLIF(p->>'replace_transfer','') IS NULL AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL
+           AND COALESCE(NULLIF(p->>'already_saved','')::numeric, 0) < v_num
+           AND finance.fn_import_ref_account(p_batch_id, trim(p->>'reserve_account')) = 'db'
+           AND jsonb_array_length(finance.fn_goal_transfer_candidates(
+                   (SELECT r.id FROM finance.fn_resolve_account(trim(p->>'reserve_account'), NULL, TRUE) r),
+                   CASE WHEN v_ref IS NOT NULL AND finance.fn_import_ref_account(p_batch_id, v_ref) = 'db'
+                        THEN (SELECT r.id FROM finance.fn_resolve_account(v_ref, NULL, TRUE) r) END)) > 0 THEN
+            RETURN format('a standing transfer already pays into "%s" - set replace_transfer to true (the goal continues it) or false (the goal rate comes on top)', trim(p->>'reserve_account'));
         END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_savings_goal(v_name, FALSE);
         IF v_hits > 0 THEN RETURN format('savings goal "%s" already exists', v_name); END IF;

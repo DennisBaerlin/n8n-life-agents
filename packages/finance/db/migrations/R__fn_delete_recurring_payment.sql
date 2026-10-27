@@ -6,8 +6,10 @@
 --   KORRIGIERBAR (kein RAISE -> kein Owner-Alert):
 --     - von einer Entitaet besessen -> {ok:false, reason, owner} (Verweis aufs set_/close_-Tool),
 --     - >=1 gebuchte Transaktion (recurring_payment_id) -> {ok:false, reason, transaction_count}
---       (RESTRICT; erst die Buchung(en) voiden).
---   Eingabe jsonb: recurring_payment_name. Resolve findet auch paused (p_active_only=FALSE).
+--       (RESTRICT; erst die Buchung(en) voiden),
+--     - Zubringer (2026-10-27): ein Transfer in das Verrechnungskonto eines aktiven Sparplans oder den Topf eines aktiven
+--       Sparziels -> {ok:false, code:'feeds_savings'} ausser confirm_feeds_savings=true (Nutzer bestaetigt ausdruecklich).
+--   Eingabe jsonb: recurring_payment_name, confirm_feeds_savings (opt). Resolve findet auch paused (p_active_only=FALSE).
 --   RUECKGABE: {ok:true, action:'deleted', recurring_payment_id}. RAISE nur bei not-found / mehrdeutig.
 --   finance_recurring_payment_skips gehen per ON DELETE CASCADE automatisch mit.
 -- ============================================================
@@ -19,6 +21,8 @@ DECLARE
     v_id      INT;
     v_owner   TEXT;
     v_cnt     INT;
+    v_target  INT;
+    v_feeds   TEXT;
 BEGIN
     SELECT r.id, r.hit_count, r.candidates INTO v_resolve
     FROM finance.fn_resolve_recurring_payment(v_name, FALSE) r;
@@ -41,6 +45,32 @@ BEGIN
                    || ' and cannot be deleted standalone. Change or end it via the ' || v_owner || ' tool '
                    || '(set_/close_' || v_owner || ').',
             'owner', v_owner);
+    END IF;
+
+    -- Korrigierbar (Livebefund 2026-10-27): ein Dauerauftrag, der das Verrechnungskonto eines aktiven Sparplans oder den
+    -- Topf eines aktiven Sparziels fuellt, ist KEIN Duplikat einer Ziel-Rate (der Agent loeschte ihn so). Nur mit
+    -- ausdruecklicher Bestaetigung des Nutzers (confirm_feeds_savings=true), dass es ihn nicht mehr gibt.
+    SELECT rp.target_account_id INTO v_target FROM finance.recurring_payments rp WHERE rp.id = v_id;
+    IF v_target IS NOT NULL AND lower(COALESCE(p->>'confirm_feeds_savings', '')) IS DISTINCT FROM 'true' THEN
+        SELECT string_agg(x.what, '; ') INTO v_feeds FROM (
+            SELECT 'savings plan "' || sp.name || '" (settlement account)' AS what
+              FROM finance.savings_plans sp
+              JOIN finance.recurring_payments r ON r.id = finance.fn_recurring_current(sp.recurring_payment_id, current_date)
+             WHERE sp.status = 'active' AND r.account_id = v_target
+            UNION
+            SELECT 'savings goal "' || g.name || '" (savings account)'
+              FROM finance.savings_goals g
+             WHERE g.status = 'active'
+               AND (EXISTS (SELECT 1 FROM finance.savings_goal_account_share s
+                             WHERE s.goal_id = g.id AND s.account_id = v_target AND s.share_eur <> 0)
+                    OR EXISTS (SELECT 1 FROM finance.recurring_payments gr
+                                WHERE gr.id = g.recurring_payment_id AND gr.target_account_id = v_target))) x;
+        IF v_feeds IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'feeds_savings',
+                'reason', 'This standing transfer feeds ' || v_feeds || ' - it is not a duplicate of a savings goal rate '
+                       || 'and keeps that money flowing. Do not delete it. Only if the user explicitly says the transfer '
+                       || 'itself no longer exists at the bank, call again with confirm_feeds_savings=true.');
+        END IF;
     END IF;
 
     -- Korrigierbar: gebuchte Transaktionen -> {ok:false} (RESTRICT).

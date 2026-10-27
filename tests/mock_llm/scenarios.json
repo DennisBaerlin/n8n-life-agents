@@ -360,6 +360,13 @@
     "final": "Sparziel angelegt, keine Sparrate noetig."
   },
   {
+    "match": "per Sparplan 'VWCE Bestandsplan' ins Trade Republic Depot",
+    "calls": [
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Depotaufbau 20.000", "target_amount": 20000, "reserve_account_name": "Trade Republic Depot", "savings_plan_name": "VWCE Bestandsplan", "already_saved": "1500" } }
+    ],
+    "final": "Sparziel angelegt, der Sparplan ist die Geldquelle."
+  },
+  {
     "match": "Zielbetrag 10000 Euro, bis Ende 2027",
     "calls": [
       { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "2027-12-31", "account_name": "DKB Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-07-01" } }

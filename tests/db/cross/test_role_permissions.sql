@@ -757,6 +757,28 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> depot_reserve_status + savings_goal_reserve_breakdown (Deckung + Aufschluesselung lesbar)]';
 
+  -- (4e2c) Livebefund 2026-10-27: finance_ro (postgres_select des Buchhalters/Beraters) liest die Sparplan-Uebersicht
+  -- (Rhythmus in Klartext, fn_schedule_label + fn_recurring_* in der View) und active_recurring_payments.rhythm;
+  -- finance_rw ruft fn_goal_transfer_candidates (aus fn_create/set_savings_goal unter der Tool-Rolle).
+  BEGIN
+    SET LOCAL ROLE finance_ro;
+    PERFORM rhythm, next_execution FROM finance.savings_plan_overview LIMIT 1;
+    PERFORM rhythm FROM finance.active_recurring_payments LIMIT 1;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_ro -> savings_plan_overview/rhythm]: bricht unter finance_ro -- %', SQLERRM;
+  END;
+  BEGIN
+    SET LOCAL ROLE finance_rw;
+    PERFORM finance.fn_goal_transfer_candidates(NULL, NULL);
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_rw -> fn_goal_transfer_candidates]: bricht unter finance_rw -- %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [finance_ro -> savings_plan_overview + rhythm; finance_rw -> fn_goal_transfer_candidates]';
+
   -- (4e3) WS-C2: finance_ro liest die neue account_reserve_status-View (Drill-down „welche Ziele liegen auf
   -- dem Konto?"). Gedeckt vom schema-weiten finance-GRANT (kein per-View-GRANT) -> Backstop fuer Opus-Review #3.
   BEGIN

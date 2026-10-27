@@ -397,4 +397,72 @@ BEGIN
   RAISE NOTICE 'PASS fn_set_savings_plan [Kalender-Korrektur per Nutzer-Antwort]';
 END $$;
 
+-- Livebefund 2026-10-27: "es sind aber 50 pro Woche" auf einem schon woechentlichen Plan (feste Bank-Tage) -> der
+-- Agent rief week/1 auf; die fn haette einen identischen Split angelegt. No-Change = {ok:false, code:'no_change'} mit
+-- dem gespeicherten Rhythmus + Monatsbetrag, VOR den Split-Vorbedingungen (auch ohne valid_from), kein Write.
+DO $$
+DECLARE
+  v_result JSONB; v_settle INT; v_tr INT; v_plain INT; v_rp INT; v_cnt INT;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status)
+    VALUES ('__test_ssp_nc_settle__', 'cash', 'EUR', 'active') RETURNING id INTO v_settle;
+  INSERT INTO finance.accounts (name, account_type, bank, currency, status, settlement_account_id)
+    VALUES ('__test_ssp_nc_tr__', 'stocks_depot', 'Trade Republic', 'EUR', 'active', v_settle) RETURNING id INTO v_tr;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__test_ssp_nc_plain__', 'stocks_depot', 'EUR', 'active', v_settle) RETURNING id INTO v_plain;
+  SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_ssp_nc_weekly__','depot_name','__test_ssp_nc_tr__',
+    'isin','IE00B5BMR087','symbol','CSPX','security_name','Beispiel','amount',100,'schedule_unit','week',
+    'first_payment_date','2027-01-02')) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL nc weekly: %', v_result; END IF;
+  v_rp := (v_result->>'recurring_payment_id')::int;
+  SELECT count(*) INTO v_cnt FROM finance.recurring_payments;
+
+  -- woechentlich auf woechentlich, ohne Stichtag (Livefall) -> no_change statt "Stichtag nach valid_from"
+  SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_weekly__',
+    'schedule_unit','week','schedule_interval',1)) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'code' IS DISTINCT FROM 'no_change'
+     OR (v_result->>'monthly_amount')::numeric IS DISTINCT FROM 400.00
+     OR v_result->>'rhythm' IS DISTINCT FROM 'weekly (4 times a month, on day 2, 9, 16, 23)' THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [no_change weekly]: %', v_result; END IF;
+  -- mit Stichtag und identischem Betrag ebenso
+  SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_weekly__',
+    'schedule_unit','week','new_amount',100,'valid_from','2027-03-09')) INTO v_result;
+  IF v_result->>'code' IS DISTINCT FROM 'no_change' THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [no_change weekly + amount]: %', v_result; END IF;
+  -- nur identischer Betrag
+  SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_weekly__',
+    'new_amount',100)) INTO v_result;
+  IF v_result->>'code' IS DISTINCT FROM 'no_change' THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [no_change amount]: %', v_result; END IF;
+  IF (SELECT count(*) FROM finance.recurring_payments) <> v_cnt
+     OR (SELECT recurring_payment_id FROM finance.savings_plans WHERE name = '__test_ssp_nc_weekly__') <> v_rp THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [no_change]: es wurde gesplittet'; END IF;
+  RAISE NOTICE 'PASS fn_set_savings_plan [no_change: gleicher Rhythmus/Betrag -> ok:false mit Rhythmus + Monatsbetrag, kein Split]';
+
+  -- gleicher Rhythmus + Notiz -> kein Split, Notiz gespeichert (In-place-Pfad)
+  SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_weekly__',
+    'schedule_unit','week','schedule_interval',1,'notes','Kinder-Sparplan')) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR (v_result->>'split')::boolean IS DISTINCT FROM false
+     OR (SELECT notes FROM finance.savings_plans WHERE name = '__test_ssp_nc_weekly__') IS DISTINCT FROM 'Kinder-Sparplan'
+     OR (SELECT count(*) FROM finance.recurring_payments) <> v_cnt THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [no_change + notes]: %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_set_savings_plan [gleicher Rhythmus + Notiz -> in-place, kein Split]';
+
+  -- monatlich (Einzeltag) auf monatlich -> no_change
+  SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_ssp_nc_monthly__','depot_name','__test_ssp_nc_plain__',
+    'isin','IE00B4L5Y983','symbol','IWDA','security_name','Beispiel World','amount',75,'schedule_unit','month',
+    'first_payment_date','2027-01-15')) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL nc monthly: %', v_result; END IF;
+  SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_monthly__',
+    'schedule_unit','month','schedule_interval',1,'valid_from','2027-02-15')) INTO v_result;
+  IF v_result->>'code' IS DISTINCT FROM 'no_change' OR (v_result->>'monthly_amount')::numeric IS DISTINCT FROM 75.00 THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [no_change monthly]: %', v_result; END IF;
+  -- ein anderer Betrag ist eine echte Aenderung (Split)
+  SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_monthly__',
+    'new_amount',80,'valid_from','2027-02-15')) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR (v_result->>'split')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL fn_set_savings_plan [echter Betrag]: %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_set_savings_plan [monatlich: gleicher Rhythmus no_change, anderer Betrag splittet]';
+END $$;
+
 ROLLBACK;

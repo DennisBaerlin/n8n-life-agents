@@ -1,0 +1,439 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title></title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* Mini-App „Übersicht" (docs/package-contract.md §3.12). Flaechen/Text aus Telegrams Theme (--tg-theme-*: Hell/Dunkel
+   folgt dem Nutzer), Akzente aus docs/site/static/css/site.css. Zustandsfarbe nie allein: jede Pill/jeder Banner traegt
+   ein Icon, Beschriftung immer in Textfarbe (teal/gelb sind als Schrift auf Weiss zu kontrastarm). */
+:root {
+  --bg: var(--tg-theme-secondary-bg-color, #F1F0F5);
+  --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #FFFFFF));
+  --text: var(--tg-theme-text-color, #211D1D);
+  --hint: var(--tg-theme-hint-color, #847E7E);
+  --head: var(--tg-theme-section-header-text-color, var(--tg-theme-hint-color, #847E7E));
+  --sep: var(--tg-theme-section-separator-color, #E6E6E6);
+  --active: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #6D6AF0));
+  --accent: #6D6AF0;
+  --ok: #39BEB7;
+  --warn: #FFB400;
+  --alert: var(--tg-theme-destructive-text-color, #E5484D);
+  --radius: 16px;
+  --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --safe-b: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-scheme="light"]) {
+    --bg: var(--tg-theme-secondary-bg-color, #18181B);
+    --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #232326));
+    --text: var(--tg-theme-text-color, #F4F4F5);
+    --hint: var(--tg-theme-hint-color, #A1A1AA);
+    --head: var(--tg-theme-section-header-text-color, var(--tg-theme-hint-color, #A1A1AA));
+    --sep: var(--tg-theme-section-separator-color, #2E2E33);
+    --active: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #9896FF));
+    --accent: #9896FF;
+  }
+}
+:root[data-scheme="dark"] { --accent: #9896FF; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 16px/1.4 var(--font);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  padding: 12px 16px calc(24px + var(--safe-b));
+}
+body.has-tabs { padding-bottom: calc(80px + var(--safe-b)); }
+button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--active); outline-offset: 2px; border-radius: 8px; }
+.ic { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.st-ok { --st: var(--ok); }
+.st-warn { --st: var(--warn); }
+.st-alert { --st: var(--alert); }
+.st-neutral { --st: var(--hint); }
+.bar.st-neutral { --st: var(--accent); }
+
+#app { transition: opacity .15s; }
+body.loading #app { opacity: .45; }
+#app:empty::after {
+  content: ""; display: block; width: 28px; height: 28px; margin: 38vh auto 0;
+  border: 3px solid var(--sep); border-top-color: var(--accent); border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 4px 12px; }
+
+.hero {
+  background: var(--card); border-radius: var(--radius); padding: 18px 20px 20px; margin-bottom: 12px;
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+.hero-label { color: var(--hint); font-size: 14px; }
+.hero-value {
+  font-size: clamp(30px, 9vw, 40px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15;
+  margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.hero-note { color: var(--hint); font-size: 13px; margin-top: 6px; }
+
+.banner {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 10px; width: 100%;
+  background: var(--card); border-radius: 12px; padding: 12px 14px 12px 18px; margin-bottom: 8px;
+}
+.banner::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--st); }
+.banner-tx { flex: 1; min-width: 0; }
+
+.sec { margin-top: 20px; }
+.sec-title {
+  font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--head); margin: 0 4px 8px;
+}
+.card { background: var(--card); border-radius: var(--radius); }
+.sec-empty { margin: 0; padding: 14px 16px; color: var(--hint); }
+.list { list-style: none; margin: 0; padding: 0; }
+.item { padding: 12px 16px; }
+.item + .item { border-top: 1px solid var(--sep); }
+.row { display: flex; align-items: center; gap: 12px; width: 100%; }
+button.row:active, button.banner:active { opacity: .6; }
+.left { flex: 1; min-width: 0; }
+.label { font-weight: 500; overflow-wrap: anywhere; }
+.sub { color: var(--hint); font-size: 13px; margin-top: 2px; }
+.right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; max-width: 55%; }
+.value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chev { width: 16px; height: 16px; color: var(--hint); }
+
+.pill {
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border: 1px solid var(--st); border-radius: 999px; font-size: 12.5px; font-weight: 500;
+}
+.pill::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--st); opacity: .22; }
+.pill .ic { width: 13px; height: 13px; }
+
+.bar { height: 6px; margin-top: 10px; border-radius: 999px; background: var(--bg); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: inherit; background: var(--st); }
+
+.gap { display: flex; align-items: center; gap: 4px; color: var(--hint); font-size: 12.5px; margin-top: 4px; }
+
+.center { display: flex; flex-direction: column; align-items: center; gap: 18px; margin-top: 30vh; text-align: center; }
+.big { font-size: 40px; line-height: 1; }
+.retry {
+  width: 56px; height: 56px; border-radius: 50%; font-size: 26px; line-height: 1; text-align: center;
+  background: var(--tg-theme-button-color, #6D6AF0); color: var(--tg-theme-button-text-color, #FFFFFF);
+}
+.refusal { padding: 20px; margin: 30vh 0 0; text-align: center; }
+
+#tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex;
+  background: var(--card); border-top: 1px solid var(--sep);
+  padding: 6px 4px calc(6px + var(--safe-b));
+}
+#tabs[hidden] { display: none; }
+.tab {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 4px 2px; color: var(--hint); font-size: 11px; font-weight: 500; text-align: center;
+}
+.tab[aria-current="page"] { color: var(--active); font-weight: 600; }
+.tab-ic { font-size: 20px; line-height: 1.1; }
+.tab-tx { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  #app { transition: none; }
+  #app:empty::after { animation: none; }
+}
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite"></main>
+<nav id="tabs" hidden></nav>
+<script>
+/*__UI_RENDER_LIB__*/
+</script>
+<script>
+// Mini-App-Shell: kennt kein Paket, rechnet nichts. Navigation + Bildschirme kommen als View-Modell v1 von
+// core.fn_app_screen (POST an dieselbe URL); jedes {kind:…}-Objekt rendert uiRender(ui).val(), rohe Strings
+// (Kontonamen aus Importen) gehen nur per textContent ins DOM, nie über einen HTML-Parser (XSS, contract_lint 29b). Keine sichtbaren Literale:
+// alle Texte aus ui.t, bei Netzfehler nur ⚠ + ↻. Kein Storage (opaker Origin der n8n-Sandbox).
+(() => {
+  'use strict';
+  const TG = (window.Telegram && window.Telegram.WebApp) || null;
+  const ENDPOINT = location.href.split('#')[0].split('?')[0];
+  const SVG = 'http://www.w3.org/2000/svg';
+  const STATES = ['ok', 'warn', 'alert', 'neutral'];
+  const ICONS = {
+    check: ['M5 12.5l4.5 4.5L19 7.5'],
+    alert: ['M12 3.5L2.5 20h19L12 3.5z', 'M12 10v4.5', 'M12 17.2v.1'],
+    calendar: ['M4.5 6.5h15v13h-15z', 'M4.5 10.5h15', 'M8.5 3.5v4', 'M15.5 3.5v4'],
+    clock: ['M12 3.5a8.5 8.5 0 1 0 0.01 0z', 'M12 7.5V12l3 2.5'],
+    pause: ['M9 6.5v11', 'M15 6.5v11'],
+    info: ['M12 3.5a8.5 8.5 0 1 0 0.01 0z', 'M12 11v5.5', 'M12 7.8v.1'],
+    chev: ['M9.5 6l6 6-6 6']
+  };
+  const app = document.getElementById('app');
+  const tabs = document.getElementById('tabs');
+  let navR = null;
+  let lastUi = null;
+  let current = null;
+  let stack = [];
+  let seq = 0;
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  function icon(name, cls) {
+    const paths = ICONS[name];
+    if (!paths) return null;
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', cls || 'ic');
+    paths.forEach((d) => {
+      const p = document.createElementNS(SVG, 'path');
+      p.setAttribute('d', d);
+      svg.appendChild(p);
+    });
+    return svg;
+  }
+  const stateOf = (s) => (STATES.indexOf(s) >= 0 ? s : 'neutral');
+  const txt = (R, x) => (typeof x === 'string' ? x : R.val(x));
+  const isTarget = (t) => !!(t && typeof t === 'object' && typeof t.screen === 'string' && t.screen);
+
+  function scheme() {
+    document.documentElement.setAttribute('data-scheme', (TG && TG.colorScheme) || '');
+  }
+  function busy(on) {
+    app.setAttribute('aria-busy', on ? 'true' : 'false');
+    document.body.classList.toggle('loading', !!on);
+  }
+  function setLang(ui) {
+    if (ui && typeof ui.lang === 'string') document.documentElement.lang = ui.lang;
+  }
+  function updateBack() {
+    if (!TG || !TG.BackButton) return;
+    if (stack.length) TG.BackButton.show(); else TG.BackButton.hide();
+  }
+
+  function post(body) {
+    const payload = Object.assign({ init_data: (TG && TG.initData) || '' }, body);
+    return fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      cache: 'no-store'
+    }).then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    }).then((j) => {
+      if (!j || typeof j !== 'object') throw new Error('shape');
+      return j;
+    });
+  }
+
+  function showNetError(retry) {
+    clear(app);
+    const box = el('div', 'center');
+    box.appendChild(el('div', 'big', '⚠'));
+    const b = el('button', 'retry', '↻');
+    b.type = 'button';
+    const R = lastUi ? uiRender(lastUi, {}) : null;
+    if (R && R.has('core.app.reload')) b.setAttribute('aria-label', R.t('core.app.reload'));
+    b.addEventListener('click', retry);
+    box.appendChild(b);
+    app.appendChild(box);
+  }
+
+  function showRefusal(resp) {
+    const R = uiRender(resp.ui, {});
+    if (resp.ui) lastUi = resp.ui;
+    setLang(resp.ui);
+    stack = [];
+    updateBack();
+    tabs.hidden = true;
+    document.body.classList.remove('has-tabs');
+    clear(app);
+    app.appendChild(el('p', 'card refusal', resp.text ? R.val(resp.text) : R.empty));
+  }
+
+  function start() {
+    const my = ++seq;
+    busy(true);
+    post({}).then((resp) => {
+      if (my !== seq) return;
+      busy(false);
+      if (resp.ok !== true) { showRefusal(resp); return; }
+      navR = uiRender(resp.ui, {});
+      lastUi = resp.ui || lastUi;
+      setLang(resp.ui);
+      if (navR.has('core.app.title')) document.title = navR.t('core.app.title');
+      const screens = Array.isArray(resp.screens) ? resp.screens.filter((s) => s && isTarget(s)) : [];
+      renderTabs(screens);
+      if (screens.length) { open({ screen: screens[0].screen, params: {} }, true); return; }
+      clear(app);
+      app.appendChild(el('p', 'card refusal', navR.empty));
+    }).catch(() => {
+      if (my !== seq) return;
+      busy(false);
+      showNetError(start);
+    });
+  }
+
+  function open(target, reset) {
+    if (!isTarget(target)) return;
+    if (reset) stack = [];
+    else if (current) stack.push(current);
+    current = { screen: target.screen, params: (target.params && typeof target.params === 'object') ? target.params : {} };
+    load();
+  }
+  function back() {
+    if (!stack.length) return;
+    current = stack.pop();
+    load();
+  }
+  function load() {
+    const my = ++seq;
+    busy(true);
+    updateBack();
+    markTab();
+    post({ screen: current.screen, params: current.params }).then((resp) => {
+      if (my !== seq) return;
+      busy(false);
+      if (resp.ok !== true) { showRefusal(resp); return; }
+      if (resp.ui) lastUi = resp.ui;
+      setLang(resp.ui);
+      renderView((resp.view && typeof resp.view === 'object') ? resp.view : {}, uiRender(resp.ui, {}));
+      window.scrollTo(0, 0);
+    }).catch(() => {
+      if (my !== seq) return;
+      busy(false);
+      showNetError(load);
+    });
+  }
+
+  function renderTabs(screens) {
+    clear(tabs);
+    tabs.hidden = screens.length < 2;
+    document.body.classList.toggle('has-tabs', !tabs.hidden);
+    screens.forEach((s) => {
+      const b = el('button', 'tab');
+      b.type = 'button';
+      b.dataset.screen = s.screen;
+      b.appendChild(el('span', 'tab-ic', typeof s.icon === 'string' ? s.icon : ''));
+      b.appendChild(el('span', 'tab-tx', txt(navR, s.title)));
+      b.addEventListener('click', () => {
+        if (current && current.screen === s.screen && !stack.length) return;
+        open({ screen: s.screen, params: {} }, true);
+      });
+      tabs.appendChild(b);
+    });
+  }
+  function markTab() {
+    const root = stack.length ? stack[0] : current;
+    Array.prototype.forEach.call(tabs.children, (b) => {
+      if (root && b.dataset.screen === root.screen) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
+  }
+
+  function renderView(v, R) {
+    clear(app);
+    if (v.title) app.appendChild(el('h1', 'title', txt(R, v.title)));
+    if (v.hero && typeof v.hero === 'object') app.appendChild(hero(v.hero, R));
+    (Array.isArray(v.banners) ? v.banners : []).forEach((b) => { if (b) app.appendChild(banner(b, R)); });
+    (Array.isArray(v.sections) ? v.sections : []).forEach((s) => { if (s) app.appendChild(section(s, R)); });
+  }
+  function gapNote(R) {
+    const g = el('div', 'gap');
+    g.appendChild(icon('alert'));
+    if (R.has('core.app.gap')) g.appendChild(el('span', null, R.t('core.app.gap')));
+    return g;
+  }
+  function hero(h, R) {
+    const box = el('section', 'hero');
+    if (h.label) box.appendChild(el('div', 'hero-label', txt(R, h.label)));
+    box.appendChild(el('div', 'hero-value', R.val(h.value)));
+    if (h.gap === true) box.appendChild(gapNote(R));
+    if (h.note) box.appendChild(el('div', 'hero-note', txt(R, h.note)));
+    return box;
+  }
+  function banner(b, R) {
+    const go = isTarget(b.target);
+    const box = el(go ? 'button' : 'div', 'banner st-' + stateOf(b.state));
+    if (go) { box.type = 'button'; box.addEventListener('click', () => open(b.target)); }
+    const ic = icon(b.icon);
+    if (ic) box.appendChild(ic);
+    box.appendChild(el('span', 'banner-tx', txt(R, b.text)));
+    if (go) box.appendChild(icon('chev', 'ic chev'));
+    return box;
+  }
+  function section(s, R) {
+    const box = el('section', 'sec');
+    if (s.title) box.appendChild(el('h2', 'sec-title', txt(R, s.title)));
+    const items = Array.isArray(s.items) ? s.items : [];
+    if (!items.length) {
+      box.appendChild(el('p', 'card sec-empty', s.empty ? txt(R, s.empty) : R.empty));
+      return box;
+    }
+    const list = el('ul', 'card list');
+    items.forEach((it) => { if (it) list.appendChild(item(it, R)); });
+    box.appendChild(list);
+    return box;
+  }
+  function item(it, R) {
+    const li = el('li', 'item');
+    const go = isTarget(it.target);
+    const row = el(go ? 'button' : 'div', 'row');
+    if (go) { row.type = 'button'; row.addEventListener('click', () => open(it.target)); }
+    const left = el('div', 'left');
+    left.appendChild(el('div', 'label', txt(R, it.label)));
+    if (it.sub) left.appendChild(el('div', 'sub', txt(R, it.sub)));
+    if (it.gap === true) left.appendChild(gapNote(R));
+    const right = el('div', 'right');
+    if (it.value !== null && it.value !== undefined) right.appendChild(el('div', 'value', R.val(it.value)));
+    if (it.pill && typeof it.pill === 'object') right.appendChild(pill(it.pill, R));
+    row.appendChild(left);
+    if (right.firstChild) row.appendChild(right);
+    if (go) row.appendChild(icon('chev', 'ic chev'));
+    li.appendChild(row);
+    if (it.progress && typeof it.progress === 'object') li.appendChild(bar(it.progress));
+    return li;
+  }
+  function pill(p, R) {
+    const s = el('span', 'pill st-' + stateOf(p.state));
+    const ic = icon(p.icon);
+    if (ic) s.appendChild(ic);
+    if (p.text) s.appendChild(el('span', null, txt(R, p.text)));
+    return s;
+  }
+  function bar(p) {
+    const pct = Math.max(0, Math.min(100, Number(p.pct) || 0));
+    const t = el('div', 'bar st-' + stateOf(p.state));
+    t.setAttribute('role', 'progressbar');
+    t.setAttribute('aria-valuemin', '0');
+    t.setAttribute('aria-valuemax', '100');
+    t.setAttribute('aria-valuenow', String(pct));
+    const f = el('div', 'bar-fill');
+    f.style.width = pct + '%';
+    t.appendChild(f);
+    return t;
+  }
+
+  if (TG) {
+    try { TG.ready(); TG.expand(); } catch (e) { /* aelterer Client: ohne expand weiter */ }
+    try { TG.setHeaderColor('secondary_bg_color'); TG.setBackgroundColor('secondary_bg_color'); } catch (e) { /* vor Bot API 6.9 */ }
+    if (TG.BackButton) TG.BackButton.onClick(back);
+    if (typeof TG.onEvent === 'function') TG.onEvent('themeChanged', scheme);
+  }
+  scheme();
+  start();
+})();
+</script>
+</body>
+</html>

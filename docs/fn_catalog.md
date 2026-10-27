@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 390 fn-Dateien.
+Umfang: 391 fn-Dateien.
 
 ## finance.fn_account_free_balance (READ, STABLE) — freier Saldo eines saldo-basierten Kontos
 - `finance.fn_account_free_balance(p_account int) -> numeric`
@@ -88,6 +88,11 @@ Umfang: 390 fn-Dateien.
 - `core.fn_app_refusal(p_code text, p_chat text DEFAULT NULL) -> jsonb`
 - jsonb-Keys: --
 - core.fn_app_refusal (READ) — die eine Ablehnungs-Antwort der Mini-App an die Seite (docs/package-contract.md §3.12) Feste Zuordnung Code -> Text-Key (drei Saetze genuegen der Seite): expired -> „neu oeffnen“; alles, was auf fehlende Berechtigung deutet (malformed, bad_signature, unknown, not_allowed, forbidden) -> „kein Zugriff“; alles andere (disabled, unavailable, unknown_screen, error, no_secret) -> „gerade nicht verfuegbar“. Sprache = die Person hinter p_chat (agent.fn_ui_texts_for: Person -> Owner -> en); nennt nie eine Person. p_code: Ablehnungs-Code; p_chat: Telegram-id als Text oder NULL RUECKGABE: {ok:false, code, text:{kind:'tpl',…}, ui:{lang, locale, t}} Tests: tests/db/core/test_fn_app_screen.sql
+
+## finance.fn_app_screen_overview
+- `finance.fn_app_screen_overview(p jsonb) -> jsonb`
+- jsonb-Keys: params, person_id, probe
+- finance.fn_app_screen_overview(p jsonb) — Mini-App-Bildschirm „Vermögen" (READ, View-Modell v1) Handler der Registry app_screens (docs/package-contract.md §3.12): core.fn_app_screen ruft ihn mit {person_id, params} NACH der initData-Pruefung. Liefert Struktur + typisierte Werte (core.fn_ui_tpl/_money/_date), nie Text; die Seite rendert per Get-UiRenderLibJs und rechnet nichts (Summen, Anteile, gap kommen von hier). Quellen: networth_by_asset_class (je bucket summiert, has_fx_gap) + accounts/account_balances (cash, Festgeld, P2P; Kredit- und Depot-Konten nicht, deren Wert steht in den Anlagearten bzw. im Bildschirm Kredite/Depot). ZERO-TRUST-SICHTBARKEIT: die Rolle loest der Handler selbst auf (core.fn_household_persons), nie der Aufrufer. Allow-List: owner/partner sehen den Haushalt; jede andere oder unbekannte Rolle nur owner_person_id = ich (Haushaltszeilen mit NULL bleiben fuer Kinder unsichtbar). Die Antwort traegt keine IDs. params.probe = true -> nur {ok, empty} (Navigation zeigt nur nicht-leere Bildschirme). Fehler als Daten, nie RAISE: Frei-SQL-Sitzung -> forbidden, kaputte Eingabe -> bad_request. SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC (Muster career.fn_read_job_matches); der INVOKER-Bulk- Grant an finance_ro laesst DEFINER-fns aus, EXECUTE bekommt nur finance_rw (Bulk) bzw. der Host als Eigentuemer. Tests: tests/db/finance/test_fn_app_screen_overview.sql
 
 ## core.fn_app_screen
 - `core.fn_app_screen(p text) -> jsonb`

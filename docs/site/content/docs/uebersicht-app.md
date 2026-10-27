@@ -59,7 +59,7 @@ Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein, danach jewe
 |---|---|
 | `lifeagents config set app audience household` | Alle gekoppelten Haushaltsmitglieder bekommen den Knopf (Kinder sehen nur Eigenes). |
 | `lifeagents config set app audience owner` | Nur der Owner bekommt den Knopf (Probelauf, so ist es nach der Installation eingestellt). |
-| `lifeagents config set app enabled false` | Schaltet die Übersicht ganz ab: Der Knopf verschwindet, an seiner Stelle ist wieder der Menü-Knopf mit den Befehlen. |
+| `lifeagents config set app enabled false` | Schaltet die Übersicht ganz ab. Die Übersicht ist sofort gesperrt, der Knopf verschwindet mit dem nächsten Update; an seiner Stelle ist dann wieder der Menü-Knopf mit den Befehlen. |
 | `lifeagents config set app enabled true` | Schaltet sie wieder ein. |
 
 Wird jemand neu mit dem Bot gekoppelt oder wechselt jemand die Sprache, kommt der Knopf bzw. die neue Beschriftung mit dem nächsten `lifeagents update`.

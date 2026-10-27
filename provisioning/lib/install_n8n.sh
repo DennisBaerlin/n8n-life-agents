@@ -132,7 +132,7 @@ ensure_n8n_package() {
 _n8n_install_failed() {
   local root="$1" stash old avail
   npm cache clean --force >/dev/null 2>&1 || true
-  avail="$(df -Pm / | awk 'NR==2 {print $4}')"
+  avail="$(df -Pm / 2>/dev/null | awk 'NR==2 {print $4}' || true)"   # nie fatal: der Rueckweg muss durchlaufen
   stash="$(find "$root" -maxdepth 1 -type d -name '.n8n-*' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true)"
   old=''
   [ -n "$stash" ] && old="$(sed -n 's/^  "version": "\([^"]*\)".*/\1/p' "$stash/package.json" 2>/dev/null | head -1)"

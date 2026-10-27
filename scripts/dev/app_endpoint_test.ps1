@@ -7,6 +7,7 @@
 #   (4) POST mit gueltiger initData des Owners (hier signiert mit dem Substrat-Schluessel aus core.app_secret)
 #       -> Navigation ok:true mit ui.lang + Bildschirm overview ok:true mit view;
 #   (5) Origin: null (opaker Ursprung der Sandkasten-Seite) -> CORS-Antwort-Header vorhanden;
+#   (5b) der Installer-Seed: core.app_screens == app_screens-Bloecke aller Manifeste;
 #   (6) die Repo-Adresse (Platzhalter) ist live nicht registriert (Pfad je Instanz geheim).
 # Die Adresse kommt aus dem ECHTEN Installer-Code (deploy_workflows.sh _app_path) im Container.
 # Voraussetzung: laufendes Substrat (bootstrap_test_n8n.ps1); Mock-Telegram optional (sonst entfaellt der Alert-Check).
@@ -103,6 +104,26 @@ else {
     if ($j.ok -ne $true -or $null -eq $j.view -or $j.view.ok -ne $true) { Fail "Bildschirm overview: $($j | ConvertTo-Json -Compress -Depth 6)" }
     else { Pass 'Bildschirm overview ok (View-Modell geliefert)' }
 }
+
+# (5b) Seeder: core.app_screens der installierten Instanz == app_screens-Bloecke aller Manifeste (handler_fn, ord,
+# icon; kein Rest-Eintrag) — der echte Installer-Seed (_seed_app_screens) statt eines Direkt-INSERTs.
+$RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
+$want = @{}
+foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
+    $m = [System.IO.File]::ReadAllText($mf.FullName, $Utf8NoBom) | ConvertFrom-Json
+    if (-not $m.app_screens) { continue }
+    foreach ($pr in $m.app_screens.PSObject.Properties) {
+        if ($pr.Name -eq '_comment') { continue }
+        $want[$pr.Name] = "$($pr.Value.handler_fn)|$($pr.Value.ord)|$($pr.Value.icon)"
+    }
+}
+$q = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-F', '|', '-c', 'SELECT screen, handler_fn, ord, icon FROM core.app_screens ORDER BY screen;')
+$have = @{}
+foreach ($line in @($q.Output)) { $f = "$line".Trim() -split '\|'; if ($f.Count -eq 4) { $have[$f[0]] = "$($f[1])|$($f[2])|$($f[3])" } }
+$diff = @(@($want.Keys) + @($have.Keys) | Sort-Object -Unique | Where-Object { $want[$_] -ne $have[$_] })
+if ($want.Count -eq 0) { Fail 'kein app_screens-Block in den Manifesten gefunden' }
+elseif ($diff.Count) { Fail "core.app_screens weicht von den Manifesten ab: $($diff | ForEach-Object { "$_ (Manifest '$($want[$_])', DB '$($have[$_])')" })" }
+else { Pass "Seeder: core.app_screens == Manifeste ($($want.Count) Bildschirm(e))" }
 
 # (6) Repo-Platzhalter ist live keine Adresse
 $p = $null

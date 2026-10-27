@@ -105,13 +105,52 @@ ensure_n8n_package() {
     fi
     return
   fi
+  local root; root="$(npm root -g)"
+  # Ein Cache-Rest aus einem frueher abgebrochenen Lauf belegt sonst schon ~1 GB, bevor npm neu laedt.
+  npm cache clean --force >/dev/null 2>&1 || true
   log "n8n@${N8N_VERSION} global via npm installieren (dauert einige Minuten) ..."
-  npm install -g --no-audit --no-fund "n8n@${N8N_VERSION}"
+  if ! npm install -g --no-audit --no-fund "n8n@${N8N_VERSION}"; then
+    _n8n_install_failed "$root"
+  fi
   # npm-Download-Cache (~1 GB unter ~/.npm) wird danach nicht mehr gebraucht -> Platz zurueckgeben
   # (npm-Doku: `cache clean` ist genau fuer "reclaiming disk space"). Nie fatal.
   npm cache clean --force >/dev/null 2>&1 || true
+  # npm legt das alte Paket waehrend des Tauschs als <root>/.n8n-XXXX beiseite und raeumt es nach Erfolg weg; ein Rest
+  # aus einem frueher abgebrochenen Lauf (Live 2026-10-27: 2,7 GB) bleibt sonst liegen. Erst NACH dem Erfolg loeschen —
+  # vorher ist er der Rueckweg (_n8n_install_failed).
+  rm -rf "$root"/.n8n-* 2>/dev/null || true
   local got; got="$(n8n --version 2>/dev/null || true)"
   [ "$got" = "$N8N_VERSION" ] || warn "n8n-Version weicht ab: '${got}' (erwartet ${N8N_VERSION})."
+}
+
+# _n8n_install_failed <npm-root> — npm install gescheitert (Live 2026-10-27: Platte voll beim Wechsel 2.44.4 -> 2.45.4).
+#   npm hatte das alte Paket als <root>/.n8n-XXXX beiseitegelegt und nicht zurueckgeholt -> n8n war halb ersetzt und
+#   der Bot blieb aus. Liegt dort eine vollstaendige alte Kopie (package.json mit Version) und wechselte Node in
+#   diesem Lauf nicht (sonst passt sie nicht zur neuen Node-ABI): zuruecklegen, Merkzettel weg (an den Daten wurde
+#   noch nichts getauscht, upgrade_finish laeuft erst spaeter), n8n in der alten Version wieder starten, dann
+#   abbrechen. Sonst nur abbrechen (Rueckweg-Hinweis). Platz knapp -> Grund 'disk' fuer die Chat-Meldung.
+_n8n_install_failed() {
+  local root="$1" stash old avail
+  npm cache clean --force >/dev/null 2>&1 || true
+  avail="$(df -Pm / | awk 'NR==2 {print $4}')"
+  stash="$(find "$root" -maxdepth 1 -type d -name '.n8n-*' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true)"
+  old=''
+  [ -n "$stash" ] && old="$(sed -n 's/^  "version": "\([^"]*\)".*/\1/p' "$stash/package.json" 2>/dev/null | head -1)"
+  local switched=0
+  [ "${NODE_SWITCHED:-0}" = 1 ] && switched=1
+  if declare -F upgrade_node_switched >/dev/null && upgrade_node_switched; then switched=1; fi
+  if [ -n "$old" ] && [ "$switched" = 0 ]; then
+    rm -rf "${root:?}/n8n" && mv "$stash" "$root/n8n"
+    rm -f "${UPGRADE_MARKER:-}" 2>/dev/null || true
+    systemctl start n8n >/dev/null 2>&1 || true
+    [ -n "$avail" ] && [ "$avail" -lt "$((${PREFLIGHT_NPM_CACHE_MB:-1300} + 500))" ] \
+      && die_because disk "n8n ${N8N_VERSION} ließ sich nicht installieren (Platte voll: ${avail} MB frei) — n8n ${old} wurde zurückgelegt und läuft weiter, an deinen Daten wurde nichts geändert. Platz schaffen (Container-Laufwerk vergrößern) und 'lifeagents update' erneut starten."
+    die "n8n ${N8N_VERSION} ließ sich nicht installieren — n8n ${old} wurde zurückgelegt und läuft weiter, an deinen Daten wurde nichts geändert. Protokoll prüfen und 'lifeagents update' erneut starten."
+  fi
+  if declare -F upgrade_rollback_hint >/dev/null; then upgrade_rollback_hint; fi
+  [ -n "$avail" ] && [ "$avail" -lt "$((${PREFLIGHT_NPM_CACHE_MB:-1300} + 500))" ] \
+    && die_because disk "n8n ${N8N_VERSION} ließ sich nicht installieren (Platte voll: ${avail} MB frei). Platz schaffen und 'lifeagents update' erneut starten."
+  die "n8n ${N8N_VERSION} ließ sich nicht installieren — Protokoll prüfen und 'lifeagents update' erneut starten."
 }
 
 # --- systemd unit + boot/health ----------------------------------------------

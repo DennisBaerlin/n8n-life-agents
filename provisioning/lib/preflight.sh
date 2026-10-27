@@ -6,17 +6,35 @@
 # war). Reserve fuer Schema/Workflows/Logs + n8n (node_modules + npm-Peak), falls die Zielversion fehlt,
 # + PostgreSQL, falls das Paket fehlt. Ein n8n-Versionssprung verlangt bewusst wieder den vollen Bedarf
 # (genau dann laedt npm neu). Ein explizites PREFLIGHT_MIN_DISK_MB (Env) gewinnt als harte Vorgabe.
+# n8n-Bedarf (Live-Befund 2026-10-27, Update 2.44.4 -> 2.45.4 lief bei 3,0 GB frei voll): das neue Paket belegt so viel
+# wie das installierte (2.45: 2,7 GB) PLUS den npm-Download-Cache (~1,1 GB) — das alte Paket liegt waehrend des Tauschs
+# als .n8n-XXXX daneben, steckt aber schon im belegten Platz. Daher: max(Pauschale, Groesse des installierten Pakets
+# + 10 %) + Cache. Der Preflight laeuft VOR upgrade_prepare -> zu wenig Platz bricht ab, solange n8n noch laeuft.
 PREFLIGHT_MIN_DISK_MB="${PREFLIGHT_MIN_DISK_MB:-}"
 PREFLIGHT_RESERVE_MB=500
-PREFLIGHT_N8N_MB=2300
+PREFLIGHT_N8N_MB=2900
+PREFLIGHT_NPM_CACHE_MB=1300
 PREFLIGHT_PG_MB=200
+
+# _preflight_n8n_mb -> MB fuer ein (neues) n8n-Paket: Pauschale, oder das installierte Paket + 10 %, wenn groesser.
+_preflight_n8n_mb() {
+  local cur=''
+  if need_cmd npm && [ -d "$(npm root -g 2>/dev/null)/n8n" ]; then
+    cur="$(du -sm "$(npm root -g)/n8n" 2>/dev/null | cut -f1)"
+  fi
+  if [ -n "$cur" ] && [ "$((cur * 11 / 10))" -gt "$PREFLIGHT_N8N_MB" ]; then
+    printf '%s' "$((cur * 11 / 10))"
+  else
+    printf '%s' "$PREFLIGHT_N8N_MB"
+  fi
+}
 
 # _preflight_disk_need -> benoetigte MB auf STDOUT (siehe oben).
 _preflight_disk_need() {
   if [ -n "$PREFLIGHT_MIN_DISK_MB" ]; then printf '%s' "$PREFLIGHT_MIN_DISK_MB"; return 0; fi
   local need="$PREFLIGHT_RESERVE_MB"
   if ! { need_cmd n8n && [ "$(_upg_n8n_version)" = "${N8N_VERSION:-}" ]; }; then
-    need=$((need + PREFLIGHT_N8N_MB))
+    need=$((need + $(_preflight_n8n_mb) + PREFLIGHT_NPM_CACHE_MB))
   fi
   # Jeder Versionswechsel (n8n, Node ODER PG-Minor) auf einer Bestands-Instanz: upgrade_guard.sh legt vorher eine
   # Sicherung der ganzen DB an. Obergrenze = DB-Groesse (der komprimierte Dump ist kleiner); die schon liegenden

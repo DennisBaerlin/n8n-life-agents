@@ -88,6 +88,9 @@ if ($push.Success) {
   $allTags = [bool]($pArgs | Where-Object { $_ -match '^--(tags|follow-tags|all|mirror)$' })
   $remote = if ($pos.Count -ge 1) { $pos[0] } else { 'origin' }
   $specs = if ($pos.Count -ge 2) { @($pos[1..($pos.Count - 1)]) } else { @('HEAD') }
+  # 'git push origin --delete <ref>' (bzw. -d) loescht nur, veroeffentlicht nichts -- wie ':ziel' unten (sonst galt
+  # der Ref-Name als zu pruefender Refspec -> "nicht aufloesbar" -> deny; gestolpert 2026-10-27).
+  if ($pArgs | Where-Object { $_ -match '^(--delete|-d)$' }) { $specs = @() }
   $fails = @()
   try {
     foreach ($spec in $specs) {

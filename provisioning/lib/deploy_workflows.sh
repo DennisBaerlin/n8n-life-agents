@@ -811,16 +811,16 @@ _set_bot_command_menus() {
   else
     note "Telegram-Owner-Menue noch nicht gesetzt (Owner noch nicht verbunden) — das Pairing setzt es danach automatisch."
   fi
-  # Mini-App „Übersicht“ (docs/package-contract.md §3.12): Pruef-Schluessel + Menue-Knoepfe haengen an denselben
-  # Aufrufern (Install, Update, Pairing, Paket-Statuswechsel) wie das Befehlsmenue.
-  _ensure_app_secret "$token"
+  # Mini-App „Übersicht“ (docs/package-contract.md §3.12): die Menue-Knoepfe haengen an denselben Aufrufern (Install,
+  # Update, Pairing, Paket-Statuswechsel) wie das Befehlsmenue. Den Pruef-Schluessel setzt _wire_telegram eigenstaendig.
   _set_bot_menu_buttons "$token"
 }
 
 # _ensure_app_secret <bot-token> — Pruef-Schluessel der Mini-App = HMAC_SHA256(key="WebAppData", msg=Bot-Token)
-#   (core.telegram.org/bots/webapps) nach core.app_secret (ACL wie core.backup_key). Bei JEDEM Lauf neu abgeleitet ->
-#   ein Token-Wechsel greift sofort; geschrieben nur bei Aenderung. Token nur per stdin an openssl (printf = Builtin),
-#   der Schluessel nur per stdin an psql — nie im argv. Best-effort: Fehler -> warn (die App lehnt dann mit no_secret ab).
+#   (core.telegram.org/bots/webapps) nach core.app_secret (ACL wie core.backup_key). Bei JEDEM Install/Update neu
+#   abgeleitet (bootstrap_owner._wire_telegram, eigener Schritt, nicht am Menue haengend) -> ein Token-Wechsel greift
+#   sofort; geschrieben nur bei Aenderung. Token nur per stdin an openssl (printf = Builtin), der Schluessel nur per stdin
+#   an psql — nie im argv. Best-effort: Fehler -> warn (die App lehnt dann mit no_secret/bad_signature ab).
 _ensure_app_secret() {
   local token="$1" key
   need_cmd openssl || { warn "openssl fehlt -> Schlüssel der Übersicht nicht gesetzt."; return 0; }
@@ -837,38 +837,46 @@ WHERE core.app_secret.webapp_key IS DISTINCT FROM EXCLUDED.webapp_key;\n" "$key"
   key=''
 }
 
+# _tg_set_menu_button <bot-token> <body-json> — EIN setChatMenuButton. Der Body traegt die je Instanz geheime App-Adresse
+#   -> URL UND Body nur ueber die curl-Config auf stdin (curl_cfg/curl_secret), nie im argv (/proc/<pid>/cmdline).
+_tg_set_menu_button() {
+  { curl_cfg url "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}/bot$1/setChatMenuButton"; curl_cfg data "$2"; } |
+    curl_secret -fsS --max-time 10 -X POST -H 'content-type: application/json' >/dev/null 2>&1
+}
+
 # _set_bot_menu_buttons <bot-token> — der dauerhafte Knopf „📊 Übersicht“ links neben dem Eingabefeld
 #   (setChatMenuButton mit chat_id, Typ web_app; Text = core.app.menu_button in der Sprache der Person). NUR pro Chat
 #   fuer berechtigte Personen (app.enabled, app.audience owner|household, mind. ein Bildschirm eines aktiven Pakets),
-#   nie als Standard-Knopf: der waere fuer jeden Fremden sichtbar. Alle anderen bekannten Chats und alle Chats, die
-#   einmal einen Knopf bekamen und jetzt nicht mehr berechtigt bzw. nicht mehr im Haushalt sind (Merkliste
-#   $LIFEAGENTS_DIR/app-menu-chats), bekommen das Befehlsmenue zurueck. URL = WEBHOOK_URL + webhook/<_app_path>, nur
-#   https (Telegram verlangt es). Best-effort, nie fatal.
+#   nie als Standard-Knopf: der waere fuer jeden Fremden sichtbar. Alle anderen bekannten Chats und alle Chats aus der
+#   Merkliste $LIFEAGENTS_DIR/app-menu-chats, die nicht mehr im Haushalt sind, bekommen das Befehlsmenue zurueck; ein
+#   gescheitertes Zuruecksetzen bleibt auf der Merkliste (naechstes Update versucht es erneut). URL = WEBHOOK_URL +
+#   webhook/<_app_path>, nur https (Telegram verlangt es). Spalten mit '|' getrennt (Tab ist IFS-Leerraum: leere Felder
+#   wuerden verschmelzen). Best-effort, nie fatal.
 _set_bot_menu_buttons() {
   local token="$1" wh path url enabled audience screens rows tid role lang text tj uj body kind ok_n=0 reset_n=0
-  local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc
+  local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc keep=' ' seen=' '
   need_cmd jq || return 0
   wh="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"
   path="$(_app_path)"
   url=''
   case "$wh" in https://*) [ -n "$path" ] && url="${wh%/}/webhook/${path}" ;; esac
-  # Ein psql-Aufruf liefert Schalter + Personen (tid \t role \t lang); DB nicht lesbar -> nichts aendern.
-  rows="$(runuser -u "$DB_SUPERUSER" -- psql -X -tA -F $'\t' -d "$N8N_DB_NAME" -c "
+  # Ein psql-Aufruf liefert Schalter + Personen (tid|role|lang); DB nicht lesbar -> nichts aendern.
+  rows="$(runuser -u "$DB_SUPERUSER" -- psql -X -tA -F '|' -d "$N8N_DB_NAME" -c "
     SELECT 'cfg', COALESCE(core.fn_config_get('core','app','enabled'), ''), COALESCE(core.fn_config_get('core','app','audience'), ''),
            (SELECT count(*) FROM core.app_screens s WHERE core.fn_package_active(s.package))::text
     UNION ALL
-    SELECT p->>'telegram_user_id', COALESCE(p->>'role', ''), COALESCE(agent.fn_person_lang(p->>'person_id')->>'lang', 'en'), ''
+    SELECT p->>'telegram_user_id', regexp_replace(COALESCE(p->>'role', ''), '[^a-z_]', '', 'g'),
+           COALESCE(agent.fn_person_lang(p->>'person_id')->>'lang', 'en'), ''
       FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) p
      WHERE c.name = 'family' AND COALESCE(p->>'telegram_user_id', '') ~ '^[0-9]{1,18}\$'" 2>/dev/null)" || { warn "Übersicht-Knopf: DB nicht lesbar — Knöpfe unverändert."; return 0; }
-  enabled="$(printf '%s\n' "$rows" | awk -F'\t' '$1=="cfg"{print $2}')"
-  audience="$(printf '%s\n' "$rows" | awk -F'\t' '$1=="cfg"{print $3}')"
-  screens="$(printf '%s\n' "$rows" | awk -F'\t' '$1=="cfg"{print $4}')"
+  enabled="$(printf '%s\n' "$rows" | awk -F'|' '$1=="cfg"{print $2}')"
+  audience="$(printf '%s\n' "$rows" | awk -F'|' '$1=="cfg"{print $3}')"
+  screens="$(printf '%s\n' "$rows" | awk -F'|' '$1=="cfg"{print $4}')"
   case "$screens" in ''|*[!0-9]*) screens=0 ;; esac
   [ -n "$url" ] || [ "$enabled" != true ] || [ "$screens" -eq 0 ] || note "Übersicht-Knopf: keine https-WEBHOOK_URL bzw. kein INGRESS_ID_KEY — nur Befehlsmenüs."
   uj="$(jq -Rn --arg u "$url" '$u')"
   core_loc="$REPO_ROOT/packages/core/locales"
-  local seen=' '
-  while IFS=$'\t' read -r tid role lang _; do
+  while IFS='|' read -r tid role lang _; do
     [ "$tid" = cfg ] && continue
     printf '%s' "$tid" | grep -qE '^[0-9]{1,18}$' || continue
     seen="${seen}${tid} "
@@ -886,7 +894,7 @@ _set_bot_menu_buttons() {
     else
       body="{\"chat_id\":${tid},\"menu_button\":{\"type\":\"commands\"}}"
     fi
-    if tg_api_curl "$token" setChatMenuButton -fsS --max-time 10 -X POST -H 'content-type: application/json' --data "$body" >/dev/null 2>&1; then
+    if _tg_set_menu_button "$token" "$body"; then
       if [ "$kind" = web_app ]; then ok_n=$((ok_n + 1)); else reset_n=$((reset_n + 1)); fi
     else
       warn "Übersicht-Knopf für einen Chat nicht gesetzt (Token/Netz/Chat?) — unkritisch, das nächste Update versucht es erneut."
@@ -894,18 +902,22 @@ _set_bot_menu_buttons() {
   done <<EOF
 $rows
 EOF
-  # Chats, die frueher einen Knopf bekamen, aber nicht mehr im Haushalt sind -> Befehlsmenue zurueck.
+  # Chats von der Merkliste, die nicht mehr im Haushalt sind -> Befehlsmenue zurueck; gescheitert -> bleibt gemerkt.
   if [ -r "$state" ]; then
     while IFS= read -r tid; do
       printf '%s' "$tid" | grep -qE '^[0-9]{1,18}$' || continue
       case "$seen" in *" $tid "*) continue ;; esac
-      tg_api_curl "$token" setChatMenuButton -fsS --max-time 10 -X POST -H 'content-type: application/json' \
-        --data "{\"chat_id\":${tid},\"menu_button\":{\"type\":\"commands\"}}" >/dev/null 2>&1 && reset_n=$((reset_n + 1))
+      if _tg_set_menu_button "$token" "{\"chat_id\":${tid},\"menu_button\":{\"type\":\"commands\"}}"; then
+        reset_n=$((reset_n + 1))
+      else
+        keep="${keep}${tid} "
+        warn "Befehlsmenü für einen früheren Chat nicht zurückgesetzt — das nächste Update versucht es erneut."
+      fi
     done < "$state"
   fi
   if [ -d "$(dirname "$state")" ]; then
-    # shellcheck disable=SC2086  # $seen ist eine Leerzeichen-Liste numerisch geprüfter ids -> bewusst aufgeteilt
-    { printf '%s\n' $seen > "$state" && chmod 0600 "$state"; } 2>/dev/null || true
+    # shellcheck disable=SC2086  # numerisch geprüfte ids, Leerzeichen-Liste -> bewusst aufgeteilt
+    { printf '%s\n' $seen $keep > "$state" && chmod 0600 "$state"; } 2>/dev/null || true
   fi
   ok "Übersicht-Knopf: ${ok_n} Chat(s) mit Knopf, ${reset_n} mit Befehlsmenü."
 }

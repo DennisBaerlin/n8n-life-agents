@@ -736,7 +736,8 @@ page computes nothing — states, progress and sums come from the DB.
   `state` always comes with an `icon` (colour is never the only signal). `gap: true` = an FX rate or price is
   missing in that sum (`has_fx_gap`), the page marks the value as incomplete.
 - **Page responses** of `core.fn_app_screen` (POST body `{init_data, screen?, params?}`):
-  navigation `{ok:true, ui, screens:[{screen, title:<tpl>, icon}]}`, screen `{ok:true, ui, view}`, refusal
+  navigation `{ok:true, ui, screens:[{screen, title:<tpl>, icon}], first?:{screen, view}}` (the first screen rides along,
+  one request on open), screen `{ok:true, ui, view}`, refusal
   `{ok:false, code, ui, text:<tpl>}` — `ui` = `agent.fn_ui_texts_for` (`{lang, locale, t}`) for the viewer, with
   every key of the response plus the shell keys (`core.app.*`, `core.fmt.*`).
 

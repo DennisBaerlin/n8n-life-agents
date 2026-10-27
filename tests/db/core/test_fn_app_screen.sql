@@ -83,7 +83,11 @@ BEGIN
   IF (r->'screens') @> '[{"screen":"other"}]' THEN RAISE EXCEPTION 'FAIL [1] Bildschirm eines inaktiven Pakets sichtbar: %', r; END IF;
   IF r->'screens'->0->'title'->>'value' IS DISTINCT FROM 'core.app.screen.tst' THEN RAISE EXCEPTION 'FAIL [1] Titel-Key <pkg>.app.screen.<screen>: %', r; END IF;
   IF r->'ui'->>'lang' IS DISTINCT FROM 'de' OR r->'ui'->>'locale' IS NULL THEN RAISE EXCEPTION 'FAIL [1] ui lang/locale: %', r; END IF;
-  RAISE NOTICE 'PASS [1] Navigation Owner';
+  IF r->'first'->>'screen' IS DISTINCT FROM 'tst' OR r->'first'->'view'->'sections'->0->'items'->0->>'label' IS DISTINCT FROM 'owner' THEN
+    RAISE EXCEPTION 'FAIL [1] erster Bildschirm nicht mitgeliefert: %', r; END IF;
+  IF r->'first'->'view'->'hero' IS NULL OR jsonb_typeof(r->'first'->'view'->'hero') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [1] null-Felder im View muessen erhalten bleiben (kein strip_nulls): %', r; END IF;
+  RAISE NOTICE 'PASS [1] Navigation Owner + erster Bildschirm mitgeliefert';
 
   -- [2] Bildschirm als Owner: Handler bekommt die AUFGELOESTE Person, eine person_id im Body zaehlt nicht
   r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111), 'screen', 'tst', 'person_id', 'kid')::text);
@@ -103,6 +107,7 @@ BEGIN
   r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(333))::text);
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [4] Kind-Navigation: %', r; END IF;
   IF (r->'screens') @> '[{"screen":"tst"}]' THEN RAISE EXCEPTION 'FAIL [4] leerer Bildschirm in der Kind-Navigation: %', r; END IF;
+  IF r ? 'first' THEN RAISE EXCEPTION 'FAIL [4] erster Bildschirm ohne Navigation: %', r; END IF;
   RAISE NOTICE 'PASS [4] audience=household, leere Bildschirme ausgeblendet';
 
   -- [5] unbekannte Person (gueltige Signatur) -> unknown

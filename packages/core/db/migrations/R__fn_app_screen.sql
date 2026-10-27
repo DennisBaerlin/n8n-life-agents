@@ -14,7 +14,8 @@
 --   INVOKER unter der Host-Credential (Muster core.fn_dispatch_callback); handler_fn ist installer-geschrieben und per
 --   CHECK schema-qualifiziert, nie Caller-Input.
 --   p: Request-Body als Text
---   RUECKGABE: {ok:true, ui, screens:[{screen, title, icon}]} | {ok:true, ui, view} | core.fn_app_refusal(...)
+--   RUECKGABE: {ok:true, ui, screens:[{screen, title, icon}], first?:{screen, view}} | {ok:true, ui, view} |
+--              core.fn_app_refusal(...); jede unerwartete Ausnahme -> core.fn_app_refusal('error') (Notnetz).
 --   Tests: tests/db/core/test_fn_app_screen.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_app_screen(p text)
@@ -34,10 +35,12 @@ DECLARE
     v_res    jsonb;
     v_probe  jsonb;
     v_nav    jsonb := '[]'::jsonb;
+    v_first  jsonb;
     v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing',
                                      'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes',
                                      'core.fmt.no', 'core.fmt.removed']);
 BEGIN
+  BEGIN  -- Notnetz am Ende: der Eingang wirft NIE (Internet-Muell darf keinen Owner-Alert ausloesen)
     IF core.fn_is_free_sql_session() THEN
         RETURN core.fn_app_refusal('forbidden');
     END IF;
@@ -87,8 +90,24 @@ BEGIN
                 'title',  core.fn_ui_tpl(v_reg.package || '.app.screen.' || v_reg.screen),
                 'icon',   v_reg.icon));
         END LOOP;
-        RETURN jsonb_build_object('ok', true, 'screens', v_nav,
-            'ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell, 'doc', v_nav)));
+        -- Der erste Bildschirm kommt gleich mit (eine Anfrage beim Oeffnen statt zwei); scheitert er, laedt die Seite
+        -- ihn wie jeden anderen nach.
+        IF jsonb_array_length(v_nav) > 0 THEN
+            SELECT s.handler_fn INTO v_reg FROM core.app_screens s WHERE s.screen = v_nav->0->>'screen';
+            BEGIN
+                EXECUTE format('SELECT %s($1)', v_reg.handler_fn) INTO v_res
+                  USING jsonb_build_object('person_id', v_pid, 'params', '{}'::jsonb);
+                IF jsonb_typeof(v_res) = 'object' AND (v_res->>'ok') = 'true' THEN
+                    v_first := jsonb_build_object('screen', v_nav->0->>'screen', 'view', v_res);
+                END IF;
+            EXCEPTION WHEN OTHERS THEN
+                v_first := NULL;
+            END;
+        END IF;
+        RETURN jsonb_build_object('ok', true, 'screens', v_nav)
+            || CASE WHEN v_first IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('first', v_first) END
+            || jsonb_build_object('ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell,
+                                                                                  'doc', jsonb_build_array(v_nav, v_first))));
     END IF;
 
     SELECT s.screen, s.package, s.handler_fn INTO v_reg FROM core.app_screens s WHERE s.screen = v_screen;
@@ -113,6 +132,13 @@ BEGIN
     END IF;
     RETURN jsonb_build_object('ok', true, 'view', v_res,
         'ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell, 'doc', v_res)));
+  EXCEPTION WHEN OTHERS THEN
+    BEGIN
+        RETURN core.fn_app_refusal('error', v_chat);
+    EXCEPTION WHEN OTHERS THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'error');
+    END;
+  END;
 END;
 $$;
 

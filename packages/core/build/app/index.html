@@ -268,14 +268,28 @@ button.row:active, button.banner:active { opacity: .6; }
     post({}).then((resp) => {
       if (my !== seq) return;
       busy(false);
-      if (resp.ok !== true) { showRefusal(resp); return; }
+      // Ablehnung ohne Text (DB-Ausfall: der Workflow antwortet nur {ok:false, code:'error'}) -> wie ein Netzfehler mit Neu-laden.
+      if (resp.ok !== true) { if (resp.text) showRefusal(resp); else showNetError(start); return; }
       navR = uiRender(resp.ui, {});
       lastUi = resp.ui || lastUi;
       setLang(resp.ui);
       if (navR.has('core.app.title')) document.title = navR.t('core.app.title');
       const screens = Array.isArray(resp.screens) ? resp.screens.filter((s) => s && isTarget(s)) : [];
       renderTabs(screens);
-      if (screens.length) { open({ screen: screens[0].screen, params: {} }, true); return; }
+      if (screens.length) {
+        // Der erste Bildschirm kommt mit der Navigation mit (eine Anfrage beim Oeffnen); fehlt er, wie gewohnt nachladen.
+        const f = resp.first;
+        if (f && f.screen === screens[0].screen && f.view && typeof f.view === 'object') {
+          stack = [];
+          current = { screen: f.screen, params: {} };
+          updateBack();
+          markTab();
+          renderView(f.view, navR);
+          return;
+        }
+        open({ screen: screens[0].screen, params: {} }, true);
+        return;
+      }
       clear(app);
       app.appendChild(el('p', 'card refusal', navR.has('core.app.nothing') ? navR.t('core.app.nothing') : navR.empty));
     }).catch(() => {
@@ -305,7 +319,7 @@ button.row:active, button.banner:active { opacity: .6; }
     post({ screen: current.screen, params: current.params }).then((resp) => {
       if (my !== seq) return;
       busy(false);
-      if (resp.ok !== true) { showRefusal(resp); return; }
+      if (resp.ok !== true) { if (resp.text) showRefusal(resp); else showNetError(load); return; }
       if (resp.ui) lastUi = resp.ui;
       setLang(resp.ui);
       renderView((resp.view && typeof resp.view === 'object') ? resp.view : {}, uiRender(resp.ui, {}));

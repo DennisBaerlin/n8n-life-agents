@@ -278,6 +278,9 @@ _wire_telegram() {
   need_cmd curl || { warn "curl fehlt -> Telegram-Schritt uebersprungen."; return 0; }
   # Token steckt in der Bot-API-URL -> nur ueber tg_api_curl (Config-Kanal), nie im argv.
 
+  # Pruef-Schluessel der Mini-App „Übersicht“ aus dem Token (eigener Schritt: haengt nicht an den Menue-Guards).
+  _ensure_app_secret "$TELEGRAM_BOT_TOKEN"
+
   # BotFather-Menue rollen-getrennt aus der EINEN Befehls-SoT (Owner /help+/onboarding via {type:chat},
   # Default /help via {type:default}); je Scope sofort per getMyCommands verifiziert.
   _set_bot_command_menus "$TELEGRAM_BOT_TOKEN"

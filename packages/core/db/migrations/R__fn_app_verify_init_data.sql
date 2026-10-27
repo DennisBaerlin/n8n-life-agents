@@ -74,7 +74,10 @@ BEGIN
       INTO v_dcs
       FROM unnest(v_keys, v_vals) AS u(k, v)
      WHERE u.k <> 'hash';
-    IF encode(public.hmac(convert_to(v_dcs, 'UTF8'), v_key, 'sha256'), 'hex') IS DISTINCT FROM v_hash THEN
+    -- Vergleich ohne Zeit-Seitenkanal: beide Seiten noch einmal mit dem Schluessel hashen (Double-HMAC), dann
+    -- haengt die Vergleichsdauer nicht am Praefix des angreifer-gewaehlten hash.
+    IF public.hmac(public.hmac(convert_to(v_dcs, 'UTF8'), v_key, 'sha256'), v_key, 'sha256')
+       IS DISTINCT FROM public.hmac(decode(v_hash, 'hex'), v_key, 'sha256') THEN
         RETURN jsonb_build_object('ok', false, 'code', 'bad_signature');
     END IF;
 

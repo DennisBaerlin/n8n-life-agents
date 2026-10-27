@@ -81,8 +81,8 @@ $j = Get-Json $r
 if ($j.ok -ne $false -or $j.code -ne 'malformed') { Fail "Muell-Body: $($j | ConvertTo-Json -Compress -Depth 5)" } else { Pass 'Muell-Body -> malformed' }
 
 # (3) Faelschung
-$owner = 880055071
-Set-OwnerTelegramPairing -Container $Container -Uid $owner
+$owner = $script:TestOwnerTelegramUid
+Set-OwnerTelegramPairing -Container $Container
 if (-not $keyHex) { Fail 'core.app_secret leer — der Deploy hat den Schluessel nicht gesetzt (_ensure_app_secret)' }
 else {
     $r = Invoke-App POST (@{ init_data = (New-InitData $owner -Forge) } | ConvertTo-Json -Compress)

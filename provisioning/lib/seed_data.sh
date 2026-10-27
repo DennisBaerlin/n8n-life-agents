@@ -705,7 +705,7 @@ _seed_app_screens() {
       else
         case "$fn" in "$pkg".*) : ;; *) warn "app_screen '$screen' -> '$fn' zeigt nicht ins Paket-Schema '$pkg' — uebersprungen (Boundary)."; continue ;; esac
       fi
-      case "$ord" in ''|*[!0-9]*) ord=100 ;; esac
+      printf '%s' "$ord" | grep -qE '^-?[0-9]{1,9}$' || { warn "app_screen '$screen' ($pkg): ord '$ord' ist keine ganze Zahl -> 100."; ord=100; }
       printf 'INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon)\n'
       printf 'VALUES (%s, %s, %s, %s, %s)\n' "$(_sql_str "$screen")" "$(_sql_str "$pkg")" "$(_sql_str "$fn")" "$ord" "$(_sql_str "$icon")"
       printf 'ON CONFLICT (screen) DO UPDATE SET package=EXCLUDED.package, handler_fn=EXCLUDED.handler_fn, ord=EXCLUDED.ord, icon=EXCLUDED.icon, updated_at=now();\n'

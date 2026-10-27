@@ -336,7 +336,8 @@ main() {
     _app="$(_app_path)"
     if [ -z "$_whurl" ] || [ -z "$_app" ]; then _skip "Übersicht-Check (keine WEBHOOK_URL bzw. kein INGRESS_ID_KEY)"
     else
-      _app_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${_whurl%/}/webhook/${_app}" 2>/dev/null || true)"
+      # Adresse je Instanz geheim -> nur ueber die curl-Config auf stdin, nie im argv (provisioning/CLAUDE.md).
+      _app_code="$(curl_cfg url "${_whurl%/}/webhook/${_app}" | curl_secret -sS -o /dev/null -w '%{http_code}' --max-time 10 2>/dev/null || true)"
       if [ "$_app_code" = "200" ]; then _pass "Übersicht (Mini-App) lädt über ${_whurl%/}/webhook/…"
       else _warn "Übersicht (Mini-App) lädt nicht (HTTP ${_app_code:-000}) — 'lifeagents update' ausführen; der Chat ist davon nicht betroffen"; fi
     fi

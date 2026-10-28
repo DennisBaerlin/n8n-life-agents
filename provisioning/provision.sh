@@ -359,6 +359,19 @@ main() {
   # die Ingress-/WEBHOOK_URL-Ableitung (Public-HTTPS vs. dev/:80).
   load_install_env
 
+  # Internet-Adresse: load_install_env hat DOMAIN normalisiert (eine Regel fuer alle Eingabewege). Steht in core.env
+  # dieselbe Adresse nur anders geschrieben (https://name:443/), wird sie einmal korrigiert zurueckgeschrieben (danach
+  # Zweitlauf no-op); eine per Flag NEUE Adresse speichert wie bisher erst collect_release_inputs.
+  if [ -n "$DOMAIN" ]; then
+    local _dom_stored
+    _dom_stored="$(read_env_value "$INSTALL_ENV_FILE" DOMAIN 2>/dev/null || true)"
+    if [ -n "$_dom_stored" ] && [ "$_dom_stored" != "$DOMAIN" ] && [ "$(normalize_domain "$_dom_stored")" = "$DOMAIN" ]; then
+      env_upsert "$INSTALL_ENV_FILE" DOMAIN "$DOMAIN"
+      chmod 0640 "$INSTALL_ENV_FILE" 2>/dev/null || true
+      chown "root:${N8N_USER}" "$INSTALL_ENV_FILE" 2>/dev/null || true
+    fi
+  fi
+
   # Befund 3 (Install-UX-Phase): `lifeagents update` reicht leere Args durch -> ohne Persistenz
   # liefe jedes Prod-Update als PROFILE=dev und die release-gegateten Schritte (collect_release_inputs
   # = der Host-Key-Nachprompt neuer Releases, End-Recap) fielen still aus. Aufloesung: Flag >
@@ -420,6 +433,15 @@ main() {
   fi
   # Erst NACH der Uebersicht: DOMAIN kann sich dort noch aendern (die abgeleiteten Werte liest erst prepare_n8n_env).
   derive_network_config
+  # Domain gewechselt (egal ob per reconfigure, Uebersicht, --domain oder Hand-Edit): der abgeleitete Ist-Zustand
+  # WEBHOOK_URL in n8n.env (vor prepare_n8n_env) ist die eine Quelle -> das gefuehrte Ende prueft Handy/Laptop dann
+  # mit „Erneut prüfen" (owner_connect.sh _oc_device_check ask).
+  local _wh_before
+  _wh_before="$(read_env_value "$N8N_ENV_FILE" WEBHOOK_URL 2>/dev/null || true)"
+  if [ -n "$_wh_before" ] && [ -n "$WEBHOOK_URL" ] && [ "$_wh_before" != "$WEBHOOK_URL" ]; then
+    # shellcheck disable=SC2034  # gelesen von owner_connect.sh (owner_connect_guided)
+    LIFEAGENTS_DOMAIN_CHANGED=1
+  fi
 
   # Ruhige Ausgabe (nur interaktiv + TUI-faehiges Terminal + ohne --verbose): ab hier eine Zeile je
   # Schritt, die technische Ausgabe geht in /var/log/lifeagents/install-<zeit>.log. Grenze = nach den

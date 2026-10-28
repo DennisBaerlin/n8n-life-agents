@@ -26,6 +26,7 @@ N8N_DB_NAME="$(read_env_value "$N8N_ENV_FILE" DB_POSTGRESDB_DATABASE 2>/dev/null
 # DOMAIN aus der Env ODER dem Merge-Store core.env (env-override-first, Muster wie _apikey unten) —
 # ohne das saehe ein standalone `lifeagents doctor` die Domain nie -> der Ingress-Check skippte immer.
 DOMAIN="${DOMAIN:-$(read_env_value /etc/lifeagents/core.env DOMAIN 2>/dev/null || true)}"
+DOMAIN="$(normalize_domain "$DOMAIN")"   # nur im Speicher (doctor ist read-only): eine von Hand eingefuegte URL zaehlt schon jetzt
 
 _fail=0
 _pass() { printf '  [ OK ] %s\n' "$*"; }
@@ -38,55 +39,34 @@ svc_active() {
   if systemctl is-active --quiet "$unit"; then _pass "$label aktiv ($unit)"; else _red "$label NICHT aktiv ($unit)"; fi
 }
 
-# _app_fetch <url> [curl-args...] -> "<status>|<sha256 des Body>|<1 = FRITZ!Box-Seite, sonst 0>". Die Adresse je
-#   Instanz ist geheim -> nur ueber die curl-Config auf stdin, nie im argv (provisioning/CLAUDE.md).
-_app_fetch() {
-  local url="$1" out code body; shift
-  out="$(curl_cfg url "$url" | curl_secret -sS --max-time 8 -w '\n%{http_code}' "$@" 2>/dev/null)" || true
-  code="${out##*$'\n'}"; body="${out%$'\n'*}"
-  printf '%s|%s|%s' "${code:-000}" "$(printf '%s' "$body" | sha256sum | cut -d' ' -f1)" \
-    "$(case "$body" in *'FRITZ!Box'*) echo 1 ;; *) echo 0 ;; esac)"
-}
-
-# _public_ip <host> <4|6> -> erste Adresse der Familie aus dem DNS, an /etc/hosts VORBEI (node/c-ares): der Pin aus
-#   hitl_chat_reachable zeigt die Domain auf dem Server auf den Proxy und verdeckte sonst genau den Weg der Geraete.
-_public_ip() {
-  need_cmd node || return 0
-  node -e 'require("dns").promises["resolve"+process.argv[2]](process.argv[1]).then(a=>{if(a.length)console.log(a[0])},()=>{})' \
-    "$1" "$2" 2>/dev/null || true
-}
-
-# _doctor_app_check <webhook-base> <app-path> — die Seite je Adressfamilie per --resolve abrufen und mit dem lokalen
-#   n8n vergleichen (Body statt Statuscode: FritzBox/Home Assistant antworten auch 200). Typischer Befund: die
-#   MyFRITZ!-Adresse hat per IPv6 die FritzBox selbst (aus dem Heimnetz ihre Oberflaeche, von unterwegs der Fernzugang).
+# _doctor_app_check <webhook-base> <app-path> [telegram_ok] — die Seite je Adressfamilie ueber die Domain abrufen und
+#   mit dem lokalen n8n vergleichen (common.sh reach_family/reach_assess, dieselbe Pruefung wie der Installer; Body statt
+#   Statuscode: FritzBox/Home Assistant antworten auch 200). Typischer Befund: die MyFRITZ!-Adresse hat per IPv6 die
+#   FritzBox selbst (aus dem Heimnetz ihre Oberflaeche, von unterwegs der Fernzugang). Nur WARN/SKIP, nie ROT.
 _doctor_app_check() {
-  local base="$1" app="$2" hostport host port ref fam ip res seen=0 ok_fams=''
-  hostport="${base#https://}"; hostport="${hostport%%/*}"; host="${hostport%%:*}"; port=443
-  [ "$hostport" = "$host" ] || port="${hostport##*:}"
-  ref="$(_app_fetch "http://127.0.0.1:${N8N_PORT}/webhook/${app}")"
+  local base="$1" app="$2" tg="${3:-0}" host ref r4 r6 kind text fams=''
+  host="${base#https://}"; host="${host%%/*}"; host="${host%%:*}"
+  ref="$(http_fp "http://127.0.0.1:${N8N_PORT}/webhook/${app}")"
   case "$ref" in
     200\|*) ;;
     *) _warn "Übersicht (Mini-App): n8n liefert die Seite nicht aus (HTTP ${ref%%|*}) — 'lifeagents update' ausführen; der Chat ist davon nicht betroffen"; return 0 ;;
   esac
-  for fam in 4 6; do
-    ip="$(_public_ip "$host" "$fam")"
-    [ -n "$ip" ] || continue
-    seen=1
-    if [ "$fam" = 6 ] && [ -z "$(ip -6 route show default 2>/dev/null || true)" ]; then
-      _skip "Übersicht über IPv6 (dieser Server hat keinen IPv6-Weg)"; continue
-    fi
-    [ "$fam" = 6 ] && ip="[${ip}]"
-    res="$(_app_fetch "${base}/webhook/${app}" --resolve "${host}:${port}:${ip}")"
-    if [ "${res%|*}" = "${ref%|*}" ]; then ok_fams="${ok_fams:+${ok_fams} + }IPv${fam}"
-    elif [ "${res##*|}" = 1 ]; then
-      _warn "Übersicht über IPv${fam}: die Domain zeigt auf die FRITZ!Box selbst — Handy und Laptop öffnen statt der Übersicht zufällig eine FritzBox-Seite. Abhilfe: beim Proxy-Rechner 'MyFRITZ!-Freigabe' statt 'Portfreigabe' anlegen und dessen eigene MyFRITZ!-Adresse als Domain nehmen (Doku: Installation → FritzBox einrichten)"
-    else
-      _warn "Übersicht über IPv${fam} lädt nicht (HTTP ${res%%|*}): unter dieser Adresse der Domain antwortet nicht dein Reverse Proxy — Handy und Laptop scheitern dann zufällig. DNS-Eintrag (A/AAAA) und Portfreigabe prüfen"
-    fi
-  done
-  if [ -n "$ok_fams" ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${ok_fams})"
-  elif [ "$seen" = 0 ] && ! need_cmd node; then _skip "Übersicht-Check über die Domain (node fehlt für die DNS-Abfrage)"
-  elif [ "$seen" = 0 ]; then _warn "Übersicht: die Domain ${host} hat im DNS keine Adresse"; fi
+  if ! need_cmd node; then _skip "Übersicht-Check über die Domain (node fehlt für die DNS-Abfrage)"; return 0; fi
+  r4="$(N8N_URL="http://127.0.0.1:${N8N_PORT}" reach_family "$base" "/webhook/${app}" 4)"
+  r6="$(N8N_URL="http://127.0.0.1:${N8N_PORT}" reach_family "$base" "/webhook/${app}" 6)"
+  if [ "$r4" = noaddr ] && [ "$r6" = noaddr ]; then _warn "Übersicht: die Domain ${host} hat im DNS keine Adresse"; return 0; fi
+  reach_assess "$r4" "$r6" "$tg" "$host"
+  [ "$r4" = ok ] && fams='IPv4'
+  [ "$r6" = ok ] && fams="${fams:+$fams + }IPv6"
+  [ "$r6" = noaddr ] && fams="${fams:+$fams; }kein IPv6-Eintrag"
+  while IFS=$'\t' read -r kind text; do
+    case "$kind" in
+      bad)  _warn "Übersicht: ${text}" ;;
+      info) _skip "Übersicht: ${text}" ;;
+    esac
+  done <<<"$REACH_LINES"
+  if [ "$REACH_BAD" = 1 ]; then _warn "Übersicht — Abhilfe: ${REACH_HINT}"
+  elif [ "$r4" = ok ] || [ "$r6" = ok ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${fams})"; fi
 }
 
 main() {
@@ -346,7 +326,7 @@ main() {
     # (3) Telegrams Sicht (getWebhookInfo) — der lokale HTTPS-Test besteht auch bei Hairpin-NAT/Split-DNS,
     # waehrend Telegram von aussen NICHT durchkommt (arch-challenge O3). ROT nur, wenn Telegram Updates
     # STAUT (pending > 0) und der letzte Zustellfehler frisch ist (< 15 Min) — dann ist der Bot taub.
-    local _tg_token _wh _wh_url _wh_pending _wh_err_date _wh_err
+    local _tg_token _wh _wh_url _wh_pending _wh_err_date _wh_err _tg_ok=0
     _tg_token="$(read_env_value /etc/lifeagents/core.env TELEGRAM_BOT_TOKEN 2>/dev/null || true)"
     if [ -n "$_tg_token" ] && need_cmd jq; then
       _wh="$(tg_api_curl "$_tg_token" getWebhookInfo -fsS --max-time 10 2>/dev/null || true)"
@@ -359,6 +339,8 @@ main() {
       elif [ "${_wh_pending:-0}" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - ${_wh_err_date:-0} )) -lt 900 ] 2>/dev/null; then
         _red "Telegram kann den Bot nicht erreichen (${_wh_pending} Nachricht(en) warten): ${_wh_err:-unbekannter Fehler}"
       else _pass "Telegram stellt an ${_wh_url%%/webhook/*}/… zu"; fi
+      # Nur wenn Telegram an GENAU diese Domain zustellt, gilt ein IPv4-Fehlschlag in (5) als Hairpin (neutral).
+      if tg_webhook_delivers "$_wh" "$DOMAIN"; then _tg_ok=1; fi
     else
       _skip "Telegram-Webhook-Check (kein TELEGRAM_BOT_TOKEN in core.env / kein jq)"
     fi
@@ -387,7 +369,7 @@ main() {
     local _app
     _app="$(_app_path)"
     if [ -z "$_whurl" ] || [ -z "$_app" ]; then _skip "Übersicht-Check (keine WEBHOOK_URL bzw. kein INGRESS_ID_KEY)"
-    else _doctor_app_check "${_whurl%/}" "$_app"; fi
+    else _doctor_app_check "${_whurl%/}" "$_app" "$_tg_ok"; fi
   else
     _skip "Kein Public-Ingress (keine Domain) — Orchestrator-/HTTPS-Checks übersprungen (dev/Substrat)"
   fi

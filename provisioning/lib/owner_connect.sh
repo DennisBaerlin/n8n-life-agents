@@ -64,7 +64,7 @@ Diese Kopfzeilen an n8n durchreichen: X-Forwarded-For, X-Forwarded-Host, X-Forwa
 Im Router: Port 443 auf diesen Rechner weiterleiten (Telegram nutzt nur 443, 80, 88 oder 8443).
 n8n erwartet die Adresse ${webhook_url} — das ist bereits eingestellt.
 Läuft dein Proxy stattdessen auf einem anderen Rechner: lifeagents proxy set <IP des Proxy-Rechners>
-Schritt-für-Schritt (inkl. FRITZ!Box-Portfreigabe): Doku-Seite „Installation".
+Schritt-für-Schritt: Doku-Seite „Installation"; mit FRITZ!Box: Doku-Seite „FritzBox einrichten".
 EOF
   else
     upstream="$(this_host_lan_ip "$(printf '%s' "$nonloop" | head -n1)")"
@@ -212,6 +212,51 @@ _oc_wait_reachable() {
   done
 }
 
+# _oc_device_check ask|report — kommen auch Handy und Laptop bei deinem Server an? (common.sh reach_family/reach_assess,
+#   dieselbe Pruefung wie doctor). Telegram stellt nur ueber IPv4 zu; Geraete nehmen oft IPv6 — ein falscher AAAA-Eintrag
+#   (MyFRITZ!-Adresse der Box) faellt deshalb nur hier auf. Probe = ein zufaelliger, NICHT geheimer /webhook/-Pfad (n8n
+#   antwortet 404; dieselbe Antwort direkt und ueber die Domain = die Anfrage landete bei diesem n8n) -> gilt fuer alles
+#   hinter /webhook* (Uebersicht, Link-Knoepfe), ohne die geheime App-Adresse. Ein IPv4-Fehlschlag vom Server aus gilt
+#   nur dann als Hairpin-NAT (neutral), wenn Telegram nachweislich an genau diese Adresse zustellt (tg_webhook_delivers;
+#   im Zweig „bereits verbunden" ist das nicht vorausgesetzt, z. B. neue Domain noch nicht im Proxy). Nie blockierend: ask = bei offenem Punkt
+#   „Erneut prüfen / Später“ (Erstinstallation, Domain gerade geaendert), report = nur der Kasten (normales Update, ein
+#   bewusst belassener Zustand fragt nicht jedes Mal). Ohne TTY: still (doctor meldet weiterhin). Immer rc 0.
+_oc_device_check() {
+  local mode="${1:-report}" path r4 r6 kind text mark fams choice tg
+  [ -n "${DOMAIN:-}" ] || return 0
+  ui_interactive || return 0
+  need_cmd node || return 0
+  path="/webhook/lifeagents-probe-$(rand_hex 4)"
+  while :; do
+    ui_step 'Erreichbarkeit für Handy und Laptop prüfen'
+    r4="$(N8N_URL="http://127.0.0.1:${N8N_PORT:-5678}" reach_family "https://${DOMAIN}" "$path" 4)"
+    r6="$(N8N_URL="http://127.0.0.1:${N8N_PORT:-5678}" reach_family "https://${DOMAIN}" "$path" 6)"
+    tg=0
+    if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && need_cmd jq && tg_webhook_delivers "$(_oc_webhook_info)" "$DOMAIN"; then tg=1; fi
+    reach_assess "$r4" "$r6" "$tg" "$DOMAIN"
+    if [ "$REACH_BAD" = 0 ]; then
+      fams=''
+      [ "$r4" = ok ] && fams='IPv4'
+      [ "$r6" = ok ] && fams="${fams:+$fams + }IPv6"
+      [ "$r6" = noaddr ] && fams="${fams:+$fams; }kein IPv6-Eintrag"
+      ui_step_done "${fams:-nicht vollständig prüfbar}"
+      return 0
+    fi
+    ui_step_bad 'ein Punkt ist noch offen — der Chat funktioniert trotzdem'
+    {
+      while IFS=$'\t' read -r kind text; do
+        case "$kind" in ok) mark='✓' ;; bad) mark='✗' ;; *) mark='–' ;; esac
+        printf '  %s %s\n' "$mark" "$text"
+      done <<<"$REACH_LINES"
+      printf '\n%s\n' "$REACH_HINT"
+    } | ui_box "Handy und Laptop unter ${DOMAIN}"
+    [ "$mode" = ask ] || return 0
+    choice="$(printf '%s\n' "Erneut prüfen (ich habe die Einstellung geändert)	retry" "Später — der Chat funktioniert trotzdem	later" \
+                | ui_choose 'Handy und Laptop:' 0)"
+    [ "$choice" = retry ] || return 0
+  done
+}
+
 # _oc_pair — Code armieren, Deep-Link zeigen, auf /start warten. 0 = verbunden, 1 = spaeter/Fehler.
 _oc_pair() {
   local bot code result exp fd frames i n key shown_at err_seen info err_date err_msg choice chat rc
@@ -335,6 +380,9 @@ owner_connect_guided() {
   if _oc_is_chat_id "$chat"; then
     OWNER_CONNECT_RESULT='connected'
     ui_step 'Telegram-Verbindung'; ui_step_done 'bereits verbunden'
+    # Domain in diesem Lauf gewechselt (provision.sh: WEBHOOK_URL in n8n.env ≠ neu -> LIFEAGENTS_DOMAIN_CHANGED): mit
+    # „Erneut prüfen"; sonst nur der Befund.
+    if [ "${LIFEAGENTS_DOMAIN_CHANGED:-0}" = 1 ]; then _oc_device_check ask; else _oc_device_check report; fi
     return 0
   fi
   if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then OWNER_CONNECT_RESULT='unavailable'; OWNER_CONNECT_REASON='kein Telegram-Bot-Token'; OWNER_CONNECT_FIX="$_reconf"; return 0; fi
@@ -346,6 +394,7 @@ owner_connect_guided() {
 
   ui_section 'Verbindung zu Telegram'
   if ! _oc_wait_reachable; then OWNER_CONNECT_RESULT='later'; OWNER_CONNECT_REASON='Reverse Proxy noch nicht erreichbar'; return 0; fi
+  _oc_device_check ask
   if ! _oc_pair; then OWNER_CONNECT_RESULT='later'; return 0; fi
   ui_step 'Bot auf dich einstellen'
   if ( _oc_finalize ); then

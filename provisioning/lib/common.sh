@@ -1010,6 +1010,167 @@ https_code() {
   printf '%s' "${code:-000}"
 }
 
+# --- Internet-Adresse (Domain): EINE Regel fuer alle Eingabewege ----------------------------------------------------
+# normalize_domain <eingabe> -> die Adresse, wie Installer, core.env und n8n sie fuehren: Rand-Leerzeichen, Gross-
+#   schreibung, http(s)://, Pfad/Query/Fragment, Schluss-Slash, :443 und Schluss-Punkt weg (eingefuegt wird oft die
+#   ganze URL aus dem Browser). Ein anderer Port bleibt stehen -> domain_problem meldet ihn. Ein Leerzeichen innen
+#   bleibt stehen (ungueltig, kein stilles Zusammenziehen).
+normalize_domain() {
+  local d="$1"
+  d="${d#"${d%%[![:space:]]*}"}"; d="${d%"${d##*[![:space:]]}"}"
+  d="${d,,}"
+  d="${d#http://}"; d="${d#https://}"
+  d="${d%%/*}"; d="${d%%\?*}"; d="${d%%#*}"
+  d="${d%:443}"; d="${d%.}"
+  printf '%s' "$d"
+}
+
+# domain_problem <domain> -> leer = gueltig, sonst der Grund im Klartext (EINE Quelle fuer _validate_domain, die Meldung
+#   im Prompt und den Abbruch bei vorgegebener DOMAIN). Erwartet einen normalisierten Wert. Immer rc 0.
+domain_problem() {
+  case "$1" in
+    *:*) printf 'Port %s wird nicht unterstützt — die Adresse muss über Port 443 (HTTPS) erreichbar sein; bitte ohne Port eintragen (z. B. bot.example.org)' "${1##*:}"; return 0 ;;
+  esac
+  printf '%s' "$1" | grep -qiE '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' \
+    || printf 'kein gültiger Name (erwartet z. B. bot.example.org)'
+  return 0
+}
+
+# is_router_myfritz_name <domain> -> 0, wenn das die MyFRITZ!-Adresse der FritzBox SELBST ist (<kennung>.myfritz.net);
+#   die Adresse einer MyFRITZ!-Freigabe fuer ein Geraet hat ein Label mehr (<geraet>.<kennung>.myfritz.net). Ohne Netz:
+#   erkennt die IPv6-Falle (AAAA = die Box) auch, wenn der Server selbst keinen IPv6-Weg hat.
+is_router_myfritz_name() { printf '%s' "$1" | grep -qiE '^[^.]+\.myfritz\.net$'; }
+
+# --- Erreichbarkeit fuer Handy und Laptop (geteilt von doctor.sh + owner_connect.sh) ------------------------------
+# Telegram stellt nur ueber IPv4 zu; Handy und Laptop oeffnen Seiten unter der Domain direkt und nehmen oft IPv6. Ein
+# falscher AAAA-Eintrag (MyFRITZ!-Adresse der Box = die Box selbst) faellt deshalb im Chat nie auf. Gemessen wird das
+# Ergebnis, nicht die IP (der Proxy kann auf einem anderen Rechner laufen): je Adressfamilie dieselbe Anfrage ueber
+# die Domain (--resolve auf die DNS-Adresse) und direkt an dieses n8n, Status + Body muessen gleich sein. Nie
+# blockierend (arch-challenge 2026-10-28: Mailcow-Muster statt der harten Sperre von Nextcloud AIO).
+
+# dns_first_addr <host> <4|6> -> erste Adresse der Familie aus dem DNS, an /etc/hosts VORBEI (node/c-ares): der Pin aus
+#   hitl_chat_reachable zeigt die Domain auf dem Server auf den Proxy und verdeckte sonst genau den Weg der Geraete.
+dns_first_addr() {
+  need_cmd node || return 0
+  node -e 'require("dns").promises["resolve"+process.argv[2]](process.argv[1]).then(a=>{if(a.length)console.log(a[0])},()=>{})' \
+    "$1" "$2" 2>/dev/null || true
+}
+
+# url_host <url> / url_port <url> -> Host bzw. Port von scheme://host[:port]/… (Port: der angegebene, sonst https 443,
+#   http 80). EINE Stelle fuer alle Probes (--resolve braucht beides).
+url_host() { local h="${1#*://}"; h="${h%%/*}"; printf '%s' "${h%%:*}"; }
+url_port() {
+  local h="${1#*://}"; h="${h%%/*}"
+  case "$h" in *:*) printf '%s' "${h##*:}" ;; *) case "$1" in https://*) printf 443 ;; *) printf 80 ;; esac ;; esac
+}
+
+# http_fp <url> [curl-args...] -> "<status>|<sha256 des Body>|<1 = FRITZ!Box-Seite, sonst 0>|<curl-rc>" — der EINE
+#   Fingerabdruck fuer „ist die Anfrage bei DIESEM n8n gelandet?“ (Geraete-Check, Bestaetigungs-Route): dieselbe Anfrage
+#   direkt an n8n und ueber die Domain, die ersten beiden Felder muessen gleich sein. Die URL geht nur ueber die
+#   curl-Config auf stdin, nie ins argv (der App-Pfad ist je Instanz geheim, provisioning/CLAUDE.md).
+http_fp() {
+  local url="$1" out rc=0 code body; shift
+  out="$(curl_cfg url "$url" | curl_secret -sS --connect-timeout 3 --max-time 8 -w '\n%{http_code}' "$@" 2>/dev/null)" || rc=$?
+  code="${out##*$'\n'}"; body="${out%$'\n'*}"
+  printf '%s|%s|%s|%s' "${code:-000}" "$(printf '%s' "$body" | sha256sum | cut -d' ' -f1)" \
+    "$(case "$body" in *'FRITZ!Box'*) echo 1 ;; *) echo 0 ;; esac)" "$rc"
+}
+
+# reach_probe_ip <base> <path> <ip> -> ok | fritz | cert | down | other:<status> | nolocal. <base> = http(s)://host[:port]
+#   (Port aus dem Schema, sonst der angegebene), <path> beginnt mit /. Vergleich mit derselben Anfrage an dieses n8n
+#   (${N8N_URL}, sonst 127.0.0.1:N8N_PORT). cert NUR bei curl-rc 60 (falscher Name, abgelaufen und selbstsigniert enden
+#   alle so; 51 gibt es seit curl 7.62 nicht mehr). nolocal = das lokale n8n antwortet selbst nicht (kein Befund).
+reach_probe_ip() {
+  local base="${1%/}" path="$2" ip="$3" host port ref res
+  host="$(url_host "$base")"; port="$(url_port "$base")"
+  case "$ip" in *:*) ip="[${ip}]" ;; esac
+  ref="$(http_fp "${N8N_URL:-http://127.0.0.1:${N8N_PORT:-5678}}${path}")"
+  case "$ref" in 000\|*) printf 'nolocal'; return 0 ;; esac
+  res="$(http_fp "${base}${path}" --resolve "${host}:${port}:${ip}")"
+  if [ "${res%|*|*}" = "${ref%|*|*}" ]; then printf 'ok'
+  elif [ "${res##*|}" = 60 ]; then printf 'cert'
+  else
+    case "$res" in
+      *\|1\|*) printf 'fritz' ;;
+      000\|*)  printf 'down' ;;
+      *)       printf 'other:%s' "${res%%|*}" ;;
+    esac
+  fi
+  return 0
+}
+
+# reach_family <base> <path> <4|6> -> nodns | noaddr | noroute | <reach_probe_ip-Ergebnis>. nodns = node fehlt fuer die
+#   DNS-Abfrage am Pin vorbei; noroute = der Server hat keinen IPv6-Weg (dann ist IPv6 von hier nicht pruefbar).
+reach_family() {
+  local base="${1%/}" path="$2" fam="$3" host addr
+  need_cmd node || { printf 'nodns'; return 0; }
+  host="$(url_host "$base")"
+  addr="$(dns_first_addr "$host" "$fam")"
+  [ -n "$addr" ] || { printf 'noaddr'; return 0; }
+  if [ "$fam" = 6 ] && [ -z "$(ip -6 route show default 2>/dev/null || true)" ]; then printf 'noroute'; return 0; fi
+  reach_probe_ip "$base" "$path" "$addr"
+}
+
+# Die Handgriffe (EINE Quelle fuer doctor + Installer; Schritt fuer Schritt: Doku-Seite „FritzBox einrichten“).
+REACH_HINT_FRITZ='Die Adresse zeigt über IPv6 auf die FRITZ!Box selbst — Handy und Laptop öffnen dann zufällig eine FritzBox-Seite statt deines Servers. Abhilfe: beim Rechner mit dem Reverse Proxy eine MyFRITZ!-Freigabe „HTTPS-Server“ anlegen (Internet → Freigaben → Portfreigaben → Stift beim Gerät → Neue Freigabe → MyFRITZ!-Freigabe) und dessen eigene MyFRITZ!-Adresse (<gerät>.<kennung>.myfritz.net) als Internet-Adresse nehmen: lifeagents reconfigure core. Schritt für Schritt: Doku „FritzBox einrichten“.'
+REACH_HINT_CERT='Das Zertifikat passt nicht zur Adresse oder ist ungültig — der Reverse Proxy braucht ein gültiges Zertifikat für genau diesen Namen (Caddy holt es selbst; dafür muss Port 80 freigegeben bleiben).'
+REACH_HINT_V6='Über IPv6 antwortet unter dieser Adresse nicht dein Reverse Proxy — der IPv6-Eintrag (AAAA) der Adresse muss auf den Proxy-Rechner zeigen oder ganz fehlen (FritzBox: Doku „FritzBox einrichten“).'
+REACH_HINT_V4='Über IPv4 antwortet unter dieser Adresse nicht dein Reverse Proxy — DNS-Eintrag (A) und die Weiterleitung von Port 443 auf den Proxy-Rechner prüfen.'
+
+# reach_assess <r4> <r6> <telegram_ok 0|1> <host> — Ergebnis je Familie (reach_family) in Zeilen + EINEN Handgriff
+#   uebersetzen. Setzt REACH_LINES ("ok|bad|info<TAB>Text" je Zeile), REACH_HINT (leer = nichts zu tun) und REACH_BAD (0/1).
+#   Regeln: das Zertifikat zaehlt aus IPv4 (rc 60 nur ueber IPv6 = IPv6 landet woanders); IPv4 scheitert vom Server aus
+#   (auch mit rc 60: dann antwortet z. B. die Router-Oberflaeche mit eigenem Zertifikat), obwohl Telegram an genau diese
+#   Adresse zustellt (telegram_ok = tg_webhook_delivers, Telegram verlangt ein gueltiges Zertifikat) = Hairpin-NAT
+#   (neutral); Server ohne IPv6 + Box-Name = die Falle trotzdem. Prioritaet des Handgriffs: FritzBox > Zertifikat > IPv6 > IPv4.
+# shellcheck disable=SC2034  # REACH_* lesen die Aufrufer (doctor.sh _doctor_app_check, owner_connect.sh _oc_device_check)
+REACH_LINES=''; REACH_HINT=''; REACH_BAD=0
+# shellcheck disable=SC2034  # s. o.
+reach_assess() {
+  local r4="$1" r6="$2" tg="$3" host="$4" l4 l6 h=''
+  REACH_BAD=0
+  case "$r4" in
+    ok)      l4="ok	Über IPv4 antwortet dein Reverse Proxy" ;;
+    noaddr)  l4="bad	Die Adresse hat keine IPv4 (A-Eintrag fehlt)"; h="$REACH_HINT_V4" ;;
+    nodns|nolocal) l4="info	Über IPv4 hier nicht prüfbar" ;;
+    *)
+      if [ "$tg" = 1 ]; then l4="info	Über IPv4 vom Server aus nicht prüfbar (Heimnetz-Umweg des Routers) — Telegram kommt an, das genügt"
+      elif [ "$r4" = cert ]; then l4="bad	Zertifikat ungültig"; h="$REACH_HINT_CERT"
+      else l4="bad	Über IPv4 antwortet nicht dein Reverse Proxy"; h="$REACH_HINT_V4"; fi ;;
+  esac
+  case "$r6" in
+    ok)      l6="ok	Über IPv6 antwortet dein Reverse Proxy" ;;
+    noaddr)  l6="ok	Kein IPv6-Eintrag (in Ordnung: alle Geräte nehmen IPv4)" ;;
+    fritz)   l6="bad	Über IPv6 antwortet die FRITZ!Box statt deines Servers"; h="$REACH_HINT_FRITZ" ;;
+    noroute)
+      if is_router_myfritz_name "$host"; then l6="bad	Die Adresse ist die MyFRITZ!-Adresse der FRITZ!Box selbst (über IPv6 landen Geräte bei der Box)"; h="$REACH_HINT_FRITZ"
+      else l6="info	Über IPv6 nicht prüfbar (dieser Server hat keinen IPv6-Weg)"; fi ;;
+    nodns|nolocal) l6="info	Über IPv6 hier nicht prüfbar" ;;
+    *)
+      l6="bad	Über IPv6 antwortet nicht dein Reverse Proxy"
+      case "$h" in "$REACH_HINT_FRITZ"|"$REACH_HINT_CERT") : ;; *) h="$REACH_HINT_V6" ;; esac ;;
+  esac
+  REACH_LINES="${l4}"$'\n'"${l6}"
+  REACH_HINT="$h"
+  case "$l4" in bad*) REACH_BAD=1 ;; esac
+  case "$l6" in bad*) REACH_BAD=1 ;; esac
+  return 0
+}
+
+# tg_webhook_delivers <getWebhookInfo-JSON> <domain> -> 0, wenn Telegram nachweislich an https://<domain>/ zustellt:
+#   gueltige Antwort, Webhook zeigt auf genau diese Adresse, kein Stau mit frischem Zustellfehler (< 15 Min; dieselbe
+#   Regel wie doctor (3) ROT). Eine Adresse fuer doctor + Installer (telegram_ok von reach_assess). Braucht jq.
+tg_webhook_delivers() {
+  local url pending errd
+  [ "$(printf '%s' "$1" | jq -r '.ok // false' 2>/dev/null || echo false)" = "true" ] || return 1
+  url="$(printf '%s' "$1" | jq -r '.result.url // ""' 2>/dev/null || true)"
+  [ -n "$2" ] && [ "${url#"https://${2}/"}" != "$url" ] || return 1
+  pending="$(printf '%s' "$1" | jq -r '.result.pending_update_count // 0' 2>/dev/null || echo 0)"
+  errd="$(printf '%s' "$1" | jq -r '.result.last_error_date // 0' 2>/dev/null || echo 0)"
+  if [ "${pending:-0}" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - ${errd:-0} )) -lt 900 ] 2>/dev/null; then return 1; fi
+  return 0
+}
+
 # --- Bestaetigen im Chat: Selbst-Erreichbarkeit (geteilt von deploy_workflows.sh + doctor.sh) -------------------
 # Ein Tipp auf einen Bestaetigungs-Knopf kommt von Telegram beim Orchestrator-Trigger an; der POSTet ihn an
 # <WEBHOOK_URL>/webhook-waiting-telegram weiter (n8n TelegramTrigger hitlForwardUrl, best-effort: ein Fehlschlag
@@ -1017,27 +1178,19 @@ https_code() {
 # Heimnetz droht Hairpin-NAT bzw. der IPv6-Abzweig zur FritzBox (MyFRITZ!-AAAA = die Box selbst).
 HITL_ROUTE_SUFFIX='/webhook-waiting-telegram'
 
-# _hitl_probe_fp <url> [curl-args...] -> "<status>|<sha256 des Body>" eines leeren Callback-POSTs (n8n antwortet ohne
-#   gueltigen Callback deterministisch und ohne Seiteneffekt); '000|…' = keine Verbindung.
-_hitl_probe_fp() {
-  local url="$1" out code; shift
-  out="$(curl -sS --max-time 6 -X POST -H 'Content-Type: application/json' --data '{}' -w '\n%{http_code}' "$@" "$url" 2>/dev/null)" || true
-  code="${out##*$'\n'}"
-  printf '%s|%s' "${code:-000}" "$(printf '%s' "${out%$'\n'*}" | sha256sum | cut -d' ' -f1)"
-}
-
-# hitl_route_probe <webhook-url> [<ip>] -> rc0, wenn der POST an <webhook-url>/webhook-waiting-telegram (ueber DNS bzw.
-#   per --resolve auf <ip>) dieselbe Antwort (Status + Body) liefert wie derselbe POST direkt an dieses n8n = die Anfrage
-#   ist bei DIESEM n8n gelandet. Vergleich statt fester Statuscode: FritzBox/Home Assistant/Proxy antworten auch 403/404.
+# hitl_route_probe <webhook-url> [<ip>] -> rc0, wenn ein leerer Callback-POST an <webhook-url>/webhook-waiting-telegram
+#   (ueber DNS bzw. per --resolve auf <ip>) denselben Fingerabdruck (http_fp: Status + Body) liefert wie derselbe POST
+#   direkt an dieses n8n = die Anfrage ist bei DIESEM n8n gelandet (n8n antwortet ohne gueltigen Callback deterministisch
+#   und ohne Seiteneffekt). Vergleich statt fester Statuscode: FritzBox/Home Assistant/Proxy antworten auch 403/404.
 hitl_route_probe() {
-  local base="${1%/}" ip="${2:-}" host local_fp pub_fp
+  local base="${1%/}" ip="${2:-}" host local_fp pub_fp post=(-X POST -H 'Content-Type: application/json' --data '{}')
   case "$base" in https://*) ;; *) return 1 ;; esac
-  host="${base#https://}"; host="${host%%/*}"; host="${host%%:*}"
-  local_fp="$(_hitl_probe_fp "${N8N_URL:-http://127.0.0.1:${N8N_PORT:-5678}}${HITL_ROUTE_SUFFIX}")"
+  host="$(url_host "$base")"
+  local_fp="$(http_fp "${N8N_URL:-http://127.0.0.1:${N8N_PORT:-5678}}${HITL_ROUTE_SUFFIX}" "${post[@]}")"
   case "$local_fp" in 000\|*) return 1 ;; esac
-  if [ -n "$ip" ]; then pub_fp="$(_hitl_probe_fp "${base}${HITL_ROUTE_SUFFIX}" --resolve "${host}:443:${ip}")"
-  else pub_fp="$(_hitl_probe_fp "${base}${HITL_ROUTE_SUFFIX}")"; fi
-  [ "$local_fp" = "$pub_fp" ]
+  if [ -n "$ip" ]; then pub_fp="$(http_fp "${base}${HITL_ROUTE_SUFFIX}" "${post[@]}" --resolve "${host}:$(url_port "$base"):${ip}")"
+  else pub_fp="$(http_fp "${base}${HITL_ROUTE_SUFFIX}" "${post[@]}")"; fi
+  [ "${local_fp%|*|*}" = "${pub_fp%|*|*}" ]
 }
 
 # Verwalteter /etc/hosts-Block (Split-Horizon): die eigene Domain zeigt auf dem Server direkt auf den Reverse Proxy
@@ -1064,6 +1217,15 @@ hosts_pin_clear() {
   awk -v b="$_HOSTS_BEGIN" -v e="$_HOSTS_END" '$0==b{f=1;next} $0==e{f=0;next} !f' "$HOSTS_FILE" > "$tmp"
   cat "$tmp" > "$HOSTS_FILE"; rm -f "$tmp"   # cat statt mv: Inode/Rechte von /etc/hosts bleiben (Container-Bind-Mounts)
 }
+# hosts_pin_prune <behalten> — den Block entfernen, wenn er NICHT genau <behalten> pinnt (leer = immer): nach einem
+#   Domain-Wechsel bliebe sonst der Pin des alten Namens stehen (hosts_pin_get findet nur den aktuellen). Immer rc 0.
+hosts_pin_prune() {
+  [ -f "$HOSTS_FILE" ] && grep -qxF "$_HOSTS_BEGIN" "$HOSTS_FILE" || return 0
+  if [ -n "$1" ] && [ -n "$(hosts_pin_get "$1")" ]; then return 0; fi
+  hosts_pin_clear
+  log "Veralteten /etc/hosts-Eintrag einer früheren Internet-Adresse entfernt."
+  return 0
+}
 
 # hitl_chat_state -> "true"/"false": der beim letzten Core-Deploy entschiedene Knopf-Modus (core.env HITL_CHAT_APPROVAL,
 #   EIN Fakt fuer alle Workflows + doctor); leer = noch nie entschieden. Immer rc 0 (set -e-sicher in $(…)).
@@ -1075,8 +1237,9 @@ hitl_chat_state() { read_env_value "$(lifeagents_env_file core)" HITL_CHAT_APPRO
 #   Beleg koennte einen funktionierenden Weg kaputt machen). Ein veralteter Pin wird zuerst entfernt.
 hitl_chat_reachable() {
   local wh="$1" host cand
-  host="${wh#https://}"; host="${host%%/*}"; host="${host%%:*}"
+  host="$(url_host "$wh")"
   [ -n "$host" ] || return 1
+  hosts_pin_prune "$host"   # Pin einer frueheren Domain (Domain-Wechsel) zuerst weg
   hitl_route_probe "$wh" && return 0
   if [ -n "$(hosts_pin_get "$host")" ]; then hosts_pin_clear; hitl_route_probe "$wh" && return 0; fi
   for cand in $(printf '%s' "${TRUSTED_PROXIES:-}" | tr ',' ' ') 127.0.0.1; do

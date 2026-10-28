@@ -79,7 +79,7 @@ Damit Telegram deinem Bot Nachrichten schicken kann, muss dein Server **von auß
 
 Konkret sind das drei Bausteine:
 
-- **Eine öffentliche Domain**, die auf deinen Internet-Anschluss zeigt. Zuhause ändert sich die IP-Adresse oft — dafür gibt es DynDNS-Dienste (die FritzBox bringt mit **MyFRITZ!** einen eigenen mit, siehe unten).
+- **Eine öffentliche Domain**, die auf deinen Internet-Anschluss zeigt. Zuhause ändert sich die IP-Adresse oft — dafür gibt es DynDNS-Dienste (die FritzBox bringt mit **MyFRITZ!** einen eigenen mit, siehe [FritzBox einrichten](fritzbox.html)).
 - **Eine Port-Weiterleitung** am Router: eingehende Verbindungen auf **Port 443** an deinen Server. (Telegram akzeptiert nur die Ports 443, 80, 88 oder 8443 — wir nutzen 443.)
 - **Ein Reverse Proxy** — auf diesem Server oder auf einem anderen Rechner in deinem Heimnetz —, der HTTPS verschlüsselt und nur die Telegram-Adressen (`/webhook*`) an n8n weiterreicht. **Das ist Pflicht:** n8n selbst spricht kein HTTPS — eine reine Port-Weiterleitung ohne Reverse Proxy genügt nicht.
 
@@ -138,20 +138,9 @@ sudo systemctl reload caddy
 
 ## FritzBox einrichten
 
-Ist dein Router eine **FritzBox**, brauchst du zwei Einstellungen:
+Ist dein Router eine **FritzBox**, folge der eigenen Seite **[FritzBox einrichten](fritzbox.html)**. Kurz: Beim Rechner mit deinem Reverse Proxy legst du eine **MyFRITZ!-Freigabe** an (keine normale Portfreigabe) und nimmst dessen eigene MyFRITZ!-Adresse (`<gerät>.<kennung>.myfritz.net`) als Domain, **nicht** die Adresse der FritzBox selbst. Sonst landen Handy und Laptop über IPv6 zufällig auf einer FritzBox-Seite. Der Installer und `lifeagents doctor` prüfen das und nennen dir den Handgriff.
 
-1. **Öffentlicher Name (DynDNS):** Aktiviere unter *Internet → MyFRITZ!-Konto* den MyFRITZ!-Dienst. Damit bekommt dein Anschluss eine feste Adresse (`….myfritz.net`), auch wenn sich deine IP-Adresse ändert.
-2. **MyFRITZ!-Freigabe (nicht „Portfreigabe“):** *Internet → Freigaben → Portfreigaben*, beim Rechner mit deinem Reverse Proxy auf den Stift klicken (oder ihn mit „Gerät für Freigaben hinzufügen“ neu anlegen), dann unten **„Neue Freigabe“**. Oben **„MyFRITZ!-Freigabe“** wählen, Anwendung **„HTTPS-Server“**, „Freigabe aktivieren“ angehakt, OK. Dasselbe noch einmal mit **„HTTP-Server“** (Port 80, für das Zertifikat). Die Haken bei den IPv6-Einstellungen (PING6, delegierte Präfixe, Exposed Host) setzt du **nicht**. Nur die MyFRITZ!-Freigabe öffnet die Ports für IPv4 **und** IPv6 und legt einen eigenen Namen für den Rechner an. Eine reine „Portfreigabe“ tut beides nicht.
-3. **Domain = die MyFRITZ!-Adresse des Proxy-Rechners:** Sie steht nach dem Anlegen im Feld „MyFRITZ!-Adresse“ der Freigabe (Form `<gerät>.<kennung>.myfritz.net`). Diese Adresse gibst du dem Installer als Domain an, **nicht** die Adresse der FritzBox selbst. Den IPv6-Eintrag trägt MyFRITZ! oft erst eine Minute später nach.
-
-**Warum nicht die Adresse der FritzBox?** Über IPv6 zeigt die MyFRITZ!-Adresse der FritzBox auf die Box selbst. Telegram stellt den Chat nur über IPv4 zu, dort fällt das nie auf. Die [Übersicht](uebersicht-app.html) öffnen aber Handy und Laptop direkt, und die nehmen oft IPv6. Dann erscheint zufällig eine FritzBox-Seite statt der Übersicht: im Heimnetz „Die angegebene URL ist nicht verfügbar", unterwegs die Anmeldung der FritzBox. Eine andere Port-Nummer für den Fernzugang der FritzBox hilft nur unterwegs: Im Heimnetz antwortet die Box auf ihrer Adresse immer selbst. Die Adresse des Proxy-Rechners zeigt dagegen per IPv6 direkt auf ihn, und dein Fernzugang zur FritzBox bleibt, wie er ist. `lifeagents doctor` meldet diese Falle.
-
-**Schon mit der FritzBox-Adresse installiert?** So stellst du um:
-
-1. Beim Proxy-Rechner die alten **Portfreigaben** durch **MyFRITZ!-Freigaben** ersetzen (Schritt 2 oben). Für denselben Port erlaubt die FritzBox nicht beides („Freigabe existiert bereits“). Beginne darum mit **Port 80**: alte „HTTP-Server“-Portfreigabe löschen, MyFRITZ!-Freigabe „HTTP-Server“ anlegen. Der Rechner hat danach schon seinen eigenen Namen. Dann **Port 443** in einem Zug: alte „HTTPS-Server“-Portfreigabe löschen und **sofort** die MyFRITZ!-Freigabe „HTTPS-Server“ anlegen. Dazwischen ist alles hinter deinem Proxy kurz offline. Telegram liefert verpasste Nachrichten danach nach.
-2. Im Reverse Proxy den neuen Namen eintragen. Bei Caddy ersetzt du den Namen vor `{` oder ergänzt ihn mit Komma (`alte-adresse, neue-adresse {`), dann `sudo systemctl reload caddy`. Caddy holt das Zertifikat selbst.
-3. Auf dem Server `lifeagents reconfigure core` ausführen und unter *Domain* die neue Adresse eintragen. Der Chat und der Knopf „📊 Übersicht“ ziehen automatisch mit um.
-4. Mit `lifeagents doctor` prüfen: Die Übersicht muss über **IPv4 + IPv6** laden.
+Die Domain darfst du dem Installer auch als ganze Adresse geben (`https://bot.example.org/`). Er macht daraus selbst den Namen.
 
 Damit der Server sich selbst über die Domain erreicht, trägt der Installer die Domain bei Bedarf in `/etc/hosts` auf deinen Reverse Proxy ein. Das passiert nur, wenn eine Probe bestätigt, dass es so funktioniert. Nach außen (Telegram, Anthropic) spricht der Server bevorzugt IPv4: Ein kurzzeitig hängender IPv6-Weg im Heimnetz würde sonst jede Antwort um rund zwei Minuten verzögern.
 
@@ -170,7 +159,7 @@ Noch kein Bot-Token? So bekommst du eins:
 
 Am Ende der Installation verbindet der Installer dich als Owner (Besitzer) mit deinem Bot — in drei Schritten, ohne dass du etwas abtippen musst:
 
-1. **Erreichbarkeit prüfen.** Der Installer fragt Telegram direkt, ob dein Server von außen erreichbar ist. Wenn nicht, zeigt er dir das fertige Caddyfile, die Anforderungen an deinen Reverse Proxy und Telegrams eigene Fehlermeldung. Richte den Proxy ein und wähle „Erneut prüfen" — oder „Später einrichten".
+1. **Erreichbarkeit prüfen.** Der Installer fragt Telegram direkt, ob dein Server von außen erreichbar ist. Wenn nicht, zeigt er dir das fertige Caddyfile, die Anforderungen an deinen Reverse Proxy und Telegrams eigene Fehlermeldung. Richte den Proxy ein und wähle „Erneut prüfen" — oder „Später einrichten". Danach prüft er, ob auch Handy und Laptop bei deinem Proxy ankommen (über IPv4 und IPv6, Details unter [FritzBox einrichten → Was der Installer prüft](fritzbox.html#was-der-installer-prüft)). Ein offener Punkt hält die Installation nicht an.
 2. **Verbindungs-Link öffnen.** Du bekommst einen Link der Form `https://t.me/<dein-bot>?start=<code>`. Öffne ihn auf dem Handy, Telegram startet den Chat mit deinem Bot und schickt den Code mit. (Alternativ tippst du `/start <code>` von Hand.) Der Code steht **nur im Terminal**, nie im Chat — so kann sich niemand, der zufällig Zugriff auf den Chat hätte, selbst als Besitzer eintragen. Er gilt 10 Minuten; danach bietet der Installer dir einen neuen an.
 3. **Warten, fertig.** Der Installer wartet, bis deine Nachricht angekommen ist (der Bot antwortet kurz „Verbunden! Einen Moment …"), und stellt den Bot dann selbst fertig auf dich ein (Befehlsmenü, Benachrichtigungen an dich). Ein zweiter Lauf ist nicht nötig. Mit `s` (oder Strg+C) überspringst du das Warten.
 4. **Begrüßung.** Sobald alles bereit ist, schreibt dir der Bot in Telegram: mit deinem Vornamen, welche Funktionen installiert sind, und einem Knopf **„Haushalt einrichten"** als nächstem Schritt. Kommt die Nachricht nicht, schreib ihm einfach `/start`.

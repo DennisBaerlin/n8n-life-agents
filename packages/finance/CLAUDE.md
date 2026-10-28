@@ -30,6 +30,7 @@ Buchhalter (`agent.finance`, CQRS) + Berater (`agent.finance_advisor`, bucht nie
 - **Matching** allein in `fn_statement_match`: Stufe 0 (schon gebucht) → A (Schlüssel aus `recurring_payment_keys`) → B (Betrag ±5 %, min. 2 €, Datum −5/+10, Namens-Token), gierig deterministisch. `sepa_mandate` ist global eindeutig, `counterparty_iban` nur je rp (Gehalt/Bonus teilen den Gegenpart); interne Transfers lernen keinen Schlüssel, ihr Gegenpart ist `accounts.account_number`.
 - **Rest = DB-Differenz:** Die Lump-Buchung macht `fn_reconcile_account` auf den Endsaldo (nie aus LLM-Zeilen summiert); Drift vor dem Zeitraum wird vorher separat auf `cut` abgeglichen. `bank_statements` speichert nur Aggregate (keine Zeilen, keine Mandate); Fehlendes sind Skips.
 - **Void** nur für den jüngsten Auszug eines Kontos (`last_reconciled_at = period_end`), stellt `prev_*`, Skips und gelernte Schlüssel wieder her.
+- **CSV-Profile:** Header-Signatur + feste Zuordnung in `fn_broker_csv_normalize`; Pflicht-Saldo des Owners (bewusst strenger als hledger/Firefly). Wertpapier-Zeilen nie im Rest; ein Kauf bis zum Datum einer Bestandsübernahme wird nie gebucht (`covered_by_takeover`), erst `fn_replace_takeover_with_lots` macht ihn zur Einzelbuchung (nach dem bestätigten Tag mit Cash-Wirkung).
 - **Vorschau/Warnung:** `fn_account_outlook` ist die eine Rechen-Adresse für Tool-Antwort und Advisor-Alert `account_coverage:<konto>` (nur Konten mit Auszug); `recurring_missing:<kopf>` = jüngste zwei Termine der Kette übersprungen.
 
 ## DB-Hard-Guarantees

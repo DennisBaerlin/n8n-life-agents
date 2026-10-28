@@ -48,7 +48,7 @@ function Build-ReconcileBankStatement {
     $fetch = Build-CallWorkflow 'Fetch telegram file' @(220, 0) $idFetch 'agent.tool_fetch_telegram_file' `
         ([ordered]@{ file_id = "={{ `$('Start').item.json.file_id }}" })
     $ifFile = Build-If 'File ok?' @(440, 0) "={{ `$('Fetch telegram file').item.json.ok }}" 'true' 'equals' 'boolean'
-    $errFile = Build-ToolError 'File unusable' @(660, 200) "={{ `$('Fetch telegram file').item.json.error }}"
+    $errFile = Build-ToolError 'File unusable' @(660, 200) (Get-FinanceFileErrorExpr)
 
     $fileBlock = Get-AnthropicFileBlockJs -B64Expr "`$('Fetch telegram file').item.json.b64" -MimeExpr "`$('Fetch telegram file').item.json.mime"
     $contentJs = "[ $fileBlock, { type: 'text', text: 'Context from the user: ' + (`$('Start').item.json.doc_hint || 'none') + '. Read the statement now.' } ]"
@@ -92,66 +92,17 @@ return [{ json: { ok: true, account_number: txt(s.account_number), currency: txt
         closing_balance = "$S.closing_balance"
         lines           = "$S.lines"
     }
-    $prepare = Build-Pg 'Prepare statement' @(1540, 0) "=SELECT finance.fn_statement_prepare(`$1::jsonb) AS r;" $stmtParams
-    $ifPrep = Build-If 'Statement ok?' @(1760, 0) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
-    $P = "`$('Prepare statement').item.json.r"
-    $errPrep = Build-Set 'Statement not ready' @(1980, 200) @(
-        ,@('ok', 'false', 'boolean')
-        ,@('code', "={{ $P.code }}", 'string')
-        ,@('error', "={{ $P.reason }}", 'string')
-        ,@('candidates', "={{ $P.candidates || [] }}", 'array')
-        ,@('account_number', "={{ $P.account_number || '' }}", 'string')
-        ,@('difference', "={{ $P.difference === undefined || $P.difference === null ? '' : String($P.difference) }}", 'string')
-        ,@('balance_verified', "={{ $P.balance_verified === true }}", 'boolean')
-        ,@('closing_balance', "={{ $P.closing_balance === undefined || $P.closing_balance === null ? '' : String($P.closing_balance) }}", 'string')
-        ,@('balance_date', "={{ $P.balance_date || '' }}", 'string')
-        ,@('currency', "={{ $P.currency || '' }}", 'string')
-    )
-
-    $summary = New-HitlSummary -Pos @(1980, 0) -Title 'finance.hitl.reconcile_bank_statement' `
-        -TitleParams @{ account = "$P.account_name" } -LinesExpr "($P.card_lines || [])"
-    $reqApproval = Build-CallWorkflow 'Request Approval' @(2200, 0) $GateId 'agent.tool_human_approval' `
-        ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
-    $ifApproved = Build-If 'Approved?' @(2420, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2640, 200) 'the monthly statement import (nothing was booked)'
-
-    $applyParams = [ordered]@{}
-    foreach ($k in $stmtParams.Keys) { $applyParams[$k] = $stmtParams[$k] }
-    $applyParams['fingerprint'] = "$P.fingerprint"
-    $apply = Build-Pg 'Apply statement' @(2640, 0) "=SELECT finance.fn_apply_bank_statement(`$1::jsonb) AS r;" $applyParams
-    $ifApplied = Build-If 'Booked?' @(2860, 0) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
-    $A = "`$('Apply statement').item.json.r"
-    $errApply = Build-Set 'Not booked' @(3080, 200) @(
-        ,@('ok', 'false', 'boolean')
-        ,@('code', "={{ $A.code || '' }}", 'string')
-        ,@('error', "={{ $A.reason }}", 'string')
-    )
-    $ret = Build-Return @(3080, 0) @(
-        ,@('ok', 'true', 'boolean')
-        ,@('account_name', "={{ $P.account_name }}", 'string')
-        ,@('period_start', "={{ $P.period_start }}", 'string')
-        ,@('period_end', "={{ $P.period_end }}", 'string')
-        ,@('currency', "={{ $P.currency }}", 'string')
-        ,@('booked_count', "={{ $A.booked_count }}", 'number')
-        ,@('everyday_spending', "={{ $A.lump_amount }}", 'number')
-        ,@('difference_before_period', "={{ $A.drift_amount }}", 'number')
-        ,@('skipped_payments', "={{ $A.skipped_occurrences }}", 'number')
-        ,@('plan_adjusted', "={{ $A.plan_adjusted || [] }}", 'array')
-        ,@('savings_plan_estimated', "={{ $A.savings_plan_estimated || [] }}", 'array')
-        ,@('unknown_direct_debits', "={{ $A.unknown_mandates || [] }}", 'array')
-        ,@('balance_after', "={{ $A.balance_after }}", 'number')
-        ,@('outlook', "={{ $A.outlook || {} }}", 'object')
-    )
+    $chain = New-StatementGateChain -X 1540 -StmtParams $stmtParams -Title 'finance.hitl.reconcile_bank_statement' `
+        -CancelAction 'the monthly statement import (nothing was booked)'
 
     $sticky = Build-Sticky 'Überblick' @(220, -460) `
         'Monats-Check: Kontoauszug -> eine Karte -> Buchung (Einzelumsätze werden nicht gespeichert)' `
-        'Fetch telegram file (Core-Baustein) -> Claude-Vision (model.vision_extract, Denk-Tiefe mittel, JSON-Schema) liest NUR gedruckte Rohwerte: Konto-IBAN, Zeitraum, Anfangs-/Endstand, alle Zeilen. Shape statement prüft is_statement (Depotauszug/Police -> tool_extract_finance_document). Prepare statement = finance.fn_statement_prepare: Konto per IBAN (unbekannt -> account_unknown + Kandidaten + gedruckte IBAN, bei stimmender Saldo-Probe auch Endsaldo + Stichtag; bestehendes Konto -> der Agent ruft mit account_name erneut; neues Konto -> tool_create_account mit dieser IBAN und dem Endsaldo zum Stichtag, der Auszug wird danach nicht mehr eingespielt), Saldo-Probe Anfang + Zeilen = Ende (sonst balance_check_failed, nichts wird geschrieben), Zuordnung zu den erwarteten Zahlungen (Stufe 0/A/B), Rest, Kartenzeilen, fingerprint. Karte (Zeilen kommen fertig strukturiert aus der DB) -> Gate -> Apply statement = finance.fn_apply_bank_statement. PRIVACY: Kontoauszüge nur über die bezahlte Anthropic-API.' 360 560
+        'Fetch telegram file (Core-Baustein) -> Claude-Vision (model.vision_extract, Denk-Tiefe mittel, JSON-Schema) liest NUR gedruckte Rohwerte: Konto-IBAN, Zeitraum, Anfangs-/Endstand, alle Zeilen. Shape statement prüft is_statement (Depotauszug/Police -> tool_extract_finance_document; ein Broker-CSV-Export geht an tool_import_broker_csv). Ab Prepare statement die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_import_broker_csv) = finance.fn_statement_prepare: Konto per IBAN (unbekannt -> account_unknown + Kandidaten + gedruckte IBAN, bei stimmender Saldo-Probe auch Endsaldo + Stichtag; bestehendes Konto -> der Agent ruft mit account_name erneut; neues Konto -> tool_create_account mit dieser IBAN und dem Endsaldo zum Stichtag, der Auszug wird danach nicht mehr eingespielt), Saldo-Probe Anfang + Zeilen = Ende (sonst balance_check_failed, nichts wird geschrieben), Zuordnung zu den erwarteten Zahlungen (Stufe 0/A/B), Rest, Kartenzeilen, fingerprint. Karte (Zeilen kommen fertig strukturiert aus der DB) -> Gate -> Apply statement = finance.fn_apply_bank_statement. PRIVACY: Kontoauszüge nur über die bezahlte Anthropic-API.' 360 560
     $stickyFp = Build-Sticky 'Vorschau = Buchung' @(1540, -420) `
         'Prepare läuft zweimal: für die Karte und unter Lock in der Buchung' `
         'fn_apply_bank_statement sperrt die Salden der beteiligten Konten, rechnet fn_statement_prepare mit denselben Rohwerten neu und bucht nur, wenn der fingerprint der Karte gleich ist (Plan/Apply-Muster). Hat sich zwischen Karte und Tipp etwas geändert (manuelle Buchung, Gegenbein aus dem Auszug des Partnerkontos, Dauerauftrag geändert) -> stale_preview, nichts gebucht, der Agent schickt den Auszug neu. Eine innere Buch-Ablehnung -> booking_failed, alles zurückgerollt.' 320 360
 
-    $nodes = @($trig, $fetch, $ifFile, $errFile, $loadModel, $vision, $shape, $ifShaped, $errShape, $prepare, $ifPrep, $errPrep,
-               $summary, $reqApproval, $ifApproved, $retCancelled, $apply, $ifApplied, $errApply, $ret, $sticky, $stickyFp)
+    $nodes = @($trig, $fetch, $ifFile, $errFile, $loadModel, $vision, $shape, $ifShaped, $errShape) + $chain.Nodes + @($sticky, $stickyFp)
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Fetch telegram file' ) ) }
         'Fetch telegram file'    = @{ main = @( ,@( E 'File ok?' ) ) }
@@ -159,14 +110,8 @@ return [{ json: { ok: true, account_number: txt(s.account_number), currency: txt
         'Load model config'      = @{ main = @( ,@( E 'Read statement' ) ) }
         'Read statement'         = @{ main = @( ,@( E 'Shape statement' ) ) }
         'Shape statement'        = @{ main = @( ,@( E 'Statement read?' ) ) }
-        'Statement read?'        = @{ main = @( @( E 'Prepare statement' ), @( E 'Not readable' ) ) }
-        'Prepare statement'      = @{ main = @( ,@( E 'Statement ok?' ) ) }
-        'Statement ok?'          = @{ main = @( @( E 'Build Approval Summary' ), @( E 'Statement not ready' ) ) }
-        'Build Approval Summary' = @{ main = @( ,@( E 'Request Approval' ) ) }
-        'Request Approval'       = @{ main = @( ,@( E 'Approved?' ) ) }
-        'Approved?'              = @{ main = @( @( E 'Apply statement' ), @( E 'Return cancelled' ) ) }
-        'Apply statement'        = @{ main = @( ,@( E 'Booked?' ) ) }
-        'Booked?'                = @{ main = @( @( E 'Return' ), @( E 'Not booked' ) ) }
+        'Statement read?'        = @{ main = @( @( E $chain.Entry ), @( E 'Not readable' ) ) }
     }
+    foreach ($k in $chain.Conns.Keys) { $conns[$k] = $chain.Conns[$k] }
     return Build-Workflow 'agent.finance.tool_reconcile_bank_statement' $nodes $conns @{ Category = 'import' }
 }

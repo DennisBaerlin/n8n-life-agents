@@ -987,5 +987,18 @@
         "expected_tool":  "tool_import_stage_rows",
         "expected_behavior":  "Stagt die drei Kaeufe als DREI stock_buy-Zeilen (depot Trade Republic Depot, isin IE00B5BMR087, je shares/price_per_share wie genannt und transaction_date je Kauf) in EINEM Batch und bietet danach die Import-Karte an. Rechnet keine Summe und keinen Durchschnittskurs selbst, schlaegt KEINE normalen Kaeufe (tool_book_stock_buy ohne existing_position) vor und behauptet keine Abbuchung oder Gutschrift auf dem Verrechnungskonto. Nach der Ablehnung meldet er den Abbruch.",
         "notes":  "Live-Befund 2026-10-28 (Werte erfunden): eine Kaufliste derselben Position scheiterte an der Doppel-Uebernahme-Sperre, der Agent schlug normale Kaeufe vor (Cash-Abfluss). Seit Paket A bucht fn_import_bundle datierte Tranchen in einer group_id. Judge: drei Zeilen mit je transaction_date, keine Eigenrechnung, keine erfundene Kontobewegung."
+    },
+    {
+        "id":  "tc83",
+        "name":  "Broker-CSV: Transaktionsexport mit App-Kontostand geht an den CSV-Import",
+        "task":  "Hier ist der Transaktionsexport von Trade Republic als CSV, laut App stehen auf dem Trade Republic Cash Girokonto gerade 1234,56 Euro [attachment file_id=mock_photo_083 type=document]",
+        "chat_id":  "test_tc83",
+        "expected_tool":  "tool_import_broker_csv",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_083",
+                                   "account_name":  "Trade Republic Cash Girokonto"
+                               },
+        "expected_behavior":  "Ruft tool_import_broker_csv mit der file_id, dem Kontonamen und dem genannten Kontostand (1234.56) auf - nicht tool_reconcile_bank_statement oder tool_extract_finance_document. Rechnet keinen Saldo selbst. Eine Karte schickt das Tool selbst; meldet es no_starting_point (Konto ohne bestaetigten Stand), erklaert der Agent, dass zuerst der heutige Kontostand bestaetigt werden muss, und erfindet keine Buchung.",
+        "notes":  "Broker-CSV Paket B. Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_083.csv (erfundene Werte, Trade-Republic-Spalten). Das Fixture-Konto hat keinen Stichtag -> fn_statement_prepare antwortet no_starting_point (kein Write), Routing + Argumente sind trotzdem geprueft."
     }
 ]

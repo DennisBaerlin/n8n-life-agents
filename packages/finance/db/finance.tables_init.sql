@@ -1203,6 +1203,26 @@ CREATE TABLE IF NOT EXISTS finance.bank_statements (
     CONSTRAINT finance_bank_statements_period_chk CHECK (period_start <= period_end),
     UNIQUE (account_id, period_end)
 );
+-- Broker-CSV (Paket B 2026-10-28): Herkunft des Endsaldos. printed = auf dem Auszug gedruckt (Saldo-Probe Anfang +
+-- Zeilen = Ende), owner = vom Owner aus der Bank-App genannt (CSV-Export ohne Salden). Ein errechneter Saldo wird nie
+-- als bestaetigt gespeichert (Plan-Review 1) -> es gibt keinen dritten Wert.
+ALTER TABLE finance.bank_statements ADD COLUMN IF NOT EXISTS balance_source text NOT NULL DEFAULT 'printed';
+DO $$ BEGIN
+    ALTER TABLE finance.bank_statements ADD CONSTRAINT finance_bank_statements_balance_source_chk
+        CHECK (balance_source IN ('printed', 'owner'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Broker-CSV: gesehene Bank-Referenzen je Konto, NUR als Hash (md5 der transaction_id; Owner-Vorgabe: Einzelumsaetze
+-- werden nicht gespeichert). Zweck: eine spaet nachgebuchte Zeile mit Datum <= Schnitt erkennen (Dedup primaer per
+-- Zeitraum, die Bank-ID nur ergaenzend; Muster hledger .latest / Actual imported_id). Faellt mit dem Auszug weg
+-- (fn_void_bank_statement -> CASCADE), dann darf derselbe Export erneut eingespielt werden.
+CREATE TABLE IF NOT EXISTS finance.statement_seen_refs (
+    account_id   int  NOT NULL REFERENCES finance.accounts(id) ON DELETE CASCADE,
+    ref_hash     text NOT NULL CHECK (ref_hash ~ '^[0-9a-f]{32}$'),
+    statement_id int  NOT NULL REFERENCES finance.bank_statements(id) ON DELETE CASCADE,
+    PRIMARY KEY (account_id, ref_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_statement_seen_refs_statement ON finance.statement_seen_refs (statement_id);
 
 -- ============================================================
 -- INTEREST SKIPS (WS-5c-B Zins-Faelligkeits-Scheduler)
@@ -2128,6 +2148,16 @@ CREATE TABLE IF NOT EXISTS finance.transaction_audit (
     payload        jsonb NOT NULL,               -- vollstaendige geloeschte Zeile (to_jsonb)
     voided_at      timestamptz NOT NULL DEFAULT now()
 );
+-- Broker-CSV (Paket B): WARUM geloescht. NULL = normales Void (Fehlbuchung); 'replaced_by_lots' = eine
+-- Bestandsuebernahme wurde durch die echten Einzelkaeufe aus dem Broker-Export ersetzt (fn_replace_takeover_with_lots),
+-- replaced_by_group = deren group_id (Provenienz-Stempel, kein FK: die Gruppe ist eine UUID ohne eigene Tabelle).
+ALTER TABLE finance.transaction_audit ADD COLUMN IF NOT EXISTS reason text;
+ALTER TABLE finance.transaction_audit ADD COLUMN IF NOT EXISTS replaced_by_group uuid;
+DO $$ BEGIN
+    ALTER TABLE finance.transaction_audit ADD CONSTRAINT finance_transaction_audit_reason_chk
+        CHECK ((reason IS NULL AND replaced_by_group IS NULL)
+            OR (reason = 'replaced_by_lots' AND replaced_by_group IS NOT NULL));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ============================================================
 -- ONBOARDING-FORTSCHRITT (WS-B3 DRY-Onboarding O3) — paket-besessene Daten

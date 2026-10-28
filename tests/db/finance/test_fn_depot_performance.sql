@@ -205,6 +205,9 @@ BEGIN
      OR finance.fn_depot_performance('{"person_id":42}') <> '{"ok":false,"code":"bad_request"}'::jsonb THEN
     RAISE EXCEPTION 'FAIL [4a] Muell -> bad_request'; END IF;
   IF (finance.fn_depot_performance(NULL)->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [4b] NULL = Standard'; END IF;
+  IF finance.fn_depot_performance('{"as_of":"yesterday"}')->>'as_of' IS DISTINCT FROM (core.fn_today() - 1)::text
+     OR finance.fn_depot_performance('{"as_of":"kein Datum"}')->>'code' IS DISTINCT FROM 'invalid_date' THEN
+    RAISE EXCEPTION 'FAIL [4b2] as_of relativ aufgeloest, Unsinn -> invalid_date ohne RAISE'; END IF;
   SELECT count(*) INTO v_n FROM finance.depot_performance WHERE depot_name LIKE '__dpf_%';
   IF v_n <> 5 OR (SELECT count(*) FROM finance.depot_performance WHERE is_total) <> 1 THEN
     RAISE EXCEPTION 'FAIL [4c] View: 5 aktive Test-Depots + eine Gesamt-Zeile, got %', v_n; END IF;

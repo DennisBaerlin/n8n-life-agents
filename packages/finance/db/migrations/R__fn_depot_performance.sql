@@ -28,7 +28,8 @@
 --     geschlossene Depots fehlen (wie in der App).
 --   INVOKER: liest nur finance + core.fn_household_persons (publiziertes Fenster); die View finance.depot_performance
 --   (R__v_depot_performance.sql) ruft sie fuer den Agent-Read (finance_ro), finance.fn_app_screen_depot fuer die App.
---   Fehler als Daten: p kein Objekt / person_id kein Text -> {ok:false, code:'bad_request'}.
+--   Fehler als Daten: p kein Objekt / person_id kein Text -> {ok:false, code:'bad_request'}; as_of laeuft ueber
+--   core.fn_resolve_input_dates (auch relativ, z. B. "yesterday"; Unsinn -> {ok:false, code:'invalid_date'}).
 --   Quellen (Verfahren): siehe finance.fn_xirr; GIPS-Annualisierung https://www.gipsstandards.org/standards/
 --   Tests: tests/db/finance/test_fn_depot_performance.sql
 -- ============================================================
@@ -37,6 +38,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE
 AS $$
 DECLARE
+    v_dates jsonb;
     v_as_of date;
     v_pid   text;
     v_hh    boolean := true;
@@ -46,6 +48,9 @@ BEGIN
     IF jsonb_typeof(p) <> 'object' OR (p ? 'person_id' AND jsonb_typeof(p -> 'person_id') NOT IN ('string', 'null')) THEN
         RETURN jsonb_build_object('ok', false, 'code', 'bad_request');
     END IF;
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['as_of']);
+    IF NOT (v_dates ->> 'ok')::boolean THEN RETURN v_dates; END IF;
+    p := v_dates -> 'p';
     v_as_of := COALESCE(NULLIF(p ->> 'as_of', '')::date, core.fn_today());
     v_pid := NULLIF(p ->> 'person_id', '');
     IF v_pid IS NOT NULL THEN

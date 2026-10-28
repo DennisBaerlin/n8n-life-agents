@@ -113,7 +113,7 @@
                                                                                  {
                                                                                      "id":  "5f4b493a-8f90-5a0f-afe2-afca13e0e062",
                                                                                      "name":  "error",
-                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.mime === \u0027text/csv\u0027 ? \u0027This is a CSV export file, not a photo or PDF - call tool_import_broker_csv with the same file_id (it also needs the balance the bank app shows right now).\u0027 : $(\u0027Fetch telegram file\u0027).item.json.error }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -457,7 +457,7 @@
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
                                                                               "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
-                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).first().json.chat_id }}",
                                                                               "approval_tier":  "owner_approval"
                                                                           },
                                                                 "matchingColumns":  [
@@ -752,7 +752,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Monats-Check: Kontoauszug -\u003e eine Karte -\u003e Buchung (Einzelumsätze werden nicht gespeichert)**\n\nFetch telegram file (Core-Baustein) -\u003e Claude-Vision (model.vision_extract, Denk-Tiefe mittel, JSON-Schema) liest NUR gedruckte Rohwerte: Konto-IBAN, Zeitraum, Anfangs-/Endstand, alle Zeilen. Shape statement prüft is_statement (Depotauszug/Police -\u003e tool_extract_finance_document). Prepare statement = finance.fn_statement_prepare: Konto per IBAN (unbekannt -\u003e account_unknown + Kandidaten + gedruckte IBAN, bei stimmender Saldo-Probe auch Endsaldo + Stichtag; bestehendes Konto -\u003e der Agent ruft mit account_name erneut; neues Konto -\u003e tool_create_account mit dieser IBAN und dem Endsaldo zum Stichtag, der Auszug wird danach nicht mehr eingespielt), Saldo-Probe Anfang + Zeilen = Ende (sonst balance_check_failed, nichts wird geschrieben), Zuordnung zu den erwarteten Zahlungen (Stufe 0/A/B), Rest, Kartenzeilen, fingerprint. Karte (Zeilen kommen fertig strukturiert aus der DB) -\u003e Gate -\u003e Apply statement = finance.fn_apply_bank_statement. PRIVACY: Kontoauszüge nur über die bezahlte Anthropic-API.",
+                                         "content":  "## DB-Automatik\n**Monats-Check: Kontoauszug -\u003e eine Karte -\u003e Buchung (Einzelumsätze werden nicht gespeichert)**\n\nFetch telegram file (Core-Baustein) -\u003e Claude-Vision (model.vision_extract, Denk-Tiefe mittel, JSON-Schema) liest NUR gedruckte Rohwerte: Konto-IBAN, Zeitraum, Anfangs-/Endstand, alle Zeilen. Shape statement prüft is_statement (Depotauszug/Police -\u003e tool_extract_finance_document; ein Broker-CSV-Export geht an tool_import_broker_csv). Ab Prepare statement die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_import_broker_csv) = finance.fn_statement_prepare: Konto per IBAN (unbekannt -\u003e account_unknown + Kandidaten + gedruckte IBAN, bei stimmender Saldo-Probe auch Endsaldo + Stichtag; bestehendes Konto -\u003e der Agent ruft mit account_name erneut; neues Konto -\u003e tool_create_account mit dieser IBAN und dem Endsaldo zum Stichtag, der Auszug wird danach nicht mehr eingespielt), Saldo-Probe Anfang + Zeilen = Ende (sonst balance_check_failed, nichts wird geschrieben), Zuordnung zu den erwarteten Zahlungen (Stufe 0/A/B), Rest, Kartenzeilen, fingerprint. Karte (Zeilen kommen fertig strukturiert aus der DB) -\u003e Gate -\u003e Apply statement = finance.fn_apply_bank_statement. PRIVACY: Kontoauszüge nur über die bezahlte Anthropic-API.",
                                          "height":  360,
                                          "width":  560,
                                          "color":  4

@@ -21,9 +21,9 @@
 $ApprovalTierRank = @{ self = -1; owner_info = 0; owner_approval = 1; owner_only = 2 }
 $ApprovalSelfFn   = 'agent.fn_set_own_context_facts'
 # Verb -> Mindest-Rang. save/publish/invite = Plan-/Identitaets-Writes (owner_only); set/close/delete/… =
-# Aenderung/Lebenszyklus (owner_approval); create/book/record/cancel/export = Anlegen/Buchen/Break-Glass (owner_info).
+# Aenderung/Lebenszyklus inkl. Multi-Row-Import (owner_approval); create/book/record/cancel/export = Anlegen/Buchen/Break-Glass (owner_info).
 $ApprovalVerbFloor = @{ save = 2; publish = 2; invite = 2
-                        set = 1; close = 1; delete = 1; void = 1; settle = 1; sell = 1; reconcile = 1; commit = 1
+                        set = 1; close = 1; delete = 1; void = 1; settle = 1; sell = 1; reconcile = 1; commit = 1; import = 1
                         create = 0; book = 0; record = 0; cancel = 0; export = 0 }
 # Break-Glass-Ausnahme vom Verb-Floor: ein Manifest-Eintrag mit "break_glass": true darf owner_info tragen, wo das Verb
 # strenger verlangt — nur fuer Writes, die ein Hinterbliebener ohne den Owner koennen MUSS (owner_approval deadlockte,

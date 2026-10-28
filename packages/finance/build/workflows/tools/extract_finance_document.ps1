@@ -28,7 +28,7 @@ function Build-ExtractFinanceDocument {
     $fetch = Build-CallWorkflow 'Fetch telegram file' @(420, 60) $idFetch 'agent.tool_fetch_telegram_file' `
         ([ordered]@{ file_id = "={{ `$('Start').item.json.file_id }}" })
     $ifB64 = Build-If 'File ok?' @(860, 60) "={{ `$('Fetch telegram file').item.json.ok }}" 'true' 'equals' 'boolean'
-    $errB64 = Build-ToolError 'File unusable' @(1080, 240) "={{ `$('Fetch telegram file').item.json.error }}"
+    $errB64 = Build-ToolError 'File unusable' @(1080, 240) (Get-FinanceFileErrorExpr)
 
     # Claude-Vision: Bild als image-Block, PDF als document-Block + Kontext-Text. JSON-Array per Prompt-Vertrag
     # (heterogene Rows je entity_type -> kein festes Structured-Output-Schema); der Parse toleriert Zaeune.

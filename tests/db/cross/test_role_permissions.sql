@@ -196,6 +196,29 @@ BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM * FROM finance.fn_resolve_account_by_number('DE42520513735120710155');
     RESET ROLE;
+    -- (2-mc-csv) Broker-CSV (Paket B): tool_import_broker_csv laeuft unter finance_rw (Probelauf der Lots-Ersetzung,
+    -- Vorschau + Buchung inkl. statement_seen_refs); die Monats-Erinnerung liest das Konto-Profil unter finance_ro.
+    v_a := (finance.fn_create_account(jsonb_build_object('name', '__t_role_csv__', 'account_type', 'cash', 'currency', 'EUR',
+              'bank', 'Trade Republic', 'opening_balance', 0, 'opening_balance_date', (CURRENT_DATE - 10)::text))->>'account_id')::int;
+    SET LOCAL ROLE finance_rw;
+    v_res := core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, jsonb_build_object(
+                'account_name', '__t_role_csv__', 'csv', jsonb_build_object('header', '["datetime","category","type","amount","currency","transaction_id"]'::jsonb,
+                'rows', jsonb_build_array(jsonb_build_array((CURRENT_DATE - 3)::text, 'CASH', 'CARD_TRANSACTION', '-7.50', 'EUR', 'r-1')))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw -> fn_replace_takeover_with_lots]: %', v_res; END IF;
+    v_prep := finance.fn_statement_prepare(jsonb_build_object('source', 'csv', 'account_name', '__t_role_csv__', 'closing_balance', -7.5,
+                'csv', jsonb_build_object('header', '["datetime","category","type","amount","currency","transaction_id"]'::jsonb,
+                'rows', jsonb_build_array(jsonb_build_array((CURRENT_DATE - 3)::text, 'CASH', 'CARD_TRANSACTION', '-7.50', 'EUR', 'r-1')))));
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw -> fn_statement_prepare csv]: %', v_prep; END IF;
+    v_res := finance.fn_apply_bank_statement(jsonb_build_object('source', 'csv', 'account_name', '__t_role_csv__', 'closing_balance', -7.5,
+                'csv', jsonb_build_object('header', '["datetime","category","type","amount","currency","transaction_id"]'::jsonb,
+                'rows', jsonb_build_array(jsonb_build_array((CURRENT_DATE - 3)::text, 'CASH', 'CARD_TRANSACTION', '-7.50', 'EUR', 'r-1'))),
+                'fingerprint', v_prep->>'fingerprint'));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw -> fn_apply_bank_statement csv]: %', v_res; END IF;
+    RESET ROLE;
+    SET LOCAL ROLE finance_ro;
+    IF finance.fn_broker_csv_account_profile(v_a) IS DISTINCT FROM 'trade_republic_v1' THEN
+      RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_broker_csv_account_profile]'; END IF;
+    RESET ROLE;
     -- Rundungs-Paket 2026-10-23: ungerundete Kurs-Umrechnung (fn_statement_prepare/fn_account_outlook/Transfer) und die
     -- darauf gebaute fn_to_eur (Views) unter beiden Rollen mit einem echten Fremdwaehrungs-Kurs
     PERFORM finance.fn_ensure_currency('USD');

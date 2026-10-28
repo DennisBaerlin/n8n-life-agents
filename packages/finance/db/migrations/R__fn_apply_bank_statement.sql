@@ -12,7 +12,10 @@
 --   Aggregat in finance.bank_statements, Herkunft bank_statement_id an jeder hier entstandenen Buchung.
 --   Ein {ok:false} einer inneren Buch-fn wird zu RAISE SQLSTATE 'FN001' -> Rollback des Blocks -> {ok:false, reason}
 --   (kein Teilzustand, kein Owner-Alarm).
---   RUECKGABE: {ok:true, statement_id, booked_count, booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
+--   Broker-CSV (source:'csv', Paket B): Sparplan-Treffer mit exakter Stueckzahl ohne shares_estimated; prepare.trades
+--   ueber fn_book_stock_buy / fn_book_stock_sell / fn_book_dividend (Herkunft bank_statement_id wie jede Buchung hier);
+--   balance_source aus der Prepare; seen_refs -> finance.statement_seen_refs (faellt mit dem Auszug per CASCADE weg).
+--   RUECKGABE: {ok:true, statement_id, booked_count, trades_booked, trades_blocked[], csv_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
 -- ============================================================
@@ -37,6 +40,7 @@ DECLARE
     v_spe      JSONB := '[]'::jsonb;
     v_stmt     INT;
     v_redated  INT := 0;
+    v_trades   INT := 0;
 BEGIN
     v_prep := finance.fn_statement_prepare(p - 'fingerprint');
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -107,11 +111,37 @@ BEGIN
             END IF;
             v_ids := v_ids || ARRAY_REMOVE(ARRAY[NULLIF(v_r->>'transaction_id', '')::int, NULLIF(v_r->>'debit_tx_id', '')::int,
                                                  NULLIF(v_r->>'credit_tx_id', '')::int, NULLIF(v_r->>'buy_tx_id', '')::int], NULL);
-            IF v_m->>'kind' = 'savings_plan' THEN
+            IF v_m->>'kind' = 'savings_plan' AND COALESCE((v_m->>'shares_estimated')::boolean, true) THEN
                 UPDATE finance.transactions SET shares_estimated = true WHERE id = (v_r->>'buy_tx_id')::int;
                 v_spe := v_spe || jsonb_build_object('name', v_m->>'name', 'shares', (v_m->>'shares')::numeric,
                                                      'holding_id', (v_r->>'holding_id')::int);
             END IF;
+        END LOOP;
+
+        -- Broker-CSV: Wertpapier-Zeilen ohne Treffer aus den Export-Werten buchen (Reihenfolge = Datum, Kauf vor Verkauf)
+        FOR v_m IN SELECT e FROM jsonb_array_elements(COALESCE(v_prep->'trades', '[]'::jsonb)) e LOOP
+            IF v_m->>'kind' = 'buy' THEN
+                v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id', (v_m->>'depot_id')::int,
+                           'settlement_id', v_acct, 'isin', v_m->>'isin', 'symbol', v_m->>'symbol', 'name', v_m->>'name',
+                           'shares', (v_m->>'shares')::numeric, 'price_per_share', (v_m->>'price_per_share')::numeric,
+                           'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date'));
+            ELSIF v_m->>'kind' = 'sell' THEN
+                v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_acct,
+                           'holding_id', (v_m->>'holding_id')::int, 'symbol', v_m->>'symbol',
+                           'shares', (v_m->>'shares')::numeric, 'price_per_share', (v_m->>'price_per_share')::numeric,
+                           'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date'));
+            ELSE
+                v_r := finance.fn_book_dividend(jsonb_build_object('account_id', v_acct,
+                           'holding_id', (v_m->>'holding_id')::int, 'amount', (v_m->>'amount')::numeric,
+                           'transaction_date', v_m->>'date', 'description', 'Dividende ' || (v_m->>'name')));
+            END IF;
+            IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                RAISE EXCEPTION USING ERRCODE = 'FN001',
+                    MESSAGE = COALESCE(v_m->>'name', 'trade') || ': ' || COALESCE(v_r->>'reason', 'booking refused');
+            END IF;
+            v_ids := v_ids || ARRAY_REMOVE(ARRAY[NULLIF(v_r->>'buy_tx_id', '')::int, NULLIF(v_r->>'sell_tx_id', '')::int,
+                                                 NULLIF(v_r->>'transaction_id', '')::int], NULL);
+            v_trades := v_trades + 1;
         END LOOP;
 
         FOR v_k IN SELECT e FROM jsonb_array_elements(v_prep->'learn') e LOOP
@@ -156,13 +186,19 @@ BEGIN
 
         INSERT INTO finance.bank_statements
             (account_id, period_start, period_end, opening_balance, closing_balance, currency, line_count, matched_count,
-             unmatched_out, unmatched_in, prev_last_reconciled_balance, prev_last_reconciled_at, skipped, learned_key_ids)
+             unmatched_out, unmatched_in, prev_last_reconciled_balance, prev_last_reconciled_at, skipped, learned_key_ids,
+             balance_source)
         VALUES (v_acct, (v_prep->>'period_start')::date, (v_prep->>'period_end')::date,
                 (v_prep->>'opening_balance')::numeric, (v_prep->>'closing_balance')::numeric, v_prep->>'currency',
                 (v_prep->>'line_count')::int, (v_prep->>'matched_count')::int,
                 (v_prep->>'unmatched_out')::numeric, (v_prep->>'unmatched_in')::numeric, v_prev_bal, v_prev_at,
-                v_skipped, v_keys)
+                v_skipped, v_keys, v_prep->>'balance_source')
         RETURNING id INTO v_stmt;
+
+        -- Broker-CSV: gesehene Bank-Referenzen nur als Hash (spaete Zeilen beim naechsten Export erkennen)
+        INSERT INTO finance.statement_seen_refs (account_id, ref_hash, statement_id)
+        SELECT v_acct, h, v_stmt FROM jsonb_array_elements_text(COALESCE(v_prep->'seen_refs', '[]'::jsonb)) h
+        ON CONFLICT (account_id, ref_hash) DO NOTHING;
 
         -- Herkunft: jede hier entstandene Buchung inkl. ihrer Gruppen-Beine (Transfer-Ziel, Kredit-Tilgung).
         UPDATE finance.transactions t SET bank_statement_id = v_stmt
@@ -175,6 +211,9 @@ BEGIN
     RETURN jsonb_build_object('ok', true,
         'statement_id', v_stmt,
         'booked_count', jsonb_array_length(v_prep->'matched'),
+        'trades_booked', v_trades,
+        'trades_blocked', COALESCE(v_prep->'trades_blocked', '[]'::jsonb),
+        'csv_unknown', COALESCE(v_prep->'csv_unknown', '[]'::jsonb),
         'booked_tx_ids', to_jsonb(v_ids),
         'drift_amount', v_drift,
         'lump_amount', COALESCE((v_final->>'difference')::numeric, 0),

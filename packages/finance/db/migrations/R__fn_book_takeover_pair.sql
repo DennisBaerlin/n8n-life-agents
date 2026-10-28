@@ -11,10 +11,13 @@
 --   RUECKGABE: {ok:true, buy_tx_id} | {ok:false, reason} (nicht-positive Stueck/Kurs, negative Gebuehr, > 8 Stueck-
 --   Stellen / Betrag < 1 Cent via fn_trade_amount_reason). Kurs auf 8, Gebuehr auf 2 Stellen gerundet (Rundungs-Paket).
 --   CHECK finance_transactions_position_takeover_shape bleibt der Backstop der Gegenbuchungs-Form.
+--   p_with_counter (Default true): false = ECHTER Kauf ohne Gegenbuchung (Cash-Abfluss) -- nur fn_replace_takeover_with_lots
+--   fuer Einzelkaeufe NACH dem bestaetigten Kontostand-Tag (der Stand davon enthaelt sie noch nicht, Paket B 2026-10-28).
 -- ============================================================
+DROP FUNCTION IF EXISTS finance.fn_book_takeover_pair(int, int, numeric, numeric, numeric, date, uuid, text);
 CREATE OR REPLACE FUNCTION finance.fn_book_takeover_pair(
     p_holding int, p_settle int, p_shares numeric, p_unit_price numeric, p_fee numeric,
-    p_date date, p_group uuid, p_label text)
+    p_date date, p_group uuid, p_label text, p_with_counter boolean DEFAULT TRUE)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_price  NUMERIC := round(p_unit_price, 8);
@@ -42,14 +45,16 @@ BEGIN
     INSERT INTO finance.transactions
         (account_id, amount, transaction_date, category, holding_id, shares, order_fee, unit_price, description, group_id)
     VALUES (p_settle, -(p_shares * v_price + v_fee), p_date, 'buy', p_holding, p_shares, v_fee, v_price,
-            'Bestandsübernahme ' || trim_scale(p_shares) || ' ' || p_label || ' @ ' || trim_scale(v_price)
+            CASE WHEN p_with_counter THEN 'Bestandsübernahme ' ELSE 'Kauf ' END || trim_scale(p_shares) || ' ' || p_label || ' @ ' || trim_scale(v_price)
                 || ' (Gebühr ' || trim_scale(v_fee) || ')',
             p_group)
     RETURNING id INTO v_buy;
 
-    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description, group_id)
-    VALUES (p_settle, p_shares * v_price + v_fee, p_date, 'position_takeover',
-            'Gegenbuchung Bestandsübernahme ' || trim_scale(p_shares) || ' ' || p_label, p_group);
+    IF p_with_counter THEN
+        INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description, group_id)
+        VALUES (p_settle, p_shares * v_price + v_fee, p_date, 'position_takeover',
+                'Gegenbuchung Bestandsübernahme ' || trim_scale(p_shares) || ' ' || p_label, p_group);
+    END IF;
 
     RETURN jsonb_build_object('ok', true, 'buy_tx_id', v_buy);
 END;

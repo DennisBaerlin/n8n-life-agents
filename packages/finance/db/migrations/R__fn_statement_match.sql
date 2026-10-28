@@ -18,6 +18,10 @@
 --         Namens-Token des Dauerauftrags (>= 4 Zeichen) im Zeilentext steht, +-5 % (mind. 2,00).
 --   Zuordnung gierig in fester Ordnung (Stufe -> |Betragsabweichung| -> |Tage| -> Zeile -> Kandidat): jede Zeile und
 --   jeder Kandidat hoechstens einmal (Muster YNAB/Actual: gleiche Betraege am selben Tag werden so stabil verteilt).
+--   Broker-CSV (Paket B): Zeilen mit kind (fn_broker_csv_normalize) treffen nur passende Kandidaten: buy nur einen
+--   Sparplan bzw. gebuchten Kauf DERSELBEN Position (ISIN, Krypto per Symbol), cash/fee nie einen Sparplan oder Kauf,
+--   interest den Zins ohne Textsuche, sell/dividend/tax/corporate/unknown nichts (die Prepare behandelt sie selbst).
+--   Gedruckter Auszug = kind NULL = Verhalten wie zuvor.
 --   Lernen: ein Treffer eines Nicht-Transfer-Dauerauftrags schlaegt die Schluessel der Zeile vor, die die Kette noch
 --   nicht hat (learn_mandate / learn_iban; gespeichert erst beim Buchen).
 --   RUECKGABE: {matched:[{line_idx, stage, kind (recurring|interest|booked), recurring_payment_id, due_date,
@@ -47,7 +51,8 @@ BEGIN
                CASE WHEN NULLIF(trim(o.l->>'creditor_id'), '') IS NOT NULL AND NULLIF(trim(o.l->>'mandate_ref'), '') IS NOT NULL
                     THEN upper(regexp_replace(o.l->>'creditor_id', '\s', '', 'g')) || '|'
                          || upper(regexp_replace(o.l->>'mandate_ref', '\s', '', 'g')) END AS mkey,
-               lower(COALESCE(o.l->>'counterparty', '') || ' ' || COALESCE(o.l->>'purpose', '')) AS txt
+               lower(COALESCE(o.l->>'counterparty', '') || ' ' || COALESCE(o.l->>'purpose', '')) AS txt,
+               NULLIF(o.l->>'kind', '') AS kind, upper(o.l->>'isin') AS isin, upper(o.l->>'symbol') AS symbol
         FROM jsonb_array_elements(COALESCE(p_lines, '[]'::jsonb)) WITH ORDINALITY AS o(l, ord)
         WHERE (o.l->>'date')::date > p_cut
     ),
@@ -58,9 +63,11 @@ BEGIN
                     THEN COALESCE(finance.fn_recurring_occurrence_amount(r.id, o.due_date), r.amount)
                     ELSE abs(r.amount) END AS expected,
                CASE WHEN r.account_id = p_account_id THEN r.target_account_id ELSE r.account_id END AS other_acct,
-               r.target_account_id
+               r.target_account_id,
+               sp.id IS NOT NULL AS is_plan, upper(sp.isin) AS sp_isin, upper(sp.symbol) AS sp_symbol
         FROM finance.fn_recurring_due_open(p_cut - 10, p_period_end + 5) o
         JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
+        LEFT JOIN finance.savings_plans sp ON sp.recurring_payment_id = finance.fn_recurring_lineage_head(r.id)
         WHERE r.account_id = p_account_id
            OR (r.target_account_id = p_account_id
                AND (SELECT a.currency FROM finance.accounts a WHERE a.id = r.account_id) = v_ccy)
@@ -76,6 +83,12 @@ BEGIN
              AND (t.recurring_payment_id IS NOT NULL OR t.interest_period_end IS NOT NULL)
              AND t.transaction_date > p_cut AND t.transaction_date <= p_period_end + 5
              AND t.amount = l.amt AND abs(l.d - t.transaction_date) <= 5
+             -- Broker-CSV: ein Wertpapierkauf trifft nur einen gebuchten Kauf derselben Position, Geldzeilen nie einen Kauf
+             AND (l.kind IS NULL
+                  OR (l.kind IN ('cash', 'fee', 'interest') AND t.category::text <> 'buy')
+                  OR (l.kind = 'buy' AND t.category::text = 'buy' AND EXISTS (
+                          SELECT 1 FROM finance.depot_holdings h WHERE h.id = t.holding_id
+                            AND (upper(h.isin) = l.isin OR (l.isin IS NULL AND upper(h.symbol) = l.symbol)))))
              AND (t.transaction_date <= p_period_end OR NOT EXISTS (
                      SELECT 1 FROM finance.transactions g
                      WHERE (g.id = t.id OR (t.group_id IS NOT NULL AND g.group_id = t.group_id))
@@ -119,6 +132,11 @@ BEGIN
             END AS stage
         ) x
         WHERE x.stage IS NOT NULL AND sign(l.amt) = sign(o.expected)
+          -- Broker-CSV: Kauf-Zeile nur gegen einen Sparplan DERSELBEN Position, Geldzeile nie gegen einen Sparplan,
+          -- Verkauf/Dividende/Steuer/unbekannt nie gegen einen Dauerauftrag (gedruckter Auszug: kind NULL, wie bisher)
+          AND (l.kind IS NULL
+               OR (l.kind = 'buy' AND o.is_plan AND (o.sp_isin = l.isin OR (o.sp_isin IS NULL AND l.isin IS NULL AND o.sp_symbol = l.symbol)))
+               OR (l.kind IN ('cash', 'fee') AND NOT o.is_plan))
         UNION ALL
         -- Zins-Vorkommen (Stufe B, nur Zeilen mit "zins")
         SELECT l.idx, 'B'::text, 'interest', 'i:' || i.period_end, NULL::int, NULL::date, i.period_end, NULL::int, l.d, l.amt,
@@ -126,7 +144,8 @@ BEGIN
                NULL, NULL, NULL::date
         FROM lines l
         JOIN finance.fn_interest_due_open(p_period_end + 5) i ON i.account_id = p_account_id
-        WHERE l.amt > 0 AND l.txt LIKE '%zins%' AND (l.d - i.value_date) BETWEEN -5 AND 10
+        WHERE l.amt > 0 AND (l.kind = 'interest' OR (l.kind IS NULL AND l.txt LIKE '%zins%'))
+          AND (l.d - i.value_date) BETWEEN -5 AND 10
           AND abs(l.amt - finance.fn_interest_amount_due(p_account_id, i.period_end))
               <= GREATEST(finance.fn_interest_amount_due(p_account_id, i.period_end) * 0.05, 0.10)
     )

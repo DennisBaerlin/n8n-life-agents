@@ -285,5 +285,23 @@
     "expected_route": null,
     "expected_behavior": "No persona is active. The reply is a normal, friendly German reply without butler, sports-commentator or wise-master style (no 'Sehr wohl', no live-commentary phrases, no proverbs) and does not mention personas.",
     "notes": "Kontrollfall: der Owner ist im finally jedes Falls neutral; persona fehlt -> Runtime-Flag 'persona: neutral'."
+  },
+  {
+    "id": "oc34",
+    "name": "Folge-Bindung: kurze Antwort nach einem Knopf-Lauf des Beraters -> agent.finance_advisor",
+    "task": "Ja, genau so.",
+    "chat_id": "test_orc34",
+    "followup_agent": "agent.finance_advisor",
+    "expected_route": "finance_advisor",
+    "notes": "Router-Regel 2a (Plan teilen, 2026-10-28): der Harness setzt die Knopf-Folge-Bindung (agent.fn_set_dispatch_followup) wie ein Knopf-Arm nach dem Relay; ohne Bindung waere die kurze Antwort ohne Kontext mehrdeutig. Owner-Ausnahme: bezahlter orch_test-Lauf."
+  },
+  {
+    "id": "oc35",
+    "name": "Folge-Bindung: frei getippter Wunsch nach [Wunsch an den Owner] -> agent.finance_advisor",
+    "task": "Ich wuensche mir, dass wir jeden Monat mehr fuer die Kinder zuruecklegen.",
+    "chat_id": "test_orc35",
+    "followup_agent": "agent.finance_advisor",
+    "expected_route": "finance_advisor",
+    "notes": "Router-Regel 2a: die Antwort auf die Wunsch-Frage des Beraters (ohne Bindung koennte sie als Buchungs-/Sparziel-Auftrag beim Buchhalter landen)."
   }
 ]

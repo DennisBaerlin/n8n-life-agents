@@ -892,6 +892,72 @@
                   },
                   {
                       "parameters":  {
+                                         "name":  "tool_record_plan_wish",
+                                         "description":  "Send the owner a household member wish about the published household plan (wish mode). Only an adult household member (partner) can use it, and only while a published household plan exists - the tool checks this first and returns ok:false with a reason otherwise (then explain it in plain words). wish_text = the member own words, verbatim and in their language (no translation, no rewording beyond fixing an obvious typo they confirm). A button confirmation follows for the member; after the tap the owner receives the wish. The wish does NOT change the plan - the owner decides. Do not call it for the owner.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "cOUGeN9GaXCqCJSP",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/cOUGeN9GaXCqCJSP",
+                                                            "cachedResultName":  "agent.tool_record_plan_wish"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "wish_text":  "={{ $fromAI(\u0027wish_text\u0027, \u0027The member wish in their own words and language, verbatim (at most 2000 characters)\u0027, \u0027string\u0027) }}",
+                                                                              "domain":  "={{ String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_finance__\u0027 : \u0027finance\u0027 }}",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance_advisor\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "wish_text",
+                                                                                   "displayName":  "wish_text",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "domain",
+                                                                                   "displayName":  "domain",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       800,
+                                       208
+                                   ],
+                      "id":  "38f4a30d-c6e4-5773-b358-c6f2ff72aa7a",
+                      "name":  "tool_record_plan_wish"
+                  },
+                  {
+                      "parameters":  {
                                          "name":  "tool_create_monitor_trigger",
                                          "description":  "Create ONE monitoring trigger derived from the published plan (market threshold, crash drawdown, deadline, recurring check) after the user confirmed it in chat. Load context trigger_design FIRST and follow its co-design protocol (source hierarchy fx_rate \u003e sql \u003e web_search, retrieval-prompt rules, cadence guidance). The tool TEST-FETCHES the value before the button confirmation - a failing probe returns ok:false and nothing is created. trigger_type: threshold (comparator gte|lte + threshold_value), drawdown (drawdown_pct 1-99, percent drop from running peak), date (due_date + optional warn_days_before, acquisition none), recurring_info (periodic report, never latches). acquisition_method: fx_rate (reads the daily FX table of the finance package - ALWAYS prefer for currency pairs. acquisition_params = {\"base\": \"\u003cISO code\u003e\", \"quote\": \"\u003cISO code\u003e\"}, e.g. {\"base\":\"EUR\",\"quote\":\"KRW\"}; the value is quote units per 1 base unit.), sql (acquisition_sql = ONE SELECT returning ONE numeric value, dry-run via postgres_select first), web_search (acquisition_prompt naming metric, unit and decimal format; REQUIRES expected_unit; check_interval at least 12 hours), none. Set min_plausible/max_plausible for every web trigger; max_jump_pct only for jump-implausible metrics (rates), never for crash metrics. action_note (German) goes verbatim into the alert. For CHANGING, repairing, disabling or deleting triggers refer the user to the monitor agent.",
                                          "workflowId":  {
@@ -1255,7 +1321,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**agent.finance_advisor — Finanzberater (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -\u003e Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -\u003e Load Config (core.sub_load_config) -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -\u003e Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context; Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -\u003e Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor.",
+                                         "content":  "## DB-Automatik\n**agent.finance_advisor — Finanzberater (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -\u003e Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -\u003e Load Config (core.sub_load_config) -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -\u003e Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context; Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -\u003e Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor.",
                                          "height":  300,
                                          "width":  600,
                                          "color":  4
@@ -1956,6 +2022,17 @@
                                                                        ]
                                                                    ]
                                                    },
+                        "tool_record_plan_wish":  {
+                                                      "ai_tool":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Advisor Agent",
+                                                                              "type":  "ai_tool"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                  },
                         "tool_publish_plan":  {
                                                   "ai_tool":  [
                                                                   [

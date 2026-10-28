@@ -21,6 +21,7 @@
       "transcribe_telegram_voice",
       "fetch_telegram_file",
       "save_plan_section",
+      "record_plan_wish",
       "publish_plan",
       "create_monitor_trigger",
       "list_monitor_triggers",
@@ -45,6 +46,7 @@
       "fetch_telegram_file": "agent.tool_fetch_telegram_file",
       "error_notify": "core.sub_error_notify",
       "save_plan_section": "agent.tool_save_plan_section",
+      "record_plan_wish": "agent.tool_record_plan_wish",
       "publish_plan": "agent.tool_publish_plan",
       "create_monitor_trigger": "agent.tool_create_monitor_trigger",
       "list_monitor_triggers": "agent.tool_list_monitor_triggers",
@@ -115,7 +117,8 @@
       "drift_check": { "value": "false", "type": "boolean", "description": "F9 enable-flag for agent.advisor.cron_drift_check. The cron's entry gate runs core.fn_package_active('core') AND core.fn_config_get('core','cron_enable','drift_check')='true' (fail-closed). OPT-IN: default false until a plan is published (a drift watcher over an empty plan is noise). Enable at runtime: lifeagents config set cron_enable drift_check true (no rebuild).", "summary": "Schaltet die tägliche Plan-Abweichungs-Prüfung ein oder aus (true/false)." },
       "plan_review": { "value": "false", "type": "boolean", "description": "F9 enable-flag for agent.advisor.cron_review (periodic full digest). OPT-IN: default false until a plan is published. Replaces the retired finance cron_enable.advisor_plan_review. Enable: lifeagents config set cron_enable plan_review true (no rebuild).", "summary": "Schaltet den regelmäßigen Plan-Rückblick ein oder aus (true/false)." },
       "learn_context": { "value": "false", "type": "boolean", "description": "F9 enable-flag for agent.guide.cron_learn_context (opt-in learn loop). Entry gate: core.fn_package_active('core') AND core.fn_config_get('core','cron_enable','learn_context')='true' (fail-closed). OPT-IN: default false (highest-risk surface = auto-memory; default OFF until the owner activates). core.sub_onboarding_progress offers activation ONCE when all onboarding areas are set up ([Lernen aktivieren] -> cron_on:learn_context, owner only); each proposal card carries a [Lernen aus] off switch (cron_off:learn_context); re-enable via console: lifeagents config set cron_enable learn_context true (no rebuild).", "summary": "Schaltet die täglichen Merk-Vorschläge aus deinen Chats ein oder aus (true/false)." },
-      "onboarding_nudge": { "value": "true", "type": "boolean", "description": "F9 master switch for agent.guide.cron_onboarding_nudge (Roter Faden). PERSON-SCOPED reminder (cron_labels.person): each person switches their own copy with the [Don't remind me] button (rem:off:onboarding_nudge -> agent.reminder_prefs); this flag is only the console emergency switch for everybody (always-on, never a chat button). Disable for all: lifeagents config set cron_enable onboarding_nudge false (no rebuild).", "summary": "Notschalter der Einrichtungs-Erinnerung für alle (true/false); jede Person schaltet ihre per Knopf." }
+      "onboarding_nudge": { "value": "true", "type": "boolean", "description": "F9 master switch for agent.guide.cron_onboarding_nudge (Roter Faden). PERSON-SCOPED reminder (cron_labels.person): each person switches their own copy with the [Don't remind me] button (rem:off:onboarding_nudge -> agent.reminder_prefs); this flag is only the console emergency switch for everybody (always-on, never a chat button). Disable for all: lifeagents config set cron_enable onboarding_nudge false (no rebuild).", "summary": "Notschalter der Einrichtungs-Erinnerung für alle (true/false); jede Person schaltet ihre per Knopf." },
+      "plan_news": { "value": "true", "type": "boolean", "description": "Master switch for plan news (2026-10-28): after the owner taps [Inform adults] on the post-publish card, core.sub_share_plan sends each adult member (role partner) a one-time-per-version message about the new household plan (core.fn_plan_share_targets checks this flag). PERSON-SCOPED reminder (cron_labels.person): each person switches their own copy with the [Stop informing me] button (rem:off:plan_news -> agent.reminder_prefs) and back on in /reminders; this flag is only the console emergency switch for everybody (always-on, never a chat button). Disable for all: lifeagents config set cron_enable plan_news false (no rebuild).", "summary": "Notschalter der Plan-Nachrichten an Erwachsene (true/false); jede Person schaltet ihre per Knopf." }
     },
     "advisor": {
       "derisk_window_months": { "value": "60", "type": "integer", "minimum": 1, "description": "Savings-goal glide path (de-risking window, months before the target date). Inside the window the money of a goal that may still lie in a depot shrinks linearly to 0 at the target date (allowed = target * months_left / window); more triggers the savings_goal_derisk advice with a suggested amount to shift to cash. 60 = owner choice 2026-10-27 (like the Ablaufmanagement of pension contracts). Read at RUNTIME by the savings-goal review of the advisor (COALESCE default 60); change: lifeagents config set advisor derisk_window_months <months> (no rebuild).", "summary": "So viele Monate vor dem Zieldatum rät der Berater, Depot-Geld eines Sparziels umzuschichten." },
@@ -172,7 +175,8 @@
     "list": ["drift_check", "plan_review", "learn_context"],
     "person": {
       "_comment": "Roter Faden: PERSON-Reminder (core.cron_labels.scope='person'). Jede Person schaltet IHRE Zustellung selbst über rem:on|off:<key> (core.callback_handlers 'rem' -> core.fn_handle_reminder_cb -> agent.reminder_prefs); default_enabled = Zustand ohne eigene Einstellung. Der config.cron_enable.<key> ist hier always-on (Konsolen-Notschalter für alle, nie ein Chat-Knopf; core.fn_set_cron_enable lehnt person-Keys ab). Texte wie oben (<pkg>.cron.<key>.on_toast|off_toast). Die eine Prüf-Adresse je Person ist core.fn_reminder_allowed(key, person_id).",
-      "onboarding_nudge": { "default_enabled": true }
+      "onboarding_nudge": { "default_enabled": true },
+      "plan_news": { "default_enabled": true }
     }
   },
   "protected_contexts": [
@@ -188,8 +192,8 @@
     "persona_styles"
   ],
   "backup": {
-    "_comment": "Paket-Backup-Oberfläche (Phase 4b, docs/package-contract.md). Core hält seine Nutzerdaten im GETEILTEN Schema agent (Code+Nutzerdaten gemischt) -> KEIN schema_dump. full_tables = ganz sichern (wipe+restore, reine Nutzerdaten). filtered_tables = zeilen-gefiltert: pg_dump kann nicht zeilen-filtern, daher exportiert die CLI sie als jsonb (SELECT ... WHERE <cond>) und core.fn_backup_restore_filtered spielt sie regel-bewusst zurück (protected Contexts nur per UPDATE, family vor den Kontexten, die family-Personen referenzieren, monitor-Trigger entdoppelt). NICHT gesichert (Code/ephemer): *_instructions/capabilities_catalog (managed_by!=agent = Code aus dem Repo), ai_models/config, chat_memory, *_import_state/pairing_state, notification_state (geteilte Notify-Dedup, ephemer), hitl_pending (Karte-offen-Sperre, TTL), ingress_buffer (Eingangs-Bündelung, 2 min), thinking_lease (Denkt-nach-Schalter, TTL), monitor_observations.",
-    "full_tables": ["agent.advisor_plans", "agent.guide_onboarding_state", "agent.reminder_prefs"],
+    "_comment": "Paket-Backup-Oberfläche (Phase 4b, docs/package-contract.md). Core hält seine Nutzerdaten im GETEILTEN Schema agent (Code+Nutzerdaten gemischt) -> KEIN schema_dump. full_tables = ganz sichern (wipe+restore, reine Nutzerdaten). filtered_tables = zeilen-gefiltert: pg_dump kann nicht zeilen-filtern, daher exportiert die CLI sie als jsonb (SELECT ... WHERE <cond>) und core.fn_backup_restore_filtered spielt sie regel-bewusst zurück (protected Contexts nur per UPDATE, family vor den Kontexten, die family-Personen referenzieren, monitor-Trigger entdoppelt). NICHT gesichert (Code/ephemer): *_instructions/capabilities_catalog (managed_by!=agent = Code aus dem Repo), ai_models/config, chat_memory, *_import_state/pairing_state, notification_state (geteilte Notify-Dedup, ephemer), hitl_pending (Karte-offen-Sperre, TTL), ingress_buffer (Eingangs-Bündelung, 2 min), thinking_lease (Denkt-nach-Schalter, TTL), dispatch_followup (Knopf-Folge-Bindung, 30 min), monitor_observations.",
+    "full_tables": ["agent.advisor_plans", "agent.advisor_plan_wishes", "agent.guide_onboarding_state", "agent.reminder_prefs"],
     "filtered_tables": {
       "agent.core_contexts": "managed_by = 'agent'",
       "agent.monitor_triggers": "origin = 'user'"
@@ -226,6 +230,7 @@
     "agent.tool_set_own_context_facts": { "tier": "self", "reason": "Eigene persönliche Fakten (per_user, own_user_only) pflegt die Person selbst, ohne Owner-Beteiligung oder -Info (die Info-Nachricht trüge private Profildaten zum Owner). Strenge kommt aus der DB: agent.fn_set_own_context_facts setzt scope=per_user fest; household/family/Plan-Kontexte sind dort strukturell gesperrt. approval_lint: ein self-Workflow ruft nur diese fn und hat keinen scope-Eingang." },
     "agent.tool_set_monitor_trigger": { "tier": "owner_approval", "reason": "set_: Monitor-Trigger ändern." },
     "agent.tool_delete_monitor_trigger": { "tier": "owner_approval", "reason": "delete_: Monitor-Trigger löschen." },
-    "agent.tool_create_monitor_trigger": { "tier": "owner_info", "reason": "create_: Monitor-Trigger/Erinnerung anlegen (niedrigschwellig)." }
+    "agent.tool_create_monitor_trigger": { "tier": "owner_info", "reason": "create_: Monitor-Trigger/Erinnerung anlegen (niedrigschwellig)." },
+    "agent.tool_record_plan_wish": { "tier": "owner_info", "reason": "record_: ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (aendert nichts; die Owner-Info traegt den Wortlaut)." }
   }
 }

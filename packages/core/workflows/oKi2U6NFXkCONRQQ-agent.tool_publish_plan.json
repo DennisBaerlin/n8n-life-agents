@@ -263,7 +263,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027plan_id\u0027)::int AS plan_id, (r-\u003e\u003e\u0027version\u0027)::int AS version, (r-\u003e\u003e\u0027superseded_plan_id\u0027)::int AS superseded_plan_id, r-\u003e\u003e\u0027context_name\u0027 AS context_name, (r-\u003e\u003e\u0027section_count\u0027)::int AS section_count FROM agent.fn_advisor_publish_plan($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, plan_md: $(\u0027Start\u0027).item.json.plan_md, plan_name: $(\u0027Start\u0027).item.json.plan_name, context_description: $(\u0027Start\u0027).item.json.context_description, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, plan_md: $(\u0027Start\u0027).item.json.plan_md, plan_name: $(\u0027Start\u0027).item.json.plan_name, context_description: $(\u0027Start\u0027).item.json.context_description, change_summary: $(\u0027Start\u0027).item.json.change_summary, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -450,7 +450,110 @@
                                                               "id":  "__CRED_TELEGRAM__",
                                                               "name":  "Telegram account"
                                                           }
-                                      }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_plan_share_preview(($1::jsonb)-\u003e\u003e\u0027domain\u0027, NULLIF(($1::jsonb)-\u003e\u003e\u0027version\u0027, \u0027\u0027)::int, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::text AS pv, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027core.plan_share.offer\u0027,\u0027core.plan_share.btn_inform\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), version: String($(\u0027Publish plan (atomic)\u0027).item.json.version || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2420,
+                                       160
+                                   ],
+                      "id":  "c7b0c106-7c3e-5925-931b-a072b502de94",
+                      "name":  "Read share offer",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1752154f-edd1-58b2-9f59-6e355e7eba0f",
+                                                                                   "leftValue":  "={{ JSON.parse($(\u0027Read share offer\u0027).item.json.pv || \u0027{}\u0027).shareable === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2640,
+                                       160
+                                   ],
+                      "id":  "b6eae71d-b117-5f64-8a49-43c2bd0e29bf",
+                      "name":  "Share offer?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ (String((($(\u0027Read share offer\u0027).item.json.t) || {})[\u0027core.plan_share.offer\u0027] || \u0027core.plan_share.offer\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027names\u0027: ((JSON.parse($(\u0027Read share offer\u0027).item.json.pv || \u0027{}\u0027).names || []).join(\u0027, \u0027)) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Read share offer\u0027).item.json.t) || {})[\u0027core.plan_share.btn_inform\u0027] || \u0027core.plan_share.btn_inform\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027plan:share:\u0027 + String($(\u0027Start\u0027).item.json.domain || \u0027\u0027) + \u0027:\u0027 + String($(\u0027Publish plan (atomic)\u0027).item.json.version || \u0027\u0027) }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2860,
+                                       60
+                                   ],
+                      "id":  "ac21e062-8334-5aae-bc22-91d07529ac5c",
+                      "name":  "Offer share",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -501,7 +604,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2640,
+                                       3080,
                                        0
                                    ],
                       "id":  "d3d1ecd1-b042-5601-a654-27d213fe65fc",
@@ -538,6 +641,22 @@
                                    ],
                       "id":  "b2f6857b-dd45-5b25-99fa-60f3e7e6613a",
                       "name":  "Doc Monitor-Angebot (WS-3 Phase A / Phase 0)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Owner-Karte nach dem Publish (Plan teilen, 2026-10-28)**\n\nNach dem Monitor-Angebot (beide Ausgänge von Monitor off?) liest Read share offer core.fn_plan_share_preview(domain, neue Version, chat_id): shareable nur für den Owner, für die aktive Version eines Haushalts-Plans (persönliche Pläne nie) und wenn es mindestens einen Empfänger gibt (Rolle partner, mit Chat, plan_news nicht abgemeldet; Regel core.fn_plan_adult_recipients). Share offer? -\u003e Offer share: Karte in der Sprache des Owners mit den Vornamen und dem Knopf Erwachsene informieren = plan:share:\u003cdomain\u003e:\u003cversion\u003e (Orchestrator: core.fn_handle_plan_cb -\u003e core.sub_share_plan, einmal je Person und Version). change_summary geht in den Publish (fn speichert sie mit der Owner-Sprache als Provenienz). Alle drei Knoten und Offer monitoring laufen mit onError continue: das Publish ist zu diesem Zeitpunkt schon committet.",
+                                         "height":  360,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2400,
+                                       -360
+                                   ],
+                      "id":  "60a48833-642a-5f95-869b-aee3e7b04083",
+                      "name":  "Doc Erwachsene informieren (Plan teilen)"
                   }
               ],
     "connections":  {
@@ -673,7 +792,7 @@
                                                           [
                                                               {
                                                                   "index":  0,
-                                                                  "node":  "Return",
+                                                                  "node":  "Read share offer",
                                                                   "type":  "main"
                                                               }
                                                           ]
@@ -684,12 +803,52 @@
                                                               [
                                                                   {
                                                                       "index":  0,
-                                                                      "node":  "Return",
+                                                                      "node":  "Read share offer",
                                                                       "type":  "main"
                                                                   }
                                                               ]
                                                           ]
-                                             }
+                                             },
+                        "Read share offer":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Share offer?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Share offer?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Offer share",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Return",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Offer share":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Return",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
                     },
     "settings":  {
                      "executionOrder":  "v1",

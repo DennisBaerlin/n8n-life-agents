@@ -15,7 +15,8 @@ BEGIN
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family','t',NULL,'lazy','f', jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(
     jsonb_build_object('person_id','erika','first_name','Erika','last_name','M','role','owner','birth_date','1980-05-20','telegram_user_id',111),
-    jsonb_build_object('person_id','lena','first_name','Lena','last_name','B','role','partner','birth_date','1985-06-21','telegram_user_id',222,'language','ko')))))
+    jsonb_build_object('person_id','lena','first_name','Lena','last_name','B','role','partner','birth_date','1985-06-21','telegram_user_id',222,'language','ko'),
+    jsonb_build_object('person_id','kim','first_name','Kim','last_name','B','role','child','birth_date','2014-03-01','telegram_user_id',333)))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
   INSERT INTO core.package_registry (package, version, status) VALUES ('finance','0.1.0','active'), ('career','0.1.0','active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
@@ -31,7 +32,8 @@ BEGIN
   ON CONFLICT (prefix) DO UPDATE SET handler_fn = EXCLUDED.handler_fn, member_permeable = true;
   INSERT INTO core.ui_texts (key, lang, text, package)
   SELECT k, l, upper(l) || ':' || k, 'core'
-  FROM unnest(ARRAY['core.toast.plan_private_only','core.toast.area_unavailable','core.toast.plan_owner_only','core.toast.plan_not_ready']) k
+  FROM unnest(ARRAY['core.toast.plan_private_only','core.toast.area_unavailable','core.toast.plan_owner_only','core.toast.plan_not_ready',
+                    'core.toast.plan_adults_only','core.toast.plan_not_current','core.toast.plan_explain_members']) k
   CROSS JOIN (VALUES ('de'), ('en'), ('ko')) ls(l)
   ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
 
@@ -73,7 +75,44 @@ BEGIN
   r := core.fn_dispatch_callback('{"data":"plan:career","chat_id":"222","chat_type":"private"}');
   IF r ? 'route' OR r->>'toast' IS DISTINCT FROM 'KO:core.toast.plan_owner_only' THEN RAISE EXCEPTION 'FAIL [7 Dispatcher Mitglied]: %', r; END IF;
 
-  RAISE NOTICE 'PASS test_fn_handle_plan_cb (Owner/Mitglied, persoenlich, Gruppe, ohne Plan-Schritt, inaktiv, nicht reif, Dispatcher)';
+  -- ---------- 8) Verben (Plan teilen, 2026-10-28): share / explain / wish ----------
+  UPDATE finance.recurring_payments SET status = 'active' WHERE name IN ('__t_plancb_gehalt', '__t_plancb_miete');
+  DELETE FROM agent.advisor_plans WHERE domain IN ('finance', 'career');
+  -- ohne aktiven Plan: explain/wish/share -> 'nicht aktuell'
+  r := core.fn_handle_plan_cb('{"data":"plan:explain:finance","chat_id":"222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS DISTINCT FROM 'KO:core.toast.plan_not_current' THEN RAISE EXCEPTION 'FAIL [8 explain ohne Plan]: %', r; END IF;
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, plan_md)
+  VALUES ('finance', NULL, 'Plan', 'active', 3, '{}', 'p');
+  -- share: nur Owner + aktuelle Version
+  r := core.fn_handle_plan_cb('{"data":"plan:share:finance:3","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'plan' OR r->>'verb' <> 'share' OR r->>'domain' <> 'finance' OR (r->>'version')::int <> 3 THEN RAISE EXCEPTION 'FAIL [8 share Owner]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:share:finance:2","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS DISTINCT FROM 'EN:core.toast.plan_not_current' THEN RAISE EXCEPTION 'FAIL [8 share alt]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:share:finance:3","chat_id":"222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS DISTINCT FROM 'KO:core.toast.plan_owner_only' THEN RAISE EXCEPTION 'FAIL [8 share Mitglied]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:share:finance:x","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [8 share manipuliert]: %', r; END IF;
+  -- explain/wish: nur Partner; Owner -> Hinweis, Kind -> nur Erwachsene, persoenlicher Plan -> nicht verfuegbar
+  r := core.fn_handle_plan_cb('{"data":"plan:explain:finance","chat_id":"222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'verb' <> 'explain' OR r->>'domain' <> 'finance' THEN RAISE EXCEPTION 'FAIL [8 explain Partner]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:wish:finance","chat_id":"222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'verb' <> 'wish' THEN RAISE EXCEPTION 'FAIL [8 wish Partner]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:explain:finance","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS DISTINCT FROM 'EN:core.toast.plan_explain_members' THEN RAISE EXCEPTION 'FAIL [8 explain Owner]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:wish:finance","chat_id":"333","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS DISTINCT FROM 'EN:core.toast.plan_adults_only' THEN RAISE EXCEPTION 'FAIL [8 wish Kind]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:explain:career","chat_id":"222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS DISTINCT FROM 'KO:core.toast.area_unavailable' THEN RAISE EXCEPTION 'FAIL [8 explain career]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:wish:finance","chat_id":"222","chat_type":"group"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r ? 'route' THEN RAISE EXCEPTION 'FAIL [8 wish Gruppe]: %', r; END IF;
+  -- Start-Format bleibt (plan:<domain>) und liefert verb start
+  r := core.fn_handle_plan_cb('{"data":"plan:finance","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'verb' <> 'start' THEN RAISE EXCEPTION 'FAIL [8 start verb]: %', r; END IF;
+  -- Dispatcher-Passthrough fuer ein Mitglied (member_permeable)
+  r := core.fn_dispatch_callback('{"data":"plan:explain:finance","chat_id":"222","chat_type":"private"}');
+  IF r->>'verb' IS DISTINCT FROM 'explain' THEN RAISE EXCEPTION 'FAIL [8 Dispatcher explain]: %', r; END IF;
+
+  RAISE NOTICE 'PASS test_fn_handle_plan_cb (Owner/Mitglied, persoenlich, Gruppe, ohne Plan-Schritt, inaktiv, nicht reif, Dispatcher, Verben share/explain/wish)';
 END $$;
 
 ROLLBACK;

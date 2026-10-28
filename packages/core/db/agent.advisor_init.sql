@@ -86,6 +86,37 @@ CREATE TRIGGER trg_advisor_plans_touch
     BEFORE UPDATE ON agent.advisor_plans
     FOR EACH ROW EXECUTE FUNCTION agent.touch_updated_at();
 
+-- Plan teilen (2026-10-28): Provenienz der Version (Ausnahme (c) "Provenienz/Snapshot", nicht ableitbar): die vom
+-- Berater formulierte Aenderungs-Zusammenfassung beim Publish + die Sprache des veroeffentlichenden Owners (Text in
+-- Originalsprache, nie uebersetzt; die Mitglieder-Nachricht zeigt ihn nur bei gleicher Sprache).
+-- Gesetzt NUR von agent.fn_advisor_publish_plan.
+ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary text;
+ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary_lang text;
+
+-- Wuensche erwachsener Mitglieder an den Owner zu einem veroeffentlichten Haushalts-Plan ("Wunsch an den Owner").
+-- Wortlaut in Originalsprache (nie uebersetzt). plan_id = die aktive Version beim Wunsch (Provenienz: "offen" heisst
+-- abgeleitet "plan_id ist noch die aktive Version"). Personen-FK in core:V034 (dieses Init laeuft vor persons_init,
+-- Muster V014). Schreiber nur agent.fn_record_plan_wish. Frei-SQL (core_ro) gesperrt: Deny-Liste util_create_core_ro.
+CREATE TABLE IF NOT EXISTS agent.advisor_plan_wishes (
+    id         serial PRIMARY KEY,
+    plan_id    int  NOT NULL REFERENCES agent.advisor_plans(id) ON DELETE CASCADE,
+    person_id  text NOT NULL,
+    wish_text  text NOT NULL CHECK (btrim(wish_text) <> '' AND length(wish_text) <= 2000),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Folge-Bindung nach einem Knopf-Tipp (arch-challenge 2026-10-28, Muster "aktiver Handler je Chat" wie Rasa active_loop /
+-- PTB ConversationHandler): ein Knopf startet einen Agenten am Router vorbei; die NAECHSTE Text-Nachricht dieses Chats
+-- bekommt den Router-Hinweis followup_agent (einmalig, TTL beim Lesen). Eine Zeile je Chat, ein neuer Knopf
+-- ueberschreibt (last write wins). Schreiber agent.fn_set_dispatch_followup, Leser+Loescher agent.fn_take_dispatch_followup.
+-- Bei uns anders: einmalig statt bis zum Handoff (ab dem ersten gerouteten Folge-Turn traegt das Router-Gedaechtnis die
+-- Sticky-Regel) und je Chat statt (chat, user) (nur Privatchats).
+CREATE TABLE IF NOT EXISTS agent.dispatch_followup (
+    chat_id text PRIMARY KEY CHECK (chat_id ~ '^[0-9]{1,18}$'),
+    agent   text NOT NULL CHECK (agent ~ '^agent\.[a-z][a-z0-9_]*$'),
+    set_at  timestamptz NOT NULL DEFAULT now()
+);
+
 -- ============================================================
 -- LESE-ZUGRIFF auf advisor_plans (Paket-Isolation, O1): advisor_plans bleibt in `agent`
 -- (Shared-Infra fuer einen kuenftigen Career-Advisor). Der Advisor-Agent laeuft unter der

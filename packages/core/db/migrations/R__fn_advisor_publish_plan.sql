@@ -16,7 +16,8 @@
 --   '<base>__<pid>'; unaufgeloester Sender bei per_user -> {ok:false}. Permission via fn_check_write_permission.
 --   Eingabe jsonb: domain (default 'finance'), chat_id (Identitaet), plan_md (Pflicht, Markdown),
 --     plan_name (optional, Umbenennung beim Publish),
---     context_description (optional; sonst generischer EN-Default mit Scope-Pointer).
+--     context_description (optional; sonst generischer EN-Default mit Scope-Pointer),
+--     change_summary (optional; Aenderungs-Zusammenfassung der Version, gespeichert mit der Owner-Sprache — Plan teilen).
 --   WS3 Naht-Backstop: VOR jedem Write komponiert die fn die section_data block-weise und prueft
 --     deterministisch, dass jeder Top-Block (goal/risk_profile/target_allocation/glidepath/emergency_reserve)
 --     von genau EINER Sektion kommt (der jsonb_each-Merge ist storage-order/nicht-deterministisch -> zwei
@@ -179,7 +180,11 @@ BEGIN
     UPDATE agent.advisor_plans
     SET status    = 'active',
         plan_md   = v_plan_md,
-        plan_name = COALESCE(NULLIF(trim(p->>'plan_name'), ''), plan_name)
+        plan_name = COALESCE(NULLIF(trim(p->>'plan_name'), ''), plan_name),
+        -- Plan teilen (2026-10-28): Provenienz der Version — Aenderungs-Zusammenfassung (Originalsprache) + Sprache des
+        -- veroeffentlichenden Owners (Plan-Writes sind owner_only); die Mitglieder-Nachricht zeigt sie nur bei gleicher Sprache.
+        change_summary      = NULLIF(btrim(COALESCE(p->>'change_summary', '')), ''),
+        change_summary_lang = agent.fn_person_lang(agent.fn_owner_person_id())->>'lang'
     WHERE id = v_plan_id;
 
     -- 3. Context-Doc upserten: das publizierte Plan-Dokument ist das cross-agent Interface

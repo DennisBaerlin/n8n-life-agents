@@ -78,7 +78,8 @@ BEGIN
         SELECT format('%I.%I', schemaname, tablename) FROM pg_tables
          WHERE schemaname = 'agent'
            AND (right(tablename, 12) = '_chat_memory'
-                OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending'))
+                OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending',
+                                 'advisor_plan_wishes', 'dispatch_followup'))   -- 2026-10-28: Mitglieder-Wuensche (Wortlaut einer Person) + Knopf-Folge-Bindung
     LOOP
         EXECUTE format('REVOKE ALL ON %s FROM core_ro', v_t);
     END LOOP;

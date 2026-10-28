@@ -53,7 +53,7 @@ END $$;
 DO $$
 DECLARE v_bad text;
 BEGIN
-  -- Abgedeckt sind: Paket-Tabellen (TRUNCATE bzw. onboarding_state-Schritt 2) + agent.advisor_plans + agent.reminder_prefs
+  -- Abgedeckt sind: Paket-Tabellen (TRUNCATE bzw. onboarding_state-Schritt 2) + agent.advisor_plans + agent.advisor_plan_wishes + agent.reminder_prefs
   -- + core.update_requests (Schritt 3; ein offener Auftrag bleibt, FK ON DELETE SET NULL).
   SELECT string_agg(con.conrelid::regclass::text, ', ') INTO v_bad
     FROM pg_constraint con
@@ -63,7 +63,7 @@ BEGIN
      AND NOT (n.nspname IN (SELECT package FROM core.schema_version WHERE package <> 'core')
               AND COALESCE(obj_description(c.oid, 'pg_class'), '') NOT LIKE 'lifecycle:reference%')
      AND con.conrelid NOT IN ('agent.advisor_plans'::regclass, 'agent.reminder_prefs'::regclass,
-                              'core.update_requests'::regclass);
+                              'agent.advisor_plan_wishes'::regclass, 'core.update_requests'::regclass);
   IF v_bad IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL (iv) FK-Referenzierer von agent.persons nicht vom Reset abgedeckt: %', v_bad;
   END IF;
@@ -132,7 +132,7 @@ BEGIN
   VALUES ('general', 'zz reset trigger', 'date', 'none', '2027-01-01', INTERVAL '1 day');
   INSERT INTO core.notification_state (source, key) VALUES
     ('finance', 'reserve_breach:1'), ('advisor:finance', 'm'), ('knock', '123'), ('zzskip:pipeline', '5'),
-    ('onboarding', 'household_ready'), ('onboarding_nudge', 'x:1');
+    ('onboarding', 'household_ready'), ('onboarding_nudge', 'x:1'), ('plan_news', 'x:finance:p1');
   CREATE TABLE agent.zz_reset_chat_memory (id serial PRIMARY KEY, session_id text, message jsonb);
   INSERT INTO agent.zz_reset_chat_memory (session_id, message) VALUES ('1', '{"type":"human"}');
 
@@ -203,7 +203,7 @@ BEGIN
      OR EXISTS (SELECT 1 FROM agent.zz_reset_chat_memory) THEN
     RAISE EXCEPTION 'FAIL (iii) Plaene/user-Trigger/Chat-Memory nicht geleert';
   END IF;
-  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('finance', 'advisor:finance', 'onboarding', 'onboarding_nudge'))
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('finance', 'advisor:finance', 'onboarding', 'onboarding_nudge', 'plan_news'))
      OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'knock')
      OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'zzskip:pipeline') THEN
     RAISE EXCEPTION 'FAIL (iii) notification_state nicht je Quelle behandelt';

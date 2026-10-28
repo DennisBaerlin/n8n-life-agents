@@ -140,10 +140,20 @@ sudo systemctl reload caddy
 
 Ist dein Router eine **FritzBox**, brauchst du zwei Einstellungen:
 
-1. **Portfreigabe (Port-Weiterleitung):** *Internet → Freigaben → Portfreigaben → Gerät für Freigaben hinzufügen*. Wähle deinen Server, Anwendung „HTTPS-Server", Protokoll TCP, Port **443** (extern wie intern). Damit erreichen Anfragen aus dem Internet deinen Server.
-2. **Öffentlicher Name (DynDNS):** Aktiviere unter *Internet → MyFRITZ!-Konto* den MyFRITZ!-Dienst — du bekommst eine feste Adresse (`….myfritz.net`), die immer auf deinen Anschluss zeigt, auch wenn sich deine IP-Adresse ändert. Diese Adresse (oder eine eigene Domain, die darauf zeigt) gibst du dem Installer als Domain an.
+1. **Öffentlicher Name (DynDNS):** Aktiviere unter *Internet → MyFRITZ!-Konto* den MyFRITZ!-Dienst. Damit bekommt dein Anschluss eine feste Adresse (`….myfritz.net`), auch wenn sich deine IP-Adresse ändert.
+2. **Portfreigabe (Port-Weiterleitung):** *Internet → Freigaben → Portfreigaben → Gerät für Freigaben hinzufügen*. Wähle den Rechner mit deinem Reverse Proxy, Anwendung „HTTPS-Server", Protokoll TCP, Port **443** (extern wie intern), und aktiviere die Freigabe für **IPv4 und IPv6**. Damit erreichen Anfragen aus dem Internet deinen Proxy.
+3. **Domain = die MyFRITZ!-Adresse des Proxy-Rechners:** Die FritzBox zeigt sie in den Details der Freigabe an (Form `<gerät>.<kennung>.myfritz.net`). Diese Adresse gibst du dem Installer als Domain an, **nicht** die Adresse der FritzBox selbst.
 
-**IPv6 und die MyFRITZ!-Adresse:** Die Portfreigabe gilt nur für IPv4. Über IPv6 zeigt die MyFRITZ!-Adresse auf die FritzBox selbst — wer sie aus dem Heimnetz im Browser öffnet, landet auf einer FritzBox-Seite („Die angegebene URL ist nicht verfügbar"). Telegram nutzt IPv4 und ist nicht betroffen, und die Bestätigungs-Knöpfe im Chat brauchen keinen Browser. Damit der Server sich selbst über die Domain erreicht, trägt der Installer die Domain bei Bedarf in `/etc/hosts` auf deinen Reverse Proxy ein — nur, wenn eine Probe bestätigt, dass es so funktioniert. Nach außen (Telegram, Anthropic) spricht der Server bevorzugt IPv4: Ein kurzzeitig hängender IPv6-Weg im Heimnetz würde sonst jede Antwort um rund zwei Minuten verzögern.
+**Warum nicht die Adresse der FritzBox?** Über IPv6 zeigt die MyFRITZ!-Adresse der FritzBox auf die Box selbst. Telegram stellt den Chat nur über IPv4 zu, dort fällt das nie auf. Die [Übersicht](uebersicht-app.html) öffnen aber Handy und Laptop direkt, und die nehmen oft IPv6. Dann erscheint zufällig eine FritzBox-Seite statt der Übersicht: im Heimnetz „Die angegebene URL ist nicht verfügbar", unterwegs die Anmeldung der FritzBox. Eine andere Port-Nummer für den Fernzugang der FritzBox hilft nur unterwegs: Im Heimnetz antwortet die Box auf ihrer Adresse immer selbst. Die Adresse des Proxy-Rechners zeigt dagegen per IPv6 direkt auf ihn, und dein Fernzugang zur FritzBox bleibt, wie er ist. `lifeagents doctor` meldet diese Falle.
+
+**Schon mit der FritzBox-Adresse installiert?** So stellst du um:
+
+1. In der Portfreigabe des Proxy-Rechners zusätzlich **IPv6** aktivieren und dort dessen MyFRITZ!-Adresse ablesen.
+2. Im Reverse Proxy den neuen Namen eintragen. Bei Caddy ersetzt du den Namen vor `{` oder ergänzt ihn mit Komma (`alte-adresse, neue-adresse {`), dann `sudo systemctl reload caddy`. Caddy holt das Zertifikat selbst.
+3. Auf dem Server `lifeagents reconfigure core` ausführen und unter *Domain* die neue Adresse eintragen. Der Chat und der Knopf „📊 Übersicht“ ziehen automatisch mit um.
+4. Mit `lifeagents doctor` prüfen: Die Übersicht muss über **IPv4 + IPv6** laden.
+
+Damit der Server sich selbst über die Domain erreicht, trägt der Installer die Domain bei Bedarf in `/etc/hosts` auf deinen Reverse Proxy ein. Das passiert nur, wenn eine Probe bestätigt, dass es so funktioniert. Nach außen (Telegram, Anthropic) spricht der Server bevorzugt IPv4: Ein kurzzeitig hängender IPv6-Weg im Heimnetz würde sonst jede Antwort um rund zwei Minuten verzögern.
 
 Hinweis: Die Installation nimmt extern Port **443** an. Telegram erlaubt zwar auch 80, 88 oder 8443, ein anderer Port wird hier aber derzeit nicht unterstützt — eine Handänderung in `/etc/n8n/n8n.env` würde beim nächsten Update überschrieben.
 

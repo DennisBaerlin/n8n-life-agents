@@ -44,6 +44,8 @@ Aus Sicherheitsgründen gilt ein Aufruf eine Stunde lang. Bleibt die Übersicht 
 
 Ohne Internetverbindung zeigt die Übersicht nur ⚠ und den Knopf ↻ zum erneuten Laden.
 
+Erscheint statt der Übersicht manchmal eine **FritzBox-Seite** (Anmeldung oder „URL nicht verfügbar“), zeigt deine Domain über IPv6 auf die FritzBox selbst. Der Chat funktioniert trotzdem. Abhilfe steht unter [Installation → FritzBox einrichten](installation.html#fritzbox-einrichten), und `lifeagents doctor` zeigt, ob es behoben ist.
+
 ## Datenschutz
 
 - **Die Zahlen kommen direkt von deinem Server auf dein Handy.** Telegram öffnet nur das Fenster; die Inhalte laufen nicht über die Telegram-Server. Aus dem Internet lädt die Seite nur ein kleines Hilfsprogramm von Telegram (für Farben, Zurück-Knopf und Anmeldung), keine deiner Daten.

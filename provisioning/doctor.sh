@@ -38,6 +38,57 @@ svc_active() {
   if systemctl is-active --quiet "$unit"; then _pass "$label aktiv ($unit)"; else _red "$label NICHT aktiv ($unit)"; fi
 }
 
+# _app_fetch <url> [curl-args...] -> "<status>|<sha256 des Body>|<1 = FRITZ!Box-Seite, sonst 0>". Die Adresse je
+#   Instanz ist geheim -> nur ueber die curl-Config auf stdin, nie im argv (provisioning/CLAUDE.md).
+_app_fetch() {
+  local url="$1" out code body; shift
+  out="$(curl_cfg url "$url" | curl_secret -sS --max-time 8 -w '\n%{http_code}' "$@" 2>/dev/null)" || true
+  code="${out##*$'\n'}"; body="${out%$'\n'*}"
+  printf '%s|%s|%s' "${code:-000}" "$(printf '%s' "$body" | sha256sum | cut -d' ' -f1)" \
+    "$(case "$body" in *'FRITZ!Box'*) echo 1 ;; *) echo 0 ;; esac)"
+}
+
+# _public_ip <host> <4|6> -> erste Adresse der Familie aus dem DNS, an /etc/hosts VORBEI (node/c-ares): der Pin aus
+#   hitl_chat_reachable zeigt die Domain auf dem Server auf den Proxy und verdeckte sonst genau den Weg der Geraete.
+_public_ip() {
+  need_cmd node || return 0
+  node -e 'require("dns").promises["resolve"+process.argv[2]](process.argv[1]).then(a=>{if(a.length)console.log(a[0])},()=>{})' \
+    "$1" "$2" 2>/dev/null || true
+}
+
+# _doctor_app_check <webhook-base> <app-path> — die Seite je Adressfamilie per --resolve abrufen und mit dem lokalen
+#   n8n vergleichen (Body statt Statuscode: FritzBox/Home Assistant antworten auch 200). Typischer Befund: die
+#   MyFRITZ!-Adresse hat per IPv6 die FritzBox selbst (aus dem Heimnetz ihre Oberflaeche, von unterwegs der Fernzugang).
+_doctor_app_check() {
+  local base="$1" app="$2" hostport host port ref fam ip res seen=0 ok_fams=''
+  hostport="${base#https://}"; hostport="${hostport%%/*}"; host="${hostport%%:*}"; port=443
+  [ "$hostport" = "$host" ] || port="${hostport##*:}"
+  ref="$(_app_fetch "http://127.0.0.1:${N8N_PORT}/webhook/${app}")"
+  case "$ref" in
+    200\|*) ;;
+    *) _warn "Übersicht (Mini-App): n8n liefert die Seite nicht aus (HTTP ${ref%%|*}) — 'lifeagents update' ausführen; der Chat ist davon nicht betroffen"; return 0 ;;
+  esac
+  for fam in 4 6; do
+    ip="$(_public_ip "$host" "$fam")"
+    [ -n "$ip" ] || continue
+    seen=1
+    if [ "$fam" = 6 ] && [ -z "$(ip -6 route show default 2>/dev/null || true)" ]; then
+      _skip "Übersicht über IPv6 (dieser Server hat keinen IPv6-Weg)"; continue
+    fi
+    [ "$fam" = 6 ] && ip="[${ip}]"
+    res="$(_app_fetch "${base}/webhook/${app}" --resolve "${host}:${port}:${ip}")"
+    if [ "${res%|*}" = "${ref%|*}" ]; then ok_fams="${ok_fams:+${ok_fams} + }IPv${fam}"
+    elif [ "${res##*|}" = 1 ]; then
+      _warn "Übersicht über IPv${fam}: die Domain zeigt auf die FRITZ!Box selbst — Handy und Laptop öffnen statt der Übersicht zufällig eine FritzBox-Seite. Abhilfe: Port 443 auch für IPv6 an den Proxy-Rechner freigeben und dessen eigene MyFRITZ!-Adresse als Domain nehmen (Doku: Installation → FritzBox einrichten)"
+    else
+      _warn "Übersicht über IPv${fam} lädt nicht (HTTP ${res%%|*}): unter dieser Adresse der Domain antwortet nicht dein Reverse Proxy — Handy und Laptop scheitern dann zufällig. DNS-Eintrag (A/AAAA) und Portfreigabe prüfen"
+    fi
+  done
+  if [ -n "$ok_fams" ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${ok_fams})"
+  elif [ "$seen" = 0 ] && ! need_cmd node; then _skip "Übersicht-Check über die Domain (node fehlt für die DNS-Abfrage)"
+  elif [ "$seen" = 0 ]; then _warn "Übersicht: die Domain ${host} hat im DNS keine Adresse"; fi
+}
+
 main() {
   printf 'Diagnose — n8n-life-agents Provisioning\n'
 
@@ -329,18 +380,14 @@ main() {
       _warn "Bestätigen im Chat ist aus (Knöpfe öffnen eine Webseite): ${_whurl%/}${HITL_ROUTE_SUFFIX} erreicht n8n nicht — im Reverse Proxy ergänzen, dann 'lifeagents update'"
     fi
 
-    # (5) Mini-App „Übersicht“ (docs/package-contract.md §3.12): die Seite muss VOM SERVER SELBST ueber die Domain
-    # laden (gleicher Weg wie das Handy: Proxy -> /webhook/<Pfad je Instanz>). Nur WARN: die App ist optional, der Chat
-    # laeuft auch ohne sie. Nichts aendern, nur lesen (GET liefert eine statische Seite ohne Daten).
-    local _app _app_code
+    # (5) Mini-App „Übersicht“ (docs/package-contract.md §3.12): Handy und Laptop oeffnen die Seite DIREKT ueber die
+    # Domain, je Adressfamilie (Happy Eyeballs) — Telegram-Webhooks laufen nur ueber IPv4, ein falscher IPv6-Weg faellt
+    # im Chat also nie auf. Darum je Familie getrennt pruefen (_doctor_app_check). Nur WARN: die App ist optional,
+    # der Chat laeuft auch ohne sie. Nichts aendern, nur lesen (GET liefert eine statische Seite ohne Daten).
+    local _app
     _app="$(_app_path)"
     if [ -z "$_whurl" ] || [ -z "$_app" ]; then _skip "Übersicht-Check (keine WEBHOOK_URL bzw. kein INGRESS_ID_KEY)"
-    else
-      # Adresse je Instanz geheim -> nur ueber die curl-Config auf stdin, nie im argv (provisioning/CLAUDE.md).
-      _app_code="$(curl_cfg url "${_whurl%/}/webhook/${_app}" | curl_secret -sS -o /dev/null -w '%{http_code}' --max-time 10 2>/dev/null || true)"
-      if [ "$_app_code" = "200" ]; then _pass "Übersicht (Mini-App) lädt über ${_whurl%/}/webhook/…"
-      else _warn "Übersicht (Mini-App) lädt nicht (HTTP ${_app_code:-000}) — 'lifeagents update' ausführen; der Chat ist davon nicht betroffen"; fi
-    fi
+    else _doctor_app_check "${_whurl%/}" "$_app"; fi
   else
     _skip "Kein Public-Ingress (keine Domain) — Orchestrator-/HTTPS-Checks übersprungen (dev/Substrat)"
   fi

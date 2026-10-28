@@ -10,7 +10,7 @@ Schickst du ein Foto oder PDF deines Lebenslaufs, liest der Coach die Angaben au
 
 ## Karriereplan — Entwurf, dann Veröffentlichen
 
-Der Plan entsteht nach demselben Prinzip wie der [Finanzplan](finanzberater.html): der Coach interviewt dich abschnittsweise (aktuelle Situation, Zielrolle(n) samt benötigter Fähigkeiten, Übergangsplan mit Meilensteinen), fasst jeden Abschnitt zum Gegenlesen zusammen und veröffentlicht erst nach deiner Bestätigung — das ist dein gültiger, gespeicherter Karriereplan, aus dem sich Skill-Lücken, Markttrend und Runway-Zahl automatisch speisen. Ein späterer Interview-Durchgang aktualisiert ihn.
+Der Plan entsteht nach demselben Prinzip wie der [Finanzplan](finanzberater.html): der Coach interviewt dich abschnittsweise (aktuelle Situation, Zielrolle(n) samt benötigter Fähigkeiten, Übergangsplan mit Meilensteinen), fasst jeden Abschnitt zum Gegenlesen zusammen und veröffentlicht erst nach deiner Bestätigung — das ist dein gültiger, gespeicherter Karriereplan, aus dem sich Skill-Lücken, Markttrend und Runway-Zahl automatisch speisen. Ein späterer Interview-Durchgang aktualisiert ihn. Nach dem Karriere-Onboarding schlägt dir `/onboarding` den Karriereplan als freiwilligen nächsten Schritt vor; ein Tipp auf „Karriereplan erstellen“ (bzw. „fortsetzen“ oder „überprüfen“) holt den Coach direkt ins Gespräch.
 
 ## Stellen-Scan mit Bewertung (opt-in)
 

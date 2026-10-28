@@ -18,6 +18,10 @@ Hast du schon einen Plan, der aber noch Lücken hat (etwa weil du ihn importiert
 
 Ist die Einstiegs-Pflicht eingeschaltet (Standard), muss der Einstieg im Finanzbereich (`/onboarding`) dafür erledigt oder übersprungen sein. Nur der Monats-Check sperrt den Berater nicht.
 
+**Der Weg zum Plan im Onboarding:** Sobald du die Finanzen eingerichtet hast, zeigt dir die Abschluss-Karte den Finanzplan als nächsten Schritt, mit dem Hinweis, dass er freiwillig ist, aber hilft. Auch im Bereich Finanzen von `/onboarding` steht er als eigene Zeile. Der Knopf passt sich deinem Stand an: „Finanzplan erstellen“ (noch keiner da), „Finanzplan fortsetzen“ (Entwurf angefangen), „Finanzplan vervollständigen (3 offen)“ (Lücken wie oben beschrieben) oder „Finanzplan überprüfen“. Ein Tipp holt den Berater, und er legt sofort los, ohne erst noch einmal zu fragen. Der Plan-Schritt ist kein Pflicht-Abschnitt: Du kannst trotzdem mit den anderen Bereichen weitermachen, und es gibt keine Erinnerungen dafür.
+
+Damit ein Plan sinnvoll wird, prüft die Datenbank vorher die Mindestdaten: ein Geld-Konto mit Kontostand, ein regelmäßiges Einkommen und regelmäßige Ausgaben (z. B. Miete, Versicherungen, Abos). Fehlt davon etwas, zum Beispiel weil du einen Bereich übersprungen hast, zeigt dir der Bot statt des Plan-Knopfs, was noch fehlt, und einen Knopf „Zuerst: …“, der genau diesen Abschnitt beim Buchhalter öffnet. Versicherungen, Rente oder Depots sind keine Voraussetzung, denn Lücken dort findet gerade das Interview. Den Plan speichert und ändert nur der Haushalts-Owner; andere Mitglieder können sich trotzdem beraten lassen.
+
 ## Monatsüberschuss: Konsum, Pflicht und Sparen getrennt
 
 Der Berater rechnet deinen Monat in klar getrennten Teilen:

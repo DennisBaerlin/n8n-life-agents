@@ -108,6 +108,8 @@ $OnboardingPackageOrder = @(Get-OnboardingPackageOrder $RepoRoot)
 $OnboardingDispatchList = @($OnboardingPackageOrder | Where-Object { $_.Agent } | ForEach-Object {
     [pscustomobject]@{ Package = $_.Package; Agent = $_.Agent }
 })
+# Onboarding-Plan-Schritt: Berater-Domaenen mit advisors.<domain>.plan_step (Menue-Plan-Zeile + Orchestrator-Arm plan:<domain>).
+$AdvisorPlanStepList = @(Get-AdvisorPlanStepList $RepoRoot)
 
 # --- Command-Dispatch-Liste (WS-5 Command-Router-Generalisierung) aus den Manifest-`commands`-Bloecken
 # ALLER Pakete (Paritaet $OnboardingDispatchList). Nur Eintraege MIT einem `dispatch`-Feld {agent, task}:

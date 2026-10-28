@@ -49,10 +49,7 @@ DECLARE
     v_have_areas  boolean;
 BEGIN
     v_household := NOT EXISTS (SELECT 1 FROM agent.guide_onboarding_state WHERE status = 'unknown');
-    v_have_areas := EXISTS (SELECT 1 FROM core.package_registry r
-                            WHERE r.status = 'active' AND r.package <> 'core'
-                              AND core.fn_package_is_per_user(r.package)
-                              AND to_regclass(format('%I.onboarding_state', r.package)) IS NOT NULL);
+    v_have_areas := core.fn_has_personal_onboarding_areas();
 
     IF v_chat ~ '^[0-9]{1,18}$' THEN
         v_sender := agent.fn_resolve_sender(v_chat::bigint);

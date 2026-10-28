@@ -70,15 +70,16 @@ function Build-AgentFinanceAdvisor {
     $gateExempt = @(Get-OnboardingSectionKeys $RepoRoot 'finance' -NonGatingOnly)
     foreach ($k in $gateExempt) { if ($k -notmatch '^[a-z][a-z0-9_]*$') { throw "agent.finance_advisor: ungueltiger Sektions-Key '$k'" } }
     $gateExemptSql = if ($gateExempt.Count) { "ARRAY['" + ($gateExempt -join "','") + "']::text[]" } else { 'ARRAY[]::text[]' }
-    $gateKeys = Get-UiKeysSql @('finance.gate.onboarding_required', 'finance.gate.onboarding_open')
+    $gateKeys = Get-UiKeysSql @('finance.gate.onboarding_required', 'finance.gate.onboarding_open', 'finance.gate.onboarding_member')
     $nGateRead = Build-Pg 'Onboarding gate read' @(-1264, 0) `
         ("=SELECT ((s.st->'core'->>'complete')::boolean AND (s.st->'package'->>'ok') IS DISTINCT FROM 'false' AND jsonb_array_length(s.blk) = 0) AS complete, " +
-         "s.blk AS open, COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='onboarding_gate'),'false') AS gate_on, " +
+         "s.blk AS open, COALESCE((s.st->>'viewer_is_member')::boolean, false) AS viewer_is_member, finance.fn_plan_readiness('finance', NULL) AS readiness, " +
+         "COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='onboarding_gate'),'false') AS gate_on, " +
          "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($gateKeys), " +
          "'doc', (SELECT jsonb_agg((o->>'source') || '.onboarding.' || (o->>'key')) FROM jsonb_array_elements(s.blk) o)))->'t' AS t " +
          "FROM (SELECT x.st, COALESCE((SELECT jsonb_agg(o.e ORDER BY o.n) FROM jsonb_array_elements(x.st->'open') WITH ORDINALITY o(e, n) " +
          "WHERE NOT (o.e->>'source' = 'finance' AND o.e->>'key' = ANY ($gateExemptSql))), '[]'::jsonb) AS blk " +
-         "FROM (SELECT core.fn_onboarding_status('finance') AS st) x) s;") `
+         "FROM (SELECT core.fn_onboarding_status('finance', (`$1::jsonb)->>'chat_id') AS st) x) s;") `
         ([ordered]@{ chat_id = "String(`$('$START_NODE').item.json.chat_id || '')" })
     $nGateIf = Build-If 'Onboarding gate' @(-1152, -160) `
         "={{ `$('Onboarding gate read').item.json.gate_on === 'true' && `$('Onboarding gate read').item.json.complete === false }}" 'true' 'equals' 'boolean'
@@ -88,7 +89,7 @@ function Build-AgentFinanceAdvisor {
     # (z. B. finance unerreichbar) NICHT als "Noch offen: ." rendern -> dann nur der Basis-Hinweis.
     $nGateDeny = Build-Set 'Onboarding required' @(-960, -300) @(
         ,@('ok', 'false', 'boolean')
-        ,@('output', ("={{ (() => { const r = `$('Onboarding gate read').item.json; const o = r.open; const t = r.t || {}; const arr = (typeof o === 'string' ? JSON.parse(o || '[]') : (o || [])); const base = " +
+        ,@('output', ("={{ (() => { const r = `$('Onboarding gate read').item.json; const o = r.open; const t = r.t || {}; if (r.viewer_is_member === true) { return " + (Get-UiTextJs 't' 'finance.gate.onboarding_member') + "; } const arr = (typeof o === 'string' ? JSON.parse(o || '[]') : (o || [])); const base = " +
                        (Get-UiTextJs 't' 'finance.gate.onboarding_required') + "; const names = arr.map(s => { const k = s.source + '.onboarding.' + s.key; return (t[k] && t[k] !== k) ? t[k] : s.label; }).join(', '); return arr.length ? base + ' ' + " +
                        (Get-UiTextJs 't' 'finance.gate.onboarding_open' @{ sections = 'names' }) + " : base; })() }}"), 'string')
     )
@@ -98,7 +99,10 @@ function Build-AgentFinanceAdvisor {
 
     $nBuildInput = Build-Set 'Build Agent Input' @(-928, 0) @(
         ,@('task',          "={{ `$('$START_NODE').item.json.task }}", 'string')
-        ,@('system_prompt', "={{ `$('Load Agent Context').item.json.system_prompt }}", 'string')
+        ,@('system_prompt', ("={{ `$('Load Agent Context').item.json.system_prompt + (() => { let rd = `$('Onboarding gate read').item.json.readiness; " +
+                             "if (typeof rd === 'string') { try { rd = JSON.parse(rd); } catch (e) { rd = null; } } " +
+                             "if (!rd || rd.ready !== false || !Array.isArray(rd.missing) || !rd.missing.length) { return ''; } " +
+                             "return '\n\n## Plan readiness\nMissing for a meaningful financial plan: ' + rd.missing.map(m => String(m.key) + ' (onboarding section ' + String(m.section) + ')').join(', ') + '. When the user wants to create or continue a financial plan (or tapped the plan button), explain this first in plain words and send the user to the bookkeeper to record it; do not start or continue the interview. Other advice stays possible - name the thin data basis.'; })() }}"), 'string')
         ,@('chat_id',       "={{ `$('$START_NODE').item.json.chat_id }}", 'string')
     )
 

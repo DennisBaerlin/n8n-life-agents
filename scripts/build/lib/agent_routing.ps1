@@ -124,6 +124,37 @@ function Get-OnboardingOrderFromManifests([array]$Manifests) {
     })
 }
 
+# Onboarding-Plan-Schritt (2026-10-28): die Berater-Domaenen mit "plan_step": true im Manifest-Block advisors, in
+# Onboarding-Reihenfolge ihres Pakets (der Plan-Schritt steht im Menue hinter den Abschnitten seines Pakets).
+# Rueckgabe: @( [pscustomobject]@{ Domain; Package; Agent (voll, agent.<x>); ReadyKeys (Katalog-Keys
+# <pkg>.plan_ready.<key> aus packages/<pkg>/locales/de.json = die Texte der fehlenden Mindestdaten) } ).
+# Konsumenten: core.sub_send_onboarding_menu (Plan-Zeile + Knopf plan:<domain>) und agent.orchestrator (je Domain ein
+# Dispatch-Arm 'Run plan <domain>' -> advisor_agent). Ein Paket ohne Onboarding-Abschnitte bekommt keinen Plan-Schritt.
+function Get-AdvisorPlanStepList([string]$RepoRoot) {
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    $order = @(Get-OnboardingPackageOrder $RepoRoot | ForEach-Object { $_.Package })
+    $out = @()
+    foreach ($m in (Get-PackageManifest $RepoRoot)) {
+        $pkg = ($m.Path -split '/')[1]
+        $adv = $m.Json.advisors
+        if ($null -eq $adv) { continue }
+        foreach ($p in $adv.PSObject.Properties) {
+            if ($p.Name -eq '_comment' -or $p.Value.plan_step -ne $true) { continue }
+            if ($order -notcontains $pkg) { throw "Get-AdvisorPlanStepList: advisors '$($p.Name)' ($pkg) hat plan_step, aber das Paket kein onboarding/sections.json" }
+            $agent = [string]$p.Value.advisor_agent
+            if ($agent -cnotmatch '^agent\.[a-z][a-z0-9_]*$') { throw "Get-AdvisorPlanStepList: advisors '$($p.Name)' ($pkg) ohne gueltigen advisor_agent" }
+            $loc = Join-Path $RepoRoot "packages\$pkg\locales\de.json"
+            $readyKeys = @()
+            if (Test-Path $loc) {
+                $readyKeys = @(([System.IO.File]::ReadAllText($loc, $enc) | ConvertFrom-Json).PSObject.Properties.Name |
+                    Where-Object { $_ -like "$pkg.plan_ready.*" } | Sort-Object)
+            }
+            $out += [pscustomobject]@{ Domain = $p.Name; Package = $pkg; Agent = $agent; ReadyKeys = $readyKeys; Ord = $order.IndexOf($pkg) }
+        }
+    }
+    return @($out | Sort-Object Ord, Domain | Select-Object Domain, Package, Agent, ReadyKeys)
+}
+
 # Name des Route-Tool-Nodes, den der Orchestrator-Build je Agent erzeugt (n8n zeigt ihn im runData unter
 # metadata.subNodeExecutionData.actions[].nodeName) — EINE Adresse fuer Orchestrator-Def und Test-Treiber.
 function Get-AgentCallNodeName([string]$AgentName) { return "Call 'agent.$AgentName'" }

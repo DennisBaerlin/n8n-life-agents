@@ -37,14 +37,25 @@ function Build-CoreSubSendOnboardingMenu {
     # Pakets liest, kommt danach), je Paket nach ord. groupKey = Katalog-Key des Paketnamens (Ueberschrift im
     # Menue-Text); der Haushalt hat keine Gruppe (eine Zeile, immer vorn).
     $u8 = New-Object System.Text.UTF8Encoding($false)
-    $SECTIONS = @( [ordered]@{ package = 'core'; key = 'household'; labelKey = 'core.onboarding.household'; groupKey = '' } )
+    # gates = der Abschnitt sperrt den Plan-Schritt seines Pakets, solange er offen ist (sections.json "gates_advisor",
+    # fehlt = sperrt; dieselbe Regel wie das Onboarding-Gate des Beraters, Get-OnboardingSectionKeys -NonGatingOnly).
+    $SECTIONS = @( [ordered]@{ package = 'core'; key = 'household'; labelKey = 'core.onboarding.household'; groupKey = ''; gates = $true } )
     foreach ($op in $OnboardingPackageOrder) {
         $sf   = Join-Path $RepoRoot "packages\$($op.Package)\onboarding\sections.json"
         $secs = ([System.IO.File]::ReadAllText($sf, $u8) | ConvertFrom-Json) | Sort-Object ord
         foreach ($s in $secs) {
-            $SECTIONS += [ordered]@{ package = "$($op.Package)"; key = "$($s.key)"; labelKey = "$($op.Package).onboarding.$($s.key)"; groupKey = "$($op.Package).package.name" }
+            $gates = -not ($s.PSObject.Properties.Name -contains 'gates_advisor' -and $s.gates_advisor -eq $false)
+            $SECTIONS += [ordered]@{ package = "$($op.Package)"; key = "$($s.key)"; labelKey = "$($op.Package).onboarding.$($s.key)"; groupKey = "$($op.Package).package.name"; gates = $gates }
         }
     }
+    # Onboarding-Plan-Schritt (2026-10-28): je Berater-Domaene mit plan_step ($AdvisorPlanStepList, build.ps1) ein
+    # EMPFOHLENER Schritt hinter den Abschnitten seines Pakets — kein Abschnitt (zaehlt nicht im Fortschritt, nicht im
+    # "alles eingerichtet"-Latch). Zustand/Rechte/Daten-Reife runtime aus core.fn_advisor_plan_status (Read-Spalte plans).
+    $PLANS = @($AdvisorPlanStepList | ForEach-Object { [ordered]@{ domain = $_.Domain; package = $_.Package } })
+    $planSuffixes = @('btn_none', 'btn_draft', 'btn_gaps', 'btn_complete', 'btn_later', 'btn_owner', 'line_none', 'line_draft',
+                      'line_gaps', 'line_complete', 'line_not_ready', 'line_later', 'intro', 'not_ready')
+    $planKeys = @($AdvisorPlanStepList | ForEach-Object { $pk = $_.Package; $planSuffixes | ForEach-Object { "$pk.plan_step.$_" } }) +
+                @($AdvisorPlanStepList | ForEach-Object { $_.ReadyKeys })
     $menuKeys = @(
         'core.onboarding.menu.owner_note', 'core.onboarding.menu.not_installed', 'core.onboarding.menu.progress',
         'core.onboarding.menu.install_hint', 'core.onboarding.menu.owner_area', 'core.onboarding.menu.wait_household_area',
@@ -53,9 +64,9 @@ function Build-CoreSubSendOnboardingMenu {
         'core.onboarding.menu.wait_household', 'core.onboarding.menu.all_done', 'core.onboarding.menu.footer_not_installed',
         'core.onboarding.menu.btn_next', 'core.onboarding.menu.btn_wait', 'core.onboarding.menu.btn_all_done',
         'core.onboarding.menu.btn_overview', 'core.onboarding.menu.done_area', 'core.onboarding.menu.skipped_area',
-        'core.onboarding.menu.done_everything'
+        'core.onboarding.menu.done_everything', 'core.onboarding.menu.setup_done_next', 'core.onboarding.menu.btn_first'
     )
-    $textKeys = @($SECTIONS | ForEach-Object { $_.labelKey }) + @($OnboardingPackageOrder | ForEach-Object { "$($_.Package).package.name" }) + $menuKeys
+    $textKeys = @($SECTIONS | ForEach-Object { $_.labelKey }) + @($OnboardingPackageOrder | ForEach-Object { "$($_.Package).package.name" }) + $menuKeys + $planKeys
 
     # --- Start (typisierter Sub-Eingang: chat_id) ---
     $start = [ordered]@{
@@ -75,7 +86,7 @@ function Build-CoreSubSendOnboardingMenu {
     # Textkatalog Phase B: dieselbe Abfrage holt die Menue-Texte (t) in der Sprache des Betrachters (chat_id ->
     # Person -> agent.fn_person_lang; nicht-numerische/Gruppen-chat_id -> Owner-Sprache).
     $read = Build-Pg 'Read onboarding status' @(-620, 0) `
-        ("=SELECT core.fn_onboarding_overview((`$1::jsonb)->>'chat_id') AS overview, " +
+        ("=SELECT core.fn_onboarding_overview((`$1::jsonb)->>'chat_id') AS overview, core.fn_advisor_plan_status((`$1::jsonb)->>'chat_id') AS plans, " +
          "core.fn_ui_texts(agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}$' " +
          "THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'person_id')->>'lang', $(Get-UiKeysSql $textKeys)) AS t;") `
         ([ordered]@{ chat_id = "`$('Start').item.json.chat_id" })
@@ -93,6 +104,7 @@ function Build-CoreSubSendOnboardingMenu {
     $buildJs = @'
 const SECTIONS = __SECTIONS_JSON__;
 const AREAS = __AREAS_JSON__;
+const PLANS = __PLANS_JSON__;
 const NL = String.fromCharCode(10);
 let ov = $json.overview;
 if (typeof ov === 'string') { try { ov = JSON.parse(ov); } catch (e) { ov = {}; } }
@@ -137,7 +149,51 @@ const coreOpen = SECTIONS.some(s => s.package === 'core' && statusOf(s) === 'unk
 const waitOwner = member && coreOpen;
 const isOpen = (s) => !waitOwner && usable(s.package) && mine(s.package) && statusOf(s) === 'unknown';
 const prog = (pkg) => { const ss = SECTIONS.filter(s => s.package === pkg); return { done: ss.filter(s => statusOf(s) !== 'unknown').length, total: ss.length }; };
-const next = SECTIONS.find(isOpen) || null;
+const nextSection = SECTIONS.find(isOpen) || null;
+// Onboarding-Plan-Schritt: Zustand aus der Read-Spalte plans (core.fn_advisor_plan_status). Verfuegbar, sobald kein sperrender
+// Abschnitt (gates) des Pakets mehr offen ist; nur wer den Plan schreiben darf, bekommt ihn als naechsten Schritt.
+// Fehlt die Zeile (Lesefehler/Paket inaktiv) -> kein Plan-Schritt (fail-closed: kein Knopf ins Leere).
+const CLIP = String.fromCodePoint(0x1F4CB);
+const pl = {};
+let PL = $json.plans;
+if (typeof PL === 'string') { try { PL = JSON.parse(PL); } catch (e) { PL = []; } }
+for (const p of (Array.isArray(PL) ? PL : [])) { pl[p.domain] = p; }
+const PT = (P, suffix, params) => tx(P.package + '.plan_step.' + suffix, params);
+const planInfo = (P) => {
+  const r = pl[P.domain];
+  if (!r || !usable(P.package)) return null;
+  const gatesOpen = SECTIONS.some(s => s.package === P.package && s.gates && statusOf(s) === 'unknown');
+  const state = ['none', 'draft', 'gaps', 'complete'].includes(r.state) ? r.state : 'none';
+  const missing = Array.isArray(r.missing) ? r.missing : [];
+  return { P, available: !waitOwner && !gatesOpen, writable: r.can_write === true, ready: r.ready !== false && missing.length === 0,
+           state, open: Number(r.open || 0), missing };
+};
+const planOpen = (P) => { const i = planInfo(P); return (i && i.available && i.writable && i.state !== 'complete') ? i : null; };
+// Ziel eines offenen Plan-Schritts: reif -> plan:<domain> mit Zustands-Text; Mindestdaten fehlen -> der Onboarding-
+// Abschnitt des ersten fehlenden Punkts (bestehende Route zum Erfass-Agenten, auch fuer einen schon erledigten Abschnitt).
+const planTarget = (i) => {
+  if (i.ready) return { label: PT(i.P, 'btn_' + i.state, { open: i.open }), cb: 'plan:' + i.P.domain, first: false };
+  // Unbekannter Abschnitt (Drift readiness_fn <-> sections.json) -> der Bereich selbst (nie ein Knopf, der wie der Plan heisst)
+  const sec = SECTIONS.find(s => s.package === i.P.package && s.key === String(i.missing[0].section || '')) || null;
+  const area = AREAS.find(a => a.package === i.P.package);
+  return { label: sec ? label(sec) : group(area), cb: sec ? ('onboarding:' + sec.package + ':' + sec.key) : ('onboarding:_area:' + i.P.package), first: true };
+};
+const planLine = (i) => !i.available ? PT(i.P, 'line_later') : (!i.ready ? PT(i.P, 'line_not_ready') : PT(i.P, 'line_' + i.state, { open: i.open }));
+const planHint = (i) => i.ready ? PT(i.P, 'intro')
+  : PT(i.P, 'not_ready', { items: i.missing.map(m => {
+      // Text des fehlenden Punkts aus dem Katalog; fehlt der Key (Drift), der Abschnitts-Name statt des rohen Keys
+      const k = i.P.package + '.plan_ready.' + String(m.key || '');
+      const s = SECTIONS.find(x => x.package === i.P.package && x.key === String(m.section || ''));
+      return T[k] ? tx(k) : (s ? label(s) : group(AREAS.find(a => a.package === i.P.package)));
+    }).join(', ') });
+// Naechster Schritt: die Fertig-Karte EINES Pakets (done_area) zeigt auf dessen offenen Plan; sonst der erste offene
+// Abschnitt und erst, wenn keiner mehr offen ist, der erste offene Plan (der Plan blockiert nie den Weg zu den
+// anderen Bereichen und ist keine Einrichtungspflicht).
+const doneArea = String($('Start').item.json.done_area || '');
+const doneMode = String($('Start').item.json.done_mode || '');
+const donePlan = PLANS.map(planOpen).find(i => i && i.P.package === doneArea) || null;
+const nextPlan = donePlan || (nextSection ? null : (PLANS.map(planOpen).find(i => i) || null));
+const next = nextPlan ? null : nextSection;
 const reqArea = String($('Start').item.json.area || '');
 const area = AREAS.some(a => a.package === reqArea) ? reqArea : '';
 // Der Marker sitzt auf dem Knopf, den der Text als "Als Naechstes" nennt: Uebersicht = global naechster Abschnitt,
@@ -159,18 +215,21 @@ if (area) {
   const inst = usable(area);
   lines.push(group(a) + (inst ? ' - ' + tx('core.onboarding.menu.progress', { done: p.done, total: p.total }) : NOT_INST), '');
   for (const s of SECTIONS.filter(x => x.package === area)) { lines.push((EMOJI[statusOf(s)] || EMOJI.unknown) + ' ' + label(s)); }
+  // Plan-Zeile des Bereichs (nur wer den Plan pflegen darf; ein Mitglied sieht den Haushalts-Plan nicht)
+  const areaPlans = PLANS.filter(P => P.package === area).map(planInfo).filter(i => i && i.writable);
+  for (const i of areaPlans) { lines.push(CLIP + ' ' + planLine(i)); }
   lines.push('');
   const n = mark;
+  const ap = areaPlans.map(i => planOpen(i.P)).find(i => i) || null;
   if (!inst) { lines.push(tx('core.onboarding.menu.install_hint')); }
   else if (!mine(area)) { lines.push(tx('core.onboarding.menu.owner_area')); }
   else if (waitOwner) { lines.push(tx('core.onboarding.menu.wait_household_area')); }
   else if (n) { lines.push(POINT + ' ' + tx('core.onboarding.menu.next', { label: label(n) }), tx('core.onboarding.menu.tap_section')); }
+  else if (ap) { lines.push(POINT + ' ' + tx('core.onboarding.menu.next', { label: planTarget(ap).label }), '', planHint(ap)); }
   else { lines.push(tx('core.onboarding.menu.area_done')); }
 } else {
   // Roter Faden: Aufruf aus core.sub_onboarding_progress nach einem geschlossenen Bereich -> Kopfzeile vor der Uebersicht
   // (done_mode done|skipped|all; Bereichsname aus dem Katalog, Haushalt = Abschnitts-Label). Sonst (/onboarding) ohne.
-  const doneArea = String($('Start').item.json.done_area || '');
-  const doneMode = String($('Start').item.json.done_mode || '');
   if (doneMode === 'all') {
     lines.push(tx('core.onboarding.menu.done_everything'), '');
   } else if (doneArea) {
@@ -187,9 +246,18 @@ if (area) {
     const p = prog(a.package);
     if (!usable(a.package)) { missing++; lines.push(EMOJI.unknown + ' ' + abtn[a.package]); continue; }
     lines.push((p.done >= p.total ? EMOJI.completed : EMOJI.unknown) + ' ' + abtn[a.package]);   // Mitglied: Haushalts-Status nur zur Info
+    // Plan-Info-Zeile unter dem Bereich, sobald der Plan-Schritt verfuegbar ist (und der Betrachter ihn pflegt)
+    for (const i of PLANS.filter(P => P.package === a.package).map(planInfo)) {
+      if (i && i.writable && i.available) { lines.push('   ' + CLIP + ' ' + planLine(i)); }
+    }
   }
   lines.push('');
-  if (next) {
+  if (nextPlan) {
+    const t = planTarget(nextPlan);
+    // 'Einrichtung fertig' nur, wenn die Kopfzeile das nicht schon sagt (done_mode all = 'Alles eingerichtet')
+    lines.push(POINT + ' ' + tx((nextSection || doneMode === 'all') ? 'core.onboarding.menu.next' : 'core.onboarding.menu.setup_done_next', { label: t.label }));
+    lines.push('', planHint(nextPlan));
+  } else if (next) {
     const ng = group(AREAS.find(x => x.package === next.package));
     lines.push(POINT + ' ' + (ng ? tx('core.onboarding.menu.next_in_area', { label: label(next), area: ng }) : tx('core.onboarding.menu.next', { label: label(next) })));
     lines.push(tx('core.onboarding.menu.tap_next'));
@@ -207,16 +275,34 @@ if (area) {
 }
 // Weiter-Knopf (nur Uebersicht): Ziel = naechster offener Abschnitt; alles erledigt -> zurueck zur Uebersicht
 // (callback_data darf nicht leer sein, die Knopf-Anzahl ist build-time fest).
-const next_text = next ? (POINT + ' ' + tx('core.onboarding.menu.btn_next', { label: label(next) })) : (waitOwner ? tx('core.onboarding.menu.btn_wait') : (EMOJI.completed + ' ' + tx('core.onboarding.menu.btn_all_done')));
-const next_cb = next ? ('onboarding:' + next.package + ':' + next.key) : 'onboarding:_area:';
+// Offener Plan-Schritt -> Weiter auf plan:<domain> ("Weiter: Finanzplan erstellen") bzw. bei fehlenden Mindestdaten auf
+// den ersten fehlenden Abschnitt ("Zuerst: ...").
+const nt = nextPlan ? planTarget(nextPlan) : null;
+const next_text = nt ? (POINT + ' ' + tx(nt.first ? 'core.onboarding.menu.btn_first' : 'core.onboarding.menu.btn_next', { label: nt.label }))
+  : (next ? (POINT + ' ' + tx('core.onboarding.menu.btn_next', { label: label(next) })) : (waitOwner ? tx('core.onboarding.menu.btn_wait') : (EMOJI.completed + ' ' + tx('core.onboarding.menu.btn_all_done'))));
+const next_cb = nt ? nt.cb : (next ? ('onboarding:' + next.package + ':' + next.key) : 'onboarding:_area:');
+// Plan-Knopf der Bereichsansicht je Domain (Knopf-Anzahl build-time fest): nicht pflegbar -> Hinweis (Tipp gibt den
+// Toast des Handlers); noch nicht verfuegbar / kein Status -> zurueck in den Bereich; sonst das Ziel wie oben.
+const pbtn = {};
+const pcb = {};
+for (const P of PLANS) {
+  const i = planInfo(P);
+  if (i && !i.writable) { pbtn[P.domain] = CLIP + ' ' + PT(P, 'btn_owner'); pcb[P.domain] = 'plan:' + P.domain; }
+  else if (!i || !i.available) { pbtn[P.domain] = CLIP + ' ' + PT(P, 'btn_later'); pcb[P.domain] = 'onboarding:_area:' + P.package; }
+  else {
+    const t = planTarget(i);
+    pbtn[P.domain] = (t.first ? POINT + ' ' + tx('core.onboarding.menu.btn_first', { label: t.label }) : CLIP + ' ' + t.label);
+    pcb[P.domain] = t.cb;
+  }
+}
 const back_text = tx('core.onboarding.menu.btn_overview');
-return { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, back_text, area, chat_id: $('Start').item.json.chat_id } };
+return { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, pbtn, pcb, back_text, area, chat_id: $('Start').item.json.chat_id } };
 '@
     # PS-5.1 ConvertTo-Json kollabiert ein 1-Element-Array zum Objekt -> immer manuell klammern.
     function ConvertTo-JsArray($objs) { $objs = @($objs); if ($objs.Count -eq 0) { return '[]' }; if ($objs.Count -eq 1) { return '[' + ($objs | ConvertTo-Json -Compress) + ']' }; return ($objs | ConvertTo-Json -Compress) }
-    $secObjs  = @($SECTIONS | ForEach-Object { [ordered]@{ package = $_.package; key = $_.key; labelKey = $_.labelKey; groupKey = $_.groupKey } })
+    $secObjs  = @($SECTIONS | ForEach-Object { [ordered]@{ package = $_.package; key = $_.key; labelKey = $_.labelKey; groupKey = $_.groupKey; gates = [bool]$_.gates } })
     $areaObjs = @($OnboardingPackageOrder | ForEach-Object { [ordered]@{ package = $_.Package; groupKey = "$($_.Package).package.name" } })
-    $buildJs = $buildJs.Replace('__SECTIONS_JSON__', (ConvertTo-JsArray $secObjs)).Replace('__AREAS_JSON__', (ConvertTo-JsArray $areaObjs))
+    $buildJs = $buildJs.Replace('__SECTIONS_JSON__', (ConvertTo-JsArray $secObjs)).Replace('__AREAS_JSON__', (ConvertTo-JsArray $areaObjs)).Replace('__PLANS_JSON__', (ConvertTo-JsArray $PLANS))
     $build = [ordered]@{
         parameters  = [ordered]@{ jsCode = $buildJs; mode = 'runOnceForEachItem' }
         type        = 'n8n-nodes-base.code'
@@ -251,6 +337,10 @@ return { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, back_text,
     foreach ($op in $OnboardingPackageOrder) {
         $rows = @()
         foreach ($s in @($SECTIONS | Where-Object { $_.package -eq $op.Package })) { $rows += ,@( (& $sectionBtn $s) ) }
+        # Plan-Knopf je Berater-Domaene des Pakets: Text + Ziel runtime (pbtn/pcb aus Build menu), Anzahl build-time fest.
+        foreach ($P in @($PLANS | Where-Object { $_.package -eq $op.Package })) {
+            $rows += ,@( @{ Text = "={{ (`$json.pbtn || {})['$($P.domain)'] || '$($P.package).plan_step.btn_none' }}"; Data = "={{ (`$json.pcb || {})['$($P.domain)'] || 'onboarding:_area:$($P.package)' }}" } )
+        }
         $rows += ,@( @{ Text = '={{ $json.back_text }}'; Data = 'onboarding:_area:' } )
         $n = "Send area $($op.Package)"
         $sendNodes += New-TelegramInlineKeyboardSendNode $n @(40, $y) '={{ $json.text }}' -Rows $rows -ChatIdExpr $chatExpr
@@ -262,7 +352,7 @@ return { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, back_text,
 
     $sticky = Build-Sticky 'Doc: Überblick' @(-860, -360) -Header 'Ablauf' `
         'core.sub_send_onboarding_menu — Onboarding-Menü in zwei Ebenen (deterministisch, KEIN LLM)' `
-        'Start (chat_id, area; optional done_area + done_mode aus core.sub_onboarding_progress = Kopfzeile <Bereich> eingerichtet / übersprungen / alles eingerichtet vor der Übersicht, Roter Faden) -> Read onboarding status (core.fn_onboarding_overview(chat_id) + Menütexte als t-Map in der Sprache des Betrachters, core_ro, fail-open) -> Build menu (Code: Status je Abschnitt U+2705 erledigt / U+23ED übersprungen / U+25FB offen, gekeyt auf <package>:<key>; nächster Schritt = erster offener, nutzbarer Abschnitt in Menü-Reihenfolge, markiert mit U+1F449) -> Which menu? (Switch auf area) -> Send overview (area leer: Weiter-Knopf auf den nächsten Abschnitt + Haushalt + ein Knopf je Bereich mit Fortschritt, callback onboarding:_area:<package>) bzw. Send area <package> (nur dessen Abschnitte, callback onboarding:<package>:<key>, plus Zur Übersicht). TEXTE aus dem Textkatalog (Phase B): Abschnitte <pkg>.onboarding.<key> (Haushalt core.onboarding.household), Bereichsnamen <pkg>.package.name, Menüsätze core.onboarding.menu.*; Sprache = die des Betrachters (Person -> Owner -> en). REIHENFOLGE build-time: Haushalt zuerst, dann $OnboardingPackageOrder (Get-OnboardingPackageOrder, lib/agent_routing.ps1: wer per consumes Daten eines anderen Onboarding-Pakets liest, kommt danach; Gleichstand haushaltsweit vor persönlich, dann Name). Aufrufer: /onboarding-Command (area leer), der Orchestrator-Callback onboarding:_area:<package> und core.sub_onboarding_progress (nach einem geschlossenen Bereich, DB-Latch: genau einmal je Übergang) -> nur deterministische Eintrittspunkte, kein Knopf-Spam. Abschnitts-Tap -> Orchestrator-Switch auf das <package>-Glied: core -> agent.guide, Paket -> sein Onboarding-Agent. per_user-Pakete (career) zeigen den Status der TAPPENDEN Person (DEFINER-fn löst sie aus chat_id auf, nie LLM). Knopf-STRUKTUR build-time (n8n-Inline-Keyboard = statische fixedCollection -> ein Send je Ansicht); Knopf-TEXT Ausdruck auf $json.btn/abtn/next_text/back_text -> nicht aktive Pakete (fn active_packages) tragen den Zusatz nicht installiert, eine Fusszeile nennt den Server-Befehl (ausblenden geht nicht, Issue #19955). MITGLIEDER: viewer_role != owner -> nur persönliche Bereiche (per_user je Sektion aus der fn) zählen als offen (Weiter/Als Nächstes/Zähler), Haushalts-Bereiche tragen (richtet der Owner ein); ihre Taps laufen über core.fn_handle_onboarding_cb (Registry, member_permeable) und geben dort einen Toast.' 380 860
+        'Start (chat_id, area; optional done_area + done_mode aus core.sub_onboarding_progress = Kopfzeile <Bereich> eingerichtet / übersprungen / alles eingerichtet vor der Übersicht, Roter Faden) -> Read onboarding status (core.fn_onboarding_overview(chat_id) + Menütexte als t-Map in der Sprache des Betrachters, core_ro, fail-open) -> Build menu (Code: Status je Abschnitt U+2705 erledigt / U+23ED übersprungen / U+25FB offen, gekeyt auf <package>:<key>; nächster Schritt = erster offener, nutzbarer Abschnitt in Menü-Reihenfolge, markiert mit U+1F449) -> Which menu? (Switch auf area) -> Send overview (area leer: Weiter-Knopf auf den nächsten Abschnitt + Haushalt + ein Knopf je Bereich mit Fortschritt, callback onboarding:_area:<package>) bzw. Send area <package> (nur dessen Abschnitte, callback onboarding:<package>:<key>, plus Zur Übersicht). TEXTE aus dem Textkatalog (Phase B): Abschnitte <pkg>.onboarding.<key> (Haushalt core.onboarding.household), Bereichsnamen <pkg>.package.name, Menüsätze core.onboarding.menu.*; Sprache = die des Betrachters (Person -> Owner -> en). REIHENFOLGE build-time: Haushalt zuerst, dann $OnboardingPackageOrder (Get-OnboardingPackageOrder, lib/agent_routing.ps1: wer per consumes Daten eines anderen Onboarding-Pakets liest, kommt danach; Gleichstand haushaltsweit vor persönlich, dann Name). Aufrufer: /onboarding-Command (area leer), der Orchestrator-Callback onboarding:_area:<package> und core.sub_onboarding_progress (nach einem geschlossenen Bereich, DB-Latch: genau einmal je Übergang) -> nur deterministische Eintrittspunkte, kein Knopf-Spam. Abschnitts-Tap -> Orchestrator-Switch auf das <package>-Glied: core -> agent.guide, Paket -> sein Onboarding-Agent. per_user-Pakete (career) zeigen den Status der TAPPENDEN Person (DEFINER-fn löst sie aus chat_id auf, nie LLM). Knopf-STRUKTUR build-time (n8n-Inline-Keyboard = statische fixedCollection -> ein Send je Ansicht); Knopf-TEXT Ausdruck auf $json.btn/abtn/next_text/back_text -> nicht aktive Pakete (fn active_packages) tragen den Zusatz nicht installiert, eine Fusszeile nennt den Server-Befehl (ausblenden geht nicht, Issue #19955). MITGLIEDER: viewer_role != owner -> nur persönliche Bereiche (per_user je Sektion aus der fn) zählen als offen (Weiter/Als Nächstes/Zähler), Haushalts-Bereiche tragen (richtet der Owner ein); ihre Taps laufen über core.fn_handle_onboarding_cb (Registry, member_permeable) und geben dort einen Toast. PLAN-SCHRITT (2026-10-28): je Berater-Domäne mit advisors.<domain>.plan_step ($AdvisorPlanStepList) ein empfohlener Schritt hinter den Abschnitten ihres Pakets, KEIN Abschnitt (zählt nicht im Fortschritt und nicht im alles-eingerichtet-Latch). Zustand, Rechte und Daten-Reife aus der Read-Spalte plans (core.fn_advisor_plan_status, eigenes DEFINER-Fenster unter core_ro): verfügbar, sobald kein sperrender Abschnitt (sections.json gates_advisor, fehlt = sperrt) des Pakets offen ist; Bereichsansicht = Zeile U+1F4CB + Knopf (pbtn/pcb), Übersicht = Info-Zeile unter dem Bereich. Weiter zeigt auf den Plan, wenn die Fertig-Karte genau dieses Pakets kommt (done_area) oder kein Abschnitt mehr offen ist; der Text sagt dann freiwillig-aber-hilfreich (<pkg>.plan_step.intro). Reif -> callback plan:<domain> (Orchestrator Plan route? -> advisor_agent); Mindestdaten fehlen (readiness_fn) -> Hinweis <pkg>.plan_step.not_ready mit den fehlenden Punkten (<pkg>.plan_ready.<key>) und Knopf Zuerst: <Abschnitt> = onboarding:<pkg>:<abschnitt> (Erfass-Agent). Nicht pflegbar (Mitglied am Haushalts-Plan) -> keine Zeile, Knopf mit Hinweis (Tipp = Toast des Handlers).' 380 1040
 
     $nodes = @($start, $read, $build, $switch) + $sendNodes + @($sticky)
     $conns = [ordered]@{

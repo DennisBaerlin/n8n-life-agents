@@ -866,7 +866,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.toast_confirmed\u0027,\u0027core.orch.toast_confirm_failed\u0027,\u0027core.orch.toast_rejected\u0027,\u0027core.orch.toast_already_done\u0027,\u0027core.orch.toast_blocked\u0027,\u0027core.orch.toast_unblocked\u0027,\u0027core.orch.blocked\u0027,\u0027core.orch.unblocked\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.btn_unblock\u0027,\u0027core.orch.toast_saved\u0027,\u0027core.orch.toast_discarded\u0027,\u0027core.orch.toast_undone\u0027,\u0027core.orch.learn_undo_offer\u0027,\u0027core.orch.btn_undo\u0027,\u0027core.orch.toast_overview\u0027,\u0027core.orch.toast_onboarding\u0027,\u0027core.orch.toast_area\u0027,\u0027core.orch.toast_action_unavailable\u0027,\u0027core.toast.area_unavailable\u0027,\u0027core.toast.save_failed\u0027,\u0027core.toast.owner_only\u0027,\u0027core.cron.off_reminders_hint\u0027,\u0027core.toast.reminder_unavailable\u0027,\u0027core.reminders.card_footer\u0027]::text[]) AS t FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
+                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.toast_confirmed\u0027,\u0027core.orch.toast_confirm_failed\u0027,\u0027core.orch.toast_rejected\u0027,\u0027core.orch.toast_already_done\u0027,\u0027core.orch.toast_blocked\u0027,\u0027core.orch.toast_unblocked\u0027,\u0027core.orch.blocked\u0027,\u0027core.orch.unblocked\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.btn_unblock\u0027,\u0027core.orch.toast_saved\u0027,\u0027core.orch.toast_discarded\u0027,\u0027core.orch.toast_undone\u0027,\u0027core.orch.learn_undo_offer\u0027,\u0027core.orch.btn_undo\u0027,\u0027core.orch.toast_overview\u0027,\u0027core.orch.toast_onboarding\u0027,\u0027core.orch.toast_area\u0027,\u0027core.orch.toast_plan\u0027,\u0027core.orch.toast_action_unavailable\u0027,\u0027core.toast.area_unavailable\u0027,\u0027core.toast.save_failed\u0027,\u0027core.toast.owner_only\u0027,\u0027core.cron.off_reminders_hint\u0027,\u0027core.toast.reminder_unavailable\u0027,\u0027core.reminders.card_footer\u0027]::text[]) AS t FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ uid: (($(\u0027Trigger normalize\u0027).item.json.callback_query.from || {}).id) }) }}"
                                                      }
@@ -1220,7 +1220,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT r.result, core.fn_ui_texts(agent.fn_person_lang(r.result-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.member_confirmed\u0027,\u0027core.orch.member_confirmed_unnamed\u0027]::text[]) AS t_person FROM (SELECT agent.fn_confirm_pairing($1::jsonb) AS result) r;",
+                                         "query":  "SELECT r.result, core.fn_ui_texts(agent.fn_person_lang(r.result-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.member_confirmed\u0027,\u0027core.orch.member_confirmed_unnamed\u0027,\u0027core.onboarding.ready.member_areas\u0027,\u0027core.onboarding.ready.btn_areas\u0027]::text[]) AS t_person FROM (SELECT agent.fn_confirm_pairing($1::jsonb) AS result) r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ id: (($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[1] || \u0027\u0027) }) }}"
                                                      }
@@ -1301,6 +1301,83 @@
                                    ],
                       "id":  "db7cd3d4-a085-53ec-81ab-d26115e4e81c",
                       "name":  "Member confirmed?"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0a3acae4-6b05-5d0a-83c4-8bd3dcd2972d",
+                                                                                   "leftValue":  "={{ ($(\u0027Run confirm pairing\u0027).item.json.result||{}).members_have_areas === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -180,
+                                       400
+                                   ],
+                      "id":  "b55c7c7f-31b5-537f-ae81-3b24b1d185aa",
+                      "name":  "Member has areas?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String(($(\u0027Run confirm pairing\u0027).item.json.result||{}).member_chat_id || \u0027\u0027) }}",
+                                         "text":  "={{ ((($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name ? String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed\u0027] || \u0027core.orch.member_confirmed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027name\u0027: (($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed_unnamed\u0027] || \u0027core.orch.member_confirmed_unnamed\u0027)) + \u0027\\n\\n\u0027 + String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.onboarding.ready.member_areas\u0027] || \u0027core.onboarding.ready.member_areas\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.onboarding.ready.btn_areas\u0027] || \u0027core.onboarding.ready.btn_areas\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       40,
+                                       400
+                                   ],
+                      "id":  "4b36a6e8-43e3-570e-8352-4f1781d2aeac",
+                      "name":  "Notify member confirmed (areas)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
                   },
                   {
                       "parameters":  {
@@ -2503,7 +2580,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "task":  "Der Nutzer hat im Onboarding-Menü den Haushalt gewählt. Starte bzw. setze das Haushalts-Onboarding fort.",
+                                                                              "task":  "={{ \u0027The user chose the household in the onboarding menu. Start or continue the household onboarding.\u0027 + \u0027 Reply in the language with ISO code \u0027 + String($(\u0027Resolve callback sender\u0027).item.json.lang || \u0027en\u0027) + \u0027.\u0027 }}",
                                                                               "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
                                                                               "call_depth":  "1"
                                                                           },
@@ -2554,7 +2631,8 @@
                                                               "id":  "__CRED_TELEGRAM__",
                                                               "name":  "Telegram account"
                                                           }
-                                      }
+                                      },
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -4230,7 +4308,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Owner-Admin + Member-Callback-Dispatch (callback_query, KEIN LLM): Owner bestaetigt Einladungen/togglet Crons; Mitglied bedient seine est:/job:-Karten**\n\nEin Inline-Button-Tap kommt als callback_query (kein top-level message). Resolve callback sender loest callback_query.from.id auf. Zweistufige Auth (Transport=n8n-secret_token + App=Owner-/Member-Gate): Callback owner? [true=gepairter Owner] -\u003e Callback action (die 9 Admin-Arme + [9] extra); [false=Nicht-Owner] -\u003e Callback member? [true=aufgeloestes Mitglied] -\u003e DIREKT Dispatch callback (die Owner-Admin-Arme bleiben so unerreichbar), [false=unbekannter/ungepairter Sender] -\u003e Discard non-owner callback (generisches answerCallbackQuery -\u003e Spinner stoppt, KEIN Handler). Callback action parst das callback_data-Verb (vor dem „:\"). confirm:\u003cid\u003e/reject:\u003cid\u003e -\u003e Run confirm/reject pairing (Member-Einladung; fn_confirm_pairing bindet die beim Claim gestagete Identitaet via Merge-Kern, idempotent). block:\u003cuid\u003e/unblock:\u003cuid\u003e (WS-5d) -\u003e Run block/unblock knocker (agent.fn_block_knocker/fn_unblock_knocker auf agent.access_blocks; uid = data.split(\":\")[1]). cron_on:\u003ckey\u003e/cron_off:\u003ckey\u003e (WS-3 Phase A + Phase C + Phase 0 WS-0c) -\u003e Run cron on/off (core.fn_set_cron_enable -\u003e core.config cron_enable; key = data.split(\":\")[1]). GENERISCH: die Togglability-Sicherung ist die Mitgliedschaft in core.cron_labels (Roter Faden Paket B: die Erinnerungs-Registry aller nutzer-sichtbaren Crons; Haushalts-Erinnerungen schaltbar, Person-Erinnerungen und Pflicht lehnt fn_set_cron_enable ab -\u003e dann Toast core.toast.reminder_unavailable + Hinweis /reminders statt Erfolg). Der Postgres-Node liest neben dem fn-Call das Paket aus core.cron_labels und die vier Katalog-Texte \u003cpkg\u003e.cron.\u003ckey\u003e.* in der Sprache des Tippenden (lang aus Resolve callback sender) -\u003e Answer/Notify cron on/off; der Hinweis im off-Send ist core.cron.off_reminders_hint (wieder an per /reminders). Ein neuer Cron = Key in der Manifest-cron_labels-Liste + Texte im Katalog, kein Orchestrator-Edit. learn:\u003cok|no|undo\u003e:\u003cid\u003e (Phase C Lern-Loop) -\u003e Learn action (split[1]=Verb, split[2]=candidate_id): ok -\u003e Run approve learn (agent.fn_approve_learn_candidate dispatcht fact-\u003efn_set_context_facts | note-\u003ecore.fn_append_context_note, approved nur bei Write-Erfolg) -\u003e nach NOTE-approve eine Folge-Karte Offer undo ([Rueckgaengig]=learn:undo:\u003cid\u003e, der einzige Weg zu undo); no -\u003e Run reject learn (durable); undo -\u003e Run undo learn (core.fn_remove_context_note, nur approved notes). Idempotent (re-tap -\u003e {ok:false}-Toast). help:overview (WS-1/WS-5) -\u003e Answer help cb (Button ZUERST quittieren) -\u003e Load capabilities cb -\u003e Split help cb (chunked, Index + (n/N)) -\u003e Send help cb PER-ITEM (terminal; answerCallbackQuery feuert NICHT pro Chunk). onboarding:\u003cpackage\u003e:\u003ckey\u003e (P1, aus dem Menue-Grid) -\u003e Onboarding section? (Switch nach data.split(\":\")[1] = das \u003cpackage\u003e-Glied): core -\u003e Run onboarding cb (agent.guide INLINE, Haushalt) -\u003e Answer/Relay onboarding cb; jedes Paket mit provides.onboarding bekommt build-time aus $OnboardingDispatchList einen eigenen Arm Run/Answer/Relay onboarding \u003cpkg\u003e -\u003e agent.\u003conboarding_agent\u003e INLINE (generischer Self-Onboarding-Task, section_key = split[2]) -\u003e kein agent.\u003cpkg\u003e-Literal mehr (core_literal #1), neues Onboarding-Paket dockt ohne Orchestrator-Edit an. onboarding:_area:\u003cpackage\u003e (Bereichs-Knopf der Menue-Uebersicht, _area reserviert: kein Paketname beginnt mit _) -\u003e Answer onboarding area -\u003e Send onboarding area (core.sub_send_onboarding_menu mit area = split[2]; leer = Uebersicht; der Sub sendet selbst, terminal). Cron-Toggle-Modell (gelockt): SETUP=aktivieren per Knopf (die on-Knoepfe erscheinen am Publish-Aktivierungs-Angebot — Phase 0: je ein Knopf fuer drift_check + plan_review, unabhaengig — bzw. an der Onboarding-/Lern-Karte fuer learn_context), LAUFZEIT=abschalten per Knopf (an jedem Nudge), RE-AKTIVIEREN per /reminders (Roter Faden Paket B: Menue-Knopf rem:on:\u003ckey\u003e:m; der off-Send nennt /reminders). Answer \u003caktion\u003e quittiert den Button (answerCallbackQuery-Toast); danach Notify member confirmed/rejected an pairing_state.claimed_chat_id (in der Sprache der Person; ohne eigene Sprache danach Member needs language? -\u003e Send member language picker, Telegram-App-Sprache vom Einloesen als Vorschlag markiert, gespeichert erst beim Tipp) bzw. Notify block/unblock done an den Owner MIT dem inversen Toggle-Button (Sperren\u003c-\u003eEntsperren, damit Entsperren button-erreichbar bleibt). Stateful Korrelation ueber die Zeilen-id (Member) bzw. die uid direkt (Block). GENERISCHER DISPATCH (WS-0c CB): jeder Prefix, den KEIN hartkodierter Arm faengt, faellt auf die extra-Ausgabe [9] -\u003e Dispatch callback (core.fn_dispatch_callback schlaegt den Prefix in core.callback_handlers nach + fuehrt die Paket-Handler-fn(jsonb) dynamisch aus) -\u003e Answer dispatched cb (Toast = result.toast || Fallback). Erster Konsument: career job:-Feedback (👍/👎 an Job-Karten, WS-2). P2b-2: das Dispatch-Payload reicht chat_id=callback_query.from.id mit -\u003e career.fn_handle_job_feedback loest den Sender auf (Eigentuemer-Check person_id=sender). Die 9 hartkodierten Arme bleiben unveraendert. MEMBER-PERMEABILITAET: aufgeloeste Nicht-Owner-Mitglieder erreichen Dispatch callback DIREKT (2. Eingangskante von Callback member?); core.fn_dispatch_callback enforced core.callback_handlers.member_permeable FAIL-CLOSED (Owner immer; Mitglied nur bei member_permeable=true; unaufgeloest -\u003e reject) + re-resolvt den Sender selbst; die FEINE Auth (est=adults_only haushalts-skopiert, job=Per-Item-Eigentum) macht der Handler. Owner-Admin-Prefixes (confirm/block/cron/learn/...) sind KEINE Registry-Handler -\u003e ein Member-Tap darauf -\u003e unknown_callback_prefix -\u003e Reject-Toast (strukturell unerreichbar). MITGLIEDER-ONBOARDING: Prefix onboarding ist zusaetzlich Registry-Handler (core.fn_handle_onboarding_cb, member_permeable; contract_lint 9 erlaubt die Kollision nur so) -\u003e Dispatch callback (Payload + chat_type) -\u003e Onboarding route? (result.route===onboarding) -\u003e derselbe Onboarding section?-Switch wie beim Owner; sonst Answer dispatched cb (Toast).",
+                                         "content":  "## Ablauf\n**Owner-Admin + Member-Callback-Dispatch (callback_query, KEIN LLM): Owner bestaetigt Einladungen/togglet Crons; Mitglied bedient seine est:/job:-Karten**\n\nEin Inline-Button-Tap kommt als callback_query (kein top-level message). Resolve callback sender loest callback_query.from.id auf. Zweistufige Auth (Transport=n8n-secret_token + App=Owner-/Member-Gate): Callback owner? [true=gepairter Owner] -\u003e Callback action (die 9 Admin-Arme + [9] extra); [false=Nicht-Owner] -\u003e Callback member? [true=aufgeloestes Mitglied] -\u003e DIREKT Dispatch callback (die Owner-Admin-Arme bleiben so unerreichbar), [false=unbekannter/ungepairter Sender] -\u003e Discard non-owner callback (generisches answerCallbackQuery -\u003e Spinner stoppt, KEIN Handler). Callback action parst das callback_data-Verb (vor dem „:\"). confirm:\u003cid\u003e/reject:\u003cid\u003e -\u003e Run confirm/reject pairing (Member-Einladung; fn_confirm_pairing bindet die beim Claim gestagete Identitaet via Merge-Kern, idempotent). block:\u003cuid\u003e/unblock:\u003cuid\u003e (WS-5d) -\u003e Run block/unblock knocker (agent.fn_block_knocker/fn_unblock_knocker auf agent.access_blocks; uid = data.split(\":\")[1]). cron_on:\u003ckey\u003e/cron_off:\u003ckey\u003e (WS-3 Phase A + Phase C + Phase 0 WS-0c) -\u003e Run cron on/off (core.fn_set_cron_enable -\u003e core.config cron_enable; key = data.split(\":\")[1]). GENERISCH: die Togglability-Sicherung ist die Mitgliedschaft in core.cron_labels (Roter Faden Paket B: die Erinnerungs-Registry aller nutzer-sichtbaren Crons; Haushalts-Erinnerungen schaltbar, Person-Erinnerungen und Pflicht lehnt fn_set_cron_enable ab -\u003e dann Toast core.toast.reminder_unavailable + Hinweis /reminders statt Erfolg). Der Postgres-Node liest neben dem fn-Call das Paket aus core.cron_labels und die vier Katalog-Texte \u003cpkg\u003e.cron.\u003ckey\u003e.* in der Sprache des Tippenden (lang aus Resolve callback sender) -\u003e Answer/Notify cron on/off; der Hinweis im off-Send ist core.cron.off_reminders_hint (wieder an per /reminders). Ein neuer Cron = Key in der Manifest-cron_labels-Liste + Texte im Katalog, kein Orchestrator-Edit. learn:\u003cok|no|undo\u003e:\u003cid\u003e (Phase C Lern-Loop) -\u003e Learn action (split[1]=Verb, split[2]=candidate_id): ok -\u003e Run approve learn (agent.fn_approve_learn_candidate dispatcht fact-\u003efn_set_context_facts | note-\u003ecore.fn_append_context_note, approved nur bei Write-Erfolg) -\u003e nach NOTE-approve eine Folge-Karte Offer undo ([Rueckgaengig]=learn:undo:\u003cid\u003e, der einzige Weg zu undo); no -\u003e Run reject learn (durable); undo -\u003e Run undo learn (core.fn_remove_context_note, nur approved notes). Idempotent (re-tap -\u003e {ok:false}-Toast). help:overview (WS-1/WS-5) -\u003e Answer help cb (Button ZUERST quittieren) -\u003e Load capabilities cb -\u003e Split help cb (chunked, Index + (n/N)) -\u003e Send help cb PER-ITEM (terminal; answerCallbackQuery feuert NICHT pro Chunk). onboarding:\u003cpackage\u003e:\u003ckey\u003e (P1, aus dem Menue-Grid) -\u003e Onboarding section? (Switch nach data.split(\":\")[1] = das \u003cpackage\u003e-Glied): core -\u003e Run onboarding cb (agent.guide INLINE, Haushalt) -\u003e Answer/Relay onboarding cb; jedes Paket mit provides.onboarding bekommt build-time aus $OnboardingDispatchList einen eigenen Arm Run/Answer/Relay onboarding \u003cpkg\u003e -\u003e agent.\u003conboarding_agent\u003e INLINE (generischer Self-Onboarding-Task, section_key = split[2]) -\u003e kein agent.\u003cpkg\u003e-Literal mehr (core_literal #1), neues Onboarding-Paket dockt ohne Orchestrator-Edit an. onboarding:_area:\u003cpackage\u003e (Bereichs-Knopf der Menue-Uebersicht, _area reserviert: kein Paketname beginnt mit _) -\u003e Answer onboarding area -\u003e Send onboarding area (core.sub_send_onboarding_menu mit area = split[2]; leer = Uebersicht; der Sub sendet selbst, terminal). Cron-Toggle-Modell (gelockt): SETUP=aktivieren per Knopf (die on-Knoepfe erscheinen am Publish-Aktivierungs-Angebot — Phase 0: je ein Knopf fuer drift_check + plan_review, unabhaengig — bzw. an der Onboarding-/Lern-Karte fuer learn_context), LAUFZEIT=abschalten per Knopf (an jedem Nudge), RE-AKTIVIEREN per /reminders (Roter Faden Paket B: Menue-Knopf rem:on:\u003ckey\u003e:m; der off-Send nennt /reminders). Answer \u003caktion\u003e quittiert den Button (answerCallbackQuery-Toast); danach Notify member confirmed/rejected an pairing_state.claimed_chat_id (in der Sprache der Person; ohne eigene Sprache danach Member needs language? -\u003e Send member language picker, Telegram-App-Sprache vom Einloesen als Vorschlag markiert, gespeichert erst beim Tipp) bzw. Notify block/unblock done an den Owner MIT dem inversen Toggle-Button (Sperren\u003c-\u003eEntsperren, damit Entsperren button-erreichbar bleibt). Stateful Korrelation ueber die Zeilen-id (Member) bzw. die uid direkt (Block). GENERISCHER DISPATCH (WS-0c CB): jeder Prefix, den KEIN hartkodierter Arm faengt, faellt auf die extra-Ausgabe [9] -\u003e Dispatch callback (core.fn_dispatch_callback schlaegt den Prefix in core.callback_handlers nach + fuehrt die Paket-Handler-fn(jsonb) dynamisch aus) -\u003e Answer dispatched cb (Toast = result.toast || Fallback). Erster Konsument: career job:-Feedback (👍/👎 an Job-Karten, WS-2). P2b-2: das Dispatch-Payload reicht chat_id=callback_query.from.id mit -\u003e career.fn_handle_job_feedback loest den Sender auf (Eigentuemer-Check person_id=sender). Die 9 hartkodierten Arme bleiben unveraendert. MEMBER-PERMEABILITAET: aufgeloeste Nicht-Owner-Mitglieder erreichen Dispatch callback DIREKT (2. Eingangskante von Callback member?); core.fn_dispatch_callback enforced core.callback_handlers.member_permeable FAIL-CLOSED (Owner immer; Mitglied nur bei member_permeable=true; unaufgeloest -\u003e reject) + re-resolvt den Sender selbst; die FEINE Auth (est=adults_only haushalts-skopiert, job=Per-Item-Eigentum) macht der Handler. Owner-Admin-Prefixes (confirm/block/cron/learn/...) sind KEINE Registry-Handler -\u003e ein Member-Tap darauf -\u003e unknown_callback_prefix -\u003e Reject-Toast (strukturell unerreichbar). MITGLIEDER-ONBOARDING: Prefix onboarding ist zusaetzlich Registry-Handler (core.fn_handle_onboarding_cb, member_permeable; contract_lint 9 erlaubt die Kollision nur so) -\u003e Dispatch callback (Payload + chat_type) -\u003e Onboarding route? (result.route===onboarding) -\u003e derselbe Onboarding section?-Switch wie beim Owner; sonst Plan route? (PLAN-SCHRITT, 2026-10-28: plan:\u003cdomain\u003e aus dem Onboarding-Menü, Owner UND Mitglied über Dispatch callback; core.fn_handle_plan_cb prüft Privatchat, Domain mit plan_step, Schreibrecht und Daten-Reife und gibt route=plan + domain -\u003e Plan domain? build-time je $AdvisorPlanStepList -\u003e Answer plan \u003cdomain\u003e ZUERST (Toast, onError continue) -\u003e Run plan \u003cdomain\u003e = agent.sub_dispatch_agent -\u003e advisor_agent mit festem englischem Auftrag + Antwortsprache des Tippenden -\u003e Relay plan \u003cdomain\u003e), sonst Answer dispatched cb (Toast). Alle Knopf-Aufträge (Haushalt, Paket-Onboarding, Plan) sind englisch und nennen die Antwortsprache (lang aus Resolve callback sender), ihre Answer-Knoten laufen mit onError continue.",
                                          "height":  380,
                                          "width":  780,
                                          "color":  4
@@ -4940,7 +5018,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "task":  "={{ /^[a-z][a-z0-9_]{0,39}$/.test(String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) ? (\u0027Der Nutzer hat im Onboarding-Menü den Abschnitt \u0027 + (String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) + \u0027 gewählt. Führe die Erfassung dieses Abschnitts (Self-Onboarding) Schritt für Schritt durch und markiere ihn anschließend als erledigt.\u0027) : \u0027Der Nutzer hat im Onboarding-Menü diesen Bereich gewählt. Beginne mit dem ersten offenen Onboarding-Abschnitt (Self-Onboarding) und markiere ihn anschließend als erledigt.\u0027 }}",
+                                                                              "task":  "={{ (/^[a-z][a-z0-9_]{0,39}$/.test(String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) ? (\u0027The user chose the onboarding section \u0027 + (String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) + \u0027 in the onboarding menu. Capture this section step by step (self-onboarding) and then mark it as done.\u0027) : \u0027The user chose this area in the onboarding menu. Start with the first open onboarding section (self-onboarding) and then mark it as done.\u0027) + \u0027 Reply in the language with ISO code \u0027 + String($(\u0027Resolve callback sender\u0027).item.json.lang || \u0027en\u0027) + \u0027.\u0027 }}",
                                                                               "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "S4gO9s0FAm6oFQYr",
@@ -4994,7 +5072,8 @@
                                                               "id":  "__CRED_TELEGRAM__",
                                                               "name":  "Telegram account"
                                                           }
-                                      }
+                                      },
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -5063,7 +5142,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "task":  "={{ /^[a-z][a-z0-9_]{0,39}$/.test(String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) ? (\u0027Der Nutzer hat im Onboarding-Menü den Abschnitt \u0027 + (String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) + \u0027 gewählt. Führe die Erfassung dieses Abschnitts (Self-Onboarding) Schritt für Schritt durch und markiere ihn anschließend als erledigt.\u0027) : \u0027Der Nutzer hat im Onboarding-Menü diesen Bereich gewählt. Beginne mit dem ersten offenen Onboarding-Abschnitt (Self-Onboarding) und markiere ihn anschließend als erledigt.\u0027 }}",
+                                                                              "task":  "={{ (/^[a-z][a-z0-9_]{0,39}$/.test(String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) ? (\u0027The user chose the onboarding section \u0027 + (String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) + \u0027 in the onboarding menu. Capture this section step by step (self-onboarding) and then mark it as done.\u0027) : \u0027The user chose this area in the onboarding menu. Start with the first open onboarding section (self-onboarding) and then mark it as done.\u0027) + \u0027 Reply in the language with ISO code \u0027 + String($(\u0027Resolve callback sender\u0027).item.json.lang || \u0027en\u0027) + \u0027.\u0027 }}",
                                                                               "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
@@ -5117,7 +5196,8 @@
                                                               "id":  "__CRED_TELEGRAM__",
                                                               "name":  "Telegram account"
                                                           }
-                                      }
+                                      },
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -5186,7 +5266,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "task":  "={{ /^[a-z][a-z0-9_]{0,39}$/.test(String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) ? (\u0027Der Nutzer hat im Onboarding-Menü den Abschnitt \u0027 + (String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) + \u0027 gewählt. Führe die Erfassung dieses Abschnitts (Self-Onboarding) Schritt für Schritt durch und markiere ihn anschließend als erledigt.\u0027) : \u0027Der Nutzer hat im Onboarding-Menü diesen Bereich gewählt. Beginne mit dem ersten offenen Onboarding-Abschnitt (Self-Onboarding) und markiere ihn anschließend als erledigt.\u0027 }}",
+                                                                              "task":  "={{ (/^[a-z][a-z0-9_]{0,39}$/.test(String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) ? (\u0027The user chose the onboarding section \u0027 + (String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[2] || \u0027\u0027) + \u0027 in the onboarding menu. Capture this section step by step (self-onboarding) and then mark it as done.\u0027) : \u0027The user chose this area in the onboarding menu. Start with the first open onboarding section (self-onboarding) and then mark it as done.\u0027) + \u0027 Reply in the language with ISO code \u0027 + String($(\u0027Resolve callback sender\u0027).item.json.lang || \u0027en\u0027) + \u0027.\u0027 }}",
                                                                               "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
@@ -5240,7 +5320,8 @@
                                                               "id":  "__CRED_TELEGRAM__",
                                                               "name":  "Telegram account"
                                                           }
-                                      }
+                                      },
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -5378,6 +5459,355 @@
                                    ],
                       "id":  "8297a0dc-4485-590a-bd0e-decd83f22658",
                       "name":  "Answer unknown onboarding cb",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "8b138b32-a143-5b37-a3fc-b8c3e4359404",
+                                                                                   "leftValue":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).startsWith(\u0027plan:\u0027) \u0026\u0026 (($(\u0027Dispatch callback\u0027).item.json.result || {}).route) === \u0027plan\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -180,
+                                       1400
+                                   ],
+                      "id":  "151354b6-b524-5b47-967b-a3bf6244d15d",
+                      "name":  "Plan route?"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "fallbackOutput":  "extra"
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "b0db988d-e236-5189-8f88-70d3ddd40302",
+                                                                                                                    "leftValue":  "={{ String((($(\u0027Dispatch callback\u0027).item.json.result || {}).domain) || \u0027\u0027) }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "finance"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "finance",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "67579317-8efa-5d37-a504-103ec268298b",
+                                                                                                                    "leftValue":  "={{ String((($(\u0027Dispatch callback\u0027).item.json.result || {}).domain) || \u0027\u0027) }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "career"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "career",
+                                                                          "renameOutput":  true
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -840,
+                                       2720
+                                   ],
+                      "id":  "9e5e01d9-bf0f-57b6-8cf3-2b7c723bb34a",
+                      "name":  "Plan domain?"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "callback",
+                                         "operation":  "answerQuery",
+                                         "queryId":  "={{ $(\u0027Trigger normalize\u0027).item.json.callback_query.id }}",
+                                         "additionalFields":  {
+                                                                  "text":  "={{ String((($(\u0027Resolve callback sender\u0027).item.json.t) || {})[\u0027core.orch.toast_plan\u0027] || \u0027core.orch.toast_plan\u0027) }}"
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -620,
+                                       2720
+                                   ],
+                      "id":  "e6cc61f2-daf3-541c-a687-42ec01e45c12",
+                      "name":  "Answer plan finance",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "vouYE8U4Nd3ivmtQ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/vouYE8U4Nd3ivmtQ",
+                                                            "cachedResultName":  "agent.sub_dispatch_agent"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "task":  "={{ \u0027The user tapped the plan button in the onboarding menu. Start right away without offering first: if a draft exists, resume it; otherwise, if the published plan lists plan gaps, work on them now; if there is no plan yet, start the plan interview with its first section; if the plan is complete, run a plan review.\u0027 + \u0027 Reply in the language with ISO code \u0027 + String($(\u0027Resolve callback sender\u0027).item.json.lang || \u0027en\u0027) + \u0027.\u0027 }}",
+                                                                              "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
+                                                                              "call_depth":  "1",
+                                                                              "workflow_id":  "8YCe205qQg7vzTEh",
+                                                                              "package":  "finance",
+                                                                              "thinking":  "loop"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -400,
+                                       2720
+                                   ],
+                      "id":  "c68f64cf-028c-5530-a174-fc2de57b44fd",
+                      "name":  "Run plan finance"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Run plan finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -180,
+                                       2720
+                                   ],
+                      "id":  "148599f4-4f2d-5854-930a-a47ca28f2963",
+                      "name":  "Relay plan finance split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       20,
+                                       2720
+                                   ],
+                      "id":  "f908768b-d505-5366-afc4-deac943c308c",
+                      "name":  "Relay plan finance loop"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).first().json.callback_query.message.chat.id) }}",
+                                         "text":  "={{ $json.text }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       2840
+                                   ],
+                      "id":  "970461a6-6061-5f16-b165-baab0aebebe1",
+                      "name":  "Relay plan finance",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "callback",
+                                         "operation":  "answerQuery",
+                                         "queryId":  "={{ $(\u0027Trigger normalize\u0027).item.json.callback_query.id }}",
+                                         "additionalFields":  {
+                                                                  "text":  "={{ String((($(\u0027Resolve callback sender\u0027).item.json.t) || {})[\u0027core.orch.toast_plan\u0027] || \u0027core.orch.toast_plan\u0027) }}"
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -620,
+                                       2880
+                                   ],
+                      "id":  "46fe8712-b65f-5d69-9fc3-83f991c7c665",
+                      "name":  "Answer plan career",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "vouYE8U4Nd3ivmtQ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/vouYE8U4Nd3ivmtQ",
+                                                            "cachedResultName":  "agent.sub_dispatch_agent"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "task":  "={{ \u0027The user tapped the plan button in the onboarding menu. Start right away without offering first: if a draft exists, resume it; otherwise, if the published plan lists plan gaps, work on them now; if there is no plan yet, start the plan interview with its first section; if the plan is complete, run a plan review.\u0027 + \u0027 Reply in the language with ISO code \u0027 + String($(\u0027Resolve callback sender\u0027).item.json.lang || \u0027en\u0027) + \u0027.\u0027 }}",
+                                                                              "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
+                                                                              "call_depth":  "1",
+                                                                              "workflow_id":  "PlIL7Ut6tQDSBzyw",
+                                                                              "package":  "career",
+                                                                              "thinking":  "loop"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -400,
+                                       2880
+                                   ],
+                      "id":  "d51cfd17-9d08-5213-85d2-f626a66e8f7c",
+                      "name":  "Run plan career"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Run plan career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -180,
+                                       2880
+                                   ],
+                      "id":  "28229555-a30a-527d-99a7-35ade6f8e430",
+                      "name":  "Relay plan career split"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       20,
+                                       2880
+                                   ],
+                      "id":  "02bc52b2-d0d3-56f5-a883-be13779fafa0",
+                      "name":  "Relay plan career loop"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).first().json.callback_query.message.chat.id) }}",
+                                         "text":  "={{ $json.text }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       3000
+                                   ],
+                      "id":  "70395aa0-5dd7-58d4-a267-6f61d93c90cf",
+                      "name":  "Relay plan career",
                       "retryOnFail":  true,
                       "maxTries":  3,
                       "waitBetweenTries":  2000,
@@ -6311,7 +6741,7 @@
                                                                [
                                                                    {
                                                                        "index":  0,
-                                                                       "node":  "Answer dispatched cb",
+                                                                       "node":  "Plan route?",
                                                                        "type":  "main"
                                                                    }
                                                                ]
@@ -6507,7 +6937,7 @@
                                                                [
                                                                    {
                                                                        "index":  0,
-                                                                       "node":  "Notify member confirmed",
+                                                                       "node":  "Member has areas?",
                                                                        "type":  "main"
                                                                    }
                                                                ],
@@ -6516,6 +6946,35 @@
                                                                ]
                                                            ]
                                               },
+                        "Member has areas?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Notify member confirmed (areas)",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ],
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Notify member confirmed",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Notify member confirmed (areas)":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Member needs language?",
+                                                                                     "type":  "main"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
                         "Notify member confirmed":  {
                                                         "main":  [
                                                                      [
@@ -7356,6 +7815,173 @@
                                                                     ]
                                                                 ]
                                                    },
+                        "Answer plan finance":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Run plan finance",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Run plan finance":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Relay plan finance split",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Relay plan finance split":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "index":  0,
+                                                                              "node":  "Relay plan finance loop",
+                                                                              "type":  "main"
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Relay plan finance loop":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Finish card lock",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ],
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Relay plan finance",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Relay plan finance":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Relay plan finance loop",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Answer plan career":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Run plan career",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Run plan career":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Relay plan career split",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Relay plan career split":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Relay plan career loop",
+                                                                             "type":  "main"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Relay plan career loop":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Finish card lock",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ],
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Relay plan career",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Relay plan career":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Relay plan career loop",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Plan route?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Plan domain?",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Answer dispatched cb",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Plan domain?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Answer plan finance",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Answer plan career",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Answer dispatched cb",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
                         "Command router":  {
                                                "main":  [
                                                             [

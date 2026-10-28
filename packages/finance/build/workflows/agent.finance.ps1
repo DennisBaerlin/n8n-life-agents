@@ -216,9 +216,12 @@ $nLoadCtx = [ordered]@{
 # WS-B3 Self-Onboarding: liest die kombinierte Core-Schnittstelle (unter finance_ro = das publizierte
 # SECURITY-DEFINER-Lesefenster) und reicht die offenen Finanz-Sektionen unten in den System-Prompt. Kein
 # Hard-Redirect (anders als das Advisor-Gate): der Finance-Agent onboardet proaktiv mit seinen EIGENEN
-# Tools. onError=continue -> ein Lese-Hiccup bricht den Agenten nicht (dann nur kein Onboarding-Nudge).
+# Tools. onError=continue -> ein Lese-Hiccup bricht den Agenten nicht (dann nur kein Onboarding-Nudge). Nur fuer den Owner:
+# Haushalts-Bereiche richtet allein der Owner ein (fn_set_onboarding_section lehnt ein Mitglied ab) -> ein Mitglied bekaeme
+# sonst ein Angebot, das an owner_only scheitert (viewer_is_member aus der chat_id, nie LLM).
 $nOnboardRead = Build-Pg 'Onboarding status read' @(-1040, 0) `
-    "=SELECT (s.st->>'complete')::boolean AS complete, COALESCE((SELECT string_agg(e->>'label', ', ' ORDER BY ord) FROM jsonb_array_elements(s.st->'open') WITH ORDINALITY AS x(e, ord)), '') AS open_labels FROM (SELECT core.fn_onboarding_status('finance') AS st) s;"
+    "=SELECT (s.st->>'complete')::boolean AS complete, COALESCE((s.st->>'viewer_is_member')::boolean, false) AS viewer_is_member, COALESCE((SELECT string_agg(e->>'label', ', ' ORDER BY ord) FROM jsonb_array_elements(s.st->'open') WITH ORDINALITY AS x(e, ord)), '') AS open_labels FROM (SELECT core.fn_onboarding_status('finance', (`$1::jsonb)->>'chat_id') AS st) s;" `
+    ([ordered]@{ chat_id = "String(`$('Start agent.finance').item.json.chat_id || '')" })
 $nOnboardRead.credentials = @{ postgres = $CRED_POSTGRES_RO }
 $nOnboardRead.onError = 'continueRegularOutput'
 
@@ -227,7 +230,7 @@ $nBuildInput = [ordered]@{
         assignments = @{
             assignments = @(
                 [ordered]@{ id = (New-Id); name = 'task';          value = "={{ `$('Start agent.finance').item.json.task }}";       type = 'string' }
-                [ordered]@{ id = (New-Id); name = 'system_prompt'; value = "={{ `$('Load Agent Context').item.json.system_prompt + (`$('Onboarding status read').item.json.complete === false ? ('\n\n## Onboarding ausstehend\nThe finance onboarding is not complete yet. Open areas: ' + (`$('Onboarding status read').item.json.open_labels || '-') + '. Follow the Onboarding section of your instructions (what belongs to each area, when to offer it, when an area is done).') : '') }}";             type = 'string' }
+                [ordered]@{ id = (New-Id); name = 'system_prompt'; value = "={{ `$('Load Agent Context').item.json.system_prompt + (`$('Onboarding status read').item.json.complete === false && `$('Onboarding status read').item.json.viewer_is_member !== true ? ('\n\n## Onboarding ausstehend\nThe finance onboarding is not complete yet. Open areas: ' + (`$('Onboarding status read').item.json.open_labels || '-') + '. Follow the Onboarding section of your instructions (what belongs to each area, when to offer it, when an area is done).') : '') }}";             type = 'string' }
                 [ordered]@{ id = (New-Id); name = 'chat_id';       value = "={{ `$('Start agent.finance').item.json.chat_id }}";    type = 'string' }
             )
         }

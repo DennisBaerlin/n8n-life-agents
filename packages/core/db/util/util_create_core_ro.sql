@@ -150,6 +150,15 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Onboarding-Plan-Schritt (2026-10-28): derselbe Menue-Sub liest den Plan-Zustand je Berater-Domaene ueber das
+-- DEFINER-Fenster core.fn_advisor_plan_status(text) (eigene fn, nicht in der Overview: deren Cron-/Karten-Aufrufer
+-- brauchen nur die Abschnitte). Grant am Rollen-Ort (die R__ re-REVOKEt PUBLIC). KEINE Paket-Rollen.
+DO $$ BEGIN
+    IF to_regprocedure('core.fn_advisor_plan_status(text)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_advisor_plan_status(text) TO core_ro;
+    END IF;
+END $$;
+
 -- Roter Faden Paket B: das /reminders-Menue (core.sub_send_reminders_menu, unter __CRED_POSTGRES_CORE_RO__) liest sein
 -- Datenmodell ueber das DEFINER-Fenster core.fn_reminders_overview(text). Grant am Rollen-Ort (die R__ re-REVOKEt PUBLIC).
 DO $$ BEGIN

@@ -490,6 +490,31 @@ BEGIN
       RAISE EXCEPTION 'FAIL [finance_ro NEGATIV]: unerwarteter Fehler statt insufficient_privilege: %', SQLERRM;
   END;
 
+  -- ===== (3e-PLAN) Onboarding-Plan-Schritt: core_ro -> core.fn_advisor_plan_status(chat_id) (Menue-Read, DEFINER-Fenster)
+  -- ruft die Paket-fns gaps_fn/readiness_fn dynamisch (liest agent.advisor_plans mit RLS + finance.*).
+  -- Absender = der Datei-Fixture-Owner (telegram_user_id 777, oben).
+  INSERT INTO core.package_registry (package, version, status) VALUES ('finance','0.1.0','active')
+  ON CONFLICT (package) DO UPDATE SET status = 'active';
+  INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, package, plan_step, gaps_fn, readiness_fn)
+  VALUES ('finance', 'financial_planning', 'finance.fn_advisor_review', 'agent.finance_advisor', 'finance', true,
+          'finance.fn_plan_gap_count', 'finance.fn_plan_readiness')
+  ON CONFLICT (domain) DO UPDATE SET plan_step = true, gaps_fn = EXCLUDED.gaps_fn, readiness_fn = EXCLUDED.readiness_fn;
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, plan_md)
+  VALUES ('finance', NULL, '__t_role_plan', 'active', 99, '{"risk_profile":{"content":"x"}}', 'p')
+  ON CONFLICT DO NOTHING;
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    SELECT e->>'state' INTO v_out
+    FROM jsonb_array_elements(core.fn_advisor_plan_status('777')) e WHERE e->>'domain' = 'finance';
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_plan_status]: %', SQLERRM;
+  END;
+  IF v_out IS NULL OR v_out NOT IN ('gaps', 'complete', 'draft') THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_plan_status]: erwartet Plan-Zustand, got %', COALESCE(v_out, '<null>'); END IF;
+  RAISE NOTICE 'PASS [core_ro -> core.fn_advisor_plan_status (gaps_fn/readiness_fn ueber das DEFINER-Fenster)]';
+
   -- ===== (3e) P1 (Generisches Paket-Onboarding): core_ro -> core.fn_onboarding_overview =====
   -- core.sub_send_onboarding_menu (laeuft unter core_ro) liest das DB-getriebene Menue-Modell ueber dieses
   -- DEFINER-Fenster (P2b-1: Arity (text DEFAULT NULL); no-arg-Call resolved via Default = alle per_user-Sektionen

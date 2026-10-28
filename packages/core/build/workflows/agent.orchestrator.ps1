@@ -105,7 +105,7 @@ function Build-AgentOrchestrator {
         'core.orch.toast_blocked', 'core.orch.toast_unblocked', 'core.orch.blocked', 'core.orch.unblocked',
         'core.orch.btn_block', 'core.orch.btn_unblock', 'core.orch.toast_saved', 'core.orch.toast_discarded', 'core.orch.toast_undone',
         'core.orch.learn_undo_offer', 'core.orch.btn_undo', 'core.orch.toast_overview', 'core.orch.toast_onboarding',
-        'core.orch.toast_area', 'core.orch.toast_action_unavailable', 'core.toast.area_unavailable', 'core.toast.save_failed',
+        'core.orch.toast_area', 'core.orch.toast_plan', 'core.orch.toast_action_unavailable', 'core.toast.area_unavailable', 'core.toast.save_failed',
         'core.toast.owner_only', 'core.cron.off_reminders_hint', 'core.toast.reminder_unavailable', 'core.reminders.card_footer'
     )
     # Sender-Aufloesung + t-Maps in EINER Abfrage (immer genau eine Zeile; sender bleibt die bisherige Form).
@@ -344,7 +344,7 @@ function Build-AgentOrchestrator {
         @{ Left = "={{ String(`$('Trigger normalize').item.json.callback_query.data || '').split(':')[0] }}"; Type = 'string'; Op = 'equals'; Right = 'learn';      OutputKey = 'learn' }
     )
     $nConfirm = New-OrchPg 'Run confirm pairing' @(-620, 560) `
-        (Get-PairingSql "agent.fn_confirm_pairing(`$1::jsonb)" @('core.orch.member_confirmed', 'core.orch.member_confirmed_unnamed')) `
+        (Get-PairingSql "agent.fn_confirm_pairing(`$1::jsonb)" @('core.orch.member_confirmed', 'core.orch.member_confirmed_unnamed', 'core.onboarding.ready.member_areas', 'core.onboarding.ready.btn_areas')) `
         $CRED_POSTGRES ([ordered]@{ id = "((`$('Trigger normalize').item.json.callback_query.data || '').split(':')[1] || '')" })
     $nAnswerConfirm = New-TelegramAnswerCallbackNode 'Answer confirm' @(-400, 560) `
         "={{ `$('Trigger normalize').item.json.callback_query.id }}" `
@@ -357,6 +357,15 @@ function Build-AgentOrchestrator {
     $tConf   = "`$('Run confirm pairing').item.json.t_person"
     $nNotifyMemberOk = New-TelegramSendNode 'Notify member confirmed' @(40, 560) `
         ("={{ ($confRes.full_name ? " + (Get-UiTextJs $tConf 'core.orch.member_confirmed' @{ name = "$confRes.full_name" }) + ' : ' + (Get-UiTextJs $tConf 'core.orch.member_confirmed_unnamed') + ') }}') `
+        -ChatIdExpr "={{ String($confRes.member_chat_id || '') }}"
+    # 2026-10-28: ist der Haushalt schon eingerichtet und gibt es persoenliche Bereiche (fn_confirm_pairing
+    # members_have_areas), traegt die Bestaetigung den Knopf 'Meine Bereiche' (Muster 'Send member ready (areas)' in
+    # core.sub_onboarding_progress) — 'Es kann losgehen' kommt nur einmal beim ersten Haushalts-Abschluss.
+    $nMemberHasAreas = Build-If 'Member has areas?' @(-180, 400) `
+        "={{ $confRes.members_have_areas === true }}" 'true' 'equals' 'boolean'
+    $nNotifyMemberAreas = New-TelegramInlineKeyboardSendNode 'Notify member confirmed (areas)' @(40, 400) `
+        ("={{ ($confRes.full_name ? " + (Get-UiTextJs $tConf 'core.orch.member_confirmed' @{ name = "$confRes.full_name" }) + ' : ' + (Get-UiTextJs $tConf 'core.orch.member_confirmed_unnamed') + ") + '\n\n' + " + (Get-UiTextJs $tConf 'core.onboarding.ready.member_areas') + ' }}') `
+        @( @{ Text = (Get-UiTextExpr $tConf 'core.onboarding.ready.btn_areas'); Data = 'onboarding:_area:' } ) `
         -ChatIdExpr "={{ String($confRes.member_chat_id || '') }}"
     # Textkatalog Phase B: hat die frisch verbundene Person noch KEINE eigene Sprache, bekommt sie den Sprach-Picker
     # fuer sich selbst; die Telegram-App-Sprache vom Einloesen (language_hint) ist nur als 👉-Vorschlag markiert —
@@ -592,8 +601,12 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
     $nOnbSection = Build-Switch 'Onboarding section?' @(-840, 1680) $onbCases
 
     # Core/Haushalt-Sonderfall -> agent.guide INLINE (statisch; der Guide besitzt nur die household-Sektion).
+    # Knopf-Auftraege sind Modell-Instruktion (englisch, Sprachpolitik) — der Auftrag IST die Nutzer-Nachricht des Laufs, darum
+    # nennt er die Antwortsprache ausdruecklich (Sprache des Tippenden aus 'Resolve callback sender'; sonst antwortete der
+    # Agent in der Sprache des Auftrags). Kein Freitext aus callback_data im Auftrag.
+    $replyInJs = "' Reply in the language with ISO code ' + String(`$('Resolve callback sender').item.json.lang || 'en') + '.'"
     $nRunOnboardingCb = Build-CallWorkflow 'Run onboarding cb' @(-620, 1680) $idGuide 'agent.guide' ([ordered]@{
-        task       = 'Der Nutzer hat im Onboarding-Menü den Haushalt gewählt. Starte bzw. setze das Haushalts-Onboarding fort.'
+        task       = "={{ 'The user chose the household in the onboarding menu. Start or continue the household onboarding.' + $replyInJs }}"
         chat_id    = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
         call_depth = '1'
     })
@@ -621,13 +634,14 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         # (der Agent nimmt den ersten offenen Abschnitt). Kein Freitext aus callback_data im Agent-Auftrag.
         $odKey = "String(`$('Trigger normalize').item.json.callback_query.data || '').split(':')[2] || ''"
         $odInputs = [ordered]@{
-            task       = "={{ /^[a-z][a-z0-9_]{0,39}`$/.test($odKey) ? ('Der Nutzer hat im Onboarding-Menü den Abschnitt ' + ($odKey) + ' gewählt. Führe die Erfassung dieses Abschnitts (Self-Onboarding) Schritt für Schritt durch und markiere ihn anschließend als erledigt.') : 'Der Nutzer hat im Onboarding-Menü diesen Bereich gewählt. Beginne mit dem ersten offenen Onboarding-Abschnitt (Self-Onboarding) und markiere ihn anschließend als erledigt.' }}"
+            task       = "={{ (/^[a-z][a-z0-9_]{0,39}`$/.test($odKey) ? ('The user chose the onboarding section ' + ($odKey) + ' in the onboarding menu. Capture this section step by step (self-onboarding) and then mark it as done.') : 'The user chose this area in the onboarding menu. Start with the first open onboarding section (self-onboarding) and then mark it as done.') + $replyInJs }}"
             chat_id    = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
             call_depth = '1'
         }
         foreach ($kv in (Get-DispatchInputs $od.Package (Resolve-Id $odWf) -Thinking).GetEnumerator()) { $odInputs[$kv.Key] = $kv.Value }
         $nOdRun = Build-CallWorkflow $odRun @(-620, $onbY) $idDispatch 'agent.sub_dispatch_agent' $odInputs
         $nOdAns = New-TelegramAnswerCallbackNode $odAns @(-400, $onbY) "={{ `$('Trigger normalize').item.json.callback_query.id }}" (Get-UiTextExpr $tCb 'core.orch.toast_area')
+        $nOdAns['onError'] = 'continueRegularOutput'   # ein abgelaufener Callback (langer Agent-Lauf) darf den Relay nie verhindern
         # Gemeinsamer Relay-Weg auch am Paket-Onboarding (freie Agent-Ausgabe; Teile, HTML-Plain, Retry je Teil).
         $odChain = New-TelegramRelayChain $odRel @(-180, $onbY) "`$('$odRun').first().json.output" `
             -ChatIdExpr "={{ String(`$('Trigger normalize').first().json.callback_query.message.chat.id) }}" -DoneTo 'Finish card lock'
@@ -652,6 +666,52 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         "={{ `$('Trigger normalize').item.json.callback_query.id }}" (Get-UiTextExpr $tCb 'core.toast.area_unavailable')
     $onbPkgNodes += @($nAnswerOnbArea, $nSendOnbArea, $nAnswerOnbUnknown)
     $onbPkgConns['Answer onboarding area'] = @{ main = @( ,@( E 'Send onboarding area' ) ) }
+    $nAnswerOnboardingCb['onError'] = 'continueRegularOutput'
+
+    # === PLAN-SCHRITT (Onboarding, 2026-10-28): plan:<domain> aus Menue/Fertig-Karte (core.sub_send_onboarding_menu). ===
+    # Owner und Mitglied kommen beide ueber 'Dispatch callback' (kein hartkodierter Arm): core.fn_handle_plan_cb hat
+    # Privatchat, Domain, Schreibrecht und Daten-Reife geprueft (core.fn_advisor_plan_status) und gibt route 'plan' +
+    # domain -> 'Plan route?' -> 'Plan domain?' (build-time je $AdvisorPlanStepList) -> Answer ZUERST (der Berater-Lauf
+    # dauert; onError continue) -> Run (agent.sub_dispatch_agent -> advisor_agent) -> Relay. Fester englischer Auftrag:
+    # der Berater liest Entwurf/Plan/Luecken selbst und startet sofort (kein erneutes Angebot, Prompt-Regel im Berater).
+    $planTask = "'The user tapped the plan button in the onboarding menu. Start right away without offering first: if a draft exists, resume it; otherwise, if the published plan lists plan gaps, work on them now; if there is no plan yet, start the plan interview with its first section; if the plan is complete, run a plan review.'"
+    $planNodes = @()
+    $planConns = [ordered]@{}
+    $planY = $onbY + 400
+    if ($AdvisorPlanStepList.Count -gt 0) {
+        $nPlanRoute = Build-If 'Plan route?' @(-180, 1400) `
+            "={{ String(`$('Trigger normalize').item.json.callback_query.data || '').startsWith('plan:') && ((`$('Dispatch callback').item.json.result || {}).route) === 'plan' }}" 'true' 'equals' 'boolean'
+        $planCases = @($AdvisorPlanStepList | ForEach-Object {
+            @{ Left = "={{ String(((`$('Dispatch callback').item.json.result || {}).domain) || '') }}"; Type = 'string'; Op = 'equals'; Right = $_.Domain; OutputKey = $_.Domain }
+        })
+        $nPlanDomain = Build-Switch 'Plan domain?' @(-840, $planY) $planCases
+        $planNodes += @($nPlanRoute, $nPlanDomain)
+        $planOuts = @()
+        foreach ($pd in $AdvisorPlanStepList) {
+            $pAns = "Answer plan $($pd.Domain)"; $pRun = "Run plan $($pd.Domain)"; $pRel = "Relay plan $($pd.Domain)"
+            $nPAns = New-TelegramAnswerCallbackNode $pAns @(-620, $planY) "={{ `$('Trigger normalize').item.json.callback_query.id }}" (Get-UiTextExpr $tCb 'core.orch.toast_plan')
+            $nPAns['onError'] = 'continueRegularOutput'
+            $pInputs = [ordered]@{
+                task       = "={{ $planTask + $replyInJs }}"
+                chat_id    = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
+                call_depth = '1'
+            }
+            foreach ($kv in (Get-DispatchInputs $pd.Package (Resolve-Id $pd.Agent) -Thinking).GetEnumerator()) { $pInputs[$kv.Key] = $kv.Value }
+            $nPRun = Build-CallWorkflow $pRun @(-400, $planY) $idDispatch 'agent.sub_dispatch_agent' $pInputs
+            $pChain = New-TelegramRelayChain $pRel @(-180, $planY) "`$('$pRun').first().json.output" `
+                -ChatIdExpr "={{ String(`$('Trigger normalize').first().json.callback_query.message.chat.id) }}" -DoneTo 'Finish card lock'
+            $planNodes += @($nPAns, $nPRun) + $pChain.Nodes
+            $planConns[$pAns] = @{ main = @( ,@( E $pRun ) ) }
+            $planConns[$pRun] = @{ main = @( ,@( E $pChain.Entry ) ) }
+            foreach ($ck in $pChain.Conns.Keys) { $planConns[$ck] = $pChain.Conns[$ck] }
+            $planOuts += ,@( E $pAns )
+            $planY += 160
+        }
+        $planOuts += ,@( E 'Answer dispatched cb' )   # extra (Fallback ZULETZT): unbekannte Domain -> Toast
+        $planConns['Plan route?']  = @{ main = @( @( E 'Plan domain?' ), @( E 'Answer dispatched cb' ) ) }
+        $planConns['Plan domain?'] = @{ main = $planOuts }
+    }
+    $afterOnbRoute = $(if ($AdvisorPlanStepList.Count -gt 0) { 'Plan route?' } else { 'Answer dispatched cb' })
 
     # === CONFIG-LOAD (nach dem Gate) ===========================================================
     $nLoadCfg = Build-CallWorkflow 'Load core.config' @(-1168, -160) $ID_LOAD_CFG 'core.sub_load_config' (@{})
@@ -1060,7 +1120,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? '') } }];
         'Update type trennt zuerst message vs callback_query (Tastendruck -> callback-Handler unten). Auf dem message-Pfad löst Resolve sender message.from.id über agent.fn_resolve_sender gegen die family-Facts auf (DB = Allowlist; Trigger auf * -> kein userIds-Filter). Sender known? found=true -> Card open check (Karte-offen-Sperre: hat der Chat eine offene Bestätigungskarte des HITL-Gates, parkt n8n die Kette dahinter und ein neuer Agent-Lauf sähe die Kartenrunde nicht -> Reply card open = fester Katalogtext core.orch.card_open bzw. core.orch.card_waiting [Freigabe durch jemand anderen], kein Agent, keine Transkription; Zeilen legt das Gate an und gibt sie nach dem Tipp frei, Finish card lock löscht sie nach der Antwort, Ablauf expires_at ist die Wahrheit; fail-open) -> normale Pipeline; sonst -> Pairing router. /start <code> -> Run claim pairing (fn_claim_pairing_challenge: versucht es als MEMBER-Einladung, STAGT nur). Claim staged? true -> Notify owner invite (Inline-Buttons Bestätigen/Ablehnen, callback_data confirm:<id>/reject:<id>) + Reply member waiting (Text in der Sprache der eingeladenen Person: t_person aus dem Pairing-Node; die Telegram-App-Sprache language_code geht roh an fn_claim und wird nur als Vorschlag gemerkt). false (Owner-Bootstrap-Code/pending/ungültig) -> Resolve pairing target (unverknüpftes Owner-Skelett) -> Run consume pairing (sofort-bindend) -> Send pairing result (Install-UX-Phase 6: nur kurz „Verbunden! Einen Moment …" — die eigentliche Begrüßung mit Knöpfen schickt der Installer NACH dem Neu-Einstellen [owner_connect._oc_send_welcome, Text aus core.fn_render_welcome], sonst liefe ein früher Knopf-Tipp gegen die alten Workflows mit Owner-chat_id 0). Fremder ohne Code: STUMM (kein Ack-Send mehr) -> Knock throttle (fn_register_knock, 1h-Cooldown) -> Notify owner? -> Notify owner unknown. Diese Owner-Notiz trägt jetzt einen „Sperren"-Button (callback_data block:<uid>, WS-5d) -> tappt ihn der Owner, geht es in den callback-Handler (fn_block_knocker). Eine in agent.access_blocks gesperrte uid bekommt KEINE Knock-Notiz mehr (fn_register_knock Guard) UND pairt nicht (fn_claim/fn_consume Guard). DB-Fehler: onError continue.' 360 640
     $stCallback = Build-Sticky 'Doc: Callback-Handler (Owner + Member)' @(-1280, 900) -Header 'Ablauf' `
         'Owner-Admin + Member-Callback-Dispatch (callback_query, KEIN LLM): Owner bestaetigt Einladungen/togglet Crons; Mitglied bedient seine est:/job:-Karten' `
-        'Ein Inline-Button-Tap kommt als callback_query (kein top-level message). Resolve callback sender loest callback_query.from.id auf. Zweistufige Auth (Transport=n8n-secret_token + App=Owner-/Member-Gate): Callback owner? [true=gepairter Owner] -> Callback action (die 9 Admin-Arme + [9] extra); [false=Nicht-Owner] -> Callback member? [true=aufgeloestes Mitglied] -> DIREKT Dispatch callback (die Owner-Admin-Arme bleiben so unerreichbar), [false=unbekannter/ungepairter Sender] -> Discard non-owner callback (generisches answerCallbackQuery -> Spinner stoppt, KEIN Handler). Callback action parst das callback_data-Verb (vor dem „:"). confirm:<id>/reject:<id> -> Run confirm/reject pairing (Member-Einladung; fn_confirm_pairing bindet die beim Claim gestagete Identitaet via Merge-Kern, idempotent). block:<uid>/unblock:<uid> (WS-5d) -> Run block/unblock knocker (agent.fn_block_knocker/fn_unblock_knocker auf agent.access_blocks; uid = data.split(":")[1]). cron_on:<key>/cron_off:<key> (WS-3 Phase A + Phase C + Phase 0 WS-0c) -> Run cron on/off (core.fn_set_cron_enable -> core.config cron_enable; key = data.split(":")[1]). GENERISCH: die Togglability-Sicherung ist die Mitgliedschaft in core.cron_labels (Roter Faden Paket B: die Erinnerungs-Registry aller nutzer-sichtbaren Crons; Haushalts-Erinnerungen schaltbar, Person-Erinnerungen und Pflicht lehnt fn_set_cron_enable ab -> dann Toast core.toast.reminder_unavailable + Hinweis /reminders statt Erfolg). Der Postgres-Node liest neben dem fn-Call das Paket aus core.cron_labels und die vier Katalog-Texte <pkg>.cron.<key>.* in der Sprache des Tippenden (lang aus Resolve callback sender) -> Answer/Notify cron on/off; der Hinweis im off-Send ist core.cron.off_reminders_hint (wieder an per /reminders). Ein neuer Cron = Key in der Manifest-cron_labels-Liste + Texte im Katalog, kein Orchestrator-Edit. learn:<ok|no|undo>:<id> (Phase C Lern-Loop) -> Learn action (split[1]=Verb, split[2]=candidate_id): ok -> Run approve learn (agent.fn_approve_learn_candidate dispatcht fact->fn_set_context_facts | note->core.fn_append_context_note, approved nur bei Write-Erfolg) -> nach NOTE-approve eine Folge-Karte Offer undo ([Rueckgaengig]=learn:undo:<id>, der einzige Weg zu undo); no -> Run reject learn (durable); undo -> Run undo learn (core.fn_remove_context_note, nur approved notes). Idempotent (re-tap -> {ok:false}-Toast). help:overview (WS-1/WS-5) -> Answer help cb (Button ZUERST quittieren) -> Load capabilities cb -> Split help cb (chunked, Index + (n/N)) -> Send help cb PER-ITEM (terminal; answerCallbackQuery feuert NICHT pro Chunk). onboarding:<package>:<key> (P1, aus dem Menue-Grid) -> Onboarding section? (Switch nach data.split(":")[1] = das <package>-Glied): core -> Run onboarding cb (agent.guide INLINE, Haushalt) -> Answer/Relay onboarding cb; jedes Paket mit provides.onboarding bekommt build-time aus $OnboardingDispatchList einen eigenen Arm Run/Answer/Relay onboarding <pkg> -> agent.<onboarding_agent> INLINE (generischer Self-Onboarding-Task, section_key = split[2]) -> kein agent.<pkg>-Literal mehr (core_literal #1), neues Onboarding-Paket dockt ohne Orchestrator-Edit an. onboarding:_area:<package> (Bereichs-Knopf der Menue-Uebersicht, _area reserviert: kein Paketname beginnt mit _) -> Answer onboarding area -> Send onboarding area (core.sub_send_onboarding_menu mit area = split[2]; leer = Uebersicht; der Sub sendet selbst, terminal). Cron-Toggle-Modell (gelockt): SETUP=aktivieren per Knopf (die on-Knoepfe erscheinen am Publish-Aktivierungs-Angebot — Phase 0: je ein Knopf fuer drift_check + plan_review, unabhaengig — bzw. an der Onboarding-/Lern-Karte fuer learn_context), LAUFZEIT=abschalten per Knopf (an jedem Nudge), RE-AKTIVIEREN per /reminders (Roter Faden Paket B: Menue-Knopf rem:on:<key>:m; der off-Send nennt /reminders). Answer <aktion> quittiert den Button (answerCallbackQuery-Toast); danach Notify member confirmed/rejected an pairing_state.claimed_chat_id (in der Sprache der Person; ohne eigene Sprache danach Member needs language? -> Send member language picker, Telegram-App-Sprache vom Einloesen als Vorschlag markiert, gespeichert erst beim Tipp) bzw. Notify block/unblock done an den Owner MIT dem inversen Toggle-Button (Sperren<->Entsperren, damit Entsperren button-erreichbar bleibt). Stateful Korrelation ueber die Zeilen-id (Member) bzw. die uid direkt (Block). GENERISCHER DISPATCH (WS-0c CB): jeder Prefix, den KEIN hartkodierter Arm faengt, faellt auf die extra-Ausgabe [9] -> Dispatch callback (core.fn_dispatch_callback schlaegt den Prefix in core.callback_handlers nach + fuehrt die Paket-Handler-fn(jsonb) dynamisch aus) -> Answer dispatched cb (Toast = result.toast || Fallback). Erster Konsument: career job:-Feedback (👍/👎 an Job-Karten, WS-2). P2b-2: das Dispatch-Payload reicht chat_id=callback_query.from.id mit -> career.fn_handle_job_feedback loest den Sender auf (Eigentuemer-Check person_id=sender). Die 9 hartkodierten Arme bleiben unveraendert. MEMBER-PERMEABILITAET: aufgeloeste Nicht-Owner-Mitglieder erreichen Dispatch callback DIREKT (2. Eingangskante von Callback member?); core.fn_dispatch_callback enforced core.callback_handlers.member_permeable FAIL-CLOSED (Owner immer; Mitglied nur bei member_permeable=true; unaufgeloest -> reject) + re-resolvt den Sender selbst; die FEINE Auth (est=adults_only haushalts-skopiert, job=Per-Item-Eigentum) macht der Handler. Owner-Admin-Prefixes (confirm/block/cron/learn/...) sind KEINE Registry-Handler -> ein Member-Tap darauf -> unknown_callback_prefix -> Reject-Toast (strukturell unerreichbar). MITGLIEDER-ONBOARDING: Prefix onboarding ist zusaetzlich Registry-Handler (core.fn_handle_onboarding_cb, member_permeable; contract_lint 9 erlaubt die Kollision nur so) -> Dispatch callback (Payload + chat_type) -> Onboarding route? (result.route===onboarding) -> derselbe Onboarding section?-Switch wie beim Owner; sonst Answer dispatched cb (Toast).' 380 780
+        'Ein Inline-Button-Tap kommt als callback_query (kein top-level message). Resolve callback sender loest callback_query.from.id auf. Zweistufige Auth (Transport=n8n-secret_token + App=Owner-/Member-Gate): Callback owner? [true=gepairter Owner] -> Callback action (die 9 Admin-Arme + [9] extra); [false=Nicht-Owner] -> Callback member? [true=aufgeloestes Mitglied] -> DIREKT Dispatch callback (die Owner-Admin-Arme bleiben so unerreichbar), [false=unbekannter/ungepairter Sender] -> Discard non-owner callback (generisches answerCallbackQuery -> Spinner stoppt, KEIN Handler). Callback action parst das callback_data-Verb (vor dem „:"). confirm:<id>/reject:<id> -> Run confirm/reject pairing (Member-Einladung; fn_confirm_pairing bindet die beim Claim gestagete Identitaet via Merge-Kern, idempotent). block:<uid>/unblock:<uid> (WS-5d) -> Run block/unblock knocker (agent.fn_block_knocker/fn_unblock_knocker auf agent.access_blocks; uid = data.split(":")[1]). cron_on:<key>/cron_off:<key> (WS-3 Phase A + Phase C + Phase 0 WS-0c) -> Run cron on/off (core.fn_set_cron_enable -> core.config cron_enable; key = data.split(":")[1]). GENERISCH: die Togglability-Sicherung ist die Mitgliedschaft in core.cron_labels (Roter Faden Paket B: die Erinnerungs-Registry aller nutzer-sichtbaren Crons; Haushalts-Erinnerungen schaltbar, Person-Erinnerungen und Pflicht lehnt fn_set_cron_enable ab -> dann Toast core.toast.reminder_unavailable + Hinweis /reminders statt Erfolg). Der Postgres-Node liest neben dem fn-Call das Paket aus core.cron_labels und die vier Katalog-Texte <pkg>.cron.<key>.* in der Sprache des Tippenden (lang aus Resolve callback sender) -> Answer/Notify cron on/off; der Hinweis im off-Send ist core.cron.off_reminders_hint (wieder an per /reminders). Ein neuer Cron = Key in der Manifest-cron_labels-Liste + Texte im Katalog, kein Orchestrator-Edit. learn:<ok|no|undo>:<id> (Phase C Lern-Loop) -> Learn action (split[1]=Verb, split[2]=candidate_id): ok -> Run approve learn (agent.fn_approve_learn_candidate dispatcht fact->fn_set_context_facts | note->core.fn_append_context_note, approved nur bei Write-Erfolg) -> nach NOTE-approve eine Folge-Karte Offer undo ([Rueckgaengig]=learn:undo:<id>, der einzige Weg zu undo); no -> Run reject learn (durable); undo -> Run undo learn (core.fn_remove_context_note, nur approved notes). Idempotent (re-tap -> {ok:false}-Toast). help:overview (WS-1/WS-5) -> Answer help cb (Button ZUERST quittieren) -> Load capabilities cb -> Split help cb (chunked, Index + (n/N)) -> Send help cb PER-ITEM (terminal; answerCallbackQuery feuert NICHT pro Chunk). onboarding:<package>:<key> (P1, aus dem Menue-Grid) -> Onboarding section? (Switch nach data.split(":")[1] = das <package>-Glied): core -> Run onboarding cb (agent.guide INLINE, Haushalt) -> Answer/Relay onboarding cb; jedes Paket mit provides.onboarding bekommt build-time aus $OnboardingDispatchList einen eigenen Arm Run/Answer/Relay onboarding <pkg> -> agent.<onboarding_agent> INLINE (generischer Self-Onboarding-Task, section_key = split[2]) -> kein agent.<pkg>-Literal mehr (core_literal #1), neues Onboarding-Paket dockt ohne Orchestrator-Edit an. onboarding:_area:<package> (Bereichs-Knopf der Menue-Uebersicht, _area reserviert: kein Paketname beginnt mit _) -> Answer onboarding area -> Send onboarding area (core.sub_send_onboarding_menu mit area = split[2]; leer = Uebersicht; der Sub sendet selbst, terminal). Cron-Toggle-Modell (gelockt): SETUP=aktivieren per Knopf (die on-Knoepfe erscheinen am Publish-Aktivierungs-Angebot — Phase 0: je ein Knopf fuer drift_check + plan_review, unabhaengig — bzw. an der Onboarding-/Lern-Karte fuer learn_context), LAUFZEIT=abschalten per Knopf (an jedem Nudge), RE-AKTIVIEREN per /reminders (Roter Faden Paket B: Menue-Knopf rem:on:<key>:m; der off-Send nennt /reminders). Answer <aktion> quittiert den Button (answerCallbackQuery-Toast); danach Notify member confirmed/rejected an pairing_state.claimed_chat_id (in der Sprache der Person; ohne eigene Sprache danach Member needs language? -> Send member language picker, Telegram-App-Sprache vom Einloesen als Vorschlag markiert, gespeichert erst beim Tipp) bzw. Notify block/unblock done an den Owner MIT dem inversen Toggle-Button (Sperren<->Entsperren, damit Entsperren button-erreichbar bleibt). Stateful Korrelation ueber die Zeilen-id (Member) bzw. die uid direkt (Block). GENERISCHER DISPATCH (WS-0c CB): jeder Prefix, den KEIN hartkodierter Arm faengt, faellt auf die extra-Ausgabe [9] -> Dispatch callback (core.fn_dispatch_callback schlaegt den Prefix in core.callback_handlers nach + fuehrt die Paket-Handler-fn(jsonb) dynamisch aus) -> Answer dispatched cb (Toast = result.toast || Fallback). Erster Konsument: career job:-Feedback (👍/👎 an Job-Karten, WS-2). P2b-2: das Dispatch-Payload reicht chat_id=callback_query.from.id mit -> career.fn_handle_job_feedback loest den Sender auf (Eigentuemer-Check person_id=sender). Die 9 hartkodierten Arme bleiben unveraendert. MEMBER-PERMEABILITAET: aufgeloeste Nicht-Owner-Mitglieder erreichen Dispatch callback DIREKT (2. Eingangskante von Callback member?); core.fn_dispatch_callback enforced core.callback_handlers.member_permeable FAIL-CLOSED (Owner immer; Mitglied nur bei member_permeable=true; unaufgeloest -> reject) + re-resolvt den Sender selbst; die FEINE Auth (est=adults_only haushalts-skopiert, job=Per-Item-Eigentum) macht der Handler. Owner-Admin-Prefixes (confirm/block/cron/learn/...) sind KEINE Registry-Handler -> ein Member-Tap darauf -> unknown_callback_prefix -> Reject-Toast (strukturell unerreichbar). MITGLIEDER-ONBOARDING: Prefix onboarding ist zusaetzlich Registry-Handler (core.fn_handle_onboarding_cb, member_permeable; contract_lint 9 erlaubt die Kollision nur so) -> Dispatch callback (Payload + chat_type) -> Onboarding route? (result.route===onboarding) -> derselbe Onboarding section?-Switch wie beim Owner; sonst Plan route? (PLAN-SCHRITT, 2026-10-28: plan:<domain> aus dem Onboarding-Menü, Owner UND Mitglied über Dispatch callback; core.fn_handle_plan_cb prüft Privatchat, Domain mit plan_step, Schreibrecht und Daten-Reife und gibt route=plan + domain -> Plan domain? build-time je $AdvisorPlanStepList -> Answer plan <domain> ZUERST (Toast, onError continue) -> Run plan <domain> = agent.sub_dispatch_agent -> advisor_agent mit festem englischem Auftrag + Antwortsprache des Tippenden -> Relay plan <domain>), sonst Answer dispatched cb (Toast). Alle Knopf-Aufträge (Haushalt, Paket-Onboarding, Plan) sind englisch und nennen die Antwortsprache (lang aus Resolve callback sender), ihre Answer-Knoten laufen mit onError continue.' 380 780
     $stCommand = Build-Sticky 'Doc: Command-Pre-Router' @(-272, -440) -Header 'Ablauf' `
         '/help, /onboarding, /start (deterministisch, KEIN LLM)' `
         'TEXT -> Command router. Core-Zweige (Host-bespoke, hardkodiert): /help|/hilfe -> Load capabilities (core.help_catalog in der Sprache des Absenders, sonst en; Rahmen-Texte als t-Map) -> Split help (WS-5 Code-Node: splittet an `## `-Kategorie-Grenzen, baut Index-Karte zuerst + (n/N)-Praefix, greedy-Chunks < 4096) -> Send help laeuft PER-ITEM (N sequenzielle Plain-Text-Nachrichten, ## -> >, memory-los). /onboarding (WS-2) -> Send onboarding menu (ruft core.sub_send_onboarding_menu INLINE: Uebersicht in Onboarding-Reihenfolge: Bereiche mit Fortschritt + Weiter-Knopf auf den naechsten offenen Abschnitt, der Sub sendet selbst -> KEIN Relay, KEIN LLM, gratis; nur hier am Eintritt -> kein Spam). bare /start -> Start owner? (Rolle aus Resolve sender): Owner -> Start onboarding read (core.fn_render_welcome = EINE Textquelle mit der Installer-Begruessung: Vorname + installierte Funktionen + naechster Schritt; kind back = Haushalt fertig; Lesefehler -> statischer Ersatztext) -> Welcome-zurueck (Core fertig) bzw. Send welcome new + Buttons [Haushalt einrichten=onboarding:core:household / Was kannst du?=help:overview] (Core offen); Mitglied -> Send welcome member (kein Haushalts-Onboarding). /language|/sprache -> Send language picker (core.sub_send_language_picker Modus self: die Person waehlt ihre EIGENE Sprache, Tipp -> lang:-Callback). /persona -> Send persona picker (core.sub_send_persona_picker: die Person waehlt ihren EIGENEN Bot-Charakter, Tipp -> persona:-Callback; wirkt nur als Runtime-Flag persona im Orchestrator-Prompt = Rahmen, s. persona_styles.md). /costs|/kosten -> Send cost report (core.sub_send_cost_report: KI-Kosten 7/30 Tage je Assistent/Modell/Kostenart aus der Gateway-Mitschrift, Rechnung in der DB, sendet selbst; das Owner-Gate sitzt in core.fn_get_llm_cost_report, ein Mitglied bekommt den Owner-only-Hinweis). FESTE TEXTE (Textkatalog Phase B): Resolve sender laedt die t-Maps (t = Absender-Sprache, t_owner = Owner-Sprache), jede feste Antwort liest daraus; die Begruessung kommt aus core.fn_render_welcome(lang) inkl. Knopf-Texte. PAKET-COMMANDS (WS-5 Command-Router-Generalisierung, build-time aus $CommandDispatchList je Manifest-commands.dispatch): je Befehl /<cmd> -> Run command <cmd> (der dispatch.agent des Pakets INLINE ueber agent.sub_dispatch_agent, synthetischer Task, call_depth=1) -> Relay command <cmd> (Markdown->Plain-Fallback). Der Switch-Fallback (Nicht-Command-Text) steht ZULETZT (fallbackOutput=extra, dynamisch verdrahtet) -> ein neues Paket-Command verschiebt ihn NICHT. Sonst -> normale Agent-Pipeline. DOCUMENT/PHOTO -> Attachment-Marker (das Ziel waehlt der Router nach Dokumentart, s. Doc: Voice/Vision). Backup/Restore CLI-only (lifeagents backup).' 360 520
@@ -1086,7 +1146,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? '') } }];
         $nResolveTarget, $nConsume, $nSendPairing,
         $nKnock, $nNotifyIf, $nNotify,
         $nResolveCbSender, $nCbOwner, $nCbMember, $nCbDiscard, $nCbAction,
-        $nConfirm, $nAnswerConfirm, $nMemberConfirmed, $nNotifyMemberOk, $nMemberNeedsLang, $nMemberPicker,
+        $nConfirm, $nAnswerConfirm, $nMemberConfirmed, $nMemberHasAreas, $nNotifyMemberAreas, $nNotifyMemberOk, $nMemberNeedsLang, $nMemberPicker,
         $nReject, $nAnswerReject, $nMemberRejected, $nNotifyMemberNo,
         $nBlock, $nAnswerBlock, $nBlockDone, $nUnblock, $nAnswerUnblock, $nUnblockDone,
         $nCronOn, $nAnswerCronOn, $nCronOnDone, $nCronOff, $nAnswerCronOff, $nCronOffDone,
@@ -1105,7 +1165,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? '') } }];
         $nOpenThinking, $nCloseThinking, $nCloseThinkingVoice,
         $nSchedule, $nInjectCfg, $nExec,
         $stOverview, $stIngress, $stSender, $stCallback, $stCommand, $stVoice, $stAgent, $stSchedule
-    ) + $agentCallNodes + $onbPkgNodes + $cmdPkgNodes + $mb.Nodes + $relayChain.Nodes + $relayCbChain.Nodes   # WS-0c #4: Route-Tool-Call-Nodes + P1: Paket-Onboarding-Dispatch-Arme + WS-5: Paket-Command-Dispatch-Arme (build-time) + Relay-Ketten
+    ) + $agentCallNodes + $onbPkgNodes + $planNodes + $cmdPkgNodes + $mb.Nodes + $relayChain.Nodes + $relayCbChain.Nodes   # WS-0c #4: Route-Tool-Call-Nodes + P1: Paket-Onboarding-Dispatch-Arme + WS-5: Paket-Command-Dispatch-Arme (build-time) + Relay-Ketten
 
     $conns = [ordered]@{
         'New Telegram message' = @{ main = @( ,@( E 'Private chat?' ) ) }
@@ -1200,7 +1260,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? '') } }];
         'Dispatch callback'       = @{ main = @( ,@( E 'Onboarding route?' ) ) }
         'Onboarding route?'       = @{ main = @(
             @( E 'Onboarding section?' ),     # [0] true: Mitglied, Handler erlaubt -> dieselben Onboarding-Arme wie der Owner
-            @( E 'Answer dispatched cb' )     # [1] false: jeder andere Prefix bzw. abgelehnt -> Toast
+            @( E $afterOnbRoute )             # [1] false: plan:-Route pruefen (Plan route?), sonst jeder andere Prefix bzw. abgelehnt -> Toast
         ) }
         # Roter Faden Paket B: nach dem Toast eines /reminders-Menue-Tipps (route reminders) das Menue neu senden
         'Answer dispatched cb'    = @{ main = @( ,@( E 'Reminders route?' ) ) }
@@ -1232,9 +1292,11 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? '') } }];
         'Run confirm pairing'     = @{ main = @( ,@( E 'Answer confirm' ) ) }
         'Answer confirm'          = @{ main = @( ,@( E 'Member confirmed?' ) ) }
         'Member confirmed?'       = @{ main = @(
-            @( E 'Notify member confirmed' ),  # [0] ok -> Member benachrichtigen
+            @( E 'Member has areas?' ),        # [0] ok -> Member benachrichtigen (mit/ohne Knopf Meine Bereiche)
             @()                                # [1] no-op/idempotent -> Ende
         ) }
+        'Member has areas?'       = @{ main = @( @( E 'Notify member confirmed (areas)' ), @( E 'Notify member confirmed' ) ) }
+        'Notify member confirmed (areas)' = @{ main = @( ,@( E 'Member needs language?' ) ) }
         'Notify member confirmed' = @{ main = @( ,@( E 'Member needs language?' ) ) }
         'Member needs language?'  = @{ main = @(
             @( E 'Send member language picker' ),  # [0] noch keine eigene Sprache -> Picker (Telegram-Sprache markiert)
@@ -1323,6 +1385,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? '') } }];
     $onbSwitchOuts += ,@( E 'Answer unknown onboarding cb' )                                   # [N+2] extra -> nur quittieren
     $conns['Onboarding section?'] = @{ main = $onbSwitchOuts }
     foreach ($k in $onbPkgConns.Keys) { $conns[$k] = $onbPkgConns[$k] }
+    foreach ($k in $planConns.Keys) { $conns[$k] = $planConns[$k] }   # Plan-Schritt: Plan route? / Plan domain? / je Domain Answer->Run->Relay
 
     # WS-5: Command-router-Ausgaenge dynamisch (Paritaet $onbSwitchOuts) — Fallback ZULETZT (BLOCKER-Fix:
     # Build-Switch fallbackOutput='extra' ist der letzte Ausgang; ein statisches Array wuerde bei einem

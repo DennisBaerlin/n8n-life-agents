@@ -347,9 +347,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (s.st-\u003e\u003e\u0027complete\u0027)::boolean AS complete, COALESCE((SELECT string_agg(e-\u003e\u003e\u0027label\u0027, \u0027, \u0027 ORDER BY ord) FROM jsonb_array_elements(s.st-\u003e\u0027open\u0027) WITH ORDINALITY AS x(e, ord)), \u0027\u0027) AS open_labels FROM (SELECT core.fn_onboarding_status(\u0027finance\u0027) AS st) s;",
+                                         "query":  "=SELECT (s.st-\u003e\u003e\u0027complete\u0027)::boolean AS complete, COALESCE((s.st-\u003e\u003e\u0027viewer_is_member\u0027)::boolean, false) AS viewer_is_member, COALESCE((SELECT string_agg(e-\u003e\u003e\u0027label\u0027, \u0027, \u0027 ORDER BY ord) FROM jsonb_array_elements(s.st-\u003e\u0027open\u0027) WITH ORDINALITY AS x(e, ord)), \u0027\u0027) AS open_labels FROM (SELECT core.fn_onboarding_status(\u0027finance\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS st) s;",
                                          "options":  {
-
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start agent.finance\u0027).item.json.chat_id || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -381,7 +381,7 @@
                                                                                  {
                                                                                      "id":  "34e529fd-772b-5c44-afe6-b3731f9f55be",
                                                                                      "name":  "system_prompt",
-                                                                                     "value":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + ($(\u0027Onboarding status read\u0027).item.json.complete === false ? (\u0027\\n\\n## Onboarding ausstehend\\nThe finance onboarding is not complete yet. Open areas: \u0027 + ($(\u0027Onboarding status read\u0027).item.json.open_labels || \u0027-\u0027) + \u0027. Follow the Onboarding section of your instructions (what belongs to each area, when to offer it, when an area is done).\u0027) : \u0027\u0027) }}",
+                                                                                     "value":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + ($(\u0027Onboarding status read\u0027).item.json.complete === false \u0026\u0026 $(\u0027Onboarding status read\u0027).item.json.viewer_is_member !== true ? (\u0027\\n\\n## Onboarding ausstehend\\nThe finance onboarding is not complete yet. Open areas: \u0027 + ($(\u0027Onboarding status read\u0027).item.json.open_labels || \u0027-\u0027) + \u0027. Follow the Onboarding section of your instructions (what belongs to each area, when to offer it, when an area is done).\u0027) : \u0027\u0027) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {

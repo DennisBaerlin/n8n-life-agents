@@ -125,12 +125,15 @@
     "overview": { "handler_fn": "finance.fn_app_screen_overview", "ord": 10, "icon": "💶" }
   },
   "advisors": {
-    "_comment": "Generische Advisor-Registry (WS2, Core-Advisor-Engine, docs/package-contract.md §3.3): bindet eine Advisor-DOMAIN dieses Pakets an ihren Soll-Plan-Context + die paket-besessene Review-fn, die Soll-Ist-Drift/Staleness/Digest rechnet. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_advisors): der Host upsertet die Zeile own-schema-scoped in core.advisors; der generische Core-Wrapper core.fn_advisor_review_evaluate(domain) dispatcht über die Tabelle (kein hartkodierter finance-Name im Core). VERSCHACHTELT (3 Werte je domain + optional learn_notes): {domain:{plan_context,review_fn,advisor_agent,learn_notes?}}; learn_notes=true = das Plan-Dokument darf owner-bestätigte Lern-Notizen ('## Gelernt') tragen (core.fn_note_context_allowed, Default false; nur household-Plan-Kontexte); review_fn MUSS ins eigene Schema (finance.*) zeigen; advisor_agent = das Orchestrator-Router-Ziel der Domäne (Phase 0 WS-0c #1 — der Interview-Pin pinnt dorthin). package='finance' -> fn_pkg_purge_data räumt die Zeile beim Uninstall (sonst Orphan-review_fn).",
+    "_comment": "Generische Advisor-Registry (WS2, Core-Advisor-Engine, docs/package-contract.md §3.3): bindet eine Advisor-DOMAIN dieses Pakets an ihren Soll-Plan-Context + die paket-besessene Review-fn, die Soll-Ist-Drift/Staleness/Digest rechnet. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_advisors): der Host upsertet die Zeile own-schema-scoped in core.advisors; der generische Core-Wrapper core.fn_advisor_review_evaluate(domain) dispatcht über die Tabelle (kein hartkodierter finance-Name im Core). VERSCHACHTELT (3 Werte je domain + optional learn_notes): {domain:{plan_context,review_fn,advisor_agent,learn_notes?}}; learn_notes=true = das Plan-Dokument darf owner-bestätigte Lern-Notizen ('## Gelernt') tragen (core.fn_note_context_allowed, Default false; nur household-Plan-Kontexte); plan_step=true = die Domain bietet im Onboarding den empfohlenen Plan-Schritt an (Knopf plan:<domain>), gaps_fn/readiness_fn = optionale eigene fns (text,text) für offene Plan-Punkte bzw. die Daten-Reife (core.fn_advisor_plan_status); review_fn MUSS ins eigene Schema (finance.*) zeigen; advisor_agent = das Orchestrator-Router-Ziel der Domäne (Phase 0 WS-0c #1 — der Interview-Pin pinnt dorthin). package='finance' -> fn_pkg_purge_data räumt die Zeile beim Uninstall (sonst Orphan-review_fn).",
     "finance": {
       "plan_context": "financial_planning",
       "review_fn": "finance.fn_advisor_review",
       "advisor_agent": "agent.finance_advisor",
-      "learn_notes": true
+      "learn_notes": true,
+      "plan_step": true,
+      "gaps_fn": "finance.fn_plan_gap_count",
+      "readiness_fn": "finance.fn_plan_readiness"
     }
   },
   "protected_contexts": [

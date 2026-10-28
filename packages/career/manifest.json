@@ -83,7 +83,8 @@
     "career": {
       "plan_context": "career_planning",
       "review_fn": "career.fn_advisor_review",
-      "advisor_agent": "agent.career_advisor"
+      "advisor_agent": "agent.career_advisor",
+      "plan_step": true
     }
   },
   "protected_contexts": [

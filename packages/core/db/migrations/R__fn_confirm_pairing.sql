@@ -8,9 +8,12 @@
 --   {ok:false, resolved:true}, KEIN zweiter Merge, kein Owner-Alert. Schon-gepairt/Merge-Fehler reicht der
 --   Kern als freundliches {ok:false} bzw. RAISE (Rollback) durch.
 --   p: { id }   (pairing_state.id aus dem callback_data confirm:<id>)
---   RUECKGABE: {ok:true, person_id, role, full_name, telegram_user_id, member_chat_id, language_hint, has_language}
+--   RUECKGABE: {ok:true, person_id, role, full_name, telegram_user_id, member_chat_id, language_hint, has_language, members_have_areas}
 --            (language_hint = Telegram-App-Sprache vom claim, nur Vorschlag; has_language = Person hat schon eine
---             eigene Sprache -> der Orchestrator schickt den Sprach-Picker nur, wenn false)
+--             eigene Sprache -> der Orchestrator schickt den Sprach-Picker nur, wenn false; members_have_areas = der Haushalt
+--             ist fertig eingerichtet UND ein aktives persoenliches (per_user) Paket hat Onboarding-Abschnitte -> die
+--             Bestaetigung traegt den Knopf 'Meine Bereiche' (2026-10-28: 'Es kann losgehen' kommt nur EINMAL, beim ersten
+--             Haushalts-Abschluss; ein spaeter verbundenes Mitglied erfuhr sonst nie von seinen Bereichen))
 --            | {ok:false, resolved:true}        (bereits bestaetigt/abgelehnt -> idempotent)
 --            | {ok:false, reason, member_chat_id?}  (noch nicht eingeloest / already paired)
 --   Invarianten-Tests: tests/db/core/test_fn_pairing_challenge.sql
@@ -66,7 +69,10 @@ BEGIN
 
     RETURN jsonb_build_object('ok', true, 'person_id', v_pid, 'role', v_role, 'full_name', v_name,
                               'telegram_user_id', v_uid, 'member_chat_id', v_chat,
-                              'language_hint', v_hint, 'has_language', COALESCE(v_haslang, false));
+                              'language_hint', v_hint, 'has_language', COALESCE(v_haslang, false),
+                              'members_have_areas',
+                                  NOT EXISTS (SELECT 1 FROM agent.guide_onboarding_state WHERE status = 'unknown')
+                                  AND core.fn_has_personal_onboarding_areas());
 END;
 $$;
 

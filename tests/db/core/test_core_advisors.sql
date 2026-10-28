@@ -34,6 +34,22 @@ BEGIN
     RAISE NOTICE 'PASS [CHECK: unqualifizierte review_fn abgewiesen]';
   END;
 
+  -- ---------- TEST 3c/3d: dieselbe CHECK-Regel fuer die Plan-Schritt-Felder gaps_fn / readiness_fn (2026-10-28) ----------
+  BEGIN
+    INSERT INTO core.advisors (domain, plan_context, review_fn, plan_step, gaps_fn)
+    VALUES ('gapsx', 'x', 'finance.fn_x', true, 'fn_no_schema');
+    RAISE EXCEPTION 'FAIL [check gaps_fn no-schema]: unqualifizierte gaps_fn akzeptiert';
+  EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE 'PASS [CHECK: unqualifizierte gaps_fn abgewiesen]';
+  END;
+  BEGIN
+    INSERT INTO core.advisors (domain, plan_context, review_fn, plan_step, readiness_fn)
+    VALUES ('readyx', 'x', 'finance.fn_x', true, 'Finance.Fn_Plan_Readiness');
+    RAISE EXCEPTION 'FAIL [check readiness_fn case]: gemischte Schreibweise akzeptiert';
+  EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE 'PASS [CHECK: readiness_fn in gemischter Schreibweise abgewiesen]';
+  END;
+
   -- ---------- TEST 3b: CHECK weist Injection-/Sonderzeichen ab ----------
   BEGIN
     INSERT INTO core.advisors (domain, plan_context, review_fn)

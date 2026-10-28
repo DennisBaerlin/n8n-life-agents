@@ -209,11 +209,19 @@ BEGIN
     RAISE EXCEPTION 'FAIL claim [zweite Einloesung nicht als pending: %]', r; END IF;
   RAISE NOTICE 'PASS claim [Member-Einloesung stagt nicht-bindend; Doppel-Einloesung = pending]';
 
-  -- confirm: Owner bestaetigt -> BINDUNG committet
+  -- confirm: Owner bestaetigt -> BINDUNG committet. Haushalt fertig + aktives persoenliches Paket (career) ->
+  -- members_have_areas=true (Knopf 'Meine Bereiche' an der Bestaetigung, 2026-10-28).
+  UPDATE agent.guide_onboarding_state SET status = 'completed';
+  INSERT INTO core.package_registry (package, version, status) VALUES ('career','0.1.0','active')
+  ON CONFLICT (package) DO UPDATE SET status = 'active';
+  INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
+  VALUES ('career_profile','per_user','own_user_only','career') ON CONFLICT (context_name) DO NOTHING;
   r := agent.fn_confirm_pairing(jsonb_build_object('id',
         (SELECT id FROM agent.pairing_state WHERE challenge='INVITE001' AND consumed_at IS NULL)));
   IF NOT (r->>'ok')::boolean OR r->>'member_chat_id' IS DISTINCT FROM '4242' THEN
     RAISE EXCEPTION 'FAIL confirm [Bindung nicht committet: %]', r; END IF;
+  IF (r->>'members_have_areas')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL confirm [members_have_areas: %]', r; END IF;
   IF (agent.fn_resolve_sender(4242)->>'person_id') IS DISTINCT FROM 'pchild' THEN
     RAISE EXCEPTION 'FAIL confirm [Identitaet nach Owner-Confirm nicht gebunden]'; END IF;
   -- Vorschlag zurueck an den Orchestrator (Picker-Markierung), aber NIE still gesetzt: family bleibt ohne language.

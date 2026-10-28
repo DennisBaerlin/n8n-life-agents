@@ -61,6 +61,25 @@ ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS learn_notes boolean NOT NULL 
 -- geteilte Drift-Waechter ihre Alerts unter "Plan-Abweichung" (falscher Rahmen + falscher Abschalten-Knopf) und der
 -- eigene Cron faende den Latch schon verbraucht. Default false; der Seed setzt es aus dem Manifest-advisors-Block.
 ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS own_review_cron boolean NOT NULL DEFAULT FALSE;
+-- Onboarding-Plan-Schritt (2026-10-28): plan_step = die Domaene bietet im Onboarding den empfohlenen Schritt "Plan
+-- erstellen/fortsetzen/vervollstaendigen/ueberpruefen" an (Knopf plan:<domain> -> advisor_agent). gaps_fn = optionale
+-- Paket-fn(text domain, text person_id) -> int (offene Punkte am aktiven Plan; ohne = ein aktiver Plan gilt als
+-- vollstaendig). readiness_fn = optionale Paket-fn(text, text) -> jsonb {ready, missing:[{key, section}]} (harte
+-- Mindestdaten fuer einen sinnvollen Plan; ohne = reif). Beide liest NUR core.fn_advisor_plan_status (to_regprocedure-
+-- Guard, dyn. EXECUTE) — Muster review_fn; installer-geschrieben, CHECK wie review_fn.
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS plan_step boolean NOT NULL DEFAULT FALSE;
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS gaps_fn text;
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS readiness_fn text;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_gaps_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_gaps_fn_check
+            CHECK (gaps_fn IS NULL OR gaps_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_readiness_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_readiness_fn_check
+            CHECK (readiness_fn IS NULL OR readiness_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
+    END IF;
+END $$;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_advisor_agent_check') THEN
         ALTER TABLE core.advisors ADD CONSTRAINT advisors_advisor_agent_check

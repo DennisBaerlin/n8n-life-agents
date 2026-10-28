@@ -1377,7 +1377,8 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 #     (b) kein facts_display-Block mehr: die HITL-Beschriftungen der Fakten-Kontexte stehen im Textkatalog des
 #         Pakets (<pkg>.facts.<ctx>.title/.<feld>; locale_lint prueft den Titel je context_validators-Kontext).
 #     (c) advisors.<domain>.learn_notes=true nur fuer einen household-Plan-Kontext (per_user-Plan-Dokumente
-#         sind suffigiert, core.fn_note_context_allowed vergleicht exakt -> ein Opt-in waere tot).
+#         sind suffigiert, core.fn_note_context_allowed vergleicht exakt -> ein Opt-in waere tot);
+#         plan_step boolean, gaps_fn/readiness_fn im eigenen Schema und nur mit plan_step=true.
 #     (d) keine Workflow-id in zwei Dateien (Rename ohne git mv -> import:workflow nimmt eine der beiden still).
 #     (e) retired_workflows: eine stillgelegte id liegt nicht mehr im Baum und kein getrackter Workflow verweist
 #         auf sie (sonst loeschte retire_workflows einen lebenden Pfad).
@@ -1420,6 +1421,32 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
             # liest der Seeder ebenso STRIKT boolean.
             if ($p.Value.PSObject.Properties.Name -contains 'own_review_cron' -and $p.Value.own_review_cron -isnot [bool]) {
                 $errors.Add("OWN-REVIEW-CRON: packages/$pkg/manifest.json advisors '$($p.Name)'.own_review_cron muss boolean sein (true/false), nicht '$($p.Value.own_review_cron)' -- der Seeder wertet sonst still false.")
+            }
+            # Onboarding-Plan-Schritt (2026-10-28): plan_step STRIKT boolean (Seeder); gaps_fn/readiness_fn optional,
+            # schema-qualifiziert im EIGENEN Paket-Schema (Seeder-Boundary + CHECK) und nur zusammen mit plan_step=true
+            # (sonst liest sie niemand: core.fn_advisor_plan_status kennt nur plan_step-Zeilen).
+            if ($p.Value.PSObject.Properties.Name -contains 'plan_step' -and $p.Value.plan_step -isnot [bool]) {
+                $errors.Add("PLAN-STEP: packages/$pkg/manifest.json advisors '$($p.Name)'.plan_step muss boolean sein (true/false), nicht '$($p.Value.plan_step)' -- der Seeder wertet sonst still false.")
+            }
+            # plan_step braucht ein Router-Ziel (der Orchestrator-Arm startet advisor_agent) und Onboarding-Abschnitte im
+            # Paket (der Plan-Schritt steht hinter ihnen; sonst bricht erst build.ps1 in Get-AdvisorPlanStepList).
+            if ($p.Value.plan_step -eq $true) {
+                if ([string]$p.Value.advisor_agent -cnotmatch '^agent\.[a-z][a-z0-9_]*$') {
+                    $errors.Add("PLAN-STEP: packages/$pkg/manifest.json advisors '$($p.Name)' hat plan_step=true, aber kein gueltiges advisor_agent (agent.<name>) -- der Plan-Knopf haette kein Ziel.")
+                }
+                if (-not (Test-Path (Join-Path $pdir.FullName 'onboarding\sections.json'))) {
+                    $errors.Add("PLAN-STEP: packages/$pkg/manifest.json advisors '$($p.Name)' hat plan_step=true, aber packages/$pkg/onboarding/sections.json fehlt -- der Plan-Schritt steht hinter den Onboarding-Abschnitten des Pakets.")
+                }
+            }
+            foreach ($fk in @('gaps_fn', 'readiness_fn')) {
+                if ($p.Value.PSObject.Properties.Name -notcontains $fk) { continue }
+                $fv = [string]$p.Value.$fk
+                if ($fv -cnotmatch "^$([regex]::Escape($pkg))\.[a-z][a-z0-9_]*$") {   # -c: der DB-CHECK ist case-sensitiv
+                    $errors.Add("PLAN-STEP: packages/$pkg/manifest.json advisors '$($p.Name)'.$fk '$fv' muss eine fn im eigenen Schema sein ($pkg.<fn>, lowercase) -- der Seeder ueberspringt die Zeile sonst (Boundary).")
+                }
+                if ($p.Value.plan_step -ne $true) {
+                    $errors.Add("PLAN-STEP: packages/$pkg/manifest.json advisors '$($p.Name)'.$fk ohne plan_step=true -- wird nie gelesen (core.fn_advisor_plan_status kennt nur plan_step-Domains).")
+                }
             }
             if ($p.Value.PSObject.Properties.Name -contains 'learn_notes' -and $p.Value.learn_notes -eq $true -and (& $scopeOf ([string]$p.Value.plan_context)) -ne 'household') {
                 $errors.Add("LEARN-NOTES: packages/$pkg/manifest.json advisors '$($p.Name)' setzt learn_notes=true fuer den per_user-Plan-Kontext '$($p.Value.plan_context)' -- core.fn_note_context_allowed vergleicht exakt (suffigierte Plan-Dokumente) -> wirkungslos.")

@@ -55,7 +55,7 @@ Never run a finance document (Kontoauszug, Depotauszug, Versicherungspolice, Ren
 
 ### Interview + plan mechanics (decide the *Soll*)
 
-1. **Resume before starting:** read your plan with the `read_plan` tool and load `career_profile`. Continue a draft where it left off; otherwise start fresh.
+1. **Resume before starting:** read your plan with the `read_plan` tool and load `career_profile`. Continue a draft where it left off; otherwise start fresh. When the task says the user tapped the plan button in the onboarding menu, start right away without offering first (resume the draft, else a fresh interview, else a plan review of the published plan).
 2. **Running scratchpad (mandatory):** end every interview reply with a short "Bisher erfasst: …" recap of the facts captured in the CURRENT section — this protects against chat-memory eviction.
 3. **Playback ≠ approval gate:** when a section feels complete, play the full section summary back as a NORMAL chat message and ask for corrections ("Passt das so? Korrekturen einfach antworten."). Only after a verbal OK call the tool. The Telegram gate that follows is a short button confirmation — for changes the user must decline, then answer in chat.
 4. **One section at a time.** Use exactly these plan `section_key`s:

@@ -279,6 +279,7 @@ $tgEscapeAllow = @(
 $tgEscapeAllowLike = @(
     'agent.orchestrator.main_route :: Relay onboarding *'
     'agent.orchestrator.main_route :: Relay command *'
+    'agent.orchestrator.main_route :: Relay plan *'   # Plan-Schritt-Arme (Onboarding, 2026-10-28), dieselbe Relay-Kette
 )
 # WP-5 Formatter-Allowlist (bewusst un-formatierte Betraege/Daten in einer Nachricht/Summary, je mit Grund; Form +
 # Key-Konvention 'wf :: node' wie $tgEscapeAllow). Leer = jede Geld-/Datums-Anzeige MUSS Fmt-MoneyJs/Fmt-DateJs nutzen.

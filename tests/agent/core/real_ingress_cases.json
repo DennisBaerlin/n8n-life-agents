@@ -221,6 +221,31 @@
     "notes": "Zwei-Ebenen-Menue, Uebersichts-Ebene: /onboarding -> Command router -> Send onboarding menu (area leer) -> Which menu? Fallback -> 'Send overview' im Menue-SUB. Der Text gruppiert nach Bereich mit Fortschritt; der Weiter-Knopf zielt auf den ersten offenen Abschnitt in der abgeleiteten Reihenfolge (Fixture: alles erledigt -> Alles erledigt). Deterministisch, kein LLM."
   },
   {
+    "id": "ri13e",
+    "expect_texts": ["Finanzplan: es fehlen noch Daten", "Für einen sinnvollen Finanzplan fehlen noch"],
+    "name": "onboarding:_area:finance-Callback, Finanz-Abschnitte erledigt, aber ohne regelmaessiges Einkommen -> Plan-Schritt zeigt die fehlenden Mindestdaten statt des Plan-Knopfs",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "onboarding:_area:finance",
+    "expected_sub": "core.sub_send_onboarding_menu",
+    "expected_node": "Send area finance",
+    "notes": "Onboarding-Plan-Schritt (2026-10-28): die Fixture hat Konten und Ausgaben, aber keine regelmaessige Einnahme -> finance.fn_plan_readiness ready=false -> die Bereichsansicht zeigt die Plan-Zeile line_not_ready und den Hinweis not_ready mit den fehlenden Punkten; der Plan-Knopf wird zu Zuerst: <Abschnitt> (onboarding:finance:liabilities). Deterministisch, kein LLM."
+  },
+  {
+    "id": "ri07e",
+    "expect_texts": ["Für den Plan fehlen noch Daten"],
+    "name": "Owner tippt den Plan-Knopf (callback plan:finance), Mindestdaten fehlen -> Registry-Dispatch -> core.fn_handle_plan_cb lehnt mit Toast ab, kein Berater-Lauf",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "plan:finance",
+    "expected_node": "Answer dispatched cb",
+    "notes": "Onboarding-Plan-Schritt: Owner-Tap faellt ueber die extra-Ausgabe in Dispatch callback -> core.fn_handle_plan_cb (Daten-Reife aus core.fn_advisor_plan_status, Fixture ohne Einnahme) -> {ok:false, toast core.toast.plan_not_ready} -> Onboarding route? false -> Plan route? false -> Answer dispatched cb. Der Erfolgs-Pfad (route plan -> Run plan finance -> Berater) braucht einen LLM-Lauf und ist im Owner-Fenster-Tier abgedeckt; die Handler-Regeln deckt test_fn_handle_plan_cb.sql."
+  },
+  {
     "id": "ri14",
     "name": "Core-first Gate (negativ): Haushalt offen -> finance-Eingang leitet VOR dem LLM in den /onboarding-Redirect um (Sub-Knoten)",
     "kind": "node_ran",

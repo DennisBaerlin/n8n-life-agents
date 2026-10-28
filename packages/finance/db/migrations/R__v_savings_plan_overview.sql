@@ -14,10 +14,12 @@
 --   eigener Checksum-Aenderung). Das Aktiv-Praedikat von active_recurring_payments ist deshalb hier nicht noetig:
 --   status kommt aus dem Plan (eine Quelle fuer pausiert/aktiv, fn_set_savings_plan kaskadiert auf die rp).
 --   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles).
+--   chain ist MATERIALIZED (2026-10-28): inline eingesetzt stand next_from (mit fn_recurring_last_done) in jeder
+--   Zeilen-Bedingung des Rasters von fn_schedule_occurrences und lief je Rasterzeile neu (~0,25 s je Plan statt ms).
 -- ============================================================
 DROP VIEW IF EXISTS finance.savings_plan_overview CASCADE;
 CREATE VIEW finance.savings_plan_overview AS
-WITH chain AS (
+WITH chain AS MATERIALIZED (
     -- je Plan: Kopf + heute gueltiges Glied + Suchbeginn der naechsten Ausfuehrung
     SELECT sp.id AS plan_id,
            h.id AS head_id,

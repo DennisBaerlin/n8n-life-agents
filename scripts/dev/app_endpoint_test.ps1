@@ -5,7 +5,7 @@
 #   (2) POST Muell (text/plain) -> {ok:false, code:malformed} als JSON, KEIN Fehler-Alert (Mock-Telegram leer);
 #   (3) POST mit gefaelschter initData -> {ok:false, code:bad_signature};
 #   (4) POST mit gueltiger initData des Owners (hier signiert mit dem Substrat-Schluessel aus core.app_secret)
-#       -> Navigation ok:true mit ui.lang + Bildschirm overview ok:true mit view;
+#       -> Navigation ok:true mit ui.lang + jeder Bildschirm aus core.app_screens ok:true mit view;
 #   (5) Origin: null (opaker Ursprung der Sandkasten-Seite) -> CORS-Antwort-Header vorhanden;
 #   (5b) der Installer-Seed: core.app_screens == app_screens-Bloecke aller Manifeste;
 #   (6) die Repo-Adresse (Platzhalter) ist live nicht registriert (Pfad je Instanz geheim).
@@ -99,10 +99,16 @@ else {
     $acao = "$($r.Headers['Access-Control-Allow-Origin'])"
     if (-not $acao) { Fail 'Origin: null -> kein Access-Control-Allow-Origin (die Seite im Sandkasten bekaeme keine Daten)' } else { Pass "CORS fuer Origin null: '$acao'" }
 
-    $r = Invoke-App POST (@{ init_data = (New-InitData $owner); screen = 'overview' } | ConvertTo-Json -Compress)
-    $j = Get-Json $r
-    if ($j.ok -ne $true -or $null -eq $j.view -or $j.view.ok -ne $true) { Fail "Bildschirm overview: $($j | ConvertTo-Json -Compress -Depth 6)" }
-    else { Pass 'Bildschirm overview ok (View-Modell geliefert)' }
+    # jeder registrierte Bildschirm (Registry, nicht die Navigation: die zeigt auf leerem Substrat nur Nicht-Leere)
+    $qs = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', 'SELECT screen FROM core.app_screens ORDER BY ord, screen;')
+    $screens = @($qs.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^[a-z][a-z0-9_]*$' })
+    if ($screens.Count -eq 0) { Fail 'core.app_screens leer' }
+    foreach ($s in $screens) {
+        $r = Invoke-App POST (@{ init_data = (New-InitData $owner); screen = $s } | ConvertTo-Json -Compress)
+        $j = Get-Json $r
+        if ($j.ok -ne $true -or $null -eq $j.view -or $j.view.ok -ne $true) { Fail "Bildschirm ${s}: $($j | ConvertTo-Json -Compress -Depth 6)" }
+        else { Pass "Bildschirm $s ok (View-Modell geliefert)" }
+    }
 }
 
 # (5b) Seeder: core.app_screens der installierten Instanz == app_screens-Bloecke aller Manifeste (handler_fn, ord,

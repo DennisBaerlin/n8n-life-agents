@@ -726,10 +726,16 @@ page computes nothing — states, progress and sums come from the DB.
 - **Handler contract** `<pkg>.fn_app_screen_<screen>(p jsonb {person_id, params}) RETURNS jsonb`:
   - SECURITY DEFINER read window (pattern `career.fn_read_job_matches`): pinned `search_path … pg_temp`,
     `REVOKE ALL FROM PUBLIC`, first statement `core.fn_is_free_sql_session()` → `{ok:false, code:'forbidden'}`.
-  - **Zero-trust visibility:** the handler resolves the role itself (`core.fn_household_persons()`); allow-list —
-    only `owner`/`partner` see the household, every other or unknown role sees only own rows. A row the viewer may
-    not see never appears, not even as a name inside a banner or as a counter-account (use a neutral key).
-  - `params.probe = true` → `{ok:true, empty:<bool>}` only (navigation shows non-empty screens).
+  - **Zero-trust visibility:** the handler asks the ONE role helper `core.fn_app_sees_household(person_id)` (allow-list —
+    only `owner`/`partner` see the household, every other or unknown role sees only own rows); what "own" means per
+    object stays in the handler. A row the viewer may not see never appears, not even as a name inside a banner or as
+    a counter-account (use a neutral key).
+  - `params.probe = true` → `{ok:true, empty:<bool>, banners?:[…]}` only (navigation shows non-empty screens).
+    **Banners exist only here:** `alert|warn` built from the same filtered set as the screen, `target.screen` = the
+    handler's own screen. The dispatcher (`core.fn_app_nav`) collects them from every non-empty screen (`empty:true`
+    drops them), checks each element on its own (bad element → dropped, never the screen), sorts alert before warn,
+    then `ord`, and puts them on the home screen (first in navigation, also when it is reloaded on its own); every other
+    screen gets `banners: []` — banners in a full handler view are ignored.
   - Every text is a typed reference (`core.fn_ui_tpl`, keys `<pkg>.app.*` as complete literals); amounts
     `core.fn_ui_money`, dates `core.fn_ui_date`, numbers `core.fn_ui_num`; raw names from data are plain strings.
 - **View model v1** (handler output; fixture `tests/fixtures/app_view_model_v1.json`):

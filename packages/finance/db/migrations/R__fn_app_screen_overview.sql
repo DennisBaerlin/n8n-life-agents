@@ -5,7 +5,7 @@
 --   nie Text; die Seite rendert per Get-UiRenderLibJs und rechnet nichts (Summen, Anteile, gap kommen von hier).
 --   Quellen: networth_by_asset_class (je bucket summiert, has_fx_gap) + accounts/account_balances (cash, Festgeld, P2P;
 --   Kredit- und Depot-Konten nicht, deren Wert steht in den Anlagearten bzw. im Bildschirm Kredite/Depot).
---   ZERO-TRUST-SICHTBARKEIT: die Rolle loest der Handler selbst auf (core.fn_household_persons), nie der Aufrufer.
+--   ZERO-TRUST-SICHTBARKEIT: die Rolle loest der Handler selbst auf (core.fn_app_sees_household), nie der Aufrufer.
 --     Allow-List: owner/partner sehen den Haushalt; jede andere oder unbekannte Rolle nur owner_person_id = ich
 --     (Haushaltszeilen mit NULL bleiben fuer Kinder unsichtbar). Die Antwort traegt keine IDs.
 --   params.probe = true -> nur {ok, empty} (Navigation zeigt nur nicht-leere Bildschirme).
@@ -36,9 +36,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'bad_request');
     END IF;
     v_pid := p ->> 'person_id';
-    SELECT COALESCE(bool_or(hp.role IN ('owner', 'partner')), false) INTO v_hh
-      FROM core.fn_household_persons() hp
-     WHERE hp.person_id = v_pid;
+    v_hh  := core.fn_app_sees_household(v_pid);
 
     IF p -> 'params' -> 'probe' = 'true'::jsonb THEN
         RETURN jsonb_build_object('ok', true, 'empty', NOT EXISTS (

@@ -10,15 +10,39 @@ Links neben dem Eingabefeld im Chat mit dem Bot sitzt der Knopf **„📊 Übers
 
 ## Was du siehst
 
-Zum Start gibt es den Bildschirm **Vermögen**:
+Unten wechselst du über Reiter zwischen den Bildschirmen. Ein Bildschirm, zu dem es für dich nichts gibt, erscheint gar nicht erst.
+
+Steht irgendwo **„unvollständig – ein Kurs oder Wechselkurs fehlt“**, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.
+
+### Vermögen
 
 - **Vermögen gesamt:** alles zusammen, Kredite schon abgezogen.
 - **Nach Anlageart:** wie viel auf Konten, in Wertpapieren, Immobilien, Altersvorsorge und so weiter liegt. Der Balken zeigt den Anteil am Ganzen, Kredite stehen als Minus-Betrag darunter.
 - **Konten:** jedes Konto mit seinem Kontostand in der eigenen Währung und dem Datum, an dem du den letzten Kontoauszug bestätigt hast (siehe [Monats-Check](monats-check.html)).
 
-Steht irgendwo **„unvollständig – ein Kurs oder Wechselkurs fehlt“**, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.
+### Ziele
 
-Weitere Bildschirme sind in Vorbereitung: Sparziele, kommende Zahlungen mit Vorschau, ob das Geld auf dem Konto reicht, Kredite und Depot. Sobald es mehr als einen gibt, wechselst du unten über Reiter zwischen ihnen.
+- **Zurückgelegt für Ziele:** was in allen Sparzielen zusammen steckt.
+- **Sparziele:** jedes Ziel mit dem bisher Gesparten, Zielbetrag und Datum und einem Balken. Daneben steht, wie es läuft:
+  - **im Plan:** du liegst gut in der Zeit.
+  - **hinter Plan:** bis zum Zieldatum fehlt mehr, als die Zeit hergibt. Wie viel du monatlich nachlegen müsstest, sagt dir der Chat.
+  - **erreicht:** der Zielbetrag ist da.
+  - **pausiert:** die Sparrate oder der Sparplan des Ziels ist angehalten.
+  - **nicht messbar:** die Sparrate geht ohne eigenes Sparkonto ab, dann lässt sich der Stand nicht verfolgen. Abhilfe: dem Ziel im Chat ein Sparkonto zuordnen.
+- **Rücklagen:** etwa die Instandhaltungsrücklage für eine Immobilie, mit Stand, monatlicher Rate und der Empfehlung dazu („unter Empfehlung“ oder „ausreichend“).
+- **Sparpläne:** Betrag je Ausführung, was das im Monat ausmacht, und die nächste Ausführung. Ein angehaltener Plan steht als „pausiert“ darunter.
+
+Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist bis heute schon deutlich mehr Zeit vergangen, als Geld zusammengekommen ist, steht dort „hinter Plan“.
+
+### Depot
+
+- **Depotwert:** der aktuelle Wert aller Wertpapiere und Kryptowerte.
+- **Je Depot** jede Position mit Wert, Stückzahl und dem Datum des letzten Kurses. **„Kurs veraltet“** heißt: der letzte Kurs ist schon länger nicht mehr aktualisiert worden. **„Kurs fehlt“** heißt: es gibt noch gar keinen, der Wert fehlt dann in der Summe.
+- **Für Ziele reserviert:** wie viel Geld im Depot für Sparziele zurückgelegt ist und ob der Depotwert das deckt: „gedeckt“, „nicht gedeckt“ oder „nicht ermittelbar“, solange ein Kurs fehlt.
+
+### Hinweise auf der Startseite
+
+Gibt es etwas zu beachten, steht es oben auf der Startseite, zum Beispiel „Urlaub liegt hinter Plan“ oder „Kurs fehlt oder ist veraltet in Depot X“. Ein Tipp auf den Hinweis öffnet den passenden Bildschirm.
 
 Die Übersicht spricht die Sprache, die du mit `/language` eingestellt hast.
 
@@ -33,7 +57,7 @@ Der Knopf „📊 Übersicht“ sitzt an der Stelle, an der vorher der Menü-Kno
 ## Wer was sieht
 
 - **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch die Konten und Depots der Kinder.
-- **Kinder** sehen nur, was ihnen gehört: eigene Konten und das eigene Depot. Gemeinsame Haushaltskonten und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name.
+- **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name. Beim eigenen Depot sieht ein Kind, wie viel darin für Ziele reserviert ist, aber nicht, für welche.
 - **Fremde Telegram-Nutzer** bekommen den Knopf nie zu sehen.
 
 Zum Start bekommt **nur der Owner** den Knopf, als Probelauf. Für die ganze Familie schaltet ihn der Admin frei (siehe unten).

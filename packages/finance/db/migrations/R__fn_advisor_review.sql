@@ -69,7 +69,6 @@ DECLARE
     v_alloc        jsonb;
     v_alerts       jsonb := '[]'::jsonb;
     v_digest       jsonb;
-    v_pace_tol     numeric;
     v_stale_days   numeric;
     v_drift_tol    numeric;
     v_cash_eur     numeric;
@@ -130,7 +129,6 @@ BEGIN
 
     -- Tunbare Schwellen aus core.config ueber das generische DEFINER-Lesefenster core.fn_config_get
     -- (paket-rollen-sicher, konsistent mit F9; COALESCE-Defaults bleiben). Advisor-Config wohnt im Paket 'core'.
-    v_pace_tol         := COALESCE(core.fn_config_get('core', 'advisor', 'drift_pace_pp')::numeric, 10);
     v_stale_days       := COALESCE(core.fn_config_get('core', 'advisor', 'plan_stale_days')::numeric, 365);
     -- Allokations-Toleranz: aus dem Plan (target_allocation.rebalance_drift_pp), Default 5pp.
     v_drift_tol := COALESCE(NULLIF(v_alloc->>'rebalance_drift_pp','')::numeric, 5);
@@ -140,19 +138,21 @@ BEGIN
 
     -- ---------- (1) Sparziel-Pace-Drift (buchwert-immun; Fakten aus der View) ----------
     -- WS-1: expected/pace/projected/catchup rechnet finance.savings_goal_progress (ein Fakt, eine Adresse);
-    -- hier nur die Toleranz-Schwelle + die Meldung. pace_drift_pp IS NOT NULL == (Zieldatum nach created_at)
-    -- == der frueheren v_total>0-Guard.
+    -- hier nur die Meldung. pace_drift_pp IS NOT NULL == (Zieldatum nach created_at) == der frueheren v_total>0-Guard.
+    -- "hinter Plan" (Toleranz core/advisor/drift_pace_pp) entscheidet finance.fn_savings_goal_pace — dieselbe Regel wie die
+    -- Ampel der Mini-App (2026-10-28). Abfrage bewusst unveraendert (Reihenfolge der Alerts), nur die Bedingung wechselt.
     FOR r IN
         SELECT p.name,
                COALESCE(p.progress_percent, 0)                      AS prog,
                p.expected_percent                                   AS exp,
                p.pace_drift_pp                                      AS drift,
                p.projected_completion_date                          AS projected,
-               p.required_catchup_rate                              AS catchup
+               p.required_catchup_rate                              AS catchup,
+               finance.fn_savings_goal_pace(p.id)                   AS pace
         FROM finance.savings_goal_progress p
         WHERE p.status = 'active' AND p.pace_drift_pp IS NOT NULL
     LOOP
-        IF r.drift > v_pace_tol THEN
+        IF r.pace = 'behind' THEN
             v_alerts := v_alerts || jsonb_build_object(
                 'metric_key', 'savings_goal:' || r.name,
                 'kind',       'savings_pace',

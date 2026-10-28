@@ -1427,7 +1427,8 @@ BEGIN
   FOREACH v_role IN ARRAY ARRAY['core_ro', 'context_ro', 'finance_ro', 'finance_rw', 'career_ro', 'estate_ro'] LOOP
     CONTINUE WHEN NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role);
     FOREACH v_fn IN ARRAY ARRAY['core.fn_app_screen(text)', 'core.fn_app_verify_init_data(text, timestamptz)',
-                                'core.fn_app_refusal(text, text)'] LOOP
+                                'core.fn_app_refusal(text, text)', 'core.fn_app_nav(text)',
+                                'core.fn_app_sees_household(text)'] LOOP
       IF has_function_privilege(v_role, v_fn, 'EXECUTE') THEN
         RAISE EXCEPTION 'FAIL [Mini-App: % darf % ausfuehren]', v_role, v_fn;
       END IF;

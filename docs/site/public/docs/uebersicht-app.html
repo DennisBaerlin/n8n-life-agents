@@ -211,14 +211,38 @@
 <p><img src="../img/app-uebersicht-hell.png" alt="Die Übersicht im hellen Telegram-Design: Vermögen gesamt, Aufteilung nach Anlageart und die Konten (Beispielwerte)"> <img src="../img/app-uebersicht-dunkel.png" alt="Dieselbe Übersicht im dunklen Telegram-Design (Beispielwerte)"></p>
 <p><em>Beispielbilder mit erfundenen Werten. Hell oder dunkel folgt deiner Telegram-Einstellung.</em></p>
 <h2 id="was-du-siehst">Was du siehst</h2>
-<p>Zum Start gibt es den Bildschirm <strong>Vermögen</strong>:</p>
+<p>Unten wechselst du über Reiter zwischen den Bildschirmen. Ein Bildschirm, zu dem es für dich nichts gibt, erscheint gar nicht erst.</p>
+<p>Steht irgendwo <strong>„unvollständig – ein Kurs oder Wechselkurs fehlt“</strong>, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.</p>
+<h3 id="vermögen">Vermögen</h3>
 <ul>
 <li><strong>Vermögen gesamt:</strong> alles zusammen, Kredite schon abgezogen.</li>
 <li><strong>Nach Anlageart:</strong> wie viel auf Konten, in Wertpapieren, Immobilien, Altersvorsorge und so weiter liegt. Der Balken zeigt den Anteil am Ganzen, Kredite stehen als Minus-Betrag darunter.</li>
 <li><strong>Konten:</strong> jedes Konto mit seinem Kontostand in der eigenen Währung und dem Datum, an dem du den letzten Kontoauszug bestätigt hast (siehe <a href="monats-check.html">Monats-Check</a>).</li>
 </ul>
-<p>Steht irgendwo <strong>„unvollständig – ein Kurs oder Wechselkurs fehlt“</strong>, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.</p>
-<p>Weitere Bildschirme sind in Vorbereitung: Sparziele, kommende Zahlungen mit Vorschau, ob das Geld auf dem Konto reicht, Kredite und Depot. Sobald es mehr als einen gibt, wechselst du unten über Reiter zwischen ihnen.</p>
+<h3 id="ziele">Ziele</h3>
+<ul>
+<li><strong>Zurückgelegt für Ziele:</strong> was in allen Sparzielen zusammen steckt.</li>
+<li><strong>Sparziele:</strong> jedes Ziel mit dem bisher Gesparten, Zielbetrag und Datum und einem Balken. Daneben steht, wie es läuft:
+<ul>
+<li><strong>im Plan:</strong> du liegst gut in der Zeit.</li>
+<li><strong>hinter Plan:</strong> bis zum Zieldatum fehlt mehr, als die Zeit hergibt. Wie viel du monatlich nachlegen müsstest, sagt dir der Chat.</li>
+<li><strong>erreicht:</strong> der Zielbetrag ist da.</li>
+<li><strong>pausiert:</strong> die Sparrate oder der Sparplan des Ziels ist angehalten.</li>
+<li><strong>nicht messbar:</strong> die Sparrate geht ohne eigenes Sparkonto ab, dann lässt sich der Stand nicht verfolgen. Abhilfe: dem Ziel im Chat ein Sparkonto zuordnen.</li>
+</ul>
+</li>
+<li><strong>Rücklagen:</strong> etwa die Instandhaltungsrücklage für eine Immobilie, mit Stand, monatlicher Rate und der Empfehlung dazu („unter Empfehlung“ oder „ausreichend“).</li>
+<li><strong>Sparpläne:</strong> Betrag je Ausführung, was das im Monat ausmacht, und die nächste Ausführung. Ein angehaltener Plan steht als „pausiert“ darunter.</li>
+</ul>
+<p>Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist schon mehr als die halbe Zeit um, steht dort „hinter Plan“.</p>
+<h3 id="depot">Depot</h3>
+<ul>
+<li><strong>Depotwert:</strong> der aktuelle Wert aller Wertpapiere und Kryptowerte.</li>
+<li><strong>Je Depot</strong> jede Position mit Wert, Stückzahl und dem Datum des letzten Kurses. <strong>„Kurs veraltet“</strong> heißt: der letzte Kurs ist älter als eine Woche (so ist es voreingestellt). <strong>„Kurs fehlt“</strong> heißt: es gibt noch gar keinen, der Wert fehlt dann in der Summe.</li>
+<li><strong>Für Ziele reserviert:</strong> wie viel Geld im Depot für Sparziele zurückgelegt ist und ob der Depotwert das deckt: „gedeckt“, „nicht gedeckt“ oder „nicht ermittelbar“, solange ein Kurs fehlt.</li>
+</ul>
+<h3 id="hinweise-auf-der-startseite">Hinweise auf der Startseite</h3>
+<p>Gibt es etwas zu beachten, steht es oben auf der Startseite, zum Beispiel „Urlaub liegt hinter Plan“ oder „Kurs fehlt oder ist veraltet in Depot X“. Ein Tipp auf den Hinweis öffnet den passenden Bildschirm.</p>
 <p>Die Übersicht spricht die Sprache, die du mit <code>/language</code> eingestellt hast.</p>
 <h2 id="nur-anschauen-gebucht-wird-im-chat">Nur anschauen, gebucht wird im Chat</h2>
 <p>Die Übersicht zeigt nur an. Buchen, Ändern und Löschen läuft wie gewohnt im Chat, mit der Bestätigungs-Karte davor (siehe <a href="chatten-bestaetigen.html">Chatten &amp; Bestätigen</a>). Alle Zahlen rechnet die Datenbank aus denselben Daten, die auch der Chat nutzt; die App selbst rechnet nichts.</p>
@@ -227,7 +251,7 @@
 <h2 id="wer-was-sieht">Wer was sieht</h2>
 <ul>
 <li><strong>Du als Owner und dein Partner bzw. deine Partnerin</strong> seht den ganzen Haushalt, auch die Konten und Depots der Kinder.</li>
-<li><strong>Kinder</strong> sehen nur, was ihnen gehört: eigene Konten und das eigene Depot. Gemeinsame Haushaltskonten und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name.</li>
+<li><strong>Kinder</strong> sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name. Beim eigenen Depot sieht ein Kind, wie viel darin für Ziele reserviert ist, aber nicht, für welche.</li>
 <li><strong>Fremde Telegram-Nutzer</strong> bekommen den Knopf nie zu sehen.</li>
 </ul>
 <p>Zum Start bekommt <strong>nur der Owner</strong> den Knopf, als Probelauf. Für die ganze Familie schaltet ihn der Admin frei (siehe unten).</p>

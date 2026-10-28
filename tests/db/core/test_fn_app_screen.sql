@@ -151,4 +151,93 @@ BEGIN
   RAISE NOTICE 'PASS [8] app.enabled fail-closed';
 END $$;
 
+-- ===== Banner (Startseite): nur aus probe, generisch eingesammelt, alert vor warn, dann ord =====
+-- bn1 (ord 12): warn + ein ungueltiges Element + ein Element mit fremdem Ziel; fuer das Kind leer (Banner verworfen).
+-- bn2 (ord 14): alert; volle View traegt eigene Banner (muessen ignoriert werden: nur probe zaehlt).
+-- bn3 (ord 16): kaputte Banner-Liste (kein Array) -> bleibt in der Navigation, ohne Banner.
+CREATE OR REPLACE FUNCTION core.fn_test_app_view(p_label text) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT jsonb_build_object('ok', true, 'title', core.fn_ui_tpl('core.app.title'), 'hero', NULL,
+           'banners', jsonb_build_array(jsonb_build_object('state', 'warn', 'icon', 'alert',
+                        'text', core.fn_ui_tpl('core.app.title'), 'target', NULL)),
+           'sections', jsonb_build_array(jsonb_build_object('title', core.fn_ui_tpl('core.app.title'),
+             'empty', core.fn_ui_tpl('core.app.title'),
+             'items', jsonb_build_array(jsonb_build_object('label', p_label, 'sub', NULL, 'value', NULL, 'gap', false,
+                        'pill', NULL, 'progress', NULL, 'target', NULL)))));
+$f$;
+CREATE OR REPLACE FUNCTION core.fn_test_app_bn1(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN COALESCE((p->'params'->>'probe')::boolean, false)
+              THEN jsonb_build_object('ok', true, 'empty', p->>'person_id' = 'kid', 'banners', jsonb_build_array(
+                     jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('core.app.title', '{"n":{"kind":"text","value":"bn1-warn"}}'),
+                                        'target', jsonb_build_object('screen', 'bn1', 'params', '{}'::jsonb)),
+                     jsonb_build_object('state', 'ok', 'icon', 'check', 'text', core.fn_ui_tpl('core.app.title'), 'target', NULL),
+                     jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', 'kein tpl', 'target', NULL),
+                     jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl('core.app.title', '{"n":{"kind":"text","value":"bn1-fremd"}}'),
+                                        'target', jsonb_build_object('screen', 'nix', 'params', '{}'::jsonb))))
+              ELSE core.fn_test_app_view('bn1') END;
+$f$;
+CREATE OR REPLACE FUNCTION core.fn_test_app_bn2(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN COALESCE((p->'params'->>'probe')::boolean, false)
+              THEN jsonb_build_object('ok', true, 'empty', false, 'banners', jsonb_build_array(
+                     jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl('core.app.title', '{"n":{"kind":"text","value":"bn2-alert"}}'),
+                                        'target', jsonb_build_object('screen', 'bn2', 'params', '{}'::jsonb))))
+              ELSE core.fn_test_app_view('bn2') END;
+$f$;
+CREATE OR REPLACE FUNCTION core.fn_test_app_bn3(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN COALESCE((p->'params'->>'probe')::boolean, false)
+              THEN jsonb_build_object('ok', true, 'empty', false, 'banners', 'kaputt')
+              ELSE core.fn_test_app_view('bn3') END;
+$f$;
+
+INSERT INTO core.config (package, category, key, value) VALUES
+  ('core', 'app', 'enabled', 'true'), ('core', 'app', 'audience', 'household')
+ON CONFLICT (category, key) DO UPDATE SET value = excluded.value;
+DELETE FROM core.app_screens WHERE screen IN ('boom', 'deny', 'gone', 'other');
+INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon) VALUES
+  ('bn1', 'core', 'core.fn_test_app_bn1', 12, '1️⃣'),
+  ('bn2', 'core', 'core.fn_test_app_bn2', 14, '2️⃣'),
+  ('bn3', 'core', 'core.fn_test_app_bn3', 16, '3️⃣'),
+  ('boom', 'core', 'core.fn_test_app_boom', 18, '💥');
+
+DO $$
+DECLARE r jsonb; b jsonb;
+BEGIN
+  -- [9] Owner: Startseite (tst) traegt die eingesammelten Banner, alert vor warn; ungueltige/fremde Elemente fallen weg
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  IF (r->'screens') @> '[{"screen":"boom"}]' THEN RAISE EXCEPTION 'FAIL [9a] werfender Handler in der Navigation: %', r; END IF;
+  IF NOT (r->'screens') @> '[{"screen":"bn3"}]' THEN RAISE EXCEPTION 'FAIL [9b] kaputte Banner-Liste darf den Bildschirm nicht verstecken: %', r; END IF;
+  IF r->'first'->>'screen' IS DISTINCT FROM 'tst' THEN RAISE EXCEPTION 'FAIL [9c] Startseite tst erwartet: %', r; END IF;
+  b := r->'first'->'view'->'banners';
+  IF jsonb_array_length(b) <> 2
+     OR b->0->'text'->'params'->'n'->>'value' IS DISTINCT FROM 'bn2-alert'
+     OR b->1->'text'->'params'->'n'->>'value' IS DISTINCT FROM 'bn1-warn'
+     OR b->1->'target'->>'screen' IS DISTINCT FROM 'bn1' THEN
+    RAISE EXCEPTION 'FAIL [9d] erwartet [bn2-alert, bn1-warn] (ok/kein-tpl/fremdes Ziel verworfen), got %', b; END IF;
+  IF r->'ui'->'t' ? 'core.app.title' IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [9e] Banner-Texte fehlen in ui.t: %', r; END IF;
+  RAISE NOTICE 'PASS [9] Banner eingesammelt, sortiert, einzeln geprueft';
+
+  -- [10] Einzelabruf der Startseite (Tab zurueck) -> dieselben Banner; anderer Bildschirm -> nur seine leere Liste,
+  --      die eigenen Banner der vollen View zaehlen nie (nur probe).
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111), 'screen', 'tst')::text);
+  IF r->'view'->'banners' IS DISTINCT FROM b THEN RAISE EXCEPTION 'FAIL [10a] Startseite einzeln ohne dieselben Banner: %', r; END IF;
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111), 'screen', 'bn2')::text);
+  IF jsonb_array_length(r->'view'->'banners') <> 0 THEN RAISE EXCEPTION 'FAIL [10b] Unterseite darf keine Banner tragen: %', r; END IF;
+  RAISE NOTICE 'PASS [10] Startseite einzeln = gleiche Banner, Unterseiten ohne';
+
+  -- [11] Kind: tst + bn1 leer -> Startseite bn2; bn1-Banner verworfen (empty), bn2-Banner genau einmal
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(333))::text);
+  IF r->'first'->>'screen' IS DISTINCT FROM 'bn2' THEN RAISE EXCEPTION 'FAIL [11a] Kind-Startseite bn2 erwartet: %', r; END IF;
+  b := r->'first'->'view'->'banners';
+  IF jsonb_array_length(b) <> 1 OR b->0->'text'->'params'->'n'->>'value' IS DISTINCT FROM 'bn2-alert' THEN
+    RAISE EXCEPTION 'FAIL [11b] Kind: nur bn2-alert genau einmal erwartet, got %', b; END IF;
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(333), 'screen', 'bn2')::text);
+  IF r->'view'->'banners' IS DISTINCT FROM b THEN RAISE EXCEPTION 'FAIL [11c] Kind-Startseite einzeln: %', r; END IF;
+  RAISE NOTICE 'PASS [11] Kind: leere Bildschirme ohne Banner, keine Doppelten';
+
+  -- [12] Navigations-Helfer: kein EXECUTE fuer PUBLIC/enge Rollen
+  IF has_function_privilege('public', 'core.fn_app_nav(text)', 'EXECUTE')
+     OR has_function_privilege('core_ro', 'core.fn_app_nav(text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAIL [12] fn_app_nav ausfuehrbar fuer PUBLIC/core_ro'; END IF;
+  RAISE NOTICE 'PASS [12] fn_app_nav nicht oeffentlich';
+END $$;
+
 ROLLBACK;

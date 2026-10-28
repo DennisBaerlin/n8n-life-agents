@@ -222,7 +222,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027deleted_count\u0027)::int AS deleted_count FROM finance.fn_void_transaction(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027deleted_count\u0027)::int AS deleted_count, r-\u003e\u0027accounts\u0027 AS accounts, r-\u003e\u0027holdings\u0027 AS holdings FROM finance.fn_void_transaction(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ transaction_id: $(\u0027Start\u0027).item.json.transaction_id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -456,6 +456,18 @@
                                                                                      "name":  "deleted_count",
                                                                                      "value":  "={{ $(\u0027Void (atomic)\u0027).item.json.deleted_count }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f7c6c111-8c25-5d03-8ed0-f8fc95402c14",
+                                                                                     "name":  "accounts",
+                                                                                     "value":  "={{ $(\u0027Void (atomic)\u0027).item.json.accounts }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8d37835a-2ff1-5846-9747-02d05f737e4c",
+                                                                                     "name":  "holdings",
+                                                                                     "value":  "={{ $(\u0027Void (atomic)\u0027).item.json.holdings }}",
+                                                                                     "type":  "array"
                                                                                  }
                                                                              ]
                                                          },
@@ -490,9 +502,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_void_transaction: Hard-DELETE + Trigger-Recompute**\n\nRead Tx gibt immer ein Item aus (alwaysOutputData); unbekannte transaction_id -\u003e Tx not found (Tool-Fehler statt stillem Ende). Löscht die Buchung; Trigger rechnen balance/shares/avg/Restschuld neu. Multi-Leg (transfer + loan) teilt eine group_id -\u003e die GANZE Gruppe wird atomar entfernt (Fallback Altbestand: loan_id+Datum). Oversell-Guard -\u003e {ok:false} wenn ein späterer Verkauf am Kauf hängt. Holding-Zeile (ISIN) bleibt (shares=0) -\u003e spätere Dividende möglich.",
+                                         "content":  "## DB-Automatik\n**fn_void_transaction: Hard-DELETE + Trigger-Recompute**\n\nRead Tx gibt immer ein Item aus (alwaysOutputData); unbekannte transaction_id -\u003e Tx not found (Tool-Fehler statt stillem Ende). Löscht die Buchung; Trigger rechnen balance/shares/avg/Restschuld neu. Multi-Leg (transfer + loan) teilt eine group_id -\u003e die GANZE Gruppe wird atomar entfernt (Fallback Altbestand: loan_id+Datum). Oversell-Guard -\u003e {ok:false} wenn ein späterer Verkauf am Kauf hängt. Holding-Zeile (ISIN) bleibt (shares=0) -\u003e spätere Dividende möglich. Post-State: accounts[{account_id, balance, change}] (change = Saldo nachher - vorher; Bestandsübernahme = 0) + holdings[{shares, avg}] aus der fn; die Karte zeigt dieselbe Wirkung je Konto aus dem Probelauf (card_lines) - der Agent nennt nur diese Zahlen.",
                                          "height":  220,
-                                         "width":  440,
+                                         "width":  520,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",

@@ -64,7 +64,7 @@ BEGIN
            AND jsonb_typeof(p->'cost_basis_total') = 'number' AND jsonb_typeof(p->'shares') = 'number'
            AND (p->>'shares')::numeric > 0 THEN
             p := jsonb_set(p, '{price_per_share}',
-                           to_jsonb(round((p->>'cost_basis_total')::numeric / (p->>'shares')::numeric, 8)));   -- 8 = Spaltenpraezision (Rundungs-Paket)
+                           to_jsonb(finance.fn_unit_price_from_total((p->>'cost_basis_total')::numeric, (p->>'shares')::numeric)));
         ELSIF NULLIF(p->>'price_per_share', '') IS NULL AND jsonb_typeof(p->'cost_basis_total') = 'string' THEN
             -- nicht lesbarer/mehrdeutiger Gesamt-Einstand ("643,220") -> als Preis-Rohwert stehen lassen: validate_row meldet
             -- den Wert als "keine Zahl" (Rueckfrage) statt still "Preis fehlt" (Rundungs-Paket 2026-10-23)

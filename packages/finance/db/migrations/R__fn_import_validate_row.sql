@@ -98,8 +98,9 @@ BEGIN
     END IF;
 
     -- Namens-Dublette IM Batch (gleicher Typ, gleicher Name, andere Row). Nicht fuer stock_buy: der Name ist dort
-    -- nur Bezeichnung, derselbe ETF in zwei Depots ist legitim; eine echte Positions-Dublette (Depot + ISIN/Symbol)
-    -- meldet der Probelauf (fn_import_bundle dry_run -> fn_book_stock_buy "already holds").
+    -- nur Bezeichnung, derselbe ETF in zwei Depots ist legitim. Mehrere Zeilen derselben Position (Depot + ISIN/Symbol)
+    -- sind datierte Tranchen; eine undatierte oder gleiche Zeile meldet fn_import_bundle als Dublette ("appears more than once"),
+    -- eine im Bestand schon gehaltene Position fn_book_stock_buy ("already holds").
     IF v_name IS NOT NULL AND p_type <> 'stock_buy' THEN
         SELECT COUNT(*) INTO v_hits FROM finance.import_staging s
         WHERE s.batch_id = p_batch_id AND s.row_no <> p_row_no

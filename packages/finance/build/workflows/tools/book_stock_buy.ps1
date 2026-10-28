@@ -10,7 +10,7 @@ function Build-BookStockBuy {
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-BookStockBuy' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-BookStockBuy' -Soft
     $FxCronId             = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-BookStockBuy'
-    $trig = Build-Trigger @('isin','symbol','name','shares','price_per_share','order_fee','depot_name','transaction_date','asset_class','provider_symbol','quote_currency','existing_position')
+    $trig = Build-Trigger @('isin','symbol','name','shares','price_per_share','order_fee','depot_name','transaction_date','asset_class','provider_symbol','quote_currency','existing_position','cost_basis_total')
 
     $resDepot = Build-Pg 'Resolve Depot' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'depot_name', ARRAY['stocks_depot','crypto_depot']);" `
@@ -22,8 +22,8 @@ function Build-BookStockBuy {
         "=Depot '{{ `$('Start').item.json.depot_name }}' resolves to {{ `$('Resolve Depot').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Depot').item.json.candidates) }}. Ask the user which exact depot."
 
     $getSettle = Build-Pg 'Get Settlement Account' @(660, 0) `
-        "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = ((`$1::jsonb)->>'depot_id')::int;" `
-        ([ordered]@{ depot_id = '$(''Resolve Depot'').item.json.id' })
+        "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name, finance.fn_unit_price_from_total(finance.fn_parse_numeric_or_null((`$1::jsonb)->>'cost_basis_total', true), finance.fn_parse_numeric_or_null((`$1::jsonb)->>'shares', false)) AS derived_price FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = ((`$1::jsonb)->>'depot_id')::int;" `
+        ([ordered]@{ depot_id = '$(''Resolve Depot'').item.json.id'; cost_basis_total = '$(''Start'').item.json.cost_basis_total'; shares = '$(''Start'').item.json.shares' })
 
     # Kauf-Zeit-Symbol-Validierung (WS-2): Yahoo-Symbol fuer die ISIN ermitteln, gegen die genannte Preis-
     # Waehrung (quote_currency, Default Depot-Waehrung) + Kaufkurs gegenchecken. Deterministisch, non-blocking
@@ -34,7 +34,7 @@ function Build-BookStockBuy {
             isin            = "={{ `$('Start').item.json.isin }}"
             raw_symbol      = "={{ `$('Start').item.json.symbol }}"
             price_currency  = "={{ `$('Start').item.json.quote_currency || `$('Get Settlement Account').item.json.currency }}"
-            price_per_share = "={{ `$('Start').item.json.price_per_share }}"
+            price_per_share = "={{ `$('Start').item.json.price_per_share || `$('Get Settlement Account').item.json.derived_price || '' }}"
             provider_symbol = "={{ `$('Start').item.json.provider_symbol }}"
             ref_price       = "={{ '' }}"
             fx_rates        = "={{ '' }}"
@@ -49,7 +49,7 @@ function Build-BookStockBuy {
     # separat in order_fee; shares/avg pflegt der Trigger (avg nur aus buy).
     $wg = New-FnWriteGate -Fn 'finance.fn_book_stock_buy' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Create buy (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'holding_id')::int AS holding_id, (r->>'buy_tx_id')::int AS buy_tx_id, (r->>'settlement_balance')::numeric AS settlement_balance, (r->>'total_shares')::numeric AS total_shares, (r->>'avg_purchase_price')::numeric AS avg_purchase_price, COALESCE(r->'null_tag'->>'note', '') AS null_tag" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'holding_id')::int AS holding_id, (r->>'buy_tx_id')::int AS buy_tx_id, (r->>'settlement_balance')::numeric AS settlement_balance, (r->>'settlement_change')::numeric AS settlement_change, (r->>'total_shares')::numeric AS total_shares, (r->>'avg_purchase_price')::numeric AS avg_purchase_price, COALESCE(r->'null_tag'->>'note', '') AS null_tag" `
         -Params ([ordered]@{
             depot_id         = '$(''Resolve Depot'').item.json.id'
             settlement_id    = '$(''Get Settlement Account'').item.json.settlement_account_id'
@@ -66,6 +66,7 @@ function Build-BookStockBuy {
             provider_symbol  = '$(''Resolve Yahoo symbol'').item.json.adoptable === true ? $(''Resolve Yahoo symbol'').item.json.provider_symbol : ($(''Start'').item.json.provider_symbol || "")'
             quote_currency   = '$(''Start'').item.json.quote_currency'
             existing_position = '$(''Start'').item.json.existing_position'
+            cost_basis_total  = '$(''Start'').item.json.cost_basis_total'
         })
 
     # --- HITL approval gate (before the atomic write) ---
@@ -123,6 +124,7 @@ function Build-BookStockBuy {
         ,@('holding_id', "={{ `$('Create buy (atomic)').item.json.holding_id }}", 'number')
         ,@('buy_tx_id', "={{ `$('Create buy (atomic)').item.json.buy_tx_id }}", 'number')
         ,@('settlement_balance', "={{ `$('Create buy (atomic)').item.json.settlement_balance }}", 'number')
+        ,@('settlement_change', "={{ `$('Create buy (atomic)').item.json.settlement_change }}", 'number')
         ,@('total_shares', "={{ `$('Create buy (atomic)').item.json.total_shares }}", 'number')
         ,@('avg_purchase_price', "={{ `$('Create buy (atomic)').item.json.avg_purchase_price }}", 'number')
         ,@('null_tag', "={{ `$('Create buy (atomic)').item.json.null_tag }}", 'string')
@@ -143,7 +145,7 @@ function Build-BookStockBuy {
 
     $stickyYahoo = Build-Sticky 'Kauf-Zeit-Symbol-Validierung' @(880, -360) `
         'sub_resolve_yahoo_symbol (vor dem Gate, non-blocking)' `
-        'Ermittelt für die ISIN das richtige Yahoo-Kurs-Symbol (Disambiguierung per genannter Preis-Währung quote_currency, Default Depot-Währung) + checkt Live-Kurs gegen den Kaufkurs. LIEGT VOR dem HITL-Gate, AUSSERHALB der atomaren fn -> Yahoo-Ausfall/Timeout (3s) blockiert die Buchung NICHT (Sub liefert {verified:false, provider_symbol:roh}). Das aufgelöste provider_symbol fliesst (COALESCE mit dem ggf. genannten) in fn_book_stock_buy + wird im HITL angezeigt (Owner bestätigt). Krypto (ISIN leer) -> Sub gibt roh zurück.' 300 520
+        'Ermittelt für die ISIN das richtige Yahoo-Kurs-Symbol (Disambiguierung per genannter Preis-Währung quote_currency, Default Depot-Währung) + checkt Live-Kurs gegen den Kaufkurs (bei einer Übernahme mit Gesamtbetrag cost_basis_total den Stückpreis aus finance.fn_unit_price_from_total, gelesen in Get Settlement Account). LIEGT VOR dem HITL-Gate, AUSSERHALB der atomaren fn -> Yahoo-Ausfall/Timeout (3s) blockiert die Buchung NICHT (Sub liefert {verified:false, provider_symbol:roh}). Das aufgelöste provider_symbol fliesst (COALESCE mit dem ggf. genannten) in fn_book_stock_buy + wird im HITL angezeigt (Owner bestätigt). Krypto (ISIN leer) -> Sub gibt roh zurück.' 300 520
 
     $stickyFx = Build-Sticky 'FX-Sofort-Fetch (WP-3a)' @(3080, -480) `
         'quote_currency != EUR -> cron_refresh_fx_rates' `

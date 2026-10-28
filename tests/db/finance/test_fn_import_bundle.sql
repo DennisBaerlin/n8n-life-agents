@@ -513,4 +513,59 @@ BEGIN
   RAISE NOTICE 'PASS fn_import_depot_currency [DR7 Batch-Depot case-insensitiv -> USD, Bestand -> CHF, unbekannt -> EUR, kein Durchfall]';
 END $$;
 
+-- ============================================================
+-- TRANCHEN (Live-Befund 2026-10-28): mehrere stock_buy-Zeilen DERSELBEN Position in einem Batch = datierte Kaeufe
+-- einer Uebernahme -> eine group_id, Verrechnungskonto netto 0, Einstand = Summe/Summe; vorher scheiterte ab der
+-- zweiten Zeile die Doppel-Uebernahme-Sperre und das Modell schlug "normale Kaeufe" vor (Cash-Abfluss).
+-- ============================================================
+DO $$
+DECLARE
+  v_result JSONB; v_batch UUID; v_settle INT; v_depot INT; v_hold RECORD; v_groups INT; v_lots INT;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__lot Verrechnung","account_type":"cash","opening_balance":800}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__lot Depot','account_type','stocks_depot',
+               'settlement_id', v_settle))->>'account_id')::int;
+  SELECT finance.fn_import_stage(jsonb_build_object('source', 'chat', 'rows', jsonb_build_array(
+    jsonb_build_object('entity_type','stock_buy','depot','__lot Depot','isin','IE00B3ZW0K18','symbol','SPPW',
+                       'shares',40.5,'price_per_share',12.4,'transaction_date','2026-06-03'),
+    jsonb_build_object('entity_type','stock_buy','depot','__lot Depot','isin','IE00B3ZW0K18','symbol','SPPW',
+                       'shares',38.25,'price_per_share',13.1,'transaction_date','2026-06-10'),
+    jsonb_build_object('entity_type','stock_buy','depot','__lot Depot','isin','IE00B3ZW0K18','symbol','SPPW',
+                       'shares',39,'cost_basis_total',500,'transaction_date','2026-06-17')))) INTO v_result;
+  v_batch := (v_result->>'batch_id')::uuid;
+  IF (v_result->>'valid')::int IS DISTINCT FROM 3 THEN RAISE EXCEPTION 'FAIL [LOT stage]: %', v_result; END IF;
+
+  v_result := finance.fn_import_bundle(jsonb_build_object('batch_id', v_batch, 'dry_run', true));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [LOT dry run]: %', v_result; END IF;
+  v_result := finance.fn_import_bundle(jsonb_build_object('batch_id', v_batch));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_result->'created') <> 3 THEN
+    RAISE EXCEPTION 'FAIL [LOT commit]: %', v_result; END IF;
+
+  SELECT shares, average_purchase_price INTO v_hold FROM finance.depot_holdings WHERE account_id = v_depot;
+  SELECT count(DISTINCT group_id), count(*) FILTER (WHERE category = 'buy') INTO v_groups, v_lots
+  FROM finance.transactions WHERE account_id = v_settle AND category IN ('buy', 'position_takeover');
+  IF v_hold.shares IS DISTINCT FROM 117.75 OR v_lots <> 3 OR v_groups <> 1
+     OR round(v_hold.average_purchase_price, 6) IS DISTINCT FROM round((40.5 * 12.4 + 38.25 * 13.1 + 39 * round(500 / 39.0, 8)) / 117.75, 6)
+     OR finance.fn_get_balance(v_settle) IS DISTINCT FROM 800 THEN
+    RAISE EXCEPTION 'FAIL [LOT post-state]: shares % avg % lots % groups % balance %',
+      v_hold.shares, v_hold.average_purchase_price, v_lots, v_groups, finance.fn_get_balance(v_settle);
+  END IF;
+  IF (SELECT min(transaction_date) FROM finance.transactions WHERE account_id = v_settle AND category = 'buy') <> '2026-06-03' THEN
+    RAISE EXCEPTION 'FAIL [LOT Datum]: Tranchen muessen ihr eigenes Kaufdatum tragen'; END IF;
+  RAISE NOTICE 'PASS fn_import_bundle [LOT 3 Tranchen -> 1 group_id, 117.75 Stueck, Einstand Summe/Summe, Verrechnungskonto unveraendert]';
+
+  -- [LOT2] zweimal dieselbe datierte Zeile (doppelt gelesen) bleibt eine Dublette -> Fehler an der zweiten Zeile
+  v_depot := (finance.fn_create_account(jsonb_build_object('name','__lot Depot 2','account_type','stocks_depot',
+               'settlement_id', v_settle))->>'account_id')::int;
+  SELECT finance.fn_import_stage(jsonb_build_object('source', 'vision', 'rows', jsonb_build_array(
+    jsonb_build_object('entity_type','stock_buy','depot','__lot Depot 2','isin','IE00B3ZW0K18','symbol','SPPW',
+                       'shares',7,'price_per_share',12,'transaction_date','2026-07-01'),
+    jsonb_build_object('entity_type','stock_buy','depot','__lot Depot 2','isin','IE00B3ZW0K18','symbol','SPPW',
+                       'shares',7,'price_per_share',12,'transaction_date','2026-07-01')))) INTO v_result;
+  v_result := finance.fn_import_bundle(jsonb_build_object('batch_id', (v_result->>'batch_id')::uuid, 'dry_run', true));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR (v_result->'errors'->0->>'row_no')::int IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'FAIL [LOT2 identische Zeile]: %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_import_bundle [LOT2 identische datierte Zeile -> Dublette an Zeile 2]';
+END $$;
+
 ROLLBACK;

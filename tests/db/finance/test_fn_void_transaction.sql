@@ -303,4 +303,58 @@ BEGIN
   RAISE NOTICE 'PASS void [V2: goal-Verkauf storniert, Anteile Depot 100 / Verrechnungskonto 900 wie vorher]';
 END $$;
 
+-- TEST 10 (Post-State-Vertrag, Live-Befund 2026-10-28): der Void meldet je beruehrtem Konto den neuen Saldo und die
+-- Netto-Aenderung (DB-Delta) und je Position Stueck/Einstand -- das Modell erfindet sonst eine "Gutschrift".
+DO $$
+DECLARE
+  v_res JSONB; v_cash INT; v_settle INT; v_depot INT; v_txid INT; v_hid INT; v_acc JSONB; v_hold JSONB;
+BEGIN
+  -- (a) Cash-Buchung: change = -Betrag, balance = 0
+  v_cash := (finance.fn_create_account('{"name":"__vps_cash__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
+  VALUES (v_cash, 420.50, CURRENT_DATE, 'other', 'Einlage') RETURNING id INTO v_txid;
+  v_res := finance.fn_void_transaction(jsonb_build_object('transaction_id', v_txid));
+  v_acc := v_res->'accounts'->0;
+  IF jsonb_array_length(v_res->'accounts') <> 1 OR (v_acc->>'account_id')::int <> v_cash
+     OR (v_acc->>'balance')::numeric <> 0 OR (v_acc->>'change')::numeric <> -420.50 THEN
+    RAISE EXCEPTION 'FAIL void [10a post-state cash]: %', v_res; END IF;
+  IF jsonb_array_length(v_res->'holdings') <> 0 THEN
+    RAISE EXCEPTION 'FAIL void [10a ohne Position]: holdings leer erwartet, got %', v_res->'holdings'; END IF;
+  RAISE NOTICE 'PASS void [10a Cash: balance 0, change -420.50, keine Position]';
+
+  -- (b) Bestandsuebernahme (Kauf + position_takeover, eine group_id): Verrechnungskonto netto 0, Position 0 Stueck
+  v_settle := (finance.fn_create_account('{"name":"__vps_settle__","account_type":"cash","opening_balance":13357.58}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__vps_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
+           'symbol','SXR8','shares',100,'price_per_share',13.31,'existing_position',true));
+  v_txid := (v_res->>'buy_tx_id')::int; v_hid := (v_res->>'holding_id')::int;
+  v_res := finance.fn_void_transaction(jsonb_build_object('transaction_id', v_txid));
+  v_acc := v_res->'accounts'->0; v_hold := v_res->'holdings'->0;
+  IF (v_res->>'deleted_count')::int <> 2 OR jsonb_array_length(v_res->'accounts') <> 1
+     OR (v_acc->>'account_id')::int <> v_settle OR (v_acc->>'balance')::numeric <> 13357.58
+     OR (v_acc->>'change')::numeric <> 0 OR v_acc->>'name' <> '__vps_settle__' THEN
+    RAISE EXCEPTION 'FAIL void [10b Uebernahme netto 0]: %', v_res; END IF;
+  IF (v_hold->>'holding_id')::int <> v_hid OR (v_hold->>'shares')::numeric <> 0 OR v_hold->>'symbol' <> 'SXR8' THEN
+    RAISE EXCEPTION 'FAIL void [10b Position]: %', v_hold; END IF;
+  -- Karte: je Konto eine Wirkungs-Zeile aus der fn (Netto 0 sichtbar, nicht vom Modell hergeleitet)
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'card_lines') l
+                 WHERE l->>'value' = 'finance.tpl.void_balance_effect'
+                   AND (l->'params'->'change'->>'value')::numeric = 0
+                   AND (l->'params'->'balance'->>'value')::numeric = 13357.58) THEN
+    RAISE EXCEPTION 'FAIL void [10b card_lines]: %', v_res->'card_lines'; END IF;
+  RAISE NOTICE 'PASS void [10b Uebernahme-Paar: Verrechnungskonto change 0, balance unveraendert, Position 0, Karte]';
+
+  -- (c) echter Kauf: Verrechnungskonto +Kaufbetrag zurueck, Position Stueck/Einstand nach dem Void
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
+           'symbol','SXR8','shares',10,'price_per_share',14,'order_fee',1));
+  PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
+           'symbol','SXR8','shares',10,'price_per_share',16,'order_fee',1));
+  v_res := finance.fn_void_transaction(jsonb_build_object('transaction_id', (v_res->>'buy_tx_id')::int));
+  v_acc := v_res->'accounts'->0; v_hold := v_res->'holdings'->0;
+  IF (v_acc->>'change')::numeric <> 141 OR (v_acc->>'balance')::numeric <> 13357.58 - 161
+     OR (v_hold->>'shares')::numeric <> 10 OR (v_hold->>'avg_purchase_price')::numeric <> 16.1 THEN
+    RAISE EXCEPTION 'FAIL void [10c echter Kauf]: %', v_res; END IF;
+  RAISE NOTICE 'PASS void [10c echter Kauf: change +141, Position 10 Stueck zu 16.10]';
+END $$;
+
 ROLLBACK;

@@ -18,7 +18,14 @@
 --   durch (dort die EINE Eroeffnungsbuchung); Personen-Felder (owner_person/policyholder_person/
 --   borrower_person/beneficiary_person) loest fn_import_resolve_persons je Zeile erneut auf (kein TOCTOU);
 --   stock_buy-Zeilen sind BESTANDSUEBERNAHMEN (existing_position=true): der Verrechnungskonto-Saldo
---   bleibt der genannte Stand. Gedruckte Depotnummer/Inhaber prueft fn_import_depot_conflict erneut; einem Depot
+--   bleibt der genannte Stand. MEHRERE stock_buy-Zeilen DERSELBEN Position (Depot + ISIN bzw. Symbol) in einem Batch
+--   sind datierte TRANCHEN einer Uebernahme (Live-Befund 2026-10-28: 20 Sparplan-Kaeufe): die erste laeuft durch
+--   fn_book_stock_buy (dessen Guard "Position haelt schon Stueck" prueft den Stand VOR dem Batch), jede weitere ueber
+--   fn_book_takeover_pair in DIESELBE group_id (ein Write = ein Void) -> Einstand = Summe/Summe, Verrechnungskonto netto 0;
+--   das Modell rechnet nichts zusammen. Tranchen nur, wenn JEDE Zeile der Position ihr Kaufdatum (transaction_date) traegt
+--   und keine zwei Zeilen gleich sind (Datum, Stueck, Kurs): eine zweimal gelesene Auszugs-Zeile ohne Datum bleibt eine
+--   Dublette (Fehler an der zweiten Zeile, sonst verdoppelte sich der Bestand still). Gedruckte Depotnummer/Inhaber prueft
+--   fn_import_depot_conflict erneut; einem Depot
 --   ohne Nummer traegt fn_set_account die gedruckte Nummer nach (fn_import_depot_number_to_store, die Karte zeigt es).
 --
 --   RUECKGABE (Post-State-Vertrag): {ok:true, committed, created:[{row_no, entity_type,
@@ -57,6 +64,11 @@ DECLARE
     v_settle    INT;
     v_err       TEXT;
     v_depot_no  TEXT;                  -- gedruckte Depotnummer, die am Depot nachgetragen wird (fn_import_depot_number_to_store)
+    v_lots      JSONB := '{}'::jsonb;   -- Positions-Schluessel (Depot:ISIN|Symbol) -> {holding_id, group_id, symbol} dieses Laufs
+    v_lot_key   TEXT;
+    v_lot       JSONB;
+    v_dates     JSONB;
+    v_sig       TEXT;                  -- Dubletten-Signatur einer stock_buy-Zeile (Datum|Stueck|Kurs, aufgeloest + numerisch)
     v_rollback_intended BOOLEAN := FALSE;   -- A2: Klassifikation per Flag, NICHT per SQLERRM-Stringmatch
     v_dry       BOOLEAN := COALESCE(NULLIF(p->>'dry_run', '')::boolean, false);   -- Probelauf vor der Karte
     v_dry_ok    BOOLEAN := FALSE;
@@ -304,6 +316,43 @@ BEGIN
                 IF NULLIF(v_payload->>'quote_currency', '') IS NULL AND NULLIF(v_payload->>'provider_currency', '') IS NOT NULL THEN
                     v_payload := v_payload || jsonb_build_object('quote_currency', v_payload->>'provider_currency');
                 END IF;
+                -- Weitere Tranche einer in DIESEM Lauf schon uebernommenen Position -> dieselbe group_id, kein zweiter Guard.
+                v_lot_key := v_ref_id || ':' || COALESCE(NULLIF(upper(btrim(v_payload->>'isin')), ''),
+                                                         'sym:' || upper(btrim(COALESCE(v_payload->>'symbol', ''))));
+                v_lot := v_lots->v_lot_key;
+                -- Kaufdatum EINMAL aufloesen (relativ -> ISO); Dubletten-Signatur aus aufgeloestem Datum + numerischen Werten
+                -- (540.2 = 540.20; "gestern" = ISO-Datum), damit eine doppelt gelesene Zeile nie als zweite Tranche durchgeht.
+                v_dates := core.fn_resolve_input_dates(v_payload, ARRAY['transaction_date']);
+                IF NOT (v_dates->>'ok')::boolean THEN
+                    v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_dates->>'reason');
+                    CONTINUE;
+                END IF;
+                v_sig := concat_ws('|', v_dates->'p'->>'transaction_date',
+                                   trim_scale(round(NULLIF(v_payload->>'shares', '')::numeric, 8)),
+                                   trim_scale(round(NULLIF(v_payload->>'price_per_share', '')::numeric, 8)));
+                IF v_lot IS NOT NULL AND (NULLIF(v_dates->'p'->>'transaction_date', '') IS NULL
+                                          OR NOT (v_lot->>'dated')::boolean
+                                          OR (v_lot->'seen') ? v_sig) THEN
+                    v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', format(
+                        'position %s appears more than once in this import - if these are separate purchases give every row '
+                        || 'its own purchase date (transaction_date), otherwise remove the duplicate row', v_lot->>'symbol'));
+                    CONTINUE;
+                END IF;
+                IF v_lot IS NOT NULL THEN
+                    v_r := finance.fn_book_takeover_pair((v_lot->>'holding_id')::int, v_settle,
+                        NULLIF(v_payload->>'shares', '')::numeric, NULLIF(v_payload->>'price_per_share', '')::numeric,
+                        NULLIF(v_payload->>'order_fee', '')::numeric, (v_dates->'p'->>'transaction_date')::date,
+                        (v_lot->>'group_id')::uuid, v_lot->>'symbol');
+                    IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                        v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_r->>'reason');
+                        CONTINUE;
+                    END IF;
+                    v_created := v_created || jsonb_build_object('row_no', v_cur_row,
+                        'entity_type', 'stock_buy', 'id', (v_r->>'buy_tx_id')::int,
+                        'balance', (SELECT balance FROM finance.account_balances WHERE account_id = v_settle));
+                    v_lots := jsonb_set(v_lots, ARRAY[v_lot_key, 'seen'], (v_lot->'seen') || to_jsonb(v_sig));
+                    CONTINUE;
+                END IF;
                 v_r := finance.fn_book_stock_buy(
                     (v_payload - 'depot' - 'depot_number' - 'depot_holder' - 'provider_currency')
                     || jsonb_build_object('depot_id', v_ref_id, 'settlement_id', v_settle,
@@ -317,6 +366,11 @@ BEGIN
                 v_created := v_created || jsonb_build_object('row_no', v_cur_row,
                     'entity_type', 'stock_buy', 'id', (v_r->>'buy_tx_id')::int,
                     'balance', (v_r->>'settlement_balance')::numeric);
+                v_lots := v_lots || jsonb_build_object(v_lot_key, jsonb_build_object(
+                    'holding_id', (v_r->>'holding_id')::int, 'group_id', v_r->>'group_id',
+                    'symbol', (SELECT symbol FROM finance.depot_holdings WHERE id = (v_r->>'holding_id')::int),
+                    'dated', NULLIF(v_dates->'p'->>'transaction_date', '') IS NOT NULL,
+                    'seen', jsonb_build_array(v_sig)));
                 v_positions := v_positions || (
                     SELECT jsonb_build_object('holding_id', h.id, 'name', h.name, 'symbol', h.symbol, 'isin', h.isin,
                                               'provider_symbol', h.provider_symbol, 'quote_currency', h.quote_currency,

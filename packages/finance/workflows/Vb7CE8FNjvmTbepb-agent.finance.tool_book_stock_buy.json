@@ -43,6 +43,9 @@
                                                                                    "name":  "existing_position"
                                                                                },
                                                                                {
+                                                                                   "name":  "cost_basis_total"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -148,9 +151,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = (($1::jsonb)-\u003e\u003e\u0027depot_id\u0027)::int;",
+                                         "query":  "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name, finance.fn_unit_price_from_total(finance.fn_parse_numeric_or_null(($1::jsonb)-\u003e\u003e\u0027cost_basis_total\u0027, true), finance.fn_parse_numeric_or_null(($1::jsonb)-\u003e\u003e\u0027shares\u0027, false)) AS derived_price FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = (($1::jsonb)-\u003e\u003e\u0027depot_id\u0027)::int;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, cost_basis_total: $(\u0027Start\u0027).item.json.cost_basis_total, shares: $(\u0027Start\u0027).item.json.shares }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -183,7 +186,7 @@
                                                                               "isin":  "={{ $(\u0027Start\u0027).item.json.isin }}",
                                                                               "raw_symbol":  "={{ $(\u0027Start\u0027).item.json.symbol }}",
                                                                               "price_currency":  "={{ $(\u0027Start\u0027).item.json.quote_currency || $(\u0027Get Settlement Account\u0027).item.json.currency }}",
-                                                                              "price_per_share":  "={{ $(\u0027Start\u0027).item.json.price_per_share }}",
+                                                                              "price_per_share":  "={{ $(\u0027Start\u0027).item.json.price_per_share || $(\u0027Get Settlement Account\u0027).item.json.derived_price || \u0027\u0027 }}",
                                                                               "provider_symbol":  "={{ $(\u0027Start\u0027).item.json.provider_symbol }}",
                                                                               "ref_price":  "={{ \u0027\u0027 }}",
                                                                               "fx_rates":  "={{ \u0027\u0027 }}",
@@ -217,7 +220,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_stock_buy(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.adoptable === true ? $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol : ($(\u0027Start\u0027).item.json.provider_symbol || \"\"), quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.adoptable === true ? $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol : ($(\u0027Start\u0027).item.json.provider_symbol || \"\"), quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position, cost_basis_total: $(\u0027Start\u0027).item.json.cost_basis_total }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -321,9 +324,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027holding_id\u0027)::int AS holding_id, (r-\u003e\u003e\u0027buy_tx_id\u0027)::int AS buy_tx_id, (r-\u003e\u003e\u0027settlement_balance\u0027)::numeric AS settlement_balance, (r-\u003e\u003e\u0027total_shares\u0027)::numeric AS total_shares, (r-\u003e\u003e\u0027avg_purchase_price\u0027)::numeric AS avg_purchase_price, COALESCE(r-\u003e\u0027null_tag\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS null_tag FROM finance.fn_book_stock_buy(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027holding_id\u0027)::int AS holding_id, (r-\u003e\u003e\u0027buy_tx_id\u0027)::int AS buy_tx_id, (r-\u003e\u003e\u0027settlement_balance\u0027)::numeric AS settlement_balance, (r-\u003e\u003e\u0027settlement_change\u0027)::numeric AS settlement_change, (r-\u003e\u003e\u0027total_shares\u0027)::numeric AS total_shares, (r-\u003e\u003e\u0027avg_purchase_price\u0027)::numeric AS avg_purchase_price, COALESCE(r-\u003e\u0027null_tag\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS null_tag FROM finance.fn_book_stock_buy(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.adoptable === true ? $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol : ($(\u0027Start\u0027).item.json.provider_symbol || \"\"), quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ depot_id: $(\u0027Resolve Depot\u0027).item.json.id, settlement_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, isin: $(\u0027Start\u0027).item.json.isin, symbol: $(\u0027Start\u0027).item.json.symbol, name: $(\u0027Start\u0027).item.json.name, shares: $(\u0027Start\u0027).item.json.shares, price_per_share: $(\u0027Start\u0027).item.json.price_per_share, order_fee: $(\u0027Start\u0027).item.json.order_fee, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, asset_class: $(\u0027Start\u0027).item.json.asset_class, provider_symbol: $(\u0027Resolve Yahoo symbol\u0027).item.json.adoptable === true ? $(\u0027Resolve Yahoo symbol\u0027).item.json.provider_symbol : ($(\u0027Start\u0027).item.json.provider_symbol || \"\"), quote_currency: $(\u0027Start\u0027).item.json.quote_currency, existing_position: $(\u0027Start\u0027).item.json.existing_position, cost_basis_total: $(\u0027Start\u0027).item.json.cost_basis_total, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -705,24 +708,30 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "1c6eb707-0f1f-57c1-b464-610861e8171a",
+                                                                                     "name":  "settlement_change",
+                                                                                     "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.settlement_change }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8dbffd8b-cd2c-5183-a33e-7238ea048326",
                                                                                      "name":  "total_shares",
                                                                                      "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.total_shares }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "8dbffd8b-cd2c-5183-a33e-7238ea048326",
+                                                                                     "id":  "72d4ea74-9cda-5f58-bde9-dbe455618653",
                                                                                      "name":  "avg_purchase_price",
                                                                                      "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.avg_purchase_price }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "72d4ea74-9cda-5f58-bde9-dbe455618653",
+                                                                                     "id":  "4e671090-9aa4-5f13-8ffa-09527944331b",
                                                                                      "name":  "null_tag",
                                                                                      "value":  "={{ $(\u0027Create buy (atomic)\u0027).item.json.null_tag }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "4e671090-9aa4-5f13-8ffa-09527944331b",
+                                                                                     "id":  "095492d1-3b04-5e2d-8b18-68416e0118d3",
                                                                                      "name":  "price_status",
                                                                                      "value":  "={{ $(\u0027Price status\u0027).item.json.st || {} }}",
                                                                                      "type":  "object"
@@ -792,7 +801,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**sub_resolve_yahoo_symbol (vor dem Gate, non-blocking)**\n\nErmittelt für die ISIN das richtige Yahoo-Kurs-Symbol (Disambiguierung per genannter Preis-Währung quote_currency, Default Depot-Währung) + checkt Live-Kurs gegen den Kaufkurs. LIEGT VOR dem HITL-Gate, AUSSERHALB der atomaren fn -\u003e Yahoo-Ausfall/Timeout (3s) blockiert die Buchung NICHT (Sub liefert {verified:false, provider_symbol:roh}). Das aufgelöste provider_symbol fliesst (COALESCE mit dem ggf. genannten) in fn_book_stock_buy + wird im HITL angezeigt (Owner bestätigt). Krypto (ISIN leer) -\u003e Sub gibt roh zurück.",
+                                         "content":  "## DB-Automatik\n**sub_resolve_yahoo_symbol (vor dem Gate, non-blocking)**\n\nErmittelt für die ISIN das richtige Yahoo-Kurs-Symbol (Disambiguierung per genannter Preis-Währung quote_currency, Default Depot-Währung) + checkt Live-Kurs gegen den Kaufkurs (bei einer Übernahme mit Gesamtbetrag cost_basis_total den Stückpreis aus finance.fn_unit_price_from_total, gelesen in Get Settlement Account). LIEGT VOR dem HITL-Gate, AUSSERHALB der atomaren fn -\u003e Yahoo-Ausfall/Timeout (3s) blockiert die Buchung NICHT (Sub liefert {verified:false, provider_symbol:roh}). Das aufgelöste provider_symbol fliesst (COALESCE mit dem ggf. genannten) in fn_book_stock_buy + wird im HITL angezeigt (Owner bestätigt). Krypto (ISIN leer) -\u003e Sub gibt roh zurück.",
                                          "height":  300,
                                          "width":  520,
                                          "color":  4

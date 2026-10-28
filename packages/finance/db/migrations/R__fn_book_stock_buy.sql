@@ -19,7 +19,9 @@
 --   schon der heutige). Ein Void entfernt beide Zeilen. Korrigierbar {ok:false}: zusammen mit
 --   recurring_payment_id (Sparplan-Ausfuehrung ist echter Geldfluss); Holding hat bereits Stueck > 0 (ein
 --   erneuter Depotauszug wuerde die Position verdoppeln -> Korrektur ueber set_holding).
---   CHECK finance_transactions_position_takeover_shape ist der Backstop der Gegenbuchungs-Form.
+--   CHECK finance_transactions_position_takeover_shape ist der Backstop der Gegenbuchungs-Form. Das Paar schreibt allein
+--   fn_book_takeover_pair (eine Adresse mit den Import-Tranchen). cost_basis_total (opt, NUR mit existing_position und ohne
+--   price_per_share): Gesamt-Einstand -> Stueckpreis rechnet fn_unit_price_from_total (das LLM teilt nie selbst).
 --   WS-B Stufe 2 (Phase S) — AUTO-JOURNAL: ist dieser Kauf die Ausfuehrung eines GOAL-VERKNUEPFTEN Sparplans
 --   (recurring_payment_id -> savings_plans.savings_goal_id IS NOT NULL), dann ATOMAR in derselben Tx append-only
 --   savings_goal_reserve_entries-Zeilen kind='sparplan_buy', value_date = transaction_date, source_tx_id = Kauf-Tx:
@@ -32,9 +34,11 @@
 --   -> {ok:false} (Cross-Currency-Settlement out-of-scope; beide Zeilen tragen dieselbe Waehrung).
 --   Manueller Kauf (recurring_payment_id NULL) ODER nicht-goal-Sparplan -> KEINE Wirkung (kein Journal).
 --   Idempotenz erbt vom Buy (die Journal-Zeilen teilen die Buy-Tx -> re-run kein Doppel-Insert).
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, holding_id, buy_tx_id, settlement_balance,
+--   RUECKGABE-VERTRAG: Erfolg -> {ok:true, holding_id, buy_tx_id, settlement_balance, settlement_change,
 --   total_shares, avg_purchase_price} (Post-State aus der fn: Trigger-gepflegte shares/avg +
---   neuer Verrechnungskonto-Saldo, in derselben Transaktion gelesen). Korrigierbar
+--   neuer Verrechnungskonto-Saldo, in derselben Transaktion gelesen; group_id = Handle der Uebernahme-Gruppe (sonst NULL); settlement_change = Saldo nachher - vorher, DB-Delta:
+--   Bestandsuebernahme 0, normaler Kauf -Kaufbetrag -- Live-Befund 2026-10-28: ohne die Zahl erfand das Modell
+--   eine Kontobewegung). Korrigierbar
 --   (Depot-Typ-Mismatch, negative order_fee, > 8 Stueck-Nachkommastellen oder Betrag < 1 Cent via
 --   fn_trade_amount_reason) -> {ok:false, reason, depot_type} OHNE Write (kein RAISE -> kein
 --   Owner-Alert; das Tool reicht reason an den Agenten).
@@ -53,7 +57,9 @@ DECLARE
     v_symbol     TEXT              := finance.fn_holding_symbol(p->>'symbol', p->>'isin');  -- ohne Ticker = ISIN (Depotauszug druckt oft nur die ISIN)
     v_name       TEXT              := COALESCE(NULLIF(btrim(p->>'name'), ''), v_symbol);  -- ohne Bezeichnung (Krypto-Import) = Kennung; name ist NOT NULL
     v_shares     NUMERIC           := (p->>'shares')::numeric;
-    v_price      NUMERIC           := (p->>'price_per_share')::numeric;
+    -- freie Tool-Eingabe ("540,20"); unlesbar -> NULL -> {ok:false}. 0 = nicht genannt (Tool-Default bei cost_basis_total;
+    -- ein Kurs 0 ist ohnehin ungueltig und wird unten als "nicht positiv" abgelehnt).
+    v_price      NUMERIC           := NULLIF(finance.fn_parse_numeric_or_null(p->>'price_per_share', false), 0);
     v_fee        NUMERIC           := COALESCE(NULLIF(p->>'order_fee', '')::numeric, 0);
     v_date       DATE;
     v_due        DATE;
@@ -75,9 +81,12 @@ DECLARE
     v_avg        NUMERIC;
     v_holding_cls TEXT;            -- Phase L WS-6: asset_class der resultierenden Holding (NULL = ungetaggt -> Fallback-Note)
     v_existing   BOOLEAN           := COALESCE(NULLIF(p->>'existing_position', '')::boolean, false);
-    v_group      UUID;             -- nur bei Bestandsuebernahme: Kauf + Gegenbuchung = eine group_id = ein Void
     v_held       NUMERIC;
     v_dates      JSONB;
+    v_bal_before NUMERIC;
+    v_pair       JSONB;
+    v_total      NUMERIC;          -- cost_basis_total (Gesamt-Einstand einer Uebernahme), geparst
+    v_group      UUID;             -- Handle der Uebernahme-Gruppe (Import haengt weitere Tranchen an)
 BEGIN
     -- relative Datumsangaben ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date', 'due_date']);
@@ -95,6 +104,24 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Share count must be a positive number, got ' || COALESCE(v_shares::text, 'null') || '.');
     END IF;
+    -- Uebernahme mit Gesamtbetrag ("10 Stueck fuer insgesamt 1.000 EUR"): Stueckpreis rechnet die DB.
+    -- Der Probelauf gibt den Stueckpreis als effective.price_per_share an Karte UND echten Write weiter; der Write
+    -- traegt dann beide Felder -> gleich = ok (Karte = Buchung), abweichend = {ok:false}.
+    IF NULLIF(p->>'cost_basis_total', '') IS NOT NULL THEN
+        -- freie Tool-Eingabe: "1.000,50" / "1000 EUR" -> fn_parse_de_numeric; nicht lesbar = korrigierbar, kein Cast-RAISE
+        v_total := finance.fn_parse_numeric_or_null(p->>'cost_basis_total', true);
+        IF v_total IS NULL OR v_total <= 0 THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'cost_basis_total (total amount paid) must be a positive number, got ' || (p->>'cost_basis_total') || '.');
+        END IF;
+        IF NOT v_existing
+           OR (v_price IS NOT NULL AND round(v_price, 8) IS DISTINCT FROM finance.fn_unit_price_from_total(v_total, v_shares)) THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'cost_basis_total is only for taking over an existing position without a price per share - '
+                       || 'give either price_per_share or cost_basis_total.');
+        END IF;
+        v_price := finance.fn_unit_price_from_total(v_total, v_shares);
+    END IF;
     -- Rundungs-Paket 2026-10-23: Kurs auf die Spaltenpraezision (8 Stellen), Gebuehr auf Cent (order_fee numeric(12,2)) —
     -- VOR den Pruefungen, damit Betrag, order_fee und unit_price aus denselben Werten entstehen (CHECK
     -- finance_transactions_unit_price_chk) und ein Kurs < 5e-9 nicht als 0 durchrutscht.
@@ -103,7 +130,8 @@ BEGIN
     IF v_price IS NULL OR v_price <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Price per share must be a positive number (at most 8 decimal places), got '
-                   || COALESCE(p->>'price_per_share', 'null') || '.');
+                   || COALESCE(NULLIF(p->>'price_per_share', ''), v_price::text, 'null')
+                   || CASE WHEN v_total IS NOT NULL THEN ' (derived from cost_basis_total ' || v_total || ')' ELSE '' END || '.');
     END IF;
     -- Korrigierbar: negative Gebuehr senkte die Anschaffungskosten still (Spiegel: CHECK finance_transactions_order_fee_chk).
     IF v_fee < 0 THEN
@@ -211,8 +239,10 @@ BEGIN
         SELECT shares INTO v_held FROM finance.depot_holdings WHERE id = v_holding;
         IF COALESCE(v_held, 0) > 0 THEN
             RETURN jsonb_build_object('ok', false,
-                'reason', 'This depot already holds ' || v_held || ' units of ' || v_symbol || '. Taking over the position again '
-                       || 'would double it - to correct the holding use set_holding; for a real additional purchase book a normal buy.',
+                'reason', 'This depot already holds ' || v_held || ' units of ' || v_symbol || '. A takeover records the '
+                       || 'position once and never moves the settlement account; taking it over again would double it. To change '
+                       || 'units or purchase price use set_holding. Several purchases of a position the depot does not hold yet '
+                       || 'can be taken over together in ONE import batch (one stock_buy row per purchase).',
                 'held_shares', v_held);
         END IF;
     END IF;
@@ -229,31 +259,33 @@ BEGIN
         RETURNING id INTO v_holding;
     END IF;
 
+    SELECT balance INTO v_bal_before FROM finance.account_balances WHERE account_id = v_settle;
+
+    -- Bestandsuebernahme: Kauf + Gegenbuchung (Verrechnungskonto-Saldo unveraendert) ueber den EINEN Paar-Baustein.
+    IF v_existing THEN
+        v_group := gen_random_uuid();
+        v_pair := finance.fn_book_takeover_pair(v_holding, v_settle, v_shares, v_price, v_fee, v_date, v_group, v_symbol);
+        -- Dieselben Eingaben sind oben schon geprueft -> ein ok:false hier ist ein echter Defekt; RAISE rollt auch eine
+        -- eben angelegte Holding zurueck (kein 0-Stueck-Waisen-Eintrag).
+        IF NOT (v_pair->>'ok')::boolean THEN
+            RAISE EXCEPTION 'fn_book_takeover_pair rejected pre-validated input: %', v_pair->>'reason';
+        END IF;
+        v_buy := (v_pair->>'buy_tx_id')::int;
+    ELSE
     -- EINE Kauf-Transaktion (Gebuehr in amount gefaltet + separat in order_fee). Kein Ziel-Tag (2026-10-27): die
     -- Ziel-Wirkung eines goal-verknuepften Kaufs laeuft komplett ueber das Journal (unten).
-    IF v_existing THEN v_group := gen_random_uuid(); END IF;
     INSERT INTO finance.transactions
         (account_id, amount, transaction_date, category, holding_id, shares, order_fee, unit_price,
          recurring_payment_id, recurring_due_date, savings_goal_id, description, group_id)
-    -- unit_price NUR bei Bestandsuebernahme: dort ist der genannte Einstand die Wahrheit (fn_holding_avg_cost rechnet
-    -- daraus); ein normaler Kauf bleibt bei |amount| (abgebuchter Cent-Betrag, Broker-Konvention).
-    VALUES (v_settle, -(v_shares * v_price + v_fee), v_date, 'buy', v_holding, v_shares, v_fee,
-            CASE WHEN v_existing THEN v_price END,
+    -- unit_price bleibt NULL: ein normaler Kauf rechnet aus |amount| (abgebuchter Cent-Betrag, Broker-Konvention).
+    VALUES (v_settle, -(v_shares * v_price + v_fee), v_date, 'buy', v_holding, v_shares, v_fee, NULL,
             v_rp_id, CASE WHEN v_rp_id IS NOT NULL THEN v_due END, NULL,
-            CASE WHEN v_existing THEN 'Bestandsübernahme ' ELSE 'Kauf ' END
-                   || (p->>'shares') || ' ' || v_symbol || ' @ ' || (p->>'price_per_share')
+            'Kauf ' || (p->>'shares') || ' ' || v_symbol || ' @ ' || (p->>'price_per_share')
                    || ' (Gebühr ' || COALESCE(p->>'order_fee', '0') || ')',
-            v_group)
+            NULL)
     ON CONFLICT (recurring_payment_id, recurring_due_date, account_id) WHERE recurring_payment_id IS NOT NULL
     DO NOTHING
     RETURNING id INTO v_buy;
-
-    -- Bestandsuebernahme: Gegenbuchung exakt in Hoehe des Kauf-Betrags -> Verrechnungskonto-Saldo unveraendert.
-    IF v_existing THEN
-        INSERT INTO finance.transactions
-            (account_id, amount, transaction_date, category, description, group_id)
-        VALUES (v_settle, v_shares * v_price + v_fee, v_date, 'position_takeover',
-                'Gegenbuchung Bestandsübernahme ' || (p->>'shares') || ' ' || v_symbol, v_group);
     END IF;
 
     -- WP-1 Race-Backstop (nur der Sparplan-Pfad wird vom Index gedeckt; manueller Kauf traegt rp NULL -> kein
@@ -293,8 +325,11 @@ BEGIN
     -- nicht v_asset_cls IS NULL: ein Re-Buy einer bereits getaggten Position uebergibt asset_class NULL, soll aber
     -- NICHT nagen). Nicht-blockierend (advisory); der Bookkeeper relayed die Note (nur interaktiv).
     RETURN jsonb_build_object('ok', true, 'holding_id', v_holding, 'buy_tx_id', v_buy,
-        'settlement_balance', v_bal, 'total_shares', v_shares_tot, 'avg_purchase_price', v_avg,
-        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee))
+        'settlement_balance', v_bal, 'settlement_change', v_bal - COALESCE(v_bal_before, 0), 'group_id', v_group,
+        'total_shares', v_shares_tot, 'avg_purchase_price', v_avg,
+        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee)
+                      || CASE WHEN NULLIF(p->>'cost_basis_total', '') IS NOT NULL
+                              THEN jsonb_build_object('price_per_share', v_price) ELSE '{}'::jsonb END)
         || CASE WHEN v_holding_cls IS NULL
                 THEN jsonb_build_object('null_tag', jsonb_build_object(
                     'symbol', v_symbol,

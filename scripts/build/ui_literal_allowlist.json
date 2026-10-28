@@ -152,16 +152,22 @@
                       "reason":  "data:gespeicherter Standardname einer Instandhaltungsruecklage (Sparziel-Name, Originalsprache; der Nutzer kann ihn umbenennen)"
                   },
                   {
-                      "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
+                      "where":  "packages/finance/db/migrations/R__fn_book_takeover_pair.sql",
                       "literal":  "Bestandsübernahme ",
                       "count":  1,
                       "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
                   },
                   {
-                      "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
+                      "where":  "packages/finance/db/migrations/R__fn_book_takeover_pair.sql",
                       "literal":  "Gegenbuchung Bestandsübernahme ",
                       "count":  1,
                       "reason":  "data:buchungstext (gespeicherte Beschreibung, Originalsprache)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_book_takeover_pair.sql",
+                      "literal":  " (Gebühr ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Transaktions-Beschreibung, Originalsprache)"
                   },
                   {
                       "where":  "packages/finance/db/migrations/R__fn_create_account.sql",

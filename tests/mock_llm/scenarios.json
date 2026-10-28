@@ -1122,5 +1122,13 @@
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Ich wuensche mir, dass wir jeden Monat mehr fuer die Kinder zuruecklegen." } }
     ],
     "final": "Der Berater nimmt deinen Wunsch auf."
+  },
+  {
+    "_comment": "tc82 Kaufliste einer neuen Position -> drei datierte stock_buy-Zeilen in einem Batch (Tranchen-Import, Live-Befund 2026-10-28).",
+    "match": "Bitte so mit echten Kaufkursen erfassen",
+    "calls": [
+      { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.5,\"price_per_share\":540.2,\"transaction_date\":\"2026-06-03\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.4,\"price_per_share\":552.8,\"transaction_date\":\"2026-06-10\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.45,\"price_per_share\":548.1,\"transaction_date\":\"2026-06-17\"}]" } }
+    ],
+    "final": "Drei Kaeufe zum Import vorbereitet."
   }
 ]

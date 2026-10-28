@@ -23,7 +23,13 @@
 --      Abloesedatum. Ein geloeschter Verkaufserloes
 --      (real_estate.sale_tx_id) setzt die Immobilie auf active (current_value bleibt der Verkaufspreis).
 --   Eingabe jsonb: transaction_id.
---   RUECKGABE: {ok:true, deleted_count, transaction_ids, reverted_loans, reverted_real_estate}.
+--   RUECKGABE: {ok:true, deleted_count, transaction_ids, reverted_loans, reverted_real_estate,
+--   accounts:[{account_id, name, balance, change}], holdings:[{holding_id, symbol, shares, avg_purchase_price}], card_lines}
+--   (Name/Symbol als Handle fuer die Antwort: der Agent nennt nie interne ids).
+--   POST-STATE (Live-Befund 2026-10-28: ohne Zahl erfand das Modell nach dem Void einer Bestandsuebernahme eine
+--   "Gutschrift"): je beruehrtem Konto der neue Saldo und change = Saldo nachher - vorher (DB-Delta; Kauf + Gegen-
+--   buchung einer Uebernahme -> 0), je beruehrter Position Stueck/Einstand nach dem Trigger. card_lines = dieselbe
+--   Wirkung je Konto fuer die HITL-Karte (der Probelauf vor der Karte liefert exakt die Zahlen des echten Writes).
 --   Korrigierbar (Oversell-nach-Void, Reserve wuerde negativ) -> {ok:false}.
 --   RAISE nur bei not-found (der Agent uebergibt eine gelesene id).
 -- ============================================================
@@ -38,6 +44,10 @@ DECLARE
     v_loans JSONB := '[]'::jsonb;
     v_loan_ids INT[];
     v_res   JSONB := '[]'::jsonb;
+    v_before JSONB;
+    v_accts  JSONB;
+    v_holds  JSONB;
+    v_card   JSONB;
 BEGIN
     SELECT * INTO v_tx FROM finance.transactions WHERE id = v_id;
     IF NOT FOUND THEN
@@ -158,6 +168,13 @@ BEGIN
     )
     SELECT COALESCE(jsonb_agg(id ORDER BY id), '[]'::jsonb) INTO v_res FROM u;
 
+    -- Post-State-Basis: Salden der beruehrten Konten VOR dem Loeschen (change = nachher - vorher, Schritt 5).
+    SELECT jsonb_object_agg(a.account_id::text, COALESCE(b.balance, 0)) INTO v_before
+    FROM (SELECT DISTINCT account_id FROM finance.transactions WHERE id = ANY(v_ids)) a
+    LEFT JOIN finance.account_balances b ON b.account_id = a.account_id;
+    v_holds := to_jsonb(ARRAY(SELECT DISTINCT holding_id FROM finance.transactions
+                              WHERE id = ANY(v_ids) AND holding_id IS NOT NULL ORDER BY 1));
+
     -- 4. Hard-DELETE der Gruppe; Trigger pflegen balance/shares/avg/Restschuld neu (Holding-Zeile bleibt).
     DELETE FROM finance.transactions WHERE id = ANY(v_ids);
     GET DIAGNOSTICS v_count = ROW_COUNT;
@@ -200,7 +217,30 @@ BEGIN
     SELECT v_loans || COALESCE(jsonb_agg(jsonb_build_object('loan_id', l.id, 'status', l.status) ORDER BY l.id), '[]'::jsonb)
     INTO v_loans FROM l;
 
+    -- 5. Post-State nach den Triggern (gleiche Transaktion): Saldo + Netto-Aenderung je Konto, Bestand je Position.
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('account_id', x.account_id, 'name', x.name, 'balance', x.balance, 'change', x.change)
+                              ORDER BY x.account_id), '[]'::jsonb),
+           COALESCE(jsonb_agg(jsonb_build_object('label', 'finance.label.void_balance_effect', 'kind', 'tpl',
+                              'value', 'finance.tpl.void_balance_effect',
+                              'params', jsonb_build_object('account', x.name,
+                                  'change', core.fn_ui_money(x.change, x.currency, true),
+                                  'balance', core.fn_ui_money(x.balance, x.currency)))
+                              ORDER BY x.account_id), '[]'::jsonb)
+    INTO v_accts, v_card
+    FROM (SELECT a.id AS account_id, a.name, a.currency, COALESCE(b.balance, 0) AS balance,
+                 COALESCE(b.balance, 0) - (v_before->>a.id::text)::numeric AS change
+          FROM finance.accounts a
+          LEFT JOIN finance.account_balances b ON b.account_id = a.id
+          WHERE v_before ? a.id::text) x;
+
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('holding_id', h.id, 'symbol', h.symbol, 'shares', h.shares,
+                              'avg_purchase_price', h.average_purchase_price) ORDER BY h.id), '[]'::jsonb)
+    INTO v_holds
+    FROM finance.depot_holdings h
+    WHERE h.id IN (SELECT (jsonb_array_elements_text(v_holds))::int);
+
     RETURN jsonb_build_object('ok', true, 'deleted_count', v_count, 'transaction_ids', to_jsonb(v_ids),
-        'reverted_loans', v_loans, 'reverted_real_estate', v_res);
+        'reverted_loans', v_loans, 'reverted_real_estate', v_res,
+        'accounts', v_accts, 'holdings', v_holds, 'card_lines', v_card);
 END;
 $$;

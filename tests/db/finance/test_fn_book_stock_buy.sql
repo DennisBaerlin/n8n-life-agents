@@ -739,4 +739,69 @@ BEGIN
   RAISE NOTICE 'PASS takeover [7 ohne name -> Name = Symbol, 8 Nachkommastellen erhalten]';
 END $$;
 
+-- ============================================================
+-- Live-Befund 2026-10-28: settlement_change (DB-Delta statt vom Modell hergeleitet), Uebernahme mit Gesamtbetrag
+-- (cost_basis_total, Stueckpreis rechnet die DB) und eine Doppel-Uebernahme-Meldung ohne "normaler Kauf"-Empfehlung.
+-- ============================================================
+DO $$
+DECLARE
+  v_res JSONB; v_settle INT; v_depot INT;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__test_take2_settle__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__test_take2_depot__','account_type','stocks_depot',
+               'settlement_id', v_settle))->>'account_id')::int;
+
+  -- TEST 8: Uebernahme mit Gesamtbetrag 1.000 fuer 75.12345 Stueck -> Stueckpreis = round(1000/75.12345, 8), Saldo unveraendert
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+           'symbol','VUSA','shares',75.12345,'cost_basis_total',1000,'existing_position',true));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (v_res->>'avg_purchase_price')::numeric IS DISTINCT FROM round(1000 / 75.12345, 8)
+     OR (v_res->>'settlement_balance')::numeric IS DISTINCT FROM 5000
+     OR (v_res->>'settlement_change')::numeric IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL takeover [8 cost_basis_total]: %', v_res; END IF;
+  RAISE NOTICE 'PASS takeover [8 Gesamtbetrag -> Stueckpreis aus der DB, settlement_change 0]';
+  IF (v_res->'effective'->>'price_per_share')::numeric IS DISTINCT FROM round(1000 / 75.12345, 8) THEN
+    RAISE EXCEPTION 'FAIL takeover [8b effective]: Probelauf muss den Stueckpreis fuer Karte + Write liefern, got %', v_res; END IF;
+  -- Gate-Write = Start-Felder || effective -> beide Felder, gleicher Wert = ok (Probelauf zurueckgerollt simuliert)
+  v_res := core.fn_dry_run('finance.fn_book_stock_buy(jsonb)'::regprocedure, jsonb_build_object('depot_id',v_depot,
+           'settlement_id',v_settle,'isin','IE00B3XXRP10','symbol','VUSB','shares',3,'cost_basis_total',100,
+           'price_per_share',round(100 / 3.0, 8),'existing_position',true));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL takeover [8c Write mit effective]: %', v_res; END IF;
+  RAISE NOTICE 'PASS takeover [8b/8c Stueckpreis in effective, Write mit beiden Feldern ok]';
+
+  -- TEST 9: Doppel-Uebernahme -> ok:false, Meldung empfiehlt set_holding, nie einen normalen Kauf
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+           'symbol','VUSA','shares',1,'price_per_share',13,'existing_position',true));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'held_shares')::numeric IS DISTINCT FROM 75.12345
+     OR v_res->>'reason' NOT LIKE '%set_holding%' OR v_res->>'reason' ILIKE '%normal buy%' THEN
+    RAISE EXCEPTION 'FAIL takeover [9 Meldung]: %', v_res; END IF;
+  RAISE NOTICE 'PASS takeover [9 Doppel-Uebernahme -> set_holding, kein normaler Kauf empfohlen]';
+
+  -- TEST 10: normaler Kauf -> settlement_change = -(Stueck*Kurs+Gebuehr)
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+           'symbol','VUSA','shares',2,'price_per_share',14.5,'order_fee',1));
+  IF (v_res->>'settlement_change')::numeric IS DISTINCT FROM -30 OR (v_res->>'settlement_balance')::numeric IS DISTINCT FROM 4970 THEN
+    RAISE EXCEPTION 'FAIL buy [10 settlement_change]: %', v_res; END IF;
+  RAISE NOTICE 'PASS buy [10 normaler Kauf: settlement_change -30]';
+
+  -- TEST 11: cost_basis_total ohne existing_position bzw. zusammen mit price_per_share -> ok:false
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+           'symbol','VUSA','shares',2,'cost_basis_total',30));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL buy [11 cost_basis_total ohne Uebernahme]: %', v_res; END IF;
+  RAISE NOTICE 'PASS buy [11 cost_basis_total nur fuer Uebernahme]';
+  -- TEST 12: freie Tool-Eingaben als Text: Gesamtbetrag "1.234,50" + leerer Kurs -> geparst; unlesbar -> ok:false (kein RAISE)
+  v_res := core.fn_dry_run('finance.fn_book_stock_buy(jsonb)'::regprocedure, jsonb_build_object('depot_id',v_depot,
+           'settlement_id',v_settle,'isin','IE00B3XXRP11','symbol','VUSC','shares','10','price_per_share',0,
+           'cost_basis_total','1.234,50','existing_position',true));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'avg_purchase_price')::numeric IS DISTINCT FROM 123.45 THEN
+    RAISE EXCEPTION 'FAIL takeover [12a Text-Gesamtbetrag]: %', v_res; END IF;
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP12',
+           'symbol','VUSD','shares',10,'cost_basis_total','etwa tausend','existing_position',true));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%cost_basis_total%' THEN
+    RAISE EXCEPTION 'FAIL takeover [12b unlesbar]: %', v_res; END IF;
+  RAISE NOTICE 'PASS takeover [12 Text-Eingaben geparst, unlesbarer Gesamtbetrag -> ok:false]';
+END $$;
+
 ROLLBACK;

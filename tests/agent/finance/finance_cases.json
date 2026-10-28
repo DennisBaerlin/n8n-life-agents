@@ -978,5 +978,14 @@
                                },
         "expected_behavior":  "Ruft tool_create_savings_goal mit real_estate_name='Musterimmobilie', reserve_account_name='Tagesgeld Plus' und account_name='DKB Giro' auf; target_amount, target_date und savings_plan_name bleiben leer, die Rate rechnet das Tool. Lehnt das Tool mit maintenance_data_missing ab, fragt der Agent nach Wohnflaeche und Baujahr (oder einem Monatsbetrag) statt eine Rate zu erfinden.",
         "notes":  "Instandhaltungsruecklage 2026-10-27. Judge: actual_tool_input real_estate_name='Musterimmobilie' ohne target_amount/target_date; keine selbst gerechnete Rate."
+    },
+    {
+        "id":  "tc82",
+        "name":  "Kaufliste einer neuen Position: Tranchen-Import statt normaler Kaeufe",
+        "task":  "Ich halte im Trade Republic Depot schon den iShares Core S&P 500 (ISIN IE00B5BMR087), das ist bisher nicht eingetragen. Hier meine Kaeufe: 03.06.2026 2,5 Stueck zu 540,20 Euro; 10.06.2026 2,4 Stueck zu 552,80 Euro; 17.06.2026 2,45 Stueck zu 548,10 Euro. Bitte so mit echten Kaufkursen erfassen.",
+        "chat_id":  "test_tc82",
+        "expected_tool":  "tool_import_stage_rows",
+        "expected_behavior":  "Stagt die drei Kaeufe als DREI stock_buy-Zeilen (depot Trade Republic Depot, isin IE00B5BMR087, je shares/price_per_share wie genannt und transaction_date je Kauf) in EINEM Batch und bietet danach die Import-Karte an. Rechnet keine Summe und keinen Durchschnittskurs selbst, schlaegt KEINE normalen Kaeufe (tool_book_stock_buy ohne existing_position) vor und behauptet keine Abbuchung oder Gutschrift auf dem Verrechnungskonto. Nach der Ablehnung meldet er den Abbruch.",
+        "notes":  "Live-Befund 2026-10-28 (Werte erfunden): eine Kaufliste derselben Position scheiterte an der Doppel-Uebernahme-Sperre, der Agent schlug normale Kaeufe vor (Cash-Abfluss). Seit Paket A bucht fn_import_bundle datierte Tranchen in einer group_id. Judge: drei Zeilen mit je transaction_date, keine Eigenrechnung, keine erfundene Kontobewegung."
     }
 ]

@@ -23,7 +23,7 @@ function Build-VoidTransaction {
     # Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_void_transaction' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Void (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'deleted_count')::int AS deleted_count" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'deleted_count')::int AS deleted_count, r->'accounts' AS accounts, r->'holdings' AS holdings" `
         -Params ([ordered]@{ transaction_id = '$(''Start'').item.json.transaction_id' })
 
     $T = "`$('Read Tx').item.json"
@@ -54,6 +54,8 @@ function Build-VoidTransaction {
     $ret = Build-Return @(2200, 0) @(
         ,@('ok','true','boolean')
         ,@('deleted_count', "={{ `$('Void (atomic)').item.json.deleted_count }}", 'number')
+        ,@('accounts', "={{ `$('Void (atomic)').item.json.accounts }}", 'array')
+        ,@('holdings', "={{ `$('Void (atomic)').item.json.holdings }}", 'array')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
@@ -62,7 +64,7 @@ function Build-VoidTransaction {
 
     $stickyOv = Build-Sticky 'Doc void_transaction' @(1760, -240) `
         'fn_void_transaction: Hard-DELETE + Trigger-Recompute' `
-        'Read Tx gibt immer ein Item aus (alwaysOutputData); unbekannte transaction_id -> Tx not found (Tool-Fehler statt stillem Ende). Löscht die Buchung; Trigger rechnen balance/shares/avg/Restschuld neu. Multi-Leg (transfer + loan) teilt eine group_id -> die GANZE Gruppe wird atomar entfernt (Fallback Altbestand: loan_id+Datum). Oversell-Guard -> {ok:false} wenn ein späterer Verkauf am Kauf hängt. Holding-Zeile (ISIN) bleibt (shares=0) -> spätere Dividende möglich.' 220 440
+        'Read Tx gibt immer ein Item aus (alwaysOutputData); unbekannte transaction_id -> Tx not found (Tool-Fehler statt stillem Ende). Löscht die Buchung; Trigger rechnen balance/shares/avg/Restschuld neu. Multi-Leg (transfer + loan) teilt eine group_id -> die GANZE Gruppe wird atomar entfernt (Fallback Altbestand: loan_id+Datum). Oversell-Guard -> {ok:false} wenn ein späterer Verkauf am Kauf hängt. Holding-Zeile (ISIN) bleibt (shares=0) -> spätere Dividende möglich. Post-State: accounts[{account_id, balance, change}] (change = Saldo nachher - vorher; Bestandsübernahme = 0) + holdings[{shares, avg}] aus der fn; die Karte zeigt dieselbe Wirkung je Konto aus dem Probelauf (card_lines) - der Agent nennt nur diese Zahlen.' 220 520
 
     $nodes = @($trig, $readTx, $found.If, $found.Err) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)

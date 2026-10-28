@@ -68,7 +68,17 @@ return [{ json: { ok: true, header, rows, row_count: rows.length } }];
     $lotsApproval = Build-CallWorkflow 'Request lots approval' @(1760, -200) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Lots summary').item.json.summary }}"; chat_id = "={{ `$('Start').first().json.chat_id }}" })
     $ifLotsOk = Build-If 'Lots approved?' @(1980, -200) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
-    $lotsApply = Build-Pg 'Replace lots' @(2200, -300) "=SELECT finance.fn_replace_takeover_with_lots(`$1::jsonb) AS r;" $lotsParams
+    # echter Write nur mit dem Fingerabdruck der Karte (Plan/Apply wie der Monats-Check: sonst stale_preview, nichts gebucht)
+    $lotsApplyParams = [ordered]@{}
+    foreach ($k in $lotsParams.Keys) { $lotsApplyParams[$k] = $lotsParams[$k] }
+    $lotsApplyParams['fingerprint'] = "$L.fingerprint"
+    $lotsApply = Build-Pg 'Replace lots' @(2200, -300) "=SELECT finance.fn_replace_takeover_with_lots(`$1::jsonb) AS r;" $lotsApplyParams
+    $ifReplaced = Build-If 'Lots replaced?' @(2420, -300) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
+    $errReplaced = Build-Set 'Lots not replaced' @(2640, -500) @(
+        ,@('ok', 'false', 'boolean')
+        ,@('code', "={{ `$('Replace lots').item.json.r.code || '' }}", 'string')
+        ,@('error', "={{ `$('Replace lots').item.json.r.reason }}", 'string')
+    )
 
     $stmtParams = [ordered]@{
         source          = "'csv'"
@@ -92,10 +102,10 @@ return [{ json: { ok: true, header, rows, row_count: rows.length } }];
         'Fetch telegram file (Core-Baustein, accept=csv: Datei mit Endung .csv als Text, BOM entfernt) -> Tokenize CSV (RFC 4180, Trenner aus der Kopfzeile; kennt keine Bedeutung) -> Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -> Karte 1 + Gate -> Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source csv: finance.fn_broker_csv_normalize liest den Export (Profil per Kopfzeile), der App-Kontostand des Owners ist Pflicht (sonst closing_balance_required, keine Karte), Zeitraum bis gestern, Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.' 380 600
     $stickyLots = Build-Sticky 'Zwei Karten' @(1320, -560) `
         'Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht' `
-        'Karte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde. Ablehnung oder kein Kandidat -> weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.' 320 300
+        'Karte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde; der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -> stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -> weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.' 320 300
 
     $nodes = @($trig, $fetch, $ifFile, $errFile, $tok, $ifTok, $errTok, $lotsDry, $ifLots, $lotsSummary, $lotsApproval,
-               $ifLotsOk, $lotsApply) + $chain.Nodes + @($sticky, $stickyLots)
+               $ifLotsOk, $lotsApply, $ifReplaced, $errReplaced) + $chain.Nodes + @($sticky, $stickyLots)
     $conns = [ordered]@{
         'Start'                 = @{ main = @( ,@( E 'Fetch telegram file' ) ) }
         'Fetch telegram file'   = @{ main = @( ,@( E 'File ok?' ) ) }
@@ -107,7 +117,8 @@ return [{ json: { ok: true, header, rows, row_count: rows.length } }];
         'Lots summary'          = @{ main = @( ,@( E 'Request lots approval' ) ) }
         'Request lots approval' = @{ main = @( ,@( E 'Lots approved?' ) ) }
         'Lots approved?'        = @{ main = @( @( E 'Replace lots' ), @( E $chain.Entry ) ) }
-        'Replace lots'          = @{ main = @( ,@( E $chain.Entry ) ) }
+        'Replace lots'          = @{ main = @( ,@( E 'Lots replaced?' ) ) }
+        'Lots replaced?'        = @{ main = @( @( E $chain.Entry ), @( E 'Lots not replaced' ) ) }
     }
     foreach ($k in $chain.Conns.Keys) { $conns[$k] = $chain.Conns[$k] }
     return Build-Workflow 'agent.finance.tool_import_broker_csv' $nodes $conns @{ Category = 'import' }

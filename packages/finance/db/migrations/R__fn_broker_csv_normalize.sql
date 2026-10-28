@@ -11,8 +11,8 @@
 --   PRE_DETERMINED_TAX_BASE, SEC_ACCOUNT, EARNINGS mit Abfluss), fee (FEE, CARD_ORDERING_FEE), corporate
 --   (CORPORATE_ACTION REDEMPTION/FINAL_MATURITY/WARRANT_EXERCISE: Info, das Geld kommt als eigene CASH-Zeile),
 --   cash (Ein-/Auszahlungen, Karte, Ueberweisungen), unknown (alles andere, nie still verworfen).
---   DIVIDENDEN-KORREKTUR (PP-Forum): eine Dividenden-Zeile mit negativem amount storniert eine fruehere; sie und die
---   gleich hohe positive Zeile derselben ISIN + Stueckzahl im Export werden unknown (reason dividend_correction) ->
+--   DIVIDENDEN-KORREKTUR (PP-Forum): eine Dividenden-Zeile mit negativem amount storniert eine fruehere; sie und GENAU
+--   EINE gleich hohe positive Zeile derselben ISIN + Stueckzahl (die zeitlich naechste = Neu-Buchung) werden unknown (reason dividend_correction) ->
 --   nie automatisch gebucht, die Karte nennt sie. Das Geld zaehlt trotzdem (cash_amount bleibt).
 --   RUECKGABE: {ok:true, profile, rows:[{row_no, date, kind, category, type, cash_amount, isin, symbol, name,
 --   asset_class, shares (Betrag), price, gross (|amount|), fee (Betrag), tax (signiert), currency, account_type,
@@ -29,7 +29,10 @@ DECLARE
     v_idx     JSONB := '{}'::jsonb;
     v_row     JSONB;
     v_n       INT;
-    v_out     JSONB := '[]'::jsonb;
+    v_out     JSONB;
+    v_arr     JSONB[] := '{}';   -- Sammel-Array (PL/pgSQL haengt in place an; jsonb || je Zeile waere O(n^2))
+    v_corr    JSONB;
+    v_pos     INT;
     v_r       JSONB;
     v_d       DATE;
     v_amt     NUMERIC;
@@ -118,7 +121,7 @@ BEGIN
         IF v_kind = 'unknown' THEN v_reason := 'unsupported_type'; END IF;
         IF v_kind = 'dividend' AND v_amt < 0 THEN v_kind := 'unknown'; v_reason := 'dividend_correction'; END IF;
 
-        v_out := v_out || jsonb_build_object(
+        v_arr := v_arr || jsonb_build_object(
             'row_no', v_n + 1, 'date', v_d, 'kind', v_kind, 'category', v_cat, 'type', v_typ,
             'cash_amount', round(v_amt + v_fee + v_tax, 2),
             'isin', CASE WHEN v_cls = 'CRYPTO' THEN NULL ELSE upper(v_sym) END,
@@ -131,16 +134,23 @@ BEGIN
             'reason', v_reason);
     END LOOP;
 
-    -- Dividenden-Korrektur: die gleich hohe positive Zeile derselben ISIN + Stueck wird ebenfalls nicht gebucht
-    SELECT COALESCE(jsonb_agg(CASE
-               WHEN r->>'kind' = 'dividend' AND EXISTS (
-                    SELECT 1 FROM jsonb_array_elements(v_out) c
-                    WHERE c->>'reason' = 'dividend_correction' AND c->>'isin' = r->>'isin'
-                      AND (c->>'shares')::numeric IS NOT DISTINCT FROM (r->>'shares')::numeric
-                      AND (c->>'gross')::numeric = (r->>'gross')::numeric)
-               THEN r || jsonb_build_object('kind', 'unknown', 'reason', 'dividend_correction')
-               ELSE r END ORDER BY (r->>'row_no')::int), '[]'::jsonb)
-    INTO v_out FROM jsonb_array_elements(v_out) r;
+    v_out := to_jsonb(v_arr);
+
+    -- Dividenden-Korrektur: je Storno-Zeile genau EINE gleich hohe positive Zeile derselben ISIN + Stueck (die zeitlich
+    -- naechste, bei Gleichstand die spaetere = Neu-Buchung) wird ebenfalls nicht gebucht; weitere gleich hohe Dividenden
+    -- (z. B. jedes Quartal derselbe Betrag) bleiben Dividenden (Review 2026-10-28).
+    FOR v_corr IN SELECT r FROM jsonb_array_elements(v_out) r WHERE r->>'reason' = 'dividend_correction' LOOP
+        SELECT (o)::int - 1 INTO v_pos
+        FROM jsonb_array_elements(v_out) WITH ORDINALITY AS x(r, o)
+        WHERE r->>'kind' = 'dividend' AND r->>'isin' = v_corr->>'isin'
+          AND (r->>'shares')::numeric IS NOT DISTINCT FROM (v_corr->>'shares')::numeric
+          AND (r->>'gross')::numeric = (v_corr->>'gross')::numeric
+        ORDER BY abs((r->>'date')::date - (v_corr->>'date')::date), (r->>'row_no')::int DESC LIMIT 1;
+        IF v_pos IS NOT NULL THEN
+            v_out := jsonb_set(v_out, ARRAY[v_pos::text], (v_out->v_pos) || '{"kind":"unknown","reason":"dividend_correction"}'::jsonb);
+        END IF;
+        v_pos := NULL;
+    END LOOP;
 
     RETURN jsonb_build_object('ok', true, 'profile', v_prof->>'key', 'rows', v_out,
         'unknown_rows', (SELECT COALESCE(jsonb_agg(jsonb_build_object('row_no', r->'row_no', 'date', r->'date',

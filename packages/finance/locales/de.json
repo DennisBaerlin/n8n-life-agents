@@ -807,6 +807,8 @@
   "finance.label.lots_settlement_change": "Wirkung auf das Konto",
   "finance.note.lots_cash_after_cut": "Käufe nach dem {date} sind im bestätigten Kontostand von {account} noch nicht enthalten. Sie werden als echte Käufe gebucht und mindern den Kontostand.",
   "finance.note.lots_mismatch": "{name}: Die Käufe im Export weichen um {difference} Stück von der Übernahme ab – hier wird nichts geändert.",
+  "finance.tpl.statement_trade_tax_row": "Steuer {name}: {amount} am {date}",
+  "finance.note.lots_not_bookable": "{name}: Ein Einzelkauf aus dem Export ist zu klein zum Buchen – hier wird nichts geändert.",
   "finance.wf.finance_tool_import_broker_csv": "Broker-Export (CSV)",
   "finance.dialog.monthly_check_line_csv": "• {name} (Stand bestätigt bis: {date}) – per CSV: in der App den Transaktions-Export (dieses Jahr) erstellen, die Datei hier schicken und den Kontostand nennen, den die App gerade zeigt",
   "finance.cron.reconcile_accounts.label": "Monats-Check (Kontoauszüge)",

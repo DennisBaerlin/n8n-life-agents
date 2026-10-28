@@ -807,6 +807,8 @@
   "finance.label.lots_settlement_change": "Effect on the account",
   "finance.note.lots_cash_after_cut": "Purchases after {date} are not yet included in the confirmed balance of {account}. They are booked as real purchases and reduce the balance.",
   "finance.note.lots_mismatch": "{name}: the purchases in the export differ from the takeover by {difference} units – nothing is changed here.",
+  "finance.tpl.statement_trade_tax_row": "Tax {name}: {amount} on {date}",
+  "finance.note.lots_not_bookable": "{name}: one purchase in the export is too small to book – nothing is changed here.",
   "finance.wf.finance_tool_import_broker_csv": "Broker export (CSV)",
   "finance.dialog.monthly_check_line_csv": "• {name} (balance confirmed up to: {date}) – via CSV: create the transaction export (this year) in the app, send the file here and tell me the balance the app shows right now",
   "finance.cron.reconcile_accounts.label": "Monthly check (bank statements)",

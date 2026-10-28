@@ -31,7 +31,9 @@ DECLARE
         -- 11: Leerzeile (Dateiende)
         '["","","","","","","","","","","","","","","","","","","","","","",""]'::jsonb,
         -- 12: Zins ohne Wertpapier
-        '["2026-09-30T00:00:00Z","2026-09-30","DEFAULT","CASH","INTEREST_PAYMENT","","","","","","1.230000","","","EUR","","","","Interest","aaaa-0010","","","",""]'::jsonb);
+        '["2026-09-30T00:00:00Z","2026-09-30","DEFAULT","CASH","INTEREST_PAYMENT","","","","","","1.230000","","","EUR","","","","Interest","aaaa-0010","","","",""]'::jsonb,
+        -- 13: gleich hohe Dividende derselben ISIN + Stueck ein Quartal frueher -> bleibt Dividende (nur EINE Zeile je Storno)
+        '["2026-06-07T10:00:00Z","2026-06-07","DEFAULT","CASH","DIVIDEND","STOCK","Korr AG","US000TEST003","20.0000000000","","4.000000","","-1.00","EUR","","","","Cash Dividend","aaaa-0011","","","",""]'::jsonb);
     v_res JSONB;
     v_r   JSONB;
     v_acct INT;
@@ -40,8 +42,8 @@ BEGIN
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->>'profile' IS DISTINCT FROM 'trade_republic_v1' THEN
         RAISE EXCEPTION 'FAIL [N1 Profil erkannt]: %', v_res;
     END IF;
-    IF jsonb_array_length(v_res->'rows') <> 10 THEN
-        RAISE EXCEPTION 'FAIL [N2 Leerzeile uebersprungen, 10 Zeilen]: %', jsonb_array_length(v_res->'rows');
+    IF jsonb_array_length(v_res->'rows') <> 11 THEN
+        RAISE EXCEPTION 'FAIL [N2 Leerzeile uebersprungen, 11 Zeilen]: %', jsonb_array_length(v_res->'rows');
     END IF;
     RAISE NOTICE 'PASS [N1/N2 Profil + Zeilen]';
 
@@ -90,6 +92,10 @@ BEGIN
     END IF;
     IF v_res->'account_types' <> '["DEFAULT"]'::jsonb OR v_res->'currencies' <> '["EUR"]'::jsonb THEN
         RAISE EXCEPTION 'FAIL [N13 Unterkonten/Waehrungen]: %', v_res;
+    END IF;
+    SELECT r INTO v_r FROM jsonb_array_elements(v_res->'rows') r WHERE (r->>'row_no')::int = 13;
+    IF v_r->>'kind' <> 'dividend' OR (v_r->>'cash_amount')::numeric <> 3.00 THEN
+        RAISE EXCEPTION 'FAIL [N8b fruehere gleich hohe Dividende bleibt Dividende]: %', v_r;
     END IF;
     RAISE NOTICE 'PASS [N3-N13 Zuordnung]';
 

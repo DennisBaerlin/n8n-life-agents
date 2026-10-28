@@ -41,6 +41,7 @@ DECLARE
     v_stmt     INT;
     v_redated  INT := 0;
     v_trades   INT := 0;
+    v_hold     INT;
 BEGIN
     v_prep := finance.fn_statement_prepare(p - 'fingerprint');
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -118,8 +119,16 @@ BEGIN
             END IF;
         END LOOP;
 
-        -- Broker-CSV: Wertpapier-Zeilen ohne Treffer aus den Export-Werten buchen (Reihenfolge = Datum, Kauf vor Verkauf)
+        -- Broker-CSV: Wertpapier-Zeilen ohne Treffer aus den Export-Werten buchen (Reihenfolge = Datum, Kauf vor Verkauf).
+        -- Verkauf/Dividende einer erst in diesem Export gekauften Position: die Holding entsteht beim Kauf davor.
         FOR v_m IN SELECT e FROM jsonb_array_elements(COALESCE(v_prep->'trades', '[]'::jsonb)) e LOOP
+            v_hold := NULLIF(v_m->>'holding_id', '')::int;
+            IF v_hold IS NULL AND v_m->>'kind' <> 'buy' THEN
+                SELECT h.id INTO v_hold FROM finance.depot_holdings h JOIN finance.accounts d ON d.id = h.account_id
+                WHERE d.settlement_account_id = v_acct AND d.status = 'active'
+                  AND (upper(h.isin) = v_m->>'isin' OR (v_m->>'isin' IS NULL AND h.isin IS NULL AND upper(h.symbol) = upper(v_m->>'symbol')))
+                ORDER BY h.id LIMIT 1;
+            END IF;
             IF v_m->>'kind' = 'buy' THEN
                 v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id', (v_m->>'depot_id')::int,
                            'settlement_id', v_acct, 'isin', v_m->>'isin', 'symbol', v_m->>'symbol', 'name', v_m->>'name',
@@ -127,12 +136,12 @@ BEGIN
                            'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date'));
             ELSIF v_m->>'kind' = 'sell' THEN
                 v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_acct,
-                           'holding_id', (v_m->>'holding_id')::int, 'symbol', v_m->>'symbol',
+                           'holding_id', v_hold, 'symbol', v_m->>'symbol',
                            'shares', (v_m->>'shares')::numeric, 'price_per_share', (v_m->>'price_per_share')::numeric,
                            'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date'));
             ELSE
                 v_r := finance.fn_book_dividend(jsonb_build_object('account_id', v_acct,
-                           'holding_id', (v_m->>'holding_id')::int, 'amount', (v_m->>'amount')::numeric,
+                           'holding_id', v_hold, 'amount', (v_m->>'amount')::numeric,
                            'transaction_date', v_m->>'date', 'description', 'Dividende ' || (v_m->>'name')));
             END IF;
             IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -142,6 +151,18 @@ BEGIN
             v_ids := v_ids || ARRAY_REMOVE(ARRAY[NULLIF(v_r->>'buy_tx_id', '')::int, NULLIF(v_r->>'sell_tx_id', '')::int,
                                                  NULLIF(v_r->>'transaction_id', '')::int], NULL);
             v_trades := v_trades + 1;
+            -- einbehaltene Steuer auf Kauf/Verkauf: eigene Buchung (die Buch-fns kennen keine Steuer), nie im Rest
+            IF COALESCE((v_m->>'tax')::numeric, 0) <> 0 THEN
+                v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
+                           'amount', abs((v_m->>'tax')::numeric),
+                           'direction', CASE WHEN (v_m->>'tax')::numeric < 0 THEN 'outflow' ELSE 'inflow' END,
+                           'category', 'other', 'transaction_date', v_m->>'date',
+                           'description', 'Steuer ' || CASE WHEN v_m->>'kind' = 'sell' THEN 'Verkauf ' ELSE 'Kauf ' END || (v_m->>'name')));
+                IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                    RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = COALESCE(v_m->>'name', 'trade') || ' tax: ' || COALESCE(v_r->>'reason', 'booking refused');
+                END IF;
+                v_ids := v_ids || (v_r->>'tx_id')::int;
+            END IF;
         END LOOP;
 
         FOR v_k IN SELECT e FROM jsonb_array_elements(v_prep->'learn') e LOOP

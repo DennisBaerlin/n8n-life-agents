@@ -375,7 +375,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_replace_takeover_with_lots($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, csv: ({ header: $(\u0027Tokenize CSV\u0027).first().json.header, rows: $(\u0027Tokenize CSV\u0027).first().json.rows }) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, csv: ({ header: $(\u0027Tokenize CSV\u0027).first().json.header, rows: $(\u0027Tokenize CSV\u0027).first().json.rows }), fingerprint: $(\u0027Preview lots\u0027).first().json.r.fingerprint }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -392,6 +392,77 @@
                                                            "name":  "Postgres finance_rw (read-write)"
                                                        }
                                       }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d7a3a818-3faa-5392-abf7-2d01e8ca994b",
+                                                                                   "leftValue":  "={{ $json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       -300
+                                   ],
+                      "id":  "951258ec-8385-55ad-bf43-d83522fce131",
+                      "name":  "Lots replaced?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8ccaa566-72c7-5b1f-9a7d-940bbe74a376",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a324dcd6-9491-505c-a4c2-2202bbeac73e",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Replace lots\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0fe19e21-72e6-5b63-bb42-ce0c23da8a72",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Replace lots\u0027).item.json.r.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       -500
+                                   ],
+                      "id":  "c4e13606-9bcf-59a3-bca7-df6694404fe7",
+                      "name":  "Lots not replaced"
                   },
                   {
                       "parameters":  {
@@ -914,7 +985,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht**\n\nKarte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde. Ablehnung oder kein Kandidat -\u003e weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.",
+                                         "content":  "## DB-Automatik\n**Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht**\n\nKarte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde; der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -\u003e stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -\u003e weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.",
                                          "height":  320,
                                          "width":  300,
                                          "color":  4
@@ -1073,12 +1144,30 @@
                                                           [
                                                               {
                                                                   "index":  0,
-                                                                  "node":  "Prepare statement",
+                                                                  "node":  "Lots replaced?",
                                                                   "type":  "main"
                                                               }
                                                           ]
                                                       ]
                                          },
+                        "Lots replaced?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Prepare statement",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Lots not replaced",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
                         "Prepare statement":  {
                                                   "main":  [
                                                                [

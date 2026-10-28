@@ -807,6 +807,8 @@
   "finance.label.lots_settlement_change": "계좌에 미치는 영향",
   "finance.note.lots_cash_after_cut": "{date} 이후의 매수는 {account}의 확인된 잔액에 아직 포함되어 있지 않습니다. 실제 매수로 기록되어 잔액이 줄어듭니다.",
   "finance.note.lots_mismatch": "{name}: 내보내기의 매수가 이관과 {difference}주 차이가 납니다 – 여기서는 아무것도 바꾸지 않습니다.",
+  "finance.tpl.statement_trade_tax_row": "세금 {name}: {date} {amount}",
+  "finance.note.lots_not_bookable": "{name}: 내보내기의 매수 1건이 너무 작아 기록할 수 없습니다 – 여기서는 아무것도 바꾸지 않습니다.",
   "finance.wf.finance_tool_import_broker_csv": "증권사 내보내기 (CSV)",
   "finance.dialog.monthly_check_line_csv": "• {name} (잔액 확인일: {date}) – CSV로: 앱에서 거래 내보내기(올해)를 만들어 파일을 여기로 보내고, 앱에 지금 표시된 잔액을 알려 주세요",
   "finance.cron.reconcile_accounts.label": "월간 점검 (계좌 명세서)",

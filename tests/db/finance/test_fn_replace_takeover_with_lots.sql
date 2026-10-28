@@ -28,6 +28,8 @@ DECLARE
     v_csv   JSONB;
     v_grp   UUID;
     v_prep  JSONB;
+    v_one   INT;
+    v_dst   INT;
 BEGIN
     v_res := finance.fn_create_account(jsonb_build_object('name', '__t_lots_tr__', 'account_type', 'cash', 'currency', 'EUR',
                  'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text));
@@ -43,6 +45,15 @@ BEGIN
                  'symbol', 'MIS', 'name', 'Mis ETF', 'shares', 5, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_mis := (v_res->>'holding_id')::int;
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSONE1',
+                 'symbol', 'ONE', 'name', 'One ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
+                 'transaction_date', (T - 5)::text, 'existing_position', true));
+    v_one := (v_res->>'holding_id')::int;
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSDST1',
+                 'symbol', 'DST', 'name', 'Dust ETF', 'shares', 0.00006, 'price_per_share', 200, 'order_fee', 0,
+                 'transaction_date', (T - 5)::text, 'existing_position', true));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP dust: %', v_res; END IF;
+    v_dst := (v_res->>'holding_id')::int;
 
     v_csv := jsonb_build_object('header', v_hdr, 'rows', jsonb_build_array(
         pg_temp.tr_row(T - 60, 'BUY',  'IE00LOTSALT1', '1.0000000000',  '-10.00', '-1.00', 'l-01'),
@@ -53,7 +64,13 @@ BEGIN
         pg_temp.tr_row(T - 25, 'BUY',  'IE00LOTSALT1', '2.0000000000',  '-50.00', '', 'l-06'),
         pg_temp.tr_row(T - 8,  'BUY',  'IE00LOTSALT1', '3.0000000000',  '-90.00', '', 'l-07'),
         pg_temp.tr_row(T - 2,  'BUY',  'IE00LOTSALT1', '1.0000000000',  '-31.00', '-1.00', 'l-08'),
-        pg_temp.tr_row(T - 30, 'BUY',  'IE00LOTSMIS1', '4.0000000000',  '-40.00', '', 'l-09')));
+        pg_temp.tr_row(T - 30, 'BUY',  'IE00LOTSMIS1', '4.0000000000',  '-40.00', '', 'l-09'),
+        -- ONE: genau EIN Kauf vor dem Stichtag -> die Ersetzung ist wieder ein Paar, darf aber nie erneut ersetzt werden
+        pg_temp.tr_row(T - 30, 'BUY',  'IE00LOTSONE1', '2.0000000000',  '-24.00', '', 'l-10'),
+        -- DST: FIFO-Rest 0.00001 @ 20 = 0.0002 EUR (unter 1 Cent) -> lots_not_bookable als Daten, kein Absturz
+        pg_temp.tr_row(T - 40, 'BUY',  'IE00LOTSDST1', '1.0000000000',  '-20.00', '', 'l-11'),
+        pg_temp.tr_row(T - 35, 'BUY',  'IE00LOTSDST1', '0.0000500000',  '-0.01', '', 'l-12'),
+        pg_temp.tr_row(T - 30, 'SELL', 'IE00LOTSDST1', '-0.9999900000', '20.00', '', 'l-13')));
     v_p := jsonb_build_object('account_name', '__t_lots_tr__', 'csv', v_csv);
 
     -- Monats-Check VOR dem Ersetzen: Kauf heute-8 steckt in der Uebernahme -> nie gebucht
@@ -75,8 +92,16 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [L2 Probelauf]';
 
-    v_res := finance.fn_replace_takeover_with_lots(v_p);
-    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'replaced') <> 1 THEN
+    -- Plan/Apply: ein anderer fingerprint als der der Karte -> stale_preview, nichts geschrieben
+    v_prep := finance.fn_replace_takeover_with_lots(v_p || '{"fingerprint":"00000000000000000000000000000000"}'::jsonb);
+    IF v_prep->>'code' IS DISTINCT FROM 'stale_preview' OR (SELECT count(*) FROM finance.transactions WHERE holding_id = v_alt) <> 1 THEN
+        RAISE EXCEPTION 'FAIL [L2b stale_preview]: %', v_prep;
+    END IF;
+    RAISE NOTICE 'PASS [L2b fingerprint]';
+
+    v_res := finance.fn_replace_takeover_with_lots(v_p || jsonb_build_object('fingerprint', v_res->>'fingerprint'));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'replaced') <> 2
+       OR v_res->'replaced'->1->>'name' <> 'One ETF' THEN
         RAISE EXCEPTION 'FAIL [L3 ok]: %', v_res;
     END IF;
     IF (v_res->'replaced'->0->>'lots_count')::int <> 4 OR (v_res->'replaced'->0->>'cash_lots_count')::int <> 1
@@ -88,7 +113,9 @@ BEGIN
        OR finance.fn_get_balance(v_tr) <> 910 THEN
         RAISE EXCEPTION 'FAIL [L5 Cash-Wirkung nur fuer den Kauf nach dem Stichtag]: %', v_res;
     END IF;
-    IF jsonb_array_length(v_res->'mismatched') <> 1 OR v_res->'mismatched'->0->>'code' <> 'lots_mismatch'
+    IF jsonb_array_length(v_res->'mismatched') <> 2 OR v_res->'mismatched'->0->>'code' <> 'lots_mismatch'
+       OR v_res->'mismatched'->1->>'code' <> 'lots_not_bookable' OR (v_res->'mismatched'->1->>'holding_id')::int <> v_dst
+       OR (SELECT count(*) FROM finance.transactions t WHERE t.holding_id = v_dst) <> 1
        OR (v_res->'mismatched'->0->>'difference')::numeric <> 1 OR (v_res->'mismatched'->0->>'export_shares')::numeric <> 4
        OR (SELECT count(*) FROM finance.transactions t WHERE t.holding_id = v_mis) <> 1 THEN
         RAISE EXCEPTION 'FAIL [L6 Abweichung, MIS unveraendert]: %', v_res->'mismatched';

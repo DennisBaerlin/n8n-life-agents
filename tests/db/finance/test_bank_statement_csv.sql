@@ -54,15 +54,20 @@ BEGIN
         pg_temp.tr_row(v_due, 'TRADING', 'BUY', 'FUND', 'Sparplan ETF', 'IE00TESTSP01', '0.6000000000', '83.3333333300', '-50.00', '', '', 'id-03', 'Savings plan execution'),
         pg_temp.tr_row(T - 8, 'TRADING', 'BUY', 'FUND', 'Neu ETF', 'IE00TESTNEW1', '2.0000000000', '20.000000', '-40.00', '-1.00', '', 'id-04'),
         pg_temp.tr_row(T - 6, 'CASH', 'DIVIDEND', 'FUND', 'Alt ETF', 'IE00TESTOLD1', '10.0000000000', '', '5.000000', '', '-1.25', 'id-05'),
-        pg_temp.tr_row(T - 5, 'TRADING', 'SELL', 'FUND', 'Alt ETF', 'IE00TESTOLD1', '-2.0000000000', '30.000000', '60.00', '-1.00', '', 'id-06'),
+        pg_temp.tr_row(T - 5, 'TRADING', 'SELL', 'FUND', 'Alt ETF', 'IE00TESTOLD1', '-2.0000000000', '30.000000', '60.00', '-1.00', '-0.50', 'id-06'),
         pg_temp.tr_row(T - 4, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-30.000000', '', '', 'id-07', 'Supermarkt'),
         pg_temp.tr_row(T - 3, 'CASH', 'SOMETHING_NEW', '', '', '', '', '', '-2.000000', '', '', 'id-08', 'Neu'),
         pg_temp.tr_row(T - 2, 'TRADING', 'BUY', 'FUND', 'Alt ETF', 'IE00TESTOLD1', '1.0000000000', '31.000000', '-31.00', '-1.00', '', 'id-09'),
         pg_temp.tr_row(T, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-10.000000', '', '', 'id-10', 'Heute'),
         pg_temp.tr_row(T - 25, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-99.000000', '', '', 'id-11', 'Alt'),
-        pg_temp.tr_row(T - 14, 'TRADING', 'BUY', 'FUND', 'Alt ETF', 'IE00TESTOLD1', '3.0000000000', '30.000000', '-90.00', '-1.00', '', 'id-12'));
-    -- Zeitraum-Summe: 200 - 50 - 41 + 3.75 + 59 - 30 - 2 - 32 - 91 = 16.75 -> Stand gestern 1016.75, heute -10 -> 1006.75
-    v_p := jsonb_build_object('source', 'csv', 'account_name', '__t_bc_tr__', 'closing_balance', 1006.75,
+        pg_temp.tr_row(T - 14, 'TRADING', 'BUY', 'FUND', 'Alt ETF', 'IE00TESTOLD1', '3.0000000000', '30.000000', '-90.00', '-1.00', '', 'id-12'),
+        -- Krypto-Kauf ohne Krypto-Depot (nur ein Aktien-Depot) -> security_unknown, nie ins Aktien-Depot
+        pg_temp.tr_row(T - 7, 'TRADING', 'BUY', 'CRYPTO', 'Bitcoin', 'BTC', '0.0010000000', '20000.000000', '-20.00', '', '', 'id-14'),
+        -- Verkauf aus dem Sparplan-Kauf DIESES Exports (Holding entsteht erst beim Buchen) -> gebucht, kein oversell
+        pg_temp.tr_row(T - 1, 'TRADING', 'SELL', 'FUND', 'Sparplan ETF', 'IE00TESTSP01', '-0.5000000000', '90.000000', '45.00', '-1.00', '', 'id-15'));
+    -- Zeitraum-Summe: 200 - 50 - 41 + 3.75 + 58.50 (Verkauf netto nach Steuer) - 30 - 2 - 32 - 91 - 20 + 44 = 40.25
+    -- -> Stand gestern 1040.25, heute -10 -> 1030.25 (deutsch geschrieben wie vom Nutzer genannt)
+    v_p := jsonb_build_object('source', 'csv', 'account_name', '__t_bc_tr__', 'closing_balance', '1.030,25',
                               'csv', jsonb_build_object('header', v_hdr, 'rows', v_rows));
 
     -- ---------- Ablehnungen ohne Karte ----------
@@ -84,12 +89,12 @@ BEGIN
     v_prep := finance.fn_statement_prepare(v_p);
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [C5 prepare ok]: %', v_prep; END IF;
     IF (v_prep->>'period_start')::date <> T - 19 OR (v_prep->>'period_end')::date <> T - 1
-       OR (v_prep->>'closing_balance')::numeric <> 1016.75 OR (v_prep->>'after_period')::numeric <> -10
-       OR (v_prep->>'owner_balance')::numeric <> 1006.75 OR v_prep->>'balance_source' <> 'owner' THEN
+       OR (v_prep->>'closing_balance')::numeric <> 1040.25 OR (v_prep->>'after_period')::numeric <> -10
+       OR (v_prep->>'owner_balance')::numeric <> 1030.25 OR v_prep->>'balance_source' <> 'owner' THEN
         RAISE EXCEPTION 'FAIL [C6 Zeitraum + Saldo]: %', v_prep;
     END IF;
-    IF (v_prep->>'drift')::numeric <> 0 OR (v_prep->>'lump')::numeric <> 77.00 THEN
-        RAISE EXCEPTION 'FAIL [C7 drift 0, Rest 77]: drift % lump %', v_prep->>'drift', v_prep->>'lump';
+    IF (v_prep->>'drift')::numeric <> 0 OR (v_prep->>'lump')::numeric <> 57.00 THEN
+        RAISE EXCEPTION 'FAIL [C7 drift 0, Rest 57]: drift % lump %', v_prep->>'drift', v_prep->>'lump';
     END IF;
     IF (v_prep->>'unmatched_out')::numeric <> -32 OR (v_prep->>'unmatched_in')::numeric <> 200 THEN
         RAISE EXCEPTION 'FAIL [C8 Wertpapiere nie in unmatched]: out % in %', v_prep->>'unmatched_out', v_prep->>'unmatched_in';
@@ -98,19 +103,21 @@ BEGIN
        OR (v_prep->'matched'->0->>'shares')::numeric <> 0.6 OR (v_prep->'matched'->0->>'shares_estimated')::boolean THEN
         RAISE EXCEPTION 'FAIL [C9 Sparplan exakt]: %', v_prep->'matched';
     END IF;
-    IF jsonb_array_length(v_prep->'trades') <> 4
+    IF jsonb_array_length(v_prep->'trades') <> 5
        OR (SELECT string_agg(x->>'kind' || ':' || (x->>'amount'), ',' ORDER BY (x->>'line_idx')::int) FROM jsonb_array_elements(v_prep->'trades') x)
-          <> 'buy:-41.00,dividend:3.75,sell:59.00,buy:-32.00' THEN
+          <> 'buy:-41.00,dividend:3.75,sell:59.00,buy:-32.00,sell:44.00'
+       OR (SELECT (x->>'tax')::numeric FROM jsonb_array_elements(v_prep->'trades') x WHERE x->>'kind' = 'sell' AND x->>'symbol' = 'ALT') <> -0.50 THEN
         RAISE EXCEPTION 'FAIL [C10 Trades]: %', v_prep->'trades';
     END IF;
-    IF jsonb_array_length(v_prep->'trades_blocked') <> 1 OR v_prep->'trades_blocked'->0->>'reason' <> 'covered_by_takeover'
-       OR (v_prep->'trades_blocked'->0->>'amount')::numeric <> -91 THEN
-        RAISE EXCEPTION 'FAIL [C11 covered_by_takeover]: %', v_prep->'trades_blocked';
+    IF jsonb_array_length(v_prep->'trades_blocked') <> 2 OR v_prep->'trades_blocked'->0->>'reason' <> 'covered_by_takeover'
+       OR (v_prep->'trades_blocked'->0->>'amount')::numeric <> -91
+       OR v_prep->'trades_blocked'->1->>'reason' <> 'security_unknown' OR (v_prep->'trades_blocked'->1->>'amount')::numeric <> -20 THEN
+        RAISE EXCEPTION 'FAIL [C11 covered_by_takeover + Krypto ohne Krypto-Depot]: %', v_prep->'trades_blocked';
     END IF;
     IF jsonb_array_length(v_prep->'csv_unknown') <> 1 OR (v_prep->'csv_unknown'->0->>'cash_amount')::numeric <> -2 THEN
         RAISE EXCEPTION 'FAIL [C12 csv_unknown]: %', v_prep->'csv_unknown';
     END IF;
-    IF jsonb_array_length(v_prep->'seen_refs') <> 9 OR (v_prep->>'late_count')::int <> 0 THEN
+    IF jsonb_array_length(v_prep->'seen_refs') <> 11 OR (v_prep->>'late_count')::int <> 0 THEN
         RAISE EXCEPTION 'FAIL [C13 seen_refs/late]: %', v_prep->'seen_refs';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_owner_balance')
@@ -123,19 +130,22 @@ BEGIN
     -- ---------- Buchung ----------
     v_app := finance.fn_apply_bank_statement(v_p || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
     IF (v_app->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [C15 apply]: %', v_app; END IF;
-    IF (v_app->>'trades_booked')::int <> 4 OR (v_app->>'balance_after')::numeric <> 1016.75
-       OR (v_app->>'lump_amount')::numeric <> 77.00 OR jsonb_array_length(v_app->'savings_plan_estimated') <> 0 THEN
+    IF (v_app->>'trades_booked')::int <> 5 OR (v_app->>'balance_after')::numeric <> 1040.25
+       OR (v_app->>'lump_amount')::numeric <> 57.00 OR jsonb_array_length(v_app->'savings_plan_estimated') <> 0 THEN
         RAISE EXCEPTION 'FAIL [C16 apply Zahlen]: %', v_app;
     END IF;
     IF (SELECT shares FROM finance.depot_holdings WHERE id = v_old) <> 9
        OR (SELECT shares FROM finance.depot_holdings WHERE isin = 'IE00TESTNEW1') <> 2
-       OR (SELECT h.shares FROM finance.depot_holdings h WHERE h.isin = 'IE00TESTSP01') <> 0.6
+       OR (SELECT h.shares FROM finance.depot_holdings h WHERE h.isin = 'IE00TESTSP01') <> 0.1
+       OR NOT EXISTS (SELECT 1 FROM finance.depot_holdings h WHERE h.symbol = 'ALT' AND h.id = v_old)
+       OR (SELECT count(*) FROM finance.transactions WHERE account_id = v_tr AND amount = -0.50
+           AND description = 'Steuer Verkauf Alt ETF' AND bank_statement_id = (v_app->>'statement_id')::int) <> 1
        OR EXISTS (SELECT 1 FROM finance.transactions WHERE account_id = v_tr AND shares_estimated) THEN
         RAISE EXCEPTION 'FAIL [C17 Bestaende]';
     END IF;
     IF (SELECT balance_source FROM finance.bank_statements WHERE id = (v_app->>'statement_id')::int) <> 'owner'
-       OR (SELECT count(*) FROM finance.statement_seen_refs WHERE statement_id = (v_app->>'statement_id')::int) <> 9
-       OR (SELECT count(*) FROM finance.transactions WHERE bank_statement_id = (v_app->>'statement_id')::int AND category::text IN ('buy', 'sell', 'dividend')) <> 5
+       OR (SELECT count(*) FROM finance.statement_seen_refs WHERE statement_id = (v_app->>'statement_id')::int) <> 11
+       OR (SELECT count(*) FROM finance.transactions WHERE bank_statement_id = (v_app->>'statement_id')::int AND category::text IN ('buy', 'sell', 'dividend')) <> 6
        OR (SELECT last_reconciled_at FROM finance.accounts WHERE id = v_tr) <> T - 1 THEN
         RAISE EXCEPTION 'FAIL [C18 Aggregat + Herkunft]';
     END IF;
@@ -149,14 +159,17 @@ BEGIN
     -- Simuliert den naechsten Export: der vorige CSV-Abgleich endete heute-3 (Zeitraum heute-19..heute-3).
     UPDATE finance.bank_statements SET period_end = T - 3 WHERE id = (v_app->>'statement_id')::int;
     UPDATE finance.accounts SET last_reconciled_at = T - 3 WHERE id = v_tr;
-    v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('closing_balance', 1001.75,
+    -- der Kauf ALT (Export heute-2) liegt im System VOR dem Schnitt (von Hand frueher datiert) -> trotzdem Stufe 0
+    UPDATE finance.transactions SET transaction_date = T - 4
+    WHERE holding_id = v_old AND category::text = 'buy' AND shares = 1 AND bank_statement_id = (v_app->>'statement_id')::int;
+    v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('closing_balance', 1025.25,
                  'csv', jsonb_build_object('header', v_hdr, 'rows', v_rows || jsonb_build_array(
                      pg_temp.tr_row(T - 7, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-5.000000', '', '', 'id-13', 'Spaet')))));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'late_count')::int <> 1 THEN
         RAISE EXCEPTION 'FAIL [C20 spaete Zeile]: %', v_res;
     END IF;
-    -- im neuen Zeitraum (heute-2..gestern): Kauf ALT heute-2 ist schon gebucht (Stufe 0), die spaete Zeile zaehlt
-    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'already_booked') b WHERE (b->>'trade')::boolean)
+    -- im neuen Zeitraum (heute-2..gestern): Kauf ALT (im System heute-4) und Verkauf SPX sind schon gebucht (Stufe 0), die spaete Zeile zaehlt
+    IF (SELECT count(*) FROM jsonb_array_elements(v_res->'already_booked') b WHERE (b->>'trade')::boolean) <> 2
        OR jsonb_array_length(v_res->'trades') <> 0 OR (v_res->>'unmatched_out')::numeric <> -5 THEN
         RAISE EXCEPTION 'FAIL [C21 Stufe 0 Trade + spaet]: %', v_res;
     END IF;

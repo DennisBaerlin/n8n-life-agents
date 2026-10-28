@@ -39,7 +39,7 @@ Host-Paket: Agent-Plattform (Schemas `agent` + `core`) — Orchestrator, Guide, 
 
 ## Mini-App (`core.app_*`)
 
-- Sichtbarkeit nur in der Bildschirm-fn (Rolle selbst auflösen, nur owner/partner = Haushalt); `core.fn_app_screen` wirft nie. → `docs/reference/core.md` *Mini-App*.
+- Sichtbarkeit nur in der Bildschirm-fn, Rollenfrage nur über `core.fn_app_sees_household`; `core.fn_app_screen` wirft nie. → `docs/reference/core.md` *Mini-App*.
 
 ## Backup/Restore
 

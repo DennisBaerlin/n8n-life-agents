@@ -115,5 +115,16 @@
     "ui": { "lang": "de", "locale": "de-DE", "t": { "core.app.error.expired": "Die Übersicht ist abgelaufen. Bitte schließen und neu öffnen." } },
     "text": { "kind": "tpl", "value": "core.app.error.expired", "params": {} }
   },
-  "handler_probe": { "ok": true, "empty": false }
+  "handler_probe": {
+    "ok": true,
+    "empty": false,
+    "banners": [
+      {
+        "state": "warn",
+        "icon": "clock",
+        "text": { "kind": "tpl", "value": "finance.app.payments.banner_tight", "params": { "account": "Girokonto Beispielbank", "min": { "kind": "money", "value": 412.80, "currency": "EUR" }, "date": { "kind": "date", "value": "2026-11-27" } } },
+        "target": { "screen": "payments", "params": {} }
+      }
+    ]
+  }
 }

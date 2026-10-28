@@ -366,21 +366,32 @@ $$;
 --   Rate - Zins. Faellige, noch nicht gebuchte Raten zaehlen mit; Annahme: gleicher Zins, keine Sondertilgung.
 --   RUECKGABE: Restschuld (2 Nachkommastellen), 0 sobald getilgt; NULL bei Ziel <= heute, ohne Segmente (pausiert /
 --   ohne Rate) oder ueber 2.400 Termine (Iterationsdeckel). IM INIT, weil loan_overview (R__finance_views laeuft vor
---   allen R__fn_*) sie nutzt.
-CREATE OR REPLACE FUNCTION finance.fn_loan_balance_at(
-    p_balance numeric, p_rate_pct numeric, p_segments jsonb, p_after date, p_target date, p_today date
-) RETURNS numeric LANGUAGE plpgsql IMMUTABLE AS $$
+--   allen R__fn_*) sie nutzt. Duenner Wrapper ueber fn_loan_simulate (EINE Simulation, auch fuer das Tilgungsende).
+-- fn_loan_simulate: der gemeinsame Kern (gleiche Argumente) -> (balance, payoff_date, interest_total):
+--   balance        = wie fn_loan_balance_at;
+--   payoff_date    = Termin der Rate, die die Restschuld auf <= 0 bringt (NULL: bis p_target nicht getilgt, schon
+--                    getilgt, Deckel oder Guard);
+--   interest_total = Summe der Zinsanteile aller simulierten Raten bis p_target bzw. bis zur Tilgung (inkl. der
+--                    letzten Teil-Rate); NULL bei Guard/Deckel, 0 wenn schon getilgt.
+CREATE OR REPLACE FUNCTION finance.fn_loan_simulate(
+    p_balance numeric, p_rate_pct numeric, p_segments jsonb, p_after date, p_target date, p_today date,
+    OUT balance numeric, OUT payoff_date date, OUT interest_total numeric
+) LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
     v_bal NUMERIC := p_balance;
+    v_int NUMERIC := 0;
+    v_i   NUMERIC;
     v_n   INT := 0;
     r     RECORD;
 BEGIN
     IF p_target IS NULL OR p_today IS NULL OR p_target <= p_today OR p_balance IS NULL
        OR p_segments IS NULL OR jsonb_typeof(p_segments) <> 'array' OR jsonb_array_length(p_segments) = 0 THEN
-        RETURN NULL;
+        RETURN;
     END IF;
     IF v_bal <= 0 THEN
-        RETURN 0;
+        balance := 0;
+        interest_total := 0;
+        RETURN;
     END IF;
     FOR r IN
         SELECT o.d,
@@ -398,15 +409,27 @@ BEGIN
     LOOP
         v_n := v_n + 1;
         IF v_n > 2400 THEN
-            RETURN NULL;
+            RETURN;
         END IF;
-        v_bal := v_bal - (r.amt - finance.fn_loan_monthly_interest(v_bal, p_rate_pct, r.months));
+        v_i   := finance.fn_loan_monthly_interest(v_bal, p_rate_pct, r.months);
+        v_int := v_int + v_i;
+        v_bal := v_bal - (r.amt - v_i);
         IF v_bal <= 0 THEN
-            RETURN 0;
+            balance := 0;
+            payoff_date := r.d;
+            interest_total := v_int;
+            RETURN;
         END IF;
     END LOOP;
-    RETURN ROUND(v_bal, 2);
+    balance := ROUND(v_bal, 2);
+    interest_total := v_int;
 END;
+$$;
+
+CREATE OR REPLACE FUNCTION finance.fn_loan_balance_at(
+    p_balance numeric, p_rate_pct numeric, p_segments jsonb, p_after date, p_target date, p_today date
+) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
+    SELECT (finance.fn_loan_simulate(p_balance, p_rate_pct, p_segments, p_after, p_target, p_today)).balance;
 $$;
 
 -- fn_valid_schedule_days: Domaene einer Liste fester Monatstage (recurring_payments.schedule_days_of_month,
@@ -2560,6 +2583,10 @@ $$;
 --     (Rhythmus, Gueltigkeit [valid_from, valid_to), Betrag positiv).
 --   fn_loan_projected_balance(loan, target, today): voraussichtliche Restschuld zum Zieldatum (bei gleichem Zins, ohne
 --     Sondertilgung) -- NULL bei pausiertem/abgeschlossenem Kredit, ohne Rate oder Ziel <= heute.
+--   fn_loan_projected_payoff(loan, today) -> (payoff_date, interest_total): voraussichtliches Tilgungsende + Zinsen bis
+--     dahin, dieselbe Simulation (fn_loan_simulate) bis heute + 100 Jahre (fn_schedule_occurrences erzeugt die Termine
+--     vorab, also ein festes Ende; der 2.400-Termine-Deckel greift davor). Beide NULL, wenn der Kredit so nie getilgt
+--     wird (Rate <= Zins), beim Deckel, pausiert/abgeschlossen oder ohne Rate.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_last_done(p_rp_id int)
 RETURNS date LANGUAGE sql STABLE AS $$
@@ -2583,15 +2610,31 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
     WHERE r.id IN (SELECT finance.fn_recurring_lineage(p_rp_id)) AND r.status = 'active';
 $$;
 
-CREATE OR REPLACE FUNCTION finance.fn_loan_projected_balance(p_loan_id int, p_target date, p_today date)
-RETURNS numeric LANGUAGE sql STABLE AS $$
-    SELECT finance.fn_loan_balance_at(
-               GREATEST(-b.balance, 0), l.interest_rate,
-               CASE WHEN l.status = 'active' THEN finance.fn_recurring_segments(l.recurring_payment_id) END,
-               finance.fn_recurring_last_done(l.recurring_payment_id), p_target, p_today)
+-- fn_loan_projection: die EINE Eingabe-Aufbereitung (Restschuld, Glieder, letzter erledigter Termin) fuer
+-- fn_loan_simulate; projected_balance und projected_payoff lesen beide hier (keine zweite Stelle zum Pflegen).
+CREATE OR REPLACE FUNCTION finance.fn_loan_projection(p_loan_id int, p_target date, p_today date,
+    OUT balance numeric, OUT payoff_date date, OUT interest_total numeric)
+LANGUAGE sql STABLE AS $$
+    SELECT s.balance, s.payoff_date, s.interest_total
     FROM finance.loans l
     LEFT JOIN finance.account_balances b ON b.account_id = l.loan_account_id
+    CROSS JOIN LATERAL finance.fn_loan_simulate(
+               GREATEST(-b.balance, 0), l.interest_rate,
+               CASE WHEN l.status = 'active' THEN finance.fn_recurring_segments(l.recurring_payment_id) END,
+               finance.fn_recurring_last_done(l.recurring_payment_id), p_target, p_today) s
     WHERE l.id = p_loan_id;
+$$;
+
+CREATE OR REPLACE FUNCTION finance.fn_loan_projected_balance(p_loan_id int, p_target date, p_today date)
+RETURNS numeric LANGUAGE sql STABLE AS $$
+    SELECT (finance.fn_loan_projection(p_loan_id, p_target, p_today)).balance;
+$$;
+
+CREATE OR REPLACE FUNCTION finance.fn_loan_projected_payoff(p_loan_id int, p_today date,
+    OUT payoff_date date, OUT interest_total numeric)
+LANGUAGE sql STABLE AS $$
+    SELECT p.payoff_date, CASE WHEN p.payoff_date IS NOT NULL THEN p.interest_total END
+    FROM finance.fn_loan_projection(p_loan_id, (p_today + interval '100 years')::date, p_today) p;
 $$;
 
 -- ============================================================

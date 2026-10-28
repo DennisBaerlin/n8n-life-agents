@@ -209,6 +209,8 @@ BEGIN
     SET LOCAL ROLE finance_ro;
     IF finance.fn_to_eur(10, 'USD') IS DISTINCT FROM 9.26 THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_to_eur]'; END IF;
     PERFORM count(*) FROM finance.depot_holdings_overview;
+    -- Uebersicht R3: loan_overview ruft fn_loan_projected_payoff -> fn_loan_simulate (EXECUTE gegen den Aufrufer)
+    PERFORM payoff_date_projected, interest_remaining_projected FROM finance.loan_overview;
     RESET ROLE;
   END;
   RAISE NOTICE 'PASS [finance_rw -> Monats-Check prepare/apply/void + Kurs-Umrechnung, finance_ro -> fn_resolve_account_by_number + fn_to_eur/Views]';

@@ -113,7 +113,13 @@ SELECT
               / l.original_amount * 100 - l.interest_rate, 2)
     END                                AS initial_principal_rate,
     finance.fn_loan_projected_balance(l.id, l.interest_rate_fixed_until, current_date) AS balance_at_fixed_until_projected,
-    finance.fn_loan_projected_balance(l.id, l.term_end_date, current_date)             AS balance_at_term_end_projected
+    finance.fn_loan_projected_balance(l.id, l.term_end_date, current_date)             AS balance_at_term_end_projected,
+    -- Uebersicht R3 (ans Ende angehaengt): voraussichtliches Tilgungsende + Zinsen bis dahin (fn_loan_projected_payoff,
+    -- dieselbe Simulation wie balance_at_*; gleicher Zins, ohne Sondertilgung; NULL wenn so nie getilgt). Bewusst als
+    -- Ausdruck in der SELECT-Liste, nicht als LATERAL-Join: eine nicht abgefragte Spalte rechnet die einfache View dann
+    -- nicht mit (Write-fns, loan_summary, Agent-SQL lesen loan_overview ohne diese Spalten).
+    (finance.fn_loan_projected_payoff(l.id, current_date)).payoff_date    AS payoff_date_projected,
+    (finance.fn_loan_projected_payoff(l.id, current_date)).interest_total AS interest_remaining_projected
 FROM finance.loans l
 LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(l.recurring_payment_id, current_date)
 LEFT JOIN LATERAL (
@@ -574,7 +580,9 @@ SELECT b.id                                                       AS real_estate
        r.monthly_eur                                              AS running_monthly_eur,
        CASE WHEN (b.rec->>'ok')::boolean AND b.goal_id IS NOT NULL
             THEN (b.rec->>'monthly_eur')::numeric - r.monthly_eur END                AS gap_monthly_eur,
-       COALESCE(r.fx_gap, false)                                  AS has_fx_gap
+       COALESCE(r.fx_gap, false)                                  AS has_fx_gap,
+       -- Uebersicht R3 (ans Ende): Jahresbetrag der Empfehlung (Flaeche x Satz) fuer die Herleitung in der Mini-App
+       CASE WHEN (b.rec->>'ok')::boolean THEN (b.rec->>'annual_eur')::numeric END  AS recommended_annual
 FROM base b
 LEFT JOIN run r ON r.goal_id = b.goal_id
 LEFT JOIN finance.savings_goal_progress p ON p.id = b.goal_id;
@@ -698,7 +706,10 @@ SELECT
     h.asset_class,
     -- Kurs-Luecken 2026-10-27 (ans Ende angehaengt): ok | stale | missing aus finance.fn_price_status (Init-Helfer,
     -- dieselbe Regel wie fn_holding_price_status/fn_advisor_review) -> der Agent sagt "Kurs fehlt/veraltet".
-    finance.fn_price_status(lp.as_of)                   AS price_status
+    finance.fn_price_status(lp.as_of)                   AS price_status,
+    -- Uebersicht R3 (ans Ende angehaengt): der juengste Kurs selbst (in price_currency) fuer die Anzeige
+    -- "Kurs 148,60 $" bei Fremdwaehrung, statt ihn aus market_value / shares zurueckzurechnen.
+    lp.price                                            AS latest_price
 FROM finance.depot_holdings h
 JOIN finance.accounts a ON a.id = h.account_id
 LEFT JOIN latest_price lp ON lp.symbol = h.symbol
@@ -862,7 +873,8 @@ WHERE finance.fn_loan_is_outstanding(status);
 --     (current_value); abgeleitet aus dem Entitaets-Typ, KEIN Tag. Kredite/Restschuld stehen separat im
 --     loan-bucket (kein Netten ins real_estate -> sauberes Brutto-Asset + separate Verbindlichkeit).
 -- Multi-Member (WS-3a Custodial-Scope): jede Zeile traegt jetzt owner_person_id (Eigentuemer-Person aus
---   accounts/real_estate/pension; Depot ERBT ueber das Konto via JOIN; NULL = Haushalt/gemeinsam). Drei
+--   accounts/real_estate/pension; Depot ERBT ueber das Konto via JOIN; Kreditkonto ohne owner -> Kreditnehmer;
+--   NULL = Haushalt/gemeinsam). Nur aktive Depot-Konten (wie Cash). Drei
 --   Sichten auf EINE Datenbasis: T1 Gesamt-Familie (Caller lassen owner_person_id aus dem GROUP BY -> SUM
 --   kollabiert, additiv) · T2 Eltern-/FIRE-Pool (Konsument schliesst role='child' via core.fn_household_persons()
 --   aus) · T3 Pro-Kind (WHERE owner_person_id = Kind-Slug). owner_person_id ist roher Slug (kein Window-Join in
@@ -894,6 +906,7 @@ parts AS (
     JOIN finance.accounts da ON da.id = h.account_id
     LEFT JOIN latest_price lp ON lp.symbol = h.symbol
     WHERE h.shares > 0
+      AND da.status = 'active'   -- wie Cash unten: ein geschlossenes Depot zaehlt nicht (Uebersicht R3: Depotwert = Anlageart)
 
     UNION ALL
     -- Cash/Festgeld = BRUTTO-balance (WS-B: Earmark-Netting via savings_goal_allocations entfallen, FIRE-Topf-
@@ -901,11 +914,18 @@ parts AS (
     -- reine Depot-Konten raus.
     SELECT CASE a.account_type WHEN 'p2p' THEN 'p2p' WHEN 'loan' THEN 'loan' WHEN 'fixed_deposit' THEN 'fixed_deposit' ELSE 'cash' END AS bucket,
            CASE a.account_type WHEN 'p2p' THEN 'p2p' WHEN 'loan' THEN 'loan' WHEN 'fixed_deposit' THEN 'fixed_deposit' ELSE 'cash' END AS asset_class,
-           a.owner_person_id AS owner_person_id,
+           -- Kreditkonten legt fn_create_loan ohne owner an -> Eigentuemer = Kreditnehmer des Kredits (Uebersicht R3:
+           -- der Kredit eines Kindes gehoert in dessen Vermoegen, nicht in den Haushalts-Pool).
+           COALESCE(a.owner_person_id, ln.borrower_person_id) AS owner_person_id,
            finance.fn_to_eur(b.balance, a.currency) AS value_eur,  -- cash/fixed_deposit brutto, p2p (Nennwert), loan (negativ)
            b.balance AS value_native
     FROM finance.accounts a
     JOIN finance.account_balances b ON b.account_id = a.id
+    LEFT JOIN LATERAL (
+        SELECT l.borrower_person_id FROM finance.loans l
+         WHERE a.account_type = 'loan' AND l.loan_account_id = a.id
+         ORDER BY l.id LIMIT 1
+    ) ln ON true
     WHERE a.status = 'active'
       AND a.account_type IN ('cash','fixed_deposit','p2p','loan')
 

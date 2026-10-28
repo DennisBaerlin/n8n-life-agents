@@ -75,6 +75,7 @@
         },
         {
           "title": { "kind": "tpl", "value": "finance.app.overview.section_accounts", "params": {} },
+          "value": { "kind": "money", "value": 3510.55, "currency": "EUR" },
           "empty": { "kind": "tpl", "value": "finance.app.overview.empty", "params": {} },
           "items": [
             {
@@ -84,7 +85,12 @@
               "gap": false,
               "pill": null,
               "progress": null,
-              "target": null
+              "target": null,
+              "details": [
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_rate", "params": {} },
+                  "value": { "kind": "money", "value": 12.5, "currency": "EUR", "sign": true } },
+                { "label": "Rohname aus Import", "value": null }
+              ]
             },
             {
               "label": "Reisekasse USD",

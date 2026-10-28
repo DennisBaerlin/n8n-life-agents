@@ -1,9 +1,10 @@
 -- tests/db/finance/test_fn_app_screen_loans.sql
 -- finance.fn_app_screen_loans(p jsonb) — Mini-App-Bildschirm „Kredite“ (docs/package-contract.md §3.12, View-Modell v1).
 --   1) Haushalt (owner = partner): ausstehende Kredite (active + paused, nie paid_off), Restschuld positiv in
---      Kontowaehrung, „Rate · Zins“, getilgt-Balken nur mit Kreditbetrag, Hero = Restschuld gesamt in EUR.
+--      Kontowaehrung, „Bank · Zins · Rate“, getilgt-Balken nur mit Kreditbetrag, Hero = Restschuld ohne Kinder-Kredite
+--      (= Vermoegen „Kredite“) + Note Raten/Zins, Kinder-Kredit im eigenen Abschnitt, Details in fester Reihenfolge.
 --      Pillen (warn vor neutral): Bindung endet in [heute, heute + 12 Monate) -> warn, auch pausiert; pausiert sonst neutral;
---      genau 12 Monate -> keine; abgelaufen -> warn „endete“.
+--      genau 12 Monate -> keine Warnung; abgelaufen -> warn „endete“; sonst „schuldenfrei {Jahr}“.
 --   2) Kind: nur Kredite mit borrower_person_id = ich; Volltextsuche: kein Haushalts-/Partnerkredit, keine Kontonamen, kein *id.
 --   3) probe -> {ok, empty, banners}: Banner nur fuer die bald endende Bindung (mit Restschuld zum Bindungsende), nicht
 --      fuer pausiert/abgelaufen; volle View banners [].
@@ -14,7 +15,7 @@ DO $$
 DECLARE
   t DATE := CURRENT_DATE;
   v_giro INT; v_l1 INT; v_l2 INT; v_l3 INT; v_l4 INT; v_l5 INT; v_l6 INT; v_l7 INT; v_l8 INT;
-  v jsonb; v_txt text; v_it jsonb;
+  v jsonb; v_txt text; v_it jsonb; v_keys text[];
 BEGIN
   INSERT INTO agent.persons (person_id, full_name, role) VALUES
     ('apl_owner', 'Owner Beispiel', 'owner'), ('apl_partner', 'Partner Beispiel', 'partner'), ('apl_kid', 'Kind Beispiel', 'child');
@@ -47,28 +48,59 @@ BEGIN
   UPDATE finance.loans SET status = 'paused' WHERE id IN (v_l4, v_l8);
   UPDATE finance.loans SET interest_rate_fixed_until = t - 30 WHERE id = v_l5;
   UPDATE finance.loans SET status = 'paid_off' WHERE id = v_l7;
+  -- wie im echten Ablauf (die letzte Rate bringt die Restschuld auf 0, fn_mark_loan_paid_off)
+  UPDATE finance.account_balances SET balance = 0 WHERE account_id = (SELECT loan_account_id FROM finance.loans WHERE id = v_l7);
 
   -- ===== 1) Haushalt =====
   v := finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_owner', 'params', '{}'::jsonb));
   IF (v->>'ok')::boolean IS NOT TRUE OR v->'title' <> core.fn_ui_tpl('finance.app.loans.title')
-     OR jsonb_array_length(v->'banners') <> 0 OR jsonb_array_length(v->'sections') <> 1 THEN
-    RAISE EXCEPTION 'FAIL [1a] View-Modell v1 / volle View ohne Banner: %', v; END IF;
-  IF v->'hero'->'value' <> core.fn_ui_money(13300, 'EUR') OR (v->'hero'->>'gap')::boolean
+     OR jsonb_array_length(v->'banners') <> 0 OR jsonb_array_length(v->'sections') <> 2 THEN
+    RAISE EXCEPTION 'FAIL [1a] View-Modell v1 / volle View ohne Banner, Laufende + Kinder: %', v; END IF;
+  -- Hero ohne paid_off und ohne Kinder-Kredit (500): 8000 + 2000 + 1000 + 1500 + 100 + 200
+  IF v->'hero'->'value' <> core.fn_ui_money(12800, 'EUR') OR (v->'hero'->>'gap')::boolean
      OR v->'hero'->'label' <> core.fn_ui_tpl('finance.app.loans.hero') THEN
-    RAISE EXCEPTION 'FAIL [1b] Hero 13300 (ohne paid_off) erwartet: %', v->'hero'; END IF;
-  IF jsonb_array_length(v->'sections'->0->'items') <> 7 OR v::text LIKE '%__apl_bezahlt__%' THEN
-    RAISE EXCEPTION 'FAIL [1c] 7 ausstehende Kredite erwartet: %', v->'sections'; END IF;
+    RAISE EXCEPTION 'FAIL [1b] Hero 12800 (ohne paid_off, ohne Kind) erwartet: %', v->'hero'; END IF;
+  -- Note: Raten der aktiven Haushalts-Kredite 300 + 100 + 100 + 50; Zins 23.33 + 3.33 + 5.00 + 0.33
+  IF v->'hero'->'note' <> core.fn_ui_tpl('finance.app.loans.hero_note', jsonb_build_object(
+       'rate', core.fn_ui_money(550, 'EUR'), 'interest', core.fn_ui_money(31.99, 'EUR'))) THEN
+    RAISE EXCEPTION 'FAIL [1b2] Hero-Note Raten 550 · Zins 31.99, got %', v->'hero'->'note'; END IF;
+  -- dieselbe Zahl wie die Vermoegen-Seite (Schulden -> Kredite)
+  IF (SELECT (s->'items'->0->'value'->>'value')::numeric
+        FROM jsonb_array_elements(finance.fn_app_screen_overview(jsonb_build_object('person_id', 'apl_owner'))->'sections') s
+       WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_debts')) IS DISTINCT FROM -12800 THEN
+    RAISE EXCEPTION 'FAIL [1b3] Vermoegen „Kredite" muss = Kredit-Hero (-12800) sein'; END IF;
+  IF jsonb_array_length(v->'sections'->0->'items') <> 6 OR v::text LIKE '%__apl_bezahlt__%' THEN
+    RAISE EXCEPTION 'FAIL [1c] 6 ausstehende Haushalts-Kredite erwartet: %', v->'sections'; END IF;
+  IF v->'sections'->1->'title' <> core.fn_ui_tpl('finance.app.loans.section_kids')
+     OR v->'sections'->1->'value' <> core.fn_ui_money(500, 'EUR')
+     OR v->'sections'->1->'items'->0->>'label' <> '__apl_kid_kredit__' THEN
+    RAISE EXCEPTION 'FAIL [1c2] Kinder-Abschnitt mit Summe 500: %', v->'sections'->1; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_haus__';
   IF v_it->'value' <> core.fn_ui_money(8000, 'EUR') OR (v_it->'progress'->>'pct')::numeric IS DISTINCT FROM 20.0
-     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.loans.rate_line',
-          jsonb_build_object('rate', core.fn_ui_money(300, 'EUR'), 'interest', core.fn_ui_num(3.5, 2)))
+     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.loans.rate_line_lender', jsonb_build_object(
+          'lender', 'Bank', 'rate', core.fn_ui_money(300, 'EUR'), 'interest', core.fn_ui_num(3.5, 2)))
      OR v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->>'icon' <> 'calendar'
      OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.fixed_ends',
           jsonb_build_object('date', core.fn_ui_date((t + interval '12 months')::date - 1))) THEN
-    RAISE EXCEPTION 'FAIL [1d] Haus-Kredit (Rest, 20 %% getilgt, Rate/Zins, warn 1 Tag vor 12 Monaten): %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [1d] Haus-Kredit (Rest, 20 %% getilgt, Bank/Zins/Rate, warn 1 Tag vor 12 Monaten): %', v_it; END IF;
+  SELECT array_agg(d->'label'->>'value' ORDER BY o) INTO v_keys FROM jsonb_array_elements(v_it->'details') WITH ORDINALITY AS t(d, o);
+  IF v_keys IS DISTINCT FROM ARRAY['finance.app.loans.d_borrower', 'finance.app.loans.d_amount', 'finance.app.loans.d_repaid',
+                                   'finance.app.loans.d_split', 'finance.app.loans.d_fixed', 'finance.app.loans.d_payoff',
+                                   'finance.app.loans.d_interest_left'] THEN
+    RAISE EXCEPTION 'FAIL [1d2] Details in fester Reihenfolge, NULL-Zeilen entfallen (kein Laufzeitende), got %', v_keys; END IF;
+  IF v_it->'details'->0->'value' <> core.fn_ui_tpl('finance.app.common.joint')
+     OR v_it->'details'->2->'value' <> core.fn_ui_tpl('finance.app.loans.d_repaid_value', jsonb_build_object(
+          'pct', core.fn_ui_num(20.0, 1), 'amount', core.fn_ui_money(2000, 'EUR')))
+     OR v_it->'details'->3->'value' <> core.fn_ui_tpl('finance.app.loans.d_split_value', jsonb_build_object(
+          'interest', core.fn_ui_money(23.33, 'EUR'), 'principal', core.fn_ui_money(276.67, 'EUR')))
+     OR v_it->'details'->5->'value' <> (SELECT core.fn_ui_date(payoff_date_projected) FROM finance.loan_overview WHERE id = v_l1) THEN
+    RAISE EXCEPTION 'FAIL [1d3] Details: Gemeinsam, getilgt 20 %% · 2000, Zins 23.33 + Tilgung 276.67, schuldenfrei-Datum, got %', v_it->'details'; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->'label' = to_jsonb('<img src=x onerror=alert(1)>'::text);
-  IF v_it IS NULL OR jsonb_typeof(v_it->'pill') <> 'null' OR jsonb_typeof(v_it->'progress') <> 'null' THEN
-    RAISE EXCEPTION 'FAIL [1e] Partner-Kredit: Rohname, keine Pille (Bindung in 3 Jahren), kein Balken ohne Kreditbetrag: %', v_it; END IF;
+  IF v_it IS NULL OR jsonb_typeof(v_it->'progress') <> 'null'
+     OR v_it->'pill' <> jsonb_build_object('state', 'neutral', 'icon', 'calendar', 'text', core.fn_ui_tpl('finance.app.loans.payoff_year',
+          jsonb_build_object('year', (SELECT to_char(payoff_date_projected, 'YYYY') FROM finance.loan_overview WHERE id = v_l2))))
+     OR v_it->'details'->0->'value' <> to_jsonb('Partner Beispiel'::text) THEN
+    RAISE EXCEPTION 'FAIL [1e] Partner-Kredit: Rohname, Pille „schuldenfrei Jahr" (Bindung in 3 Jahren), kein Balken ohne Kreditbetrag, Kreditnehmer: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_pausiert__';
   IF v_it->'pill'->>'state' <> 'warn' THEN RAISE EXCEPTION 'FAIL [1f] pausiert + Bindung bald -> warn: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_pause_frei__';
@@ -79,7 +111,8 @@ BEGIN
        jsonb_build_object('date', core.fn_ui_date(t - 30))) THEN
     RAISE EXCEPTION 'FAIL [1g] abgelaufene Bindung -> warn „endete“: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_grenze__';
-  IF jsonb_typeof(v_it->'pill') <> 'null' THEN RAISE EXCEPTION 'FAIL [1h] genau 12 Monate -> keine Pille: %', v_it; END IF;
+  IF v_it->'pill'->'text'->>'value' <> 'finance.app.loans.payoff_year' THEN
+    RAISE EXCEPTION 'FAIL [1h] genau 12 Monate -> keine Bindungs-Warnung (nur schuldenfrei): %', v_it; END IF;
   IF v::text ~ '"[a-z_]*id"\s*:' OR v::text LIKE '%__apl_giro__%' THEN
     RAISE EXCEPTION 'FAIL [1i] Antwort traegt ein *id-Feld oder einen Kontonamen'; END IF;
   IF finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_partner', 'params', '{}'::jsonb)) <> v THEN
@@ -89,8 +122,10 @@ BEGIN
   -- ===== 2) Kind =====
   v := finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_kid', 'params', '{}'::jsonb));
   v_txt := v::text;
-  IF jsonb_array_length(v->'sections'->0->'items') <> 1 OR v->'sections'->0->'items'->0->>'label' <> '__apl_kid_kredit__'
-     OR v->'hero'->'value' <> core.fn_ui_money(500, 'EUR') THEN
+  IF jsonb_array_length(v->'sections') <> 1 OR jsonb_array_length(v->'sections'->0->'items') <> 1
+     OR v->'sections'->0->'items'->0->>'label' <> '__apl_kid_kredit__'
+     OR v->'hero'->'value' <> core.fn_ui_money(500, 'EUR')
+     OR v::text LIKE '%finance.app.loans.d_borrower%' THEN
     RAISE EXCEPTION 'FAIL [2a] Kind sieht nur den eigenen Kredit (500): %', v; END IF;
   IF v_txt LIKE '%__apl_haus__%' OR v_txt LIKE '%onerror%' OR v_txt LIKE '%__apl_pausiert__%' OR v_txt LIKE '%__apl_giro__%'
      OR v_txt LIKE '%Bank%' OR v_txt ~ '"[a-z_]*id"\s*:' THEN

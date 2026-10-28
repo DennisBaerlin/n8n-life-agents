@@ -929,14 +929,16 @@ function uiRender(B, LANGS) {
       return (typeof p === 'object') ? val(p) : String(p);
     });
   }
-  function money(v, c) {
+  // sign = true (core.fn_ui_money p_sign): '+' vor positive Betraege (Gewinn seit Kauf); negative tragen ihr Minus ohnehin.
+  function money(v, c, sign) {
     if (isEmpty(v)) return empty;
     const n = Number(v);
     if (!isFinite(n)) return String(v);
+    const plus = (sign === true && n > 0) ? '+' : '';
     // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.
-    if (!(typeof c === 'string' && /^[A-Za-z]{3}$/.test(c))) return num(v, 2) + (isEmpty(c) ? '' : ' ' + String(c));
+    if (!(typeof c === 'string' && /^[A-Za-z]{3}$/.test(c))) return plus + num(v, 2) + (isEmpty(c) ? '' : ' ' + String(c));
     const cur = c.toUpperCase();
-    try { return __MONEY__; } catch (e) { return String(v) + ' ' + cur; }
+    try { return plus + __MONEY__; } catch (e) { return plus + String(v) + ' ' + cur; }
   }
   function date(v) {
     if (isEmpty(v)) return empty;
@@ -965,7 +967,7 @@ function uiRender(B, LANGS) {
     if (Array.isArray(x)) return x.length ? x.map(val).join(', ') : empty;
     const v = x.value;
     switch (x.kind) {
-      case 'money': return money(v, x.currency);
+      case 'money': return money(v, x.currency, x.sign);
       case 'date': return date(v);
       case 'number': return num(v, x.digits, x.sign);
       case 'enum': {

@@ -758,15 +758,20 @@ page computes nothing — states, progress and sums come from the DB.
   "hero": { "label": <tpl>, "value": <money>, "gap": false, "note": <tpl>|null } | null,
   "banners": [ { "state": "alert|warn|ok", "icon": "alert|calendar|clock|check|pause|info", "text": <tpl>,
                  "target": { "screen": "<screen>", "params": {} } | null } ],
-  "sections": [ { "title": <tpl>, "empty": <tpl>, "items": [ {
+  "sections": [ { "title": <tpl>, "value"?: <money>|<tpl>|null, "empty": <tpl>, "items": [ {
       "label": "<raw name>" | <tpl>, "sub": <tpl>|null, "value": <money>|<number>|null, "gap": false,
       "pill": { "state": "ok|warn|alert|neutral", "icon": "…", "text": <tpl> } | null,
       "progress": { "pct": 0-100, "state": "ok|warn|alert|neutral" } | null,
-      "target": { "screen": "<screen>", "params": {} } | null } ] } ] }
+      "target": { "screen": "<screen>", "params": {} } | null,
+      "details"?: [ { "label": "<raw>" | <typed>, "value": "<raw>" | <typed> | null } ] | null } ] } ] }
 ```
 
-  `state` always comes with an `icon` (colour is never the only signal). `gap: true` = an FX rate or price is
-  missing in that sum (`has_fx_gap`), the page marks the value as incomplete.
+  `state` always comes with an `icon` (`check|alert|calendar|clock|pause|info|up|down`; colour is never the only
+  signal). `gap: true` = an FX rate or price is missing in that sum (`has_fx_gap`), the page marks the value as
+  incomplete. Optional fields (additive, still v1; a handler without them stays valid): `section.value` = the sum
+  shown next to the section title; `item.details` = key/value lines the row expands to on tap (progressive
+  disclosure, no navigation, so no IDs leave the DB; a `target` wins over `details`). Money may carry `sign: true`
+  (`core.fn_ui_money(v, cur, true)`): the renderer puts `+` before a positive amount (gain since purchase).
 - **Page responses** of `core.fn_app_screen` (POST body `{init_data, screen?, params?}`):
   navigation `{ok:true, ui, screens:[{screen, title:<tpl>, icon}], first?:{screen, view}}` (the first screen rides along,
   one request on open), screen `{ok:true, ui, view}`, refusal

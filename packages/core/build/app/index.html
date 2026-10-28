@@ -89,10 +89,12 @@ body.loading #app { opacity: .45; }
 .banner-tx { flex: 1; min-width: 0; }
 
 .sec { margin-top: 20px; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 4px 8px; }
 .sec-title {
   font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--head); margin: 0 4px 8px;
+  color: var(--head); margin: 0; min-width: 0;
 }
+.sec-value { color: var(--head); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .card { background: var(--card); border-radius: var(--radius); }
 .sec-empty { margin: 0; padding: 14px 16px; color: var(--hint); }
 .list { list-style: none; margin: 0; padding: 0; }
@@ -106,6 +108,13 @@ button.row:active, button.banner:active { opacity: .6; }
 .right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; max-width: 55%; }
 .value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chev { width: 16px; height: 16px; color: var(--hint); }
+.toggle .chev { transform: rotate(90deg); transition: transform .15s; }
+.toggle[aria-expanded="true"] .chev { transform: rotate(-90deg); }
+.details { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px dashed var(--sep); font-size: 14px; }
+.details[hidden] { display: none; }
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; }
+.kv-k { color: var(--hint); min-width: 0; overflow-wrap: anywhere; }
+.kv-v { text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; max-width: 60%; overflow-wrap: anywhere; }
 
 .pill {
   position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 4px;
@@ -143,6 +152,7 @@ button.row:active, button.banner:active { opacity: .6; }
 
 @media (prefers-reduced-motion: reduce) {
   #app { transition: none; }
+  .toggle .chev { transition: none; }
   #app:empty::after { animation: none; }
 }
 </style>
@@ -171,6 +181,8 @@ button.row:active, button.banner:active { opacity: .6; }
     clock: ['M12 3.5a8.5 8.5 0 1 0 0.01 0z', 'M12 7.5V12l3 2.5'],
     pause: ['M9 6.5v11', 'M15 6.5v11'],
     info: ['M12 3.5a8.5 8.5 0 1 0 0.01 0z', 'M12 11v5.5', 'M12 7.8v.1'],
+    up: ['M12 19V5', 'M6 11l6-6 6 6'],
+    down: ['M12 5v14', 'M6 13l6 6 6-6'],
     chev: ['M9.5 6l6 6-6 6']
   };
   const app = document.getElementById('app');
@@ -180,6 +192,7 @@ button.row:active, button.banner:active { opacity: .6; }
   let current = null;
   let stack = [];
   let seq = 0;
+  let detSeq = 0;
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -389,7 +402,12 @@ button.row:active, button.banner:active { opacity: .6; }
   }
   function section(s, R) {
     const box = el('section', 'sec');
-    if (s.title) box.appendChild(el('h2', 'sec-title', txt(R, s.title)));
+    if (s.title || !R.isEmpty(s.value)) {
+      const head = el('div', 'sec-head');
+      head.appendChild(el('h2', 'sec-title', s.title ? txt(R, s.title) : ''));
+      if (!R.isEmpty(s.value)) head.appendChild(el('span', 'sec-value', R.val(s.value)));
+      box.appendChild(head);
+    }
     const items = Array.isArray(s.items) ? s.items : [];
     if (!items.length) {
       box.appendChild(el('p', 'card sec-empty', s.empty ? txt(R, s.empty) : R.empty));
@@ -400,11 +418,37 @@ button.row:active, button.banner:active { opacity: .6; }
     box.appendChild(list);
     return box;
   }
+  // Aufklappen (item.details, optional): Zeile wird ein Toggle-Button, darunter eine Schluessel/Wert-Liste. Ein
+  // Sprungziel (target) hat Vorrang. Beim Umschalten kurz kein aria-live, sonst liest der Screenreader alles vor.
   function item(it, R) {
     const li = el('li', 'item');
     const go = isTarget(it.target);
-    const row = el(go ? 'button' : 'div', 'row');
+    const det = !go && Array.isArray(it.details) && it.details.length > 0;
+    const row = el((go || det) ? 'button' : 'div', det ? 'row toggle' : 'row');
     if (go) { row.type = 'button'; row.addEventListener('click', () => open(it.target)); }
+    let list = null;
+    if (det) {
+      row.type = 'button';
+      list = el('ul', 'details');
+      list.id = 'det-' + (++detSeq);
+      list.hidden = true;
+      it.details.forEach((d) => {
+        if (!d || typeof d !== 'object') return;
+        const kv = el('li', 'kv');
+        kv.appendChild(el('span', 'kv-k', txt(R, d.label)));
+        if (!R.isEmpty(d.value)) kv.appendChild(el('span', 'kv-v', txt(R, d.value)));
+        list.appendChild(kv);
+      });
+      row.setAttribute('aria-expanded', 'false');
+      row.setAttribute('aria-controls', list.id);
+      row.addEventListener('click', () => {
+        const openNow = list.hidden;
+        app.setAttribute('aria-live', 'off');
+        list.hidden = !openNow;
+        row.setAttribute('aria-expanded', openNow ? 'true' : 'false');
+        setTimeout(() => app.setAttribute('aria-live', 'polite'), 0);
+      });
+    }
     const left = el('div', 'left');
     left.appendChild(el('div', 'label', txt(R, it.label)));
     if (it.sub) left.appendChild(el('div', 'sub', txt(R, it.sub)));
@@ -414,9 +458,10 @@ button.row:active, button.banner:active { opacity: .6; }
     if (it.pill && typeof it.pill === 'object') right.appendChild(pill(it.pill, R));
     row.appendChild(left);
     if (right.firstChild) row.appendChild(right);
-    if (go) row.appendChild(icon('chev', 'ic chev'));
+    if (go || det) row.appendChild(icon('chev', 'ic chev'));
     li.appendChild(row);
     if (it.progress && typeof it.progress === 'object') li.appendChild(bar(it.progress));
+    if (list) li.appendChild(list);
     return li;
   }
   function pill(p, R) {

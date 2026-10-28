@@ -1,8 +1,11 @@
 -- tests/db/finance/test_fn_app_screen_goals.sql
 -- finance.fn_app_screen_goals(p jsonb) — Mini-App-Bildschirm „Ziele" (docs/package-contract.md §3.12, View-Modell v1).
 --   1) Owner/Partner sehen den Haushalt: Hero = Summe der Ziele mit Zielbetrag (ohne Ruecklagen) + gap bei CHF ohne Kurs,
---      Reihenfolge target_date -> priority NULLS LAST -> name, Pill/Balken je fn_savings_goal_pace, Ruecklagen mit
---      Empfehlungs-Pill (keine Pill ohne Empfehlung), Sparplaene aktiv vor pausiert (Soft-Close und gestoppte Beitraege = pausiert), Ruecklage einer verkauften Immobilie ohne Pill.
+--      Reihenfolge target_date -> priority NULLS LAST -> name, Pill/Balken je fn_savings_goal_pace, Restzeit im
+--      Untertitel (nicht bei erreicht), Details = Konten-Anteile (Summe = Zielstand); „Fuer Ziele verplant" (Konto
+--      nicht gedeckt / Depot nicht ermittelbar); Ruecklagen mit Empfehlungs-Pill (keine Pill ohne Empfehlung) + Herleitung;
+--      Sparplaene aktiv vor pausiert (Soft-Close und gestoppte Beitraege = pausiert), Wert = Monatsbetrag, Summe im Titel,
+--      Details; Spar-Abbuchungen je Konto; Ruecklage einer verkauften Immobilie ohne Pill.
 --   2) Kind sieht nur Eigenes (Ziel beneficiary = ich; Sparplan beneficiary = ich UND eigenes Depot): Volltextsuche ohne
 --      fremde Namen und ohne *id-Feld; eigener Sparplan auf einem Eltern-Depot bleibt unsichtbar.
 --   3) unbekannte Rolle sieht nur Eigenes, unbekannte Person nichts.
@@ -103,7 +106,11 @@ BEGIN
   IF v->'hero'->'value' <> core.fn_ui_money(6800, 'EUR') OR (v->'hero'->>'gap')::boolean IS NOT TRUE THEN
     RAISE EXCEPTION 'FAIL [1c] Hero 6800 EUR + gap erwartet, got %', v->'hero'; END IF;
   IF jsonb_array_length(v->'banners') <> 0 THEN RAISE EXCEPTION 'FAIL [1d] Banner nur in der probe-Antwort, got %', v->'banners'; END IF;
-  IF jsonb_array_length(v->'sections') <> 3 THEN RAISE EXCEPTION 'FAIL [1e] 3 Abschnitte erwartet, got %', v->'sections'; END IF;
+  SELECT array_agg(s->'title'->>'value' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v->'sections') WITH ORDINALITY AS t(s, o);
+  IF v_labels IS DISTINCT FROM ARRAY['finance.app.goals.section_goals', 'finance.app.goals.section_planned',
+                                     'finance.app.goals.section_reserves', 'finance.app.goals.section_plans',
+                                     'finance.app.goals.section_outflows'] THEN
+    RAISE EXCEPTION 'FAIL [1e] 5 Abschnitte erwartet, got %', v_labels; END IF;
 
   v_sec := v->'sections'->0;
   IF v_sec->'title' <> core.fn_ui_tpl('finance.app.goals.section_goals') THEN RAISE EXCEPTION 'FAIL [1f] Abschnitt Sparziele'; END IF;
@@ -113,8 +120,14 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->>'label' = '__apgl_hh_goal__'
                     AND i->'value' = core.fn_ui_money(2000, 'EUR')
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.goals.target_by',
-                                     jsonb_build_object('target', core.fn_ui_money(10000, 'EUR'), 'date', core.fn_ui_date(v_td)))
+                    AND i->'sub'->>'value' = 'finance.app.goals.target_by_left'
+                    AND i->'sub'->'params'->'target' = core.fn_ui_money(10000, 'EUR')
+                    AND i->'sub'->'params'->'date' = core.fn_ui_date(v_td)
+                    AND i->'sub'->'params'->'left' = core.fn_ui_tpl('finance.app.goals.left_m', jsonb_build_object(
+                                     'months', core.fn_ui_num(extract(month FROM age(v_td, current_date)))))
+                    AND i->'details' = jsonb_build_array(jsonb_build_object(
+                                     'label', core.fn_ui_tpl('finance.app.goals.d_on_account', jsonb_build_object('account', '__apgl_pot__')),
+                                     'value', core.fn_ui_money(2000, 'EUR')))
                     AND i->'pill' = jsonb_build_object('state', 'ok', 'icon', 'check', 'text', core.fn_ui_tpl('finance.app.goals.pace.on_track'))
                     AND i->'progress' = '{"pct":20.0,"state":"ok"}'::jsonb
                     AND (i->>'gap')::boolean IS FALSE) THEN
@@ -127,14 +140,25 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->>'label' = 'Alpha Fahrrad'
                     AND i->'pill' = jsonb_build_object('state', 'ok', 'icon', 'check', 'text', core.fn_ui_tpl('finance.app.goals.pace.reached'))
-                    AND i->'progress' = '{"pct":100.0,"state":"ok"}'::jsonb) THEN
-    RAISE EXCEPTION 'FAIL [1j] erreichtes Ziel'; END IF;
+                    AND i->'progress' = '{"pct":100.0,"state":"ok"}'::jsonb
+                    AND i->'sub'->>'value' = 'finance.app.goals.target_by') THEN
+    RAISE EXCEPTION 'FAIL [1j] erreichtes Ziel (ohne Restzeit)'; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->>'label' = '__apgl_hh_chf__' AND (i->>'gap')::boolean) THEN
     RAISE EXCEPTION 'FAIL [1k] CHF-Ziel ohne Kurs traegt gap'; END IF;
   IF v::text LIKE '%__apgl_done__%' THEN RAISE EXCEPTION 'FAIL [1l] abgeschlossenes Ziel sichtbar'; END IF;
 
+  -- Fuer Ziele verplant: Topf traegt 2000 + 1000 + 3000 + 300 bei Saldo 0 -> nicht gedeckt, Balken 100 %% warn
   v_sec := v->'sections'->1;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
+                  WHERE i->>'label' = '__apgl_pot__' AND i->'value' = core.fn_ui_money(6300, 'EUR')
+                    AND i->'pill' = jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.goals.cover_short'))
+                    AND i->'progress' = '{"pct":100,"state":"warn"}'::jsonb
+                    AND i->'sub' = core.fn_ui_tpl('finance.app.goals.planned_of', jsonb_build_object(
+                                     'base', core.fn_ui_money(0, 'EUR'), 'free', core.fn_ui_money(-6300, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [1v] verplant: Topf 6300 nicht gedeckt, got %', v_sec; END IF;
+
+  v_sec := v->'sections'->2;
   IF v_sec->'title' <> core.fn_ui_tpl('finance.app.goals.section_reserves') THEN RAISE EXCEPTION 'FAIL [1m] Abschnitt Ruecklagen'; END IF;
   SELECT array_agg(i->>'label' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v_sec->'items') WITH ORDINALITY AS t(i, o);
   IF v_labels IS DISTINCT FROM ARRAY['__apgl_res_a__', '__apgl_res_b__', '__apgl_res_c__'] THEN RAISE EXCEPTION 'FAIL [1n] Ruecklagen, got %', v_labels; END IF;
@@ -156,28 +180,112 @@ BEGIN
                   WHERE i->>'label' = '__apgl_res_c__' AND m.goal_name = '__apgl_res_c__'
                     AND m.gap_monthly_eur > 0 AND jsonb_typeof(i->'pill') = 'null') THEN
     RAISE EXCEPTION 'FAIL [1p2] Ruecklage einer verkauften Immobilie: keine Pill (wie der Berater)'; END IF;
+  -- Herleitung der Empfehlung (II. BV) zum Aufklappen, Werte aus maintenance_reserve_status
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i, finance.maintenance_reserve_status m
+                  WHERE i->>'label' = '__apgl_res_a__' AND m.goal_name = '__apgl_res_a__'
+                    AND i->'details' = jsonb_build_array(
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_property'), 'value', '__apgl_re1__'),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_area'),
+                            'value', core.fn_ui_tpl('finance.app.goals.d_area_value', jsonb_build_object('area', core.fn_ui_num(100, 0)))),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_built'),
+                            'value', core.fn_ui_tpl('finance.app.goals.d_built_value', jsonb_build_object(
+                                'year', '1990', 'age', core.fn_ui_num(m.age_years)))),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_rate_m2'),
+                            'value', core.fn_ui_tpl('finance.app.goals.d_rate_m2_value', jsonb_build_object(
+                                'rate', core.fn_ui_money(m.rate_eur_m2, 'EUR')))),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_recommended'),
+                            'value', core.fn_ui_tpl('finance.app.goals.d_recommended_value', jsonb_build_object(
+                                'annual', core.fn_ui_money(m.recommended_annual, 'EUR'),
+                                'monthly', core.fn_ui_money(m.recommended_monthly, 'EUR')))),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_running'),
+                            'value', core.fn_ui_tpl('finance.app.goals.reserve_rate', jsonb_build_object(
+                                'rate', core.fn_ui_money(50, 'EUR')))))
+                    AND m.recommended_annual = round(100 * m.rate_eur_m2, 2)) THEN
+    RAISE EXCEPTION 'FAIL [1x] Ruecklage: Herleitung Flaeche/Baujahr/Satz/Empfehlung/Rate, got %', v_sec; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
+                  WHERE i->>'label' = '__apgl_res_b__'
+                    AND i->'details' @> jsonb_build_array(jsonb_build_object(
+                        'label', core.fn_ui_tpl('finance.app.goals.d_missing'), 'value', NULL))) THEN
+    RAISE EXCEPTION 'FAIL [1x2] Ruecklage ohne Flaeche/Baujahr: Hinweis „fehlt"'; END IF;
 
-  v_sec := v->'sections'->2;
+  v_sec := v->'sections'->3;
   IF v_sec->'title' <> core.fn_ui_tpl('finance.app.goals.section_plans') THEN RAISE EXCEPTION 'FAIL [1q] Abschnitt Sparplaene'; END IF;
+  -- Summe der aktiven Plaene im Titel: 100 + 25 (Kind) + 30 (Kind auf Eltern-Depot)
+  IF v_sec->'value' <> core.fn_ui_tpl('finance.app.goals.reserve_rate', jsonb_build_object('rate', core.fn_ui_money(155, 'EUR'))) THEN
+    RAISE EXCEPTION 'FAIL [1q2] Sparplan-Summe 155 im Monat, got %', v_sec->'value'; END IF;
   SELECT array_agg(i->>'label' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v_sec->'items') WITH ORDINALITY AS t(i, o);
   IF v_labels IS DISTINCT FROM ARRAY['Alpha Sparplan', '__apgl_hh_plan__', '__apgl_kid_on_hh__', '__apgl_a_paused__', '__apgl_closed__'] THEN
     RAISE EXCEPTION 'FAIL [1r] Sparplaene aktiv vor pausiert (Soft-Close = pausiert), got %', v_labels; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->>'label' = '__apgl_hh_plan__'
                     AND i->'value' = core.fn_ui_money(100, 'EUR')
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.goals.plan_next', jsonb_build_object(
-                                     'monthly', core.fn_ui_money(100, 'EUR'), 'date', core.fn_ui_date(current_date + 5)))
-                    AND jsonb_typeof(i->'pill') = 'null') THEN
-    RAISE EXCEPTION 'FAIL [1s] aktiver Sparplan, got %', v_sec; END IF;
+                    AND i->'sub' = core.fn_ui_tpl('finance.app.goals.plan_exec_next', jsonb_build_object(
+                                     'amount', core.fn_ui_money(100, 'EUR'), 'date', core.fn_ui_date(current_date + 5)))
+                    AND jsonb_typeof(i->'pill') = 'null'
+                    AND i->'details' = jsonb_build_array(
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_security'), 'value', 'Welt ETF'),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_depot'), 'value', '__apgl_hh_depot__'),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_from'), 'value', '__apgl_giro__'))) THEN
+    RAISE EXCEPTION 'FAIL [1s] aktiver Sparplan (Monatsbetrag, je Ausfuehrung, Details), got %', v_sec; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->>'label' = '__apgl_a_paused__' AND jsonb_typeof(i->'sub') = 'null'
                     AND i->'pill' = jsonb_build_object('state', 'neutral', 'icon', 'pause', 'text', core.fn_ui_tpl('finance.app.goals.pace.paused'))) THEN
     RAISE EXCEPTION 'FAIL [1t] pausierter Sparplan'; END IF;
-  RAISE NOTICE 'PASS [1] Owner: Hero 6800 + gap, Reihenfolge, Pills/Balken, Ruecklagen, Sparplaene';
+  -- Spar-Abbuchungen je Konto: nur laufende Spar-Raten (Ruecklage 50 vom Giro; Sparplaene starten erst)
+  v_sec := v->'sections'->4;
+  IF jsonb_array_length(v_sec->'items') <> 1 OR v_sec->'items'->0->>'label' <> '__apgl_giro__'
+     OR v_sec->'items'->0->'value' <> core.fn_ui_money(50, 'EUR')
+     OR v_sec->'items'->0->'details' <> jsonb_build_array(jsonb_build_object('label', '__apgl_rp_res__',
+          'value', core.fn_ui_tpl('finance.app.goals.reserve_rate', jsonb_build_object('rate', core.fn_ui_money(50, 'EUR'))))) THEN
+    RAISE EXCEPTION 'FAIL [1y] Spar-Abbuchungen: Giro 50 mit der Ruecklagen-Rate, got %', v_sec; END IF;
+  RAISE NOTICE 'PASS [1] Owner: Hero 6800 + gap, Reihenfolge, Restzeit, verplant, Ruecklagen + Herleitung, Sparplaene, Abbuchungen';
 
   IF finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_partner')) <> v THEN
     RAISE EXCEPTION 'FAIL [1u] Partner muss die Haushalts-Sicht bekommen'; END IF;
   RAISE NOTICE 'PASS [1u] Partner = Haushalts-Sicht';
+
+  -- Depot-Reserve (vorher Bildschirm Depot): Position ohne Kurs -> nicht ermittelbar, nie gruen
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
+    VALUES (v_hh_depot, 'APG00000009', 'APGLX', '__apgl_noprice__', 1, 100, 'EUR');
+  INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__apgl_dep_goal__', 1000, v_td) RETURNING id INTO v_goal;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_goal, v_hh_depot, 100, 'manual');
+  v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_owner'));
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->1->'items') i
+                  WHERE i->>'label' = '__apgl_hh_depot__' AND (i->>'gap')::boolean AND jsonb_typeof(i->'progress') = 'null'
+                    AND i->'pill' = jsonb_build_object('state', 'neutral', 'icon', 'info', 'text', core.fn_ui_tpl('finance.app.goals.cover_unknown'))) THEN
+    RAISE EXCEPTION 'FAIL [1w] Depot-Reserve ohne Kurs: nicht ermittelbar + gap, kein Balken, got %', v->'sections'->1; END IF;
+  -- Konten-Anteile eines Ziels ergeben den Zielstand
+  IF (SELECT sum((d->'value'->>'value')::numeric) FROM jsonb_array_elements(v->'sections'->0->'items') i,
+            jsonb_array_elements(i->'details') d
+       WHERE i->>'label' = '__apgl_dep_goal__' AND d->'label'->>'value' = 'finance.app.goals.d_on_account') IS DISTINCT FROM 100 THEN
+    RAISE EXCEPTION 'FAIL [1w2] Konten-Anteile = Zielstand 100'; END IF;
+  DELETE FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal;
+  DELETE FROM finance.savings_goals WHERE id = v_goal;
+  DELETE FROM finance.depot_holdings WHERE symbol = 'APGLX';
+  RAISE NOTICE 'PASS [1w] Depot-Reserve nicht ermittelbar; Konten-Anteile = Zielstand';
+
+  -- Sparrate im Aufklappen nur, wenn sie GERADE laeuft (Praedikat active_recurring_payments): kuenftig -> keine Zeile
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__apgl_rp_future__', v_giro, v_pot, -20, 'month', current_date + 10, current_date + 10) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id)
+    VALUES ('__apgl_rate_future__', 1000, v_td, v_rp) RETURNING id INTO v_goal;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__apgl_rp_now__', v_giro, v_pot, -40, 'month', current_date - 10, current_date - 10) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id)
+    VALUES ('__apgl_rate_now__', 1000, v_td, v_rp);
+  v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_owner'));
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i, jsonb_array_elements(i->'details') d
+              WHERE i->>'label' = '__apgl_rate_future__' AND d->'label'->>'value' = 'finance.app.goals.d_rate') THEN
+    RAISE EXCEPTION 'FAIL [1z] kuenftige Sparrate darf nicht als laufend erscheinen'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i
+                  WHERE i->>'label' = '__apgl_rate_now__'
+                    AND i->'details'->0 = jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_rate'),
+                          'value', core.fn_ui_tpl('finance.app.goals.d_rate_from', jsonb_build_object(
+                              'rate', core.fn_ui_money(40, 'EUR'), 'account', '__apgl_giro__')))) THEN
+    RAISE EXCEPTION 'FAIL [1z2] laufende Sparrate mit Abbuchungskonto, got %', v->'sections'->0; END IF;
+  DELETE FROM finance.savings_goals WHERE name IN ('__apgl_rate_future__', '__apgl_rate_now__');
+  DELETE FROM finance.recurring_payments WHERE name IN ('__apgl_rp_future__', '__apgl_rp_now__');
+  RAISE NOTICE 'PASS [1z] Sparrate nur, wenn sie gerade laeuft, mit Abbuchungskonto';
 
   -- ===== 2) Kind: nur Eigenes =====
   v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_kid', 'params', '{}'::jsonb));
@@ -187,14 +295,23 @@ BEGIN
   IF v_txt LIKE '%__apgl_%' THEN RAISE EXCEPTION 'FAIL [2b] Kind-Antwort enthaelt fremde Namen: %', v_txt; END IF;
   IF v_txt ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [2c] Antwort traegt ein *id-Feld: %', v_txt; END IF;
   IF v_txt NOT LIKE '%Alpha Fahrrad%' OR v_txt NOT LIKE '%Alpha Sparplan%' THEN RAISE EXCEPTION 'FAIL [2d] eigenes Ziel/eigener Plan fehlt: %', v_txt; END IF;
-  IF jsonb_array_length(v->'sections') <> 2 THEN
-    RAISE EXCEPTION 'FAIL [2e] Kind: Sparziele + Sparplaene, leerer Ruecklagen-Abschnitt entfaellt, got %', v->'sections'; END IF;
+  SELECT array_agg(s->'title'->>'value' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v->'sections') WITH ORDINALITY AS t(s, o);
+  IF v_labels IS DISTINCT FROM ARRAY['finance.app.goals.section_goals', 'finance.app.goals.section_planned',
+                                     'finance.app.goals.section_plans'] THEN
+    RAISE EXCEPTION 'FAIL [2e] Kind: Sparziele + eigenes Konto verplant + Sparplaene, leere Abschnitte entfallen, got %', v_labels; END IF;
+  IF v_txt LIKE '%finance.app.goals.d_from%' THEN RAISE EXCEPTION 'FAIL [2f] Kind sieht kein Abbuchungskonto'; END IF;
   RAISE NOTICE 'PASS [2] Kind sieht nur Eigenes, Plan auf Eltern-Depot unsichtbar, keine IDs';
 
   -- ===== 3) Allow-List =====
   v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_guest'));
-  IF v->'hero'->'value' <> core.fn_ui_money(300, 'EUR') OR v::text LIKE '%__apgl_hh_%' OR v::text LIKE '%__apgl_res_%' THEN
-    RAISE EXCEPTION 'FAIL [3a] unbekannte Rolle nur Eigenes (300), got %', v; END IF;
+  IF v->'hero'->'value' <> core.fn_ui_money(300, 'EUR') OR v::text LIKE '%__apgl_hh_%' OR v::text LIKE '%__apgl_res_%'
+     OR v::text LIKE '%__apgl_pot__%' THEN
+    RAISE EXCEPTION 'FAIL [3a] unbekannte Rolle nur Eigenes (300), fremder Topf ohne Namen, got %', v; END IF;
+  IF NOT (v->'sections'->0->'items'->0->'details' @> jsonb_build_array(jsonb_build_object(
+            'label', core.fn_ui_tpl('finance.app.goals.d_on_account', jsonb_build_object(
+                         'account', core.fn_ui_tpl('finance.app.common.household_account'))),
+            'value', core.fn_ui_money(300, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [3a2] fremdes Konto heisst „Haushaltskonto", got %', v->'sections'->0; END IF;
   v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_nobody'));
   IF (v->>'ok')::boolean IS NOT TRUE OR v->'hero'->'value' <> core.fn_ui_money(0, 'EUR')
      OR jsonb_array_length(v->'sections') <> 1 OR jsonb_array_length(v->'sections'->0->'items') <> 0

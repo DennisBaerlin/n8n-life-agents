@@ -1,17 +1,26 @@
 -- ============================================================
 -- finance.fn_app_screen_depot(p jsonb) — Mini-App-Bildschirm „Depot" (READ, View-Modell v1)
 --   Handler der Registry app_screens (docs/package-contract.md §3.12), Muster finance.fn_app_screen_overview.
---   Quellen: depot_holdings_overview (Marktwert, Kurs-Datum, price_status ok|stale|missing), depot_reserve_status
---   (fuer Ziele reserviert vs. Marktwert), savings_goal_account_share.has_fx_gap. Die Seite rechnet nichts.
---   Hero = Summe market_value_eur der sichtbaren Positionen; gap, wenn eine Position keinen Kurs oder keinen Wechselkurs
---   hat (ein fehlender Kurs faellt nie still als 0 aus). Ein Abschnitt je Depot (Wert absteigend, ohne Wert zuletzt),
---   Positionen nach Wert; Wert in der Kurs-Waehrung (price_currency). Stueckzahl mit den Nachkommastellen, die sie hat.
---   „Fuer Ziele reserviert": gedeckt / nicht gedeckt / nicht ermittelbar. Unbekannt (kein Kurs fuer alle oder einzelne
---   Positionen, Ziel-Anteil ohne Wechselkurs) ist nie gruen. Keine Zielnamen: ein Kind sieht auf dem EIGENEN Depot nur
---   den Betrag (bewusst, auch fuer Haushaltsziele). Die Deckungsluecke ist KEIN Banner: der Berater unterdrueckt sie,
---   wenn das Ziel im Plan ist (fn_advisor_review), ein zweiter Alarm wuerde davon abweichen.
+--   Quellen: depot_holdings_overview (Marktwert, Kurs, Kurs-Datum, price_status ok|stale|missing, Kaufwert, Gewinn),
+--   networth_by_asset_class (Hero), transactions (Kauf/Verkauf/Dividende je Position, finance.fn_app_holding_transactions).
+--   Die Seite rechnet nichts. Was im Depot fuer Ziele reserviert ist, zeigt EIN Ort: Bildschirm Ziele, Abschnitt
+--   „Fuer Ziele verplant" (Uebersicht R3; vorher ein eigener Abschnitt hier).
+--   HERO = Anlageart „depot" aus networth_by_asset_class mit derselben Personen-Auswahl wie die Vermoegen-Seite (Uebersicht
+--     R3: Depotwert = „Wertpapiere & Krypto" dort, ohne Kurs zaehlt der Kaufwert); gap, wenn eine Position keinen Kurs
+--     oder keinen Wechselkurs hat. Haushalts-Betrachter: ohne Kinder-Depots (role = 'child', T2-Muster), die stehen
+--     als eigene Abschnitte „… · nicht im Depotwert" hinten. Note: Gewinn seit Kauf (nur Positionen mit aktuellem Kurs
+--     und Kaufwert; veraltete Kurse nicht, wie die Pille) + juengstes Kurs-Datum.
+--   Ein Abschnitt je Depot (Haushalt vor Kind, dann Wert absteigend, ohne Wert zuletzt) mit Depot-Summe (section.value;
+--   entfaellt, wenn eine Position keinen EUR-Wert hat, statt still zu niedrig zu sein);
+--   Positionen nach Wert. Wert IMMER in EUR (market_value_eur); nur ohne Wechselkurs der Kurs-Waehrungs-Wert + gap.
+--   Untertitel: Stueck (mit den Nachkommastellen, die sie hat), bei Fremdwaehrung „Kurs 148,60 $", Kurs-Datum nur wenn
+--   es vom Hero-Datum abweicht. Pille: Kurs veraltet/fehlt (warn, Vorrang) sonst Gewinn/Verlust seit Kauf
+--   („+x € · +y %", ok/up bzw. alert/down; 0 -> keine). Bekannte Grenze: book_value_eur rechnet eine Fremdwaehrungs-
+--   Kostenbasis zum heutigen Kurs um -> der Waehrungseffekt fehlt im „seit Kauf" (EUR-Kaeufe nicht betroffen).
+--   Aufklappen (details): Ø Kaufkurs, Kaufwert, Gewinn (aus den eigenen Zeilen), dann die letzten 12 Buchungen und
+--   „n aeltere" (finance.fn_app_holding_transactions).
 --   ZERO-TRUST-SICHTBARKEIT (core.fn_app_sees_household): owner/partner sehen alle aktiven Depots, alle anderen nur
---     Depots mit owner_person_id = ich.
+--     Depots mit owner_person_id = ich (dann ohne Kinder-Trennung: der Hero ist die eigene Summe).
 --   params.probe = true -> {ok, empty, banners}: je Depot mit Kurs veraltet/fehlt ein warn-Banner, target = depot.
 --   Fehler als Daten, nie RAISE: Frei-SQL-Sitzung -> forbidden, kaputte Eingabe -> bad_request. Keine IDs in der Antwort.
 --   SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC (EXECUTE nur finance_rw/Host, nie *_ro).
@@ -26,11 +35,14 @@ AS $$
 DECLARE
     v_pid      text;
     v_hh       boolean;
-    v_depots   jsonb;
+    v_date     date;
+    v_gain     numeric;
+    v_book     numeric;
+    v_pos_gap  boolean;
     v_total    numeric;
     v_gap      boolean;
+    v_depots   jsonb;
     v_banners  jsonb;
-    v_reserved jsonb;
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -41,90 +53,132 @@ BEGIN
     v_pid := p ->> 'person_id';
     v_hh  := core.fn_app_sees_household(v_pid);
 
-    -- je sichtbarem Depot: Positionen, Wert, Luecke, Kurs-Problem
-    WITH d AS (
-        SELECT a.id, a.name
-          FROM finance.accounts a
-         WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
-           AND (v_hh OR a.owner_person_id = v_pid)
-    ), per AS (
-        SELECT d.name,
-               sum(h.market_value_eur) AS val,
-               bool_or(h.market_value_eur IS NULL) AS gap,
-               bool_or(h.price_status IN ('stale', 'missing')) AS price_issue,
-               jsonb_agg(jsonb_build_object(
-                   'label', h.name,
-                   'sub', CASE WHEN h.price_as_of IS NOT NULL
-                               THEN core.fn_ui_tpl('finance.app.depot.shares_price', jsonb_build_object(
-                                        'shares', core.fn_ui_num(h.shares, scale(trim_scale(h.shares))),
-                                        'date', core.fn_ui_date(h.price_as_of)))
-                               ELSE core.fn_ui_tpl('finance.app.depot.shares', jsonb_build_object(
-                                        'shares', core.fn_ui_num(h.shares, scale(trim_scale(h.shares))))) END,
-                   'value', CASE WHEN h.market_value IS NOT NULL THEN core.fn_ui_money(h.market_value, h.price_currency) END,
-                   'gap', h.market_value_eur IS NULL,
-                   'pill', CASE h.price_status
-                               WHEN 'stale' THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
-                                                     'text', core.fn_ui_tpl('finance.app.depot.price_stale'))
-                               WHEN 'missing' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
-                                                     'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
-                           END,
-                   'progress', NULL,
-                   'target', NULL)
-                 ORDER BY h.market_value_eur DESC NULLS LAST, h.name) AS items
-          FROM d
-          JOIN finance.depot_holdings_overview h ON h.account_id = d.id
-         GROUP BY d.id, d.name
-    )
-    SELECT COALESCE(jsonb_agg(jsonb_build_object(
-               'title', core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', per.name)),
-               'empty', core.fn_ui_tpl('finance.app.depot.empty'),
-               'items', per.items)
-             ORDER BY per.val DESC NULLS LAST, per.name), '[]'::jsonb),
-           COALESCE(sum(per.val), 0),
-           COALESCE(bool_or(per.gap), false),
-           COALESCE(jsonb_agg(jsonb_build_object(
-               'state', 'warn', 'icon', 'clock',
-               'text', core.fn_ui_tpl('finance.app.depot.banner_price', jsonb_build_object('depot', per.name)),
-               'target', jsonb_build_object('screen', 'depot', 'params', '{}'::jsonb))
-             ORDER BY per.name) FILTER (WHERE per.price_issue), '[]'::jsonb)
-      INTO v_depots, v_total, v_gap, v_banners
-      FROM per;
-
+    -- probe (jeder App-Start): nur Existenz + Kurs-Banner je Depot, ohne Positionen/Details zu bauen
     IF p -> 'params' -> 'probe' = 'true'::jsonb THEN
-        RETURN jsonb_build_object('ok', true, 'empty', jsonb_array_length(v_depots) = 0, 'banners', v_banners);
+        WITH d AS (
+            SELECT a.id, a.name,
+                   EXISTS (SELECT 1 FROM finance.depot_holdings_overview o
+                            WHERE o.account_id = a.id AND o.price_status IN ('stale', 'missing')) AS price_issue,
+                   EXISTS (SELECT 1 FROM finance.depot_holdings_overview o WHERE o.account_id = a.id) AS has_pos
+              FROM finance.accounts a
+             WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
+               AND (v_hh OR a.owner_person_id = v_pid)
+        )
+        SELECT jsonb_build_object('ok', true, 'empty', NOT COALESCE(bool_or(d.has_pos), false),
+                   'banners', COALESCE(jsonb_agg(jsonb_build_object(
+                       'state', 'warn', 'icon', 'clock',
+                       'text', core.fn_ui_tpl('finance.app.depot.banner_price', jsonb_build_object('depot', d.name)),
+                       'target', jsonb_build_object('screen', 'depot', 'params', '{}'::jsonb))
+                     ORDER BY d.name) FILTER (WHERE d.price_issue), '[]'::jsonb))
+          INTO v_banners
+          FROM d;
+        RETURN v_banners;
     END IF;
 
-    -- Fuer Ziele reserviert: unbekannte Deckung (Teil-Summe ohne Kurs, Anteil ohne Wechselkurs) nie gruen
+    -- Kennzahlen der Hero-Auswahl (ohne Kinder-Depots): Kurs-Datum, Gewinn seit Kauf, Positionen ohne Wert
+    SELECT COALESCE(max(o.price_as_of) FILTER (WHERE NOT d.kid), max(o.price_as_of)),
+           sum(o.unrealized_gain_eur) FILTER (WHERE NOT d.kid AND o.price_status = 'ok' AND o.book_value_eur > 0
+                                                AND o.unrealized_gain_eur IS NOT NULL),
+           sum(o.book_value_eur) FILTER (WHERE NOT d.kid AND o.price_status = 'ok' AND o.book_value_eur > 0
+                                           AND o.unrealized_gain_eur IS NOT NULL),
+           COALESCE(bool_or(o.market_value_eur IS NULL) FILTER (WHERE NOT d.kid), false)
+      INTO v_date, v_gain, v_book, v_pos_gap
+      FROM (SELECT a.id, (v_hh AND hp.role IS NOT DISTINCT FROM 'child') AS kid
+              FROM finance.accounts a
+              LEFT JOIN core.fn_household_persons() hp ON hp.person_id = a.owner_person_id
+             WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
+               AND (v_hh OR a.owner_person_id = v_pid)) d
+      JOIN finance.depot_holdings_overview o ON o.account_id = d.id;
+
+    -- je sichtbarem Depot: Positionen, Wert, Luecke, Kurs-Problem
+    WITH d AS (
+        SELECT a.id, a.name, (v_hh AND hp.role IS NOT DISTINCT FROM 'child') AS kid
+          FROM finance.accounts a
+          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = a.owner_person_id
+         WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
+           AND (v_hh OR a.owner_person_id = v_pid)
+    ), h AS (
+        SELECT d.id AS depot_id, d.name AS depot_name, d.kid,
+               o.holding_id, o.name, o.shares, o.currency, o.average_purchase_price, o.book_value, o.book_value_eur,
+               o.market_value, o.market_value_eur, o.unrealized_gain_eur, o.price_currency, o.latest_price,
+               o.price_as_of, o.price_status,
+               (o.price_status = 'ok' AND o.book_value_eur > 0 AND o.unrealized_gain_eur IS NOT NULL) AS has_gain,
+               CASE WHEN o.book_value_eur > 0 THEN round(100 * o.unrealized_gain_eur / o.book_value_eur, 1) END AS gain_pct
+          FROM d
+          JOIN finance.depot_holdings_overview o ON o.account_id = d.id
+    ), per AS (
+        SELECT h.depot_name AS name, h.kid,
+               sum(h.market_value_eur) AS val,
+               jsonb_agg(jsonb_build_object(
+                   'label', h.name,
+                   'sub', core.fn_ui_tpl(
+                       CASE WHEN fx.foreign AND dt.differs THEN 'finance.app.depot.shares_price_date'
+                            WHEN fx.foreign THEN 'finance.app.depot.shares_price'
+                            WHEN dt.differs THEN 'finance.app.depot.shares_date'
+                            ELSE 'finance.app.depot.shares' END,
+                       jsonb_build_object(
+                           'shares', core.fn_ui_num(h.shares, scale(trim_scale(h.shares))),
+                           'price', CASE WHEN fx.foreign THEN core.fn_ui_money(h.latest_price, h.price_currency) END,
+                           'date', CASE WHEN dt.differs THEN core.fn_ui_date(h.price_as_of) END)),
+                   'value', CASE WHEN h.market_value_eur IS NOT NULL THEN core.fn_ui_money(h.market_value_eur, 'EUR')
+                                 WHEN h.market_value IS NOT NULL THEN core.fn_ui_money(h.market_value, h.price_currency) END,
+                   'gap', h.market_value_eur IS NULL,
+                   'pill', CASE
+                       WHEN h.price_status = 'stale' THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
+                                                 'text', core.fn_ui_tpl('finance.app.depot.price_stale'))
+                       WHEN h.price_status = 'missing' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
+                                                 'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
+                       WHEN h.has_gain AND h.unrealized_gain_eur <> 0
+                       THEN jsonb_build_object(
+                                'state', CASE WHEN h.unrealized_gain_eur > 0 THEN 'ok' ELSE 'alert' END,
+                                'icon', CASE WHEN h.unrealized_gain_eur > 0 THEN 'up' ELSE 'down' END,
+                                'text', core.fn_ui_tpl('finance.app.depot.gain', jsonb_build_object(
+                                            'amount', core.fn_ui_money(h.unrealized_gain_eur, 'EUR', true),
+                                            'pct', core.fn_ui_num(h.gain_pct, 1, true))))
+                   END,
+                   'progress', NULL,
+                   'target', NULL,
+                   'details', (SELECT COALESCE(jsonb_agg(e ORDER BY n) FILTER (WHERE e IS NOT NULL), '[]'::jsonb)
+                                 FROM unnest(ARRAY[
+                                  CASE WHEN h.average_purchase_price IS NOT NULL THEN jsonb_build_object(
+                                      'label', core.fn_ui_tpl('finance.app.depot.d_avg_price'),
+                                      'value', core.fn_ui_money(h.average_purchase_price, h.currency)) END,
+                                  CASE WHEN h.book_value IS NOT NULL THEN jsonb_build_object(
+                                      'label', core.fn_ui_tpl('finance.app.depot.d_book_value'),
+                                      'value', core.fn_ui_money(h.book_value, h.currency)) END,
+                                  CASE WHEN h.has_gain THEN jsonb_build_object(
+                                      'label', core.fn_ui_tpl('finance.app.depot.d_gain'),
+                                      'value', core.fn_ui_tpl('finance.app.depot.gain', jsonb_build_object(
+                                          'amount', core.fn_ui_money(h.unrealized_gain_eur, 'EUR', true),
+                                          'pct', core.fn_ui_num(h.gain_pct, 1, true)))) END]) WITH ORDINALITY AS k(e, n))
+                              || finance.fn_app_holding_transactions(h.holding_id))
+                 ORDER BY h.market_value_eur DESC NULLS LAST, h.name) AS items,
+               bool_or(h.market_value_eur IS NULL) AS val_gap
+          FROM h
+          CROSS JOIN LATERAL (SELECT h.latest_price IS NOT NULL AND h.price_currency IS DISTINCT FROM 'EUR' AS foreign) fx
+          CROSS JOIN LATERAL (SELECT h.price_as_of IS NOT NULL AND h.price_as_of IS DISTINCT FROM v_date AS differs) dt
+         GROUP BY h.depot_id, h.depot_name, h.kid
+    )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
-               'label', r.account_name,
-               'sub', NULL,
-               'value', core.fn_ui_money(r.reserved, 'EUR'),
-               'gap', u.unknown,
-               'pill', CASE WHEN u.unknown
-                            THEN jsonb_build_object('state', 'neutral', 'icon', 'info',
-                                     'text', core.fn_ui_tpl('finance.app.depot.reserve_unknown'))
-                            WHEN r.breach
-                            THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
-                                     'text', core.fn_ui_tpl('finance.app.depot.reserve_short'))
-                            ELSE jsonb_build_object('state', 'ok', 'icon', 'check',
-                                     'text', core.fn_ui_tpl('finance.app.depot.reserve_covered')) END,
-               'progress', NULL,
-               'target', NULL)
-             ORDER BY r.account_name), '[]'::jsonb)
-      INTO v_reserved
-      FROM finance.depot_reserve_status r
-      JOIN finance.accounts a ON a.id = r.account_id
-      CROSS JOIN LATERAL (
-          SELECT EXISTS (SELECT 1 FROM finance.savings_goal_account_share s
-                          WHERE s.account_id = r.account_id AND s.goal_status = 'active' AND s.has_fx_gap) AS share_gap
-      ) sg
-      CROSS JOIN LATERAL (
-          SELECT r.fx_missing OR sg.share_gap
-                 OR EXISTS (SELECT 1 FROM finance.depot_holdings_overview o
-                             WHERE o.account_id = r.account_id AND o.market_value_eur IS NULL) AS unknown
-      ) u
-     WHERE (v_hh OR a.owner_person_id = v_pid)
-       AND (r.reserved > 0 OR sg.share_gap);
+               'title', CASE WHEN per.kid
+                             THEN core.fn_ui_tpl('finance.app.depot.section_child', jsonb_build_object('name', per.name))
+                             ELSE core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', per.name)) END,
+               -- Depot-Summe nur, wenn jede Position einen EUR-Wert hat (sonst waere sie still zu niedrig; die
+               -- Positionen selbst tragen gap)
+               'value', CASE WHEN per.val IS NOT NULL AND NOT per.val_gap THEN core.fn_ui_money(per.val, 'EUR') END,
+               'empty', core.fn_ui_tpl('finance.app.depot.empty'),
+               'items', per.items)
+             ORDER BY per.kid, per.val DESC NULLS LAST, per.name), '[]'::jsonb)
+      INTO v_depots
+      FROM per;
+
+    -- Hero: dieselbe Zahl wie „Wertpapiere & Krypto" auf der Vermoegen-Seite (gleiche Quelle, gleiche Auswahl)
+    SELECT COALESCE(sum(n.value_eur), 0), COALESCE(bool_or(n.has_fx_gap), false)
+      INTO v_total, v_gap
+      FROM finance.networth_by_asset_class n
+      LEFT JOIN core.fn_household_persons() hp ON hp.person_id = n.owner_person_id
+     WHERE n.bucket = 'depot'
+       AND ((v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND n.owner_person_id = v_pid));
 
     RETURN jsonb_build_object(
         'ok', true,
@@ -132,15 +186,18 @@ BEGIN
         'hero', jsonb_build_object(
             'label', core.fn_ui_tpl('finance.app.depot.hero'),
             'value', core.fn_ui_money(v_total, 'EUR'),
-            'gap', v_gap,
-            'note', NULL),
+            'gap', v_gap OR v_pos_gap,
+            'note', CASE
+                WHEN v_book > 0 AND v_date IS NOT NULL
+                THEN core.fn_ui_tpl('finance.app.depot.hero_note', jsonb_build_object(
+                         'gain', core.fn_ui_money(v_gain, 'EUR', true),
+                         'pct', core.fn_ui_num(round(100 * v_gain / v_book, 1), 1, true),
+                         'date', core.fn_ui_date(v_date)))
+                WHEN v_date IS NOT NULL
+                THEN core.fn_ui_tpl('finance.app.depot.hero_note_date', jsonb_build_object('date', core.fn_ui_date(v_date)))
+                END),
         'banners', '[]'::jsonb,
-        'sections', CASE WHEN jsonb_array_length(v_reserved) > 0
-                         THEN v_depots || jsonb_build_object(
-                                  'title', core.fn_ui_tpl('finance.app.depot.section_reserved'),
-                                  'empty', core.fn_ui_tpl('finance.app.depot.empty'),
-                                  'items', v_reserved)
-                         ELSE v_depots END);
+        'sections', v_depots);
 END;
 $$;
 

@@ -14,23 +14,29 @@ Unten wechselst du über Reiter zwischen den Bildschirmen. Ein Bildschirm, zu de
 
 Steht irgendwo **„unvollständig – ein Kurs oder Wechselkurs fehlt“**, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.
 
+Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeigen mehr Einzelheiten, ein zweiter Tipp klappt sie wieder zu. So bleibt die Liste kurz, und die Details sind trotzdem einen Tipp entfernt. Steht neben einer Überschrift ein Betrag, ist das die Summe dieses Abschnitts.
+
 ### Vermögen
 
-- **Vermögen gesamt:** alles zusammen, Kredite schon abgezogen.
-- **Nach Anlageart:** wie viel auf Konten, in Wertpapieren, Immobilien, Altersvorsorge und so weiter liegt. Der Balken zeigt den Anteil am Ganzen, Kredite stehen als Minus-Betrag darunter.
-- **Konten:** jedes Konto mit seinem Kontostand in der eigenen Währung und dem Datum, an dem du den letzten Kontoauszug bestätigt hast (siehe [Monats-Check](monats-check.html)).
+- **Vermögen Haushalt:** alles, was dem Haushalt gehört, Kredite schon abgezogen. Darunter steht, wie viel Besitz und wie viel Schulden das sind. Das Vermögen der Kinder zählt hier **nicht** mit.
+- **Besitz:** wie viel auf Konten, in Wertpapieren, Immobilien, Altersvorsorge und so weiter liegt, mit dem Anteil am gesamten Besitz als Zahl und Balken.
+- **Schulden:** die Kredite als Minus-Betrag. Ein Tipp darauf öffnet die Seite Kredite.
+- **Kinder · nicht in der Summe:** für jedes Kind sein eigenes Vermögen. Aufgeklappt siehst du, woraus es besteht (Konten, Wertpapiere usw.).
+- **Konten:** jedes Konto des Haushalts mit Kontostand in der eigenen Währung, wem es gehört („Gemeinsam“ für Haushaltskonten) und dem Datum, an dem du den letzten Kontoauszug bestätigt hast (siehe [Monats-Check](monats-check.html)).
 
 ### Ziele
 
 - **Zurückgelegt für Ziele:** was in allen Sparzielen zusammen steckt.
-- **Sparziele:** jedes Ziel mit dem bisher Gesparten, Zielbetrag und Datum und einem Balken. Daneben steht, wie es läuft:
+- **Sparziele:** jedes Ziel mit dem bisher Gesparten, Zielbetrag und Datum, der Restzeit („noch 16 J. 5 Mon.“) und einem Balken. Aufgeklappt siehst du die monatliche Sparrate mit dem Konto, von dem sie abgeht, und auf welchen Konten das Gesparte liegt. Daneben steht, wie es läuft:
   - **im Plan:** du liegst gut in der Zeit.
   - **hinter Plan:** bis zum Zieldatum fehlt mehr, als die Zeit hergibt. Wie viel du monatlich nachlegen müsstest, sagt dir der Chat.
   - **erreicht:** der Zielbetrag ist da.
   - **pausiert:** die Sparrate oder der Sparplan des Ziels ist angehalten.
   - **nicht messbar:** die Sparrate geht ohne eigenes Sparkonto ab, dann lässt sich der Stand nicht verfolgen. Abhilfe: dem Ziel im Chat ein Sparkonto zuordnen.
-- **Rücklagen:** etwa die Instandhaltungsrücklage für eine Immobilie, mit Stand, monatlicher Rate und der Empfehlung dazu („unter Empfehlung“ oder „ausreichend“).
-- **Sparpläne:** Betrag je Ausführung, was das im Monat ausmacht, und die nächste Ausführung. Ein angehaltener Plan steht als „pausiert“ darunter.
+- **Für Ziele verplant:** jedes Konto und Depot, auf dem Geld für Sparziele liegt. Der Balken zeigt, welcher Anteil verplant ist, darunter steht, wie viel noch frei ist. „gedeckt“ heißt, der Kontostand reicht; „nicht gedeckt“ heißt, es ist weniger auf dem Konto, als für die Ziele zurückgelegt sein sollte; „nicht ermittelbar“ steht da, solange ein Kurs fehlt.
+- **Rücklagen:** etwa die Instandhaltungsrücklage für eine Immobilie, mit Stand, monatlicher Rate und der Empfehlung dazu („unter Empfehlung“ oder „ausreichend“). Aufgeklappt siehst du, wie die Empfehlung zustande kommt: Wohnfläche, Baujahr und Alter, der Satz je m² und Jahr nach der II. Berechnungsverordnung und daraus der Jahres- und Monatsbetrag.
+- **Sparpläne:** was jeder Plan im Monat ausmacht, darunter der Betrag je Ausführung und die nächste Ausführung. Neben der Überschrift steht die Summe aller laufenden Pläne. Aufgeklappt siehst du Wertpapier, Depot, Abbuchungskonto, für wen der Plan ist, das Sparziel, eine geplante Änderung und was die Position heute wert ist. Ein angehaltener Plan steht als „pausiert“ darunter.
+- **Spar-Abbuchungen je Konto:** wie viel jeden Monat von welchem Konto für Sparpläne, Sparziele und Rücklagen abgeht. Aufgeklappt siehst du die einzelnen Raten. So prüfst du schnell, ob ein Konto diese Abbuchungen trägt.
 
 Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist bis heute schon deutlich mehr Zeit vergangen, als Geld zusammengekommen ist, steht dort „hinter Plan“.
 
@@ -42,15 +48,19 @@ Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €
 
 ### Kredite
 
-- Jeder laufende oder pausierte Kredit mit der Restschuld, der Monatsrate und dem Zinssatz. Kennst du den ursprünglichen Kreditbetrag, zeigt ein Balken, wie viel schon getilgt ist. Oben steht die Restschuld aller Kredite zusammen.
+- Jeder laufende oder pausierte Kredit mit Restschuld, Bank, Zinssatz und Monatsrate. Kennst du den ursprünglichen Kreditbetrag, zeigt ein Balken, wie viel schon getilgt ist. Oben steht die Restschuld aller Haushalts-Kredite zusammen und darunter, wie viel du monatlich an Raten zahlst und wie viel davon Zinsen sind. Kredite der Kinder stehen in einem eigenen Abschnitt und zählen nicht mit.
+- **„schuldenfrei 2039“** zeigt, in welchem Jahr der Kredit bei gleicher Rate und ohne Sondertilgung abbezahlt ist.
 - **Gelb „Zinsbindung bis …“** erscheint, wenn die Zinsbindung in weniger als zwölf Monaten endet. Dann ist Zeit, sich um die Anschlussfinanzierung zu kümmern. Ist das Datum schon vorbei, steht dort „Zinsbindung endete am …“.
 - Ein pausierter Kredit trägt den grauen Hinweis „pausiert“.
+- Aufgeklappt siehst du: wer den Kredit hat, Kreditbetrag und Auszahlungstag, wie viel schon getilgt ist, wie sich die aktuelle Rate in Zins und Tilgung aufteilt, die Restschuld zum Ende der Zinsbindung und zum Laufzeitende, das voraussichtliche Datum „schuldenfrei“ und wie viel Zinsen bis dahin noch anfallen.
 
 ### Depot
 
-- **Depotwert:** der aktuelle Wert aller Wertpapiere und Kryptowerte.
-- **Je Depot** jede Position mit Wert, Stückzahl und dem Datum des letzten Kurses. **„Kurs veraltet“** heißt: der letzte Kurs ist schon länger nicht mehr aktualisiert worden. **„Kurs fehlt“** heißt: es gibt noch gar keinen, der Wert fehlt dann in der Summe.
-- **Für Ziele reserviert:** wie viel Geld im Depot für Sparziele zurückgelegt ist und ob der Depotwert das deckt: „gedeckt“, „nicht gedeckt“ oder „nicht ermittelbar“, solange ein Kurs fehlt.
+- **Depotwert:** der aktuelle Wert der Wertpapiere und Kryptowerte des Haushalts, dieselbe Zahl wie „Wertpapiere & Krypto“ auf der Seite Vermögen. Darunter steht der Gewinn oder Verlust seit dem Kauf und das Datum der Kurse. Depots der Kinder stehen weiter unten mit dem Zusatz „nicht im Depotwert“.
+- **Je Depot** (mit seiner Summe neben dem Namen) jede Position mit ihrem Wert in Euro und der Stückzahl. Bei Wertpapieren in fremder Währung steht der Kurs in dieser Währung klein darunter (z. B. „Kurs 148,60 $“). Rechts zeigt ein Pfeil mit Betrag und Prozent, wie viel die Position seit dem Kauf gewonnen (grün, ↑) oder verloren (rot, ↓) hat.
+- **„Kurs veraltet“** heißt: der letzte Kurs ist schon länger nicht mehr aktualisiert worden. **„Kurs fehlt“** heißt: es gibt noch gar keinen. In der Summe zählt dann der Kaufwert, und sie ist als unvollständig markiert.
+- Aufgeklappt siehst du den durchschnittlichen Kaufkurs, den Kaufwert und die letzten zwölf Käufe, Verkäufe und Dividenden mit Datum, Stückzahl und Kurs.
+- Wie viel im Depot für Sparziele zurückgelegt ist, steht auf der Seite Ziele unter „Für Ziele verplant“.
 
 ### Hinweise auf der Startseite
 
@@ -68,8 +78,8 @@ Der Knopf „📊 Übersicht“ sitzt an der Stelle, an der vorher der Menü-Kno
 
 ## Wer was sieht
 
-- **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch die Konten und Depots der Kinder.
-- **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name. Beim eigenen Depot sieht ein Kind, wie viel darin für Ziele reserviert ist, aber nicht, für welche.
+- **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch die Konten und Depots der Kinder. Sie stehen getrennt und zählen nicht in die Haushalts-Summen.
+- **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name: Liegt Geld für ihr Sparziel auf einem Elternkonto, heißt es bei ihnen nur „Haushaltskonto“. Bei ihrem eigenen Konto oder Depot sieht ein Kind, wie viel darin für Ziele verplant ist.
 - Bei den **Zahlungen** sehen Kinder nur Daueraufträge von ihren eigenen Konten und Kredite, die auf ihren Namen laufen. Taschengeld vom Elternkonto erscheint als „Vom Haushalt“, ohne den Namen des Dauerauftrags oder des Elternkontos, und einen Umbuchungs-Vorschlag bekommen Kinder nie.
 - **Fremde Telegram-Nutzer** bekommen den Knopf nie zu sehen.
 

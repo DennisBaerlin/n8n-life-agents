@@ -47,6 +47,13 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [N1/N2 Profil + Zeilen]';
 
+    -- die eine Adresse "welche Bank kann CSV": Trade Republic mit seinen Pflichtspalten
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(finance.fn_broker_csv_profiles()) pr
+                   WHERE pr->>'key' = 'trade_republic_v1' AND pr->>'bank' = 'Trade Republic'
+                     AND pr->'required' = '["datetime","category","type","amount","currency"]'::jsonb) THEN
+        RAISE EXCEPTION 'FAIL [N0 fn_broker_csv_profiles]: %', finance.fn_broker_csv_profiles();
+    END IF;
+
     SELECT r INTO v_r FROM jsonb_array_elements(v_res->'rows') r WHERE (r->>'row_no')::int = 2;
     IF v_r->>'kind' <> 'cash' OR (v_r->>'cash_amount')::numeric <> 120.00 THEN
         RAISE EXCEPTION 'FAIL [N3 Einzahlung netto 120.00]: %', v_r;

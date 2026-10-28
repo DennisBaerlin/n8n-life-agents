@@ -44,7 +44,7 @@
   "consumes": {
     "services": [
       "core:human_approval", "core:load_context", "core:load_config", "core:web_search", "core:expert_panel",
-      "core:transcribe_telegram_voice", "core:fetch_telegram_file", "core:error_notify", "core:save_plan_section", "core:publish_plan", "core:create_monitor_trigger",
+      "core:transcribe_telegram_voice", "core:fetch_telegram_file", "core:error_notify", "core:save_plan_section", "core:publish_plan", "core:record_plan_wish", "core:create_monitor_trigger",
       "core:list_monitor_triggers", "core:onboarding_progress",
       "paperless:search_documents", "paperless:get_document", "paperless:ask_documents"
     ],

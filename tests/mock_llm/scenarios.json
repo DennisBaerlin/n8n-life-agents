@@ -1100,5 +1100,27 @@
     "driver": "scripts/dev/mock_route_test.ps1",
     "calls": [{ "tool": "postgres_select", "args": {} }],
     "final": "Die Abfrage fehlte, ich habe es erneut versucht."
+  },
+  {
+    "_comment": "Plan teilen (2026-10-28): Wunsch-Modus ac11 -> tool_record_plan_wish (Pflicht-$fromAI wish_text); oc34/oc35 = Folge-Bindung -> Router ruft den Berater.",
+    "match": "Wir sollten den Notgroschen auf sechs Monatsausgaben erhoehen",
+    "calls": [
+      { "tool": "tool_record_plan_wish", "args": { "wish_text": "Wir sollten den Notgroschen auf sechs Monatsausgaben erhoehen." } }
+    ],
+    "final": "Dein Wunsch ist beim Owner."
+  },
+  {
+    "match": "Ja, genau so.",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Ja, genau so." } }
+    ],
+    "final": "Weiter im Gespraech mit dem Berater."
+  },
+  {
+    "match": "mehr fuer die Kinder zuruecklegen",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Ich wuensche mir, dass wir jeden Monat mehr fuer die Kinder zuruecklegen." } }
+    ],
+    "final": "Der Berater nimmt deinen Wunsch auf."
   }
 ]

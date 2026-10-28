@@ -47,7 +47,7 @@ CLI-only (`lifeagents backup`), nie über den Chat; `core.backup_key` nie rotier
 
 ## Update im Chat (`core.update_requests`)
 
-Callback `upd:now|retry:<tag>` (owner-only) legt höchstens einen offenen Auftrag an (Unique-Index = Gesetz); ausgeführt wird er nur vom root-Runner, nie von n8n. Die SemVer-Logik lebt allein in `core.fn_semver_cmp`; alle Runner-Meldungen (Karte, Start, Ergebnis, Fehler-Hilfe) baut die DB (`core.fn_release_card`, `core.fn_update_report`), bash sendet nur. Mechanik → `docs/reference/provisioning.md` *Update im Chat*.
+Callback `upd:now|retry:<tag>` (owner-only) legt höchstens einen offenen Auftrag an (Unique-Index = Gesetz); ausgeführt wird er nur vom root-Runner, nie von n8n. Die SemVer-Logik lebt allein in `core.fn_semver_cmp`; alle Runner-Meldungen baut die DB (`core.fn_release_card`, `core.fn_update_report`), bash sendet nur. → `docs/reference/provisioning.md` *Update im Chat*.
 
 ## Multi-User-Pairing (`agent.pairing_state`)
 
@@ -64,11 +64,12 @@ Callback `upd:now|retry:<tag>` (owner-only) legt höchstens einen offenen Auftra
 
 - Tri-State `unknown|completed|skipped` als **`text + CHECK`**, kein Cross-Schema-ENUM (ein `::agent.<enum>`-Cast scheitert still unter `<pkg>_rw`). `completed` und `skipped` zählen beide als aufgelöst.
 - `p_package` ist build-time-konstant, nie `$fromAI`. per_user-Pakete (career) onboarden pro Person; person_id aus `fn_resolve_sender`, fail-closed.
-- **Haushalts-Sektionen (core + household-Pakete) setzt nur der Owner:** `fn_set_onboarding_section` lehnt ein Mitglied per `core.fn_check_write_permission('owner_only')` ab (sonst sperrte ein Reset von `household` per Core-first-Gate alle Paket-Agenten). Jedes `tool_set_onboarding_section` reicht dafür die build-fixe `chat_id` durch.
+- **Haushalts-Sektionen (core + household-Pakete) setzt nur der Owner:** `fn_set_onboarding_section` lehnt ein Mitglied per `core.fn_check_write_permission('owner_only')` ab. Jedes `tool_set_onboarding_section` reicht dafür die build-fixe `chat_id` durch.
 - EXECUTE auf `fn_onboarding_overview`/`fn_onboarding_pending_packages` nur in `util_create_core_ro.sql`, nicht in `fn_provision_package_roles` (Menü-Read unter `core_ro`); `<pkg>_rw` braucht `SELECT ON core.context_scopes`.
 - Keine Guide→Paket-Delegation: jeder Paket-Agent onboardet seine Sektionen selbst (`tool_set_onboarding_section` mit festem `package`).
 - **Plan-Schritt ≠ Abschnitt** (`plan_step`): nie in Fortschritt/Latch/Nachfassen (contract §3.2).
-- **Den nächsten Bereich nennt die Karte, nicht das LLM:** jedes `tool_set_onboarding_section` endet mit `New-OnboardingProgressCallNode` (`core.sub_onboarding_progress`); Einmal-Ereignisse latcht `core.fn_onboarding_progress_event`. **Bei uns anders** (arch-challenge 2026-10-23): kein [Später]-Knopf an der Karte (eine Chat-Nachricht blockiert nichts, Nicht-Tippen *ist* später) und Menüs werden neu gesendet statt per `editMessageText` editiert (n8n-Telegram-Node ohne `message_id`-Kette).
+- **Knopf-Folge-Bindung** (`agent.dispatch_followup`): einmalig je Chat (**bei uns anders**: ab dem 1. Folge-Turn trägt das Router-Gedächtnis; nur Privatchats) → contract §3.2.
+- **Den nächsten Bereich nennt die Karte, nicht das LLM:** jedes `tool_set_onboarding_section` endet mit `New-OnboardingProgressCallNode` (`core.sub_onboarding_progress`); Einmal-Ereignisse latcht `core.fn_onboarding_progress_event`. **Bei uns anders** (arch-challenge 2026-10-23): kein [Später]-Knopf an der Karte (Nicht-Tippen *ist* später) und Menüs werden neu gesendet statt per `editMessageText` editiert (n8n-Telegram-Node ohne `message_id`-Kette).
 
 ## Lern-Loop (`agent.guide_learn_*`)
 

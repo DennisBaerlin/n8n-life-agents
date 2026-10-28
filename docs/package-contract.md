@@ -149,6 +149,18 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   The button `plan:<domain>` is a `callback_handlers` prefix (`core.fn_handle_plan_cb`, member_permeable) → the
   orchestrator's build-time arm per domain starts the `advisor_agent` with a fixed English task + the tapper's reply
   language.
+- **Plan sharing (2026-10-28):** after publishing a **household** plan, `tool_publish_plan` offers the owner
+  "Inform adults" (`core.fn_plan_share_preview`; button `plan:share:<domain>:<version>`). `core.sub_share_plan` sends each
+  adult member (role `partner`, connected, person reminder `plan_news` on; one rule `core.fn_plan_adult_recipients`)
+  one message per plan version (latch `plan_news` `<pid>:<domain>:p<plan_id>`, set only after a delivered send by
+  `core.fn_plan_share_mark`; the owner gets the result as a message),
+  in the member's language; the stored `change_summary` shows only for the language it was written in
+  (`change_summary_lang`), never translated. Buttons `plan:explain:<domain>` / `plan:wish:<domain>` (partner only) start
+  the advisor in explain mode (read-only) or wish mode (`tool_record_plan_wish`, `owner_info`: the owner gets the wish
+  verbatim; `agent.advisor_plan_wishes`), `rem:off:plan_news` unsubscribes.
+- **Button follow-up (2026-10-28):** every button arm that starts an agent records it after the relay
+  (`agent.fn_set_dispatch_followup`); the next routed message reads it once (`agent.fn_take_dispatch_followup`, 30 min) →
+  router flag `followup_agent` (router rule 2a). One row per chat, last write wins; commands do not consume it.
 - **Registry upgrade trigger:** switch the convention to a `core.onboarding_packages` registry only once a
   package's state table stops matching `<pkg>.onboarding_state` (first non-conforming package).
 - **Generic discovery (WS-3, no registry):** `core.fn_onboarding_pending_packages()` (SECURITY DEFINER) walks
@@ -444,7 +456,7 @@ unlike `core.services`/`core.context_validators`, which exist for runtime SQL wi
 "backup": { "schema_dump": true, "exclude_tables": ["import_staging"] }
 // core (host; user data lives mixed with code in the shared `agent` schema)
 "backup": {
-  "full_tables":     ["agent.advisor_plans", "agent.guide_onboarding_state", "agent.reminder_prefs"],   // wipe+restore whole
+  "full_tables":     ["agent.advisor_plans", "agent.advisor_plan_wishes", "agent.guide_onboarding_state", "agent.reminder_prefs"],   // wipe+restore whole
   "filtered_tables": { "agent.core_contexts": "managed_by = 'agent'",           // \copy (SELECT … WHERE …) + fn
                        "agent.monitor_triggers": "origin = 'user'" }
 }
@@ -460,7 +472,7 @@ unlike `core.services`/`core.context_validators`, which exist for runtime SQL wi
   SQL + the filtered fn + a count-verify (vs. `manifest.verify_counts`) run in one transaction. `--disable-
   triggers` (superuser) also disables the RI/FK triggers → no topo-sort needed. Mechanik → `provisioning/CLAUDE.md`.
 - **Not backed up** (code/ephemeral): `*_instructions`/`capabilities_catalog` (`managed_by≠'agent'` = repo code),
-  `ai_models`/`config`, chat memory, `pairing_state`, `notification_state` (shared notify-dedup, ephemeral), `monitor_observations`. The installer
+  `ai_models`/`config`, chat memory, `pairing_state`, `notification_state` (shared notify-dedup, ephemeral), `dispatch_followup` (button follow-up, 30 min), `monitor_observations`. The installer
   rebuilds code/workflows/secrets; n8n credentials are **never** in a backup (tied to `N8N_ENCRYPTION_KEY`).
 - **Schema `core` is NEVER in a backup block (arch-challenge round-3 Obj 3 — two mandatory notes).** The
   backup encryption key lives in `core.backup_key`; a bundle must not contain the very key that decrypts it.

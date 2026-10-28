@@ -20,7 +20,7 @@
 #   .\scripts\n8n_test.ps1                  # alle Testfaelle
 #   .\scripts\n8n_test.ps1 -Id tc03         # nur einen Testfall
 #   .\scripts\n8n_test.ps1 -TargetWorkflow agent.finance_advisor -WebhookPath advisor-test `
-#       -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger,tool_search_documents,tool_set_asset_classes -CasesFile tests\agent\finance\advisor_cases.json
+#       -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger,tool_search_documents,tool_set_asset_classes,tool_record_plan_wish -CasesFile tests\agent\finance\advisor_cases.json
 #
 # Exit-Code = Anzahl fehlgeschlagener Tests. KOSTET LLM-Credits (owner-gegatet).
 # Voraussetzung: Docker-Test-Substrat + enable_mock_telegram.ps1 (fuers Gate) + .env TEST_HARNESS_SECRET.

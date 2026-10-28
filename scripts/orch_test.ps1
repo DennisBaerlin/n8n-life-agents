@@ -14,7 +14,8 @@
 #
 # Case-Felder (Bot-Persona, alle optional): persona = Owner-Persona nur fuer diesen Fall (danach neutral);
 #   verbatim_relay = true -> die Spezialisten-Antwort muss woertlich im Endtext stehen, plus hoechstens ein Satz;
-#   expected_behavior = Rubric -> Eintrag im Judge-Bundle (inkl. specialist_output), Auswertung judge_eval.ps1.
+#   expected_behavior = Rubric -> Eintrag im Judge-Bundle (inkl. specialist_output), Auswertung judge_eval.ps1;
+#   followup_agent = 'agent.<x>' -> vor dem Fall die Knopf-Folge-Bindung dieses Chats setzen (Router-Regel 2a).
 #
 # Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-Timeout 90] [-Verbose]
 # Exit-Code = Anzahl Fehler. KOSTET LLM-Credits (owner-gegatet).
@@ -139,6 +140,15 @@ foreach ($tc in $cases) {
     [long]$chatId = Get-TestChatId -Seed $tc.id
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
     Clear-MockTelegramRequests -Container $Container
+    # Folge-Bindung (Case-Feld followup_agent, 2026-10-28): simuliert "ein Knopf hat eben agent.<x> gestartet" fuer genau
+    # diesen Chat (agent.fn_set_dispatch_followup, wie der Knopf-Arm nach dem Relay) -> die Nachricht prueft die
+    # Router-Regel 2a. Ohne Feld wird eine Rest-Bindung des Chats geloescht (fn_take liest+loescht einmalig).
+    $fuAgent = if ($tc.PSObject.Properties['followup_agent'] -and $tc.followup_agent) { [string]$tc.followup_agent } else { '' }
+    if ($fuAgent -and $fuAgent -notmatch '^agent\.[a-z][a-z0-9_]*$') { throw "[$($tc.id)] followup_agent '$fuAgent' ungueltig" }
+    $fuSql = if ($fuAgent) { "SELECT agent.fn_set_dispatch_followup(jsonb_build_object('chat_id','$chatId','agent','$fuAgent'));" }
+             else { "SELECT agent.fn_take_dispatch_followup(jsonb_build_object('chat_id','$chatId'));" }
+    $fuRes = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', $fuSql)
+    if ($fuRes.Code -ne 0) { throw "[$($tc.id)] Folge-Bindung setzen fehlgeschlagen: $(($fuRes.Output | Where-Object { $_ }) -join ' ')" }
     $base = Get-MaxExecId -WfId $OrchWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 
     # Bot-Persona (Case-Feld persona): die Owner-Persona gilt NUR fuer diesen Fall -> im finally wieder neutral, weil

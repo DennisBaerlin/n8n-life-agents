@@ -11,13 +11,14 @@ BEGIN
   SELECT string_agg(format('%I.%I', schemaname, tablename), ', ') INTO v_bad
     FROM pg_tables
    WHERE schemaname = 'agent'
-     AND (right(tablename, 12) = '_chat_memory' OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending'))
+     AND (right(tablename, 12) = '_chat_memory' OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending', 'advisor_plan_wishes', 'dispatch_followup'))
      AND has_table_privilege('core_ro', format('%I.%I', schemaname, tablename), 'SELECT');
   IF v_bad IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL acl [core_ro kann % lesen — Deny-Liste in util_create_core_ro.sql pruefen]', v_bad;
   END IF;
   IF to_regclass('agent.pairing_state') IS NULL OR to_regclass('agent.ingress_buffer') IS NULL
-     OR to_regclass('agent.hitl_pending') IS NULL THEN
+     OR to_regclass('agent.hitl_pending') IS NULL OR to_regclass('agent.advisor_plan_wishes') IS NULL
+     OR to_regclass('agent.dispatch_followup') IS NULL THEN
     RAISE EXCEPTION 'FAIL acl [Deny-Listen-Tabelle fehlt — Test prueft ins Leere]';
   END IF;
   -- /kosten: die KI-Nutzung je Workflow (Tagesablauf des Owners) nur ueber core.fn_get_llm_cost_report (Owner-Gate)

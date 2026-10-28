@@ -64,7 +64,8 @@ BEGIN
   -- TEST 2: Publish v1 -> active, plan_md persistiert, Context-Doc angelegt
   SELECT agent.fn_advisor_publish_plan(jsonb_build_object(
     'domain', '__test_pubdom__',
-    'plan_md', '# Plan v1' || E'\n' || 'Content of plan version one.'
+    'plan_md', '# Plan v1' || E'\n' || 'Content of plan version one.',
+    'change_summary', 'Erste Fassung: Notgroschen festgelegt'
   )) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v1]: erwartet ok=true, got %', v_result;
@@ -81,6 +82,13 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v1]: Plan-Zeile nicht active/plan_md fehlt';
   END IF;
   RAISE NOTICE 'PASS fn_advisor_publish_plan [v1 -> active]';
+  -- Plan teilen (2026-10-28): change_summary + Sprache des Owners als Provenienz der Version gespeichert
+  IF (SELECT change_summary FROM agent.advisor_plans WHERE id = v_plan_v1) IS DISTINCT FROM 'Erste Fassung: Notgroschen festgelegt'
+     OR (SELECT change_summary_lang FROM agent.advisor_plans WHERE id = v_plan_v1)
+        IS DISTINCT FROM (agent.fn_person_lang(agent.fn_owner_person_id())->>'lang') THEN
+    RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [change_summary]: %', (SELECT row_to_json(a) FROM agent.advisor_plans a WHERE id = v_plan_v1);
+  END IF;
+  RAISE NOTICE 'PASS fn_advisor_publish_plan [change_summary + Sprache gespeichert]';
 
   -- Assert: Context-Doc korrekt (lazy, global, managed_by=agent [Spalte], package=Domain, content=plan_md)
   SELECT name, description, agent_name, load_strategy, content, managed_by, package, metadata INTO v_ctx

@@ -246,6 +246,40 @@
     "notes": "Onboarding-Plan-Schritt: Owner-Tap faellt ueber die extra-Ausgabe in Dispatch callback -> core.fn_handle_plan_cb (Daten-Reife aus core.fn_advisor_plan_status, Fixture ohne Einnahme) -> {ok:false, toast core.toast.plan_not_ready} -> Onboarding route? false -> Plan route? false -> Answer dispatched cb. Der Erfolgs-Pfad (route plan -> Run plan finance -> Berater) braucht einen LLM-Lauf und ist im Owner-Fenster-Tier abgedeckt; die Handler-Regeln deckt test_fn_handle_plan_cb.sql."
   },
   {
+    "id": "ri07f",
+    "expect_texts": ["Dieser Plan ist nicht mehr aktuell"],
+    "name": "Owner tippt eine veraltete Erwachsene-informieren-Karte (plan:share:finance:999) -> core.fn_handle_plan_cb lehnt ab, kein Versand",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "plan:share:finance:999",
+    "expected_node": "Answer dispatched cb",
+    "notes": "Plan teilen (2026-10-28): Version 999 ist nie die aktive -> Toast core.toast.plan_not_current statt core.sub_share_plan. Der Versand-Pfad (Empfaenger, Merker, Sprache) ist in test_fn_plan_share_targets.sql deterministisch abgedeckt."
+  },
+  {
+    "id": "ri07g",
+    "name": "Owner tippt [Plan erklaeren lassen] (plan:explain:finance) -> nur fuer erwachsene Mitglieder, Toast statt Berater-Lauf",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "plan:explain:finance",
+    "expected_node": "Answer dispatched cb",
+    "notes": "Plan teilen: der Owner kennt den Plan (Toast core.toast.plan_explain_members) bzw. ohne aktiven Plan core.toast.plan_not_current - beides OHNE Berater-Lauf. Rollen-Matrix der Verben: test_fn_handle_plan_cb.sql."
+  },
+  {
+    "id": "ri13f",
+    "name": "onboarding:finance:accounts-Callback -> nach dem Relay setzt der Arm die Folge-Bindung (Set followup onboarding finance)",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "onboarding:finance:accounts",
+    "expected_node": "Set followup onboarding finance",
+    "notes": "Folge-Bindung (arch-challenge 2026-10-28): jeder Knopf-Arm merkt sich nach dem Relay den Agenten (agent.fn_set_dispatch_followup); die naechste Text-Nachricht liest ihn einmalig im Followup pin. TTL/Einmaligkeit: test_fn_dispatch_followup.sql."
+  },
+  {
     "id": "ri14",
     "name": "Core-first Gate (negativ): Haushalt offen -> finance-Eingang leitet VOR dem LLM in den /onboarding-Redirect um (Sub-Knoten)",
     "kind": "node_ran",

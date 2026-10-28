@@ -100,5 +100,15 @@
     "expected_tool": "tool_set_asset_classes",
     "expected_behavior": "The user confirms the asset-class mapping proposed in the planning flow - the advisor must call tool_set_asset_classes ONCE with assignments as a JSON array containing depot_name 'Trade Republic Depot', position VWCE (or its ISIN IE00BK5BQT80) and asset_class 'welt'. It must NOT hand this to the bookkeeper, must NOT claim it cannot write, and must not call any booking tool. Under the test bypass the gate declines; the advisor then reports the assignment as cancelled/aborted, not as done.",
     "notes": "Paket 3 C (Owner 2026-10-23): einzige Daten-Schreib-Ausnahme des Beraters. Fixture-Position VWCE im Trade Republic Depot. Det-Gate: tool_set_asset_classes gerufen."
+  },
+  {
+    "id": "ac11",
+    "name": "Wunsch-Modus: Mitglied nennt seinen Wunsch -> tool_record_plan_wish (Plan teilen)",
+    "task": "Wish mode. A household member tapped [Wish to the owner] on the message about the updated household plan. Mein Wunsch an den Owner: Wir sollten den Notgroschen auf sechs Monatsausgaben erhoehen.",
+    "chat_id": "test_ac11",
+    "timeout_s": 240,
+    "expected_tool": "tool_record_plan_wish",
+    "expected_behavior": "Wish mode: the member already stated the wish - the advisor must call tool_record_plan_wish with wish_text carrying the member words (raise the emergency fund to six months of expenses) and must not change or save the plan itself. The test sender is no household partner, so the tool may refuse (ok:false) - then the advisor explains in plain words that only an adult household member can send a plan wish and does NOT claim the wish was sent.",
+    "notes": "Plan teilen (2026-10-28): Golden fuer das neue Core-Werkzeug am Finanzberater (domain fix finance). Det-Gate: tool_record_plan_wish gerufen. Das Kommando braucht tool_record_plan_wish in -WriteTools, falls die Default-Erkennung es nicht greift."
   }
 ]

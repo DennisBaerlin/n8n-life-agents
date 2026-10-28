@@ -205,6 +205,14 @@ function Build-AgentFinanceAdvisor {
             ,@('context_description', 'Optional description for the published context document; omit for the default', 'string', '')
         ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(640, 208) -StartNode $START_NODE
 
+    # Plan teilen (2026-10-28): ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (owner_info:
+    # Mitglied bestaetigt, Owner bekommt den Wortlaut). domain fix wie die Plan-Tools.
+    $nToolPlanWish = New-AdvisorToolNode 'tool_record_plan_wish' (Resolve-CoreServiceAlias 'core:record_plan_wish' $CoreServiceMap) `
+        'Send the owner a household member wish about the published household plan (wish mode). Only an adult household member (partner) can use it, and only while a published household plan exists - the tool checks this first and returns ok:false with a reason otherwise (then explain it in plain words). wish_text = the member own words, verbatim and in their language (no translation, no rewording beyond fixing an obvious typo they confirm). A button confirmation follows for the member; after the tap the owner receives the wish. The wish does NOT change the plan - the owner decides. Do not call it for the owner.' `
+        @(
+            ,@('wish_text', 'The member wish in their own words and language, verbatim (at most 2000 characters)', 'string')
+        ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(800, 208) -StartNode $START_NODE
+
     # NUR create (kein set/delete — Edits/Repair verweist der Advisor an den Monitor-Agenten,
     # Ownership-Regel: Wert-Fragen -> Advisor, Mechanik -> agent.monitor). domain FIX 'finance'
     # (der e2e-Switch auf __e2e_monitor__ lebt IM Tool, gekeyt auf chat_id).
@@ -256,7 +264,7 @@ function Build-AgentFinanceAdvisor {
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) `
         'agent.finance_advisor — Finanzberater (Sub-Workflow)' `
-        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -> Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -> Load Config (core.sub_load_config) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -> Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context; Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor.' 300 600
+        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -> Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -> Load Config (core.sub_load_config) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -> Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context; Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor.' 300 600
 
     $stickyDomain = Build-Sticky 'Doc: Domain-Switch' @(400, -200) `
         'domain = fixer Binding-Input (+ e2e-Sentinel)' `
@@ -281,7 +289,7 @@ function Build-AgentFinanceAdvisor {
     $nodes = @($nTrigger) + $gate.Nodes + @(
         $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nBuildInput, $nAgent,
         $nMemory,
-        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish,
+        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolPlanWish,
         $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
     ) + $mb.Nodes
@@ -312,6 +320,7 @@ function Build-AgentFinanceAdvisor {
     $conns['web_search']         = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['expert_panel']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_save_plan_section']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_record_plan_wish']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_publish_plan']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_create_monitor_trigger'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_list_monitor_triggers']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

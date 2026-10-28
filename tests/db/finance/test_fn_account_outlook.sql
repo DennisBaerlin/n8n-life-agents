@@ -83,4 +83,36 @@ BEGIN
   RAISE NOTICE 'PASS outlook Puffer in Fremdwaehrung: 362500 KRW / 40000 JPY';
 END $$;
 
+-- Ueberbrueckung 2026-10-28 (Dauerauftrags-Fluesse kommen aus finance.fn_upcoming_payments): Randfaelle, die VOR dem
+-- Umbau so gerechnet wurden und danach identisch bleiben muessen.
+--   * offenes Vorkommen zwischen bestaetigtem Stand und heute (d0 < heute) zaehlt in den Stand heute
+--   * Uebertrag AUF das Konto mit POSITIVEM Betrag in der Zeile (kein CHECK erzwingt das Minus) -> Ziel-Seite +abs()
+--   * Uebertrag VOM Konto -> Quell-Seite mit Vorzeichen; der Uebertrag aufs Konto ist zugleich der Horizont (Einnahme)
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_a INT; v_b INT; v_res JSONB;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__t_ol_edge_a__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__t_ol_edge_b__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_a, 1000, t - 40, 'other'),
+                                                                                         (v_b, 100, t - 40, 'other');
+  PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', v_a, 'confirmed_balance', 1000, 'reconciliation_date', (t - 5)::text));
+  PERFORM finance.fn_add_recurring_payment(v_a, -100, 'Edge Abo', 30::smallint, 'day'::finance.schedule_unit, NULL, t - 2, t - 2, NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+                                          first_payment_date, valid_from)
+  VALUES ('Edge rein positiv', v_b, v_a, 50, 30, 'day', t + 1, t + 1),
+         ('Edge raus', v_a, v_b, -30, 30, 'day', t, t);
+
+  v_res := finance.fn_account_outlook(v_a);
+  -- Stand: 1000 bis t-3, t-2 -100, t -30 = 870 (heute = Tief), t+1 +50 (Horizont = naechster Eingang)
+  IF (v_res->>'estimated_today')::numeric IS DISTINCT FROM 870 OR (v_res->>'min_projected')::numeric IS DISTINCT FROM 870
+     OR (v_res->>'min_date')::date IS DISTINCT FROM t OR (v_res->>'horizon_end')::date IS DISTINCT FROM t + 1
+     OR (v_res->>'next_income_name') IS DISTINCT FROM 'Edge rein positiv'
+     OR (v_res->>'planned_out')::numeric IS DISTINCT FROM -130 OR (v_res->>'planned_in')::numeric IS DISTINCT FROM 50
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 0 OR jsonb_typeof(v_res->'suggestion') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL outlook Randfaelle: %', v_res; END IF;
+  RAISE NOTICE 'PASS outlook Randfaelle: Vorkommen vor heute, positiver Uebertrag aufs Konto, Uebertrag vom Konto';
+END $$;
+
 ROLLBACK;

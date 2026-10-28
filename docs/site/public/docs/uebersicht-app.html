@@ -239,6 +239,18 @@
 <li><strong>Sparpläne:</strong> Betrag je Ausführung, was das im Monat ausmacht, und die nächste Ausführung. Ein angehaltener Plan steht als „pausiert“ darunter.</li>
 </ul>
 <p>Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist bis heute schon deutlich mehr Zeit vergangen, als Geld zusammengekommen ist, steht dort „hinter Plan“.</p>
+<h3 id="zahlungen">Zahlungen</h3>
+<ul>
+<li><strong>Kommende Zahlungen:</strong> alle Daueraufträge der nächsten 30 Tage mit Datum, Konto und Betrag, Abbuchungen mit Minus, Eingänge wie das Gehalt mit Plus. Bei einer Umbuchung zwischen zwei Konten steht das Zielkonto dabei. Oben steht die Summe dessen, was in dieser Zeit abgeht (ohne Umbuchungen zwischen eigenen Konten).</li>
+<li><strong>Kontovorschau bis zum nächsten Geldeingang:</strong> für jedes Konto, zu dem du schon einen Kontoauszug eingespielt hast (siehe <a href="monats-check.html">Monats-Check</a>), der geschätzte Stand heute und der tiefste Stand bis zum nächsten Gehalt, mit Datum. Ein Beispiel: Steht beim Girokonto „Tiefster Stand 140 € am 27.11.“ und darunter <strong>rot „unter Puffer“</strong>, fällt das Konto vor dem nächsten Gehalt unter deinen Sicherheitspuffer (Standard 250 €). <strong>Gelb „knapp“</strong> heißt, der Stand bleibt zwar über dem Puffer, aber unter dem Doppelten davon. <strong>Grün „reicht“</strong> heißt alles gut.</li>
+<li>Fehlt für ein Konto in Fremdwährung der Wechselkurs, steht dort grau „Kurs fehlt“ statt einer Ampel.</li>
+</ul>
+<h3 id="kredite">Kredite</h3>
+<ul>
+<li>Jeder laufende oder pausierte Kredit mit der Restschuld, der Monatsrate und dem Zinssatz. Kennst du den ursprünglichen Kreditbetrag, zeigt ein Balken, wie viel schon getilgt ist. Oben steht die Restschuld aller Kredite zusammen.</li>
+<li><strong>Gelb „Zinsbindung bis …“</strong> erscheint, wenn die Zinsbindung in weniger als zwölf Monaten endet. Dann ist Zeit, sich um die Anschlussfinanzierung zu kümmern. Ist das Datum schon vorbei, steht dort „Zinsbindung endete am …“.</li>
+<li>Ein pausierter Kredit trägt den grauen Hinweis „pausiert“.</li>
+</ul>
 <h3 id="depot">Depot</h3>
 <ul>
 <li><strong>Depotwert:</strong> der aktuelle Wert aller Wertpapiere und Kryptowerte.</li>
@@ -246,7 +258,7 @@
 <li><strong>Für Ziele reserviert:</strong> wie viel Geld im Depot für Sparziele zurückgelegt ist und ob der Depotwert das deckt: „gedeckt“, „nicht gedeckt“ oder „nicht ermittelbar“, solange ein Kurs fehlt.</li>
 </ul>
 <h3 id="hinweise-auf-der-startseite">Hinweise auf der Startseite</h3>
-<p>Gibt es etwas zu beachten, steht es oben auf der Startseite, zum Beispiel „Urlaub liegt hinter Plan“ oder „Kurs fehlt oder ist veraltet in Depot X“. Ein Tipp auf den Hinweis öffnet den passenden Bildschirm.</p>
+<p>Was Aufmerksamkeit braucht, steht als Hinweis oben auf der Startseite, Rotes vor Gelbem. Ein Tipp darauf öffnet den passenden Bildschirm. Ein Beispiel: „Girokonto: Der tiefste Stand (140 € am 27.11.) liegt unter dem Puffer. Vorschlag: 150 € vom Tagesgeld bis 25.11. umbuchen.“ Oder: „Baufinanzierung: Die Zinsbindung endet am 30.06., Restschuld dann etwa 182.400 €.“ Weitere Beispiele: „Urlaub liegt hinter Plan“ oder „Kurs fehlt oder ist veraltet in Depot X“.</p>
 <p>Die Übersicht spricht die Sprache, die du mit <code>/language</code> eingestellt hast.</p>
 <h2 id="nur-anschauen-gebucht-wird-im-chat">Nur anschauen, gebucht wird im Chat</h2>
 <p>Die Übersicht zeigt nur an. Buchen, Ändern und Löschen läuft wie gewohnt im Chat, mit der Bestätigungs-Karte davor (siehe <a href="chatten-bestaetigen.html">Chatten &amp; Bestätigen</a>). Alle Zahlen rechnet die Datenbank aus denselben Daten, die auch der Chat nutzt; die App selbst rechnet nichts.</p>
@@ -256,9 +268,10 @@
 <ul>
 <li><strong>Du als Owner und dein Partner bzw. deine Partnerin</strong> seht den ganzen Haushalt, auch die Konten und Depots der Kinder.</li>
 <li><strong>Kinder</strong> sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name. Beim eigenen Depot sieht ein Kind, wie viel darin für Ziele reserviert ist, aber nicht, für welche.</li>
+<li>Bei den <strong>Zahlungen</strong> sehen Kinder nur Daueraufträge von ihren eigenen Konten und Kredite, die auf ihren Namen laufen. Taschengeld vom Elternkonto erscheint als „Vom Haushalt“, ohne den Namen des Dauerauftrags oder des Elternkontos, und einen Umbuchungs-Vorschlag bekommen Kinder nie.</li>
 <li><strong>Fremde Telegram-Nutzer</strong> bekommen den Knopf nie zu sehen.</li>
 </ul>
-<p>Zum Start bekommt <strong>nur der Owner</strong> den Knopf, als Probelauf. Für die ganze Familie schaltet ihn der Admin frei (siehe unten).</p>
+<p>Alle gekoppelten Haushaltsmitglieder bekommen den Knopf. Wer neu gekoppelt wird, entkoppelt wird oder die Sprache wechselt, sieht den Knopf bzw. die neue Beschriftung nach etwa einer Minute, ohne Update. Soll ihn nur der Owner haben, stellt der Admin das um (siehe unten).</p>
 <h2 id="nach-einer-stunde-neu-öffnen">Nach einer Stunde neu öffnen</h2>
 <p>Aus Sicherheitsgründen gilt ein Aufruf eine Stunde lang. Bleibt die Übersicht länger offen, erscheint der Hinweis, dass sie abgelaufen ist. Dann schließen und über den Knopf neu öffnen.</p>
 <p>Ohne Internetverbindung zeigt die Übersicht nur ⚠ und den Knopf ↻ zum erneuten Laden.</p>
@@ -271,7 +284,7 @@
 <li>Der Weg ins Internet ist derselbe wie für den Chat: Dein Türsteher (Reverse Proxy) braucht dafür keine neue Regel. Mehr dazu unter <a href="datenschutz.html">Datenschutz &amp; Sicherheit</a>.</li>
 </ul>
 <h2 id="für-admins-an--und-abschalten">Für Admins: an- und abschalten</h2>
-<p>Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein, danach jeweils <code>lifeagents update</code> ausführen:</p>
+<p>Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein. Die Knöpfe folgen nach etwa einer Minute von selbst, ein Update ist nicht nötig:</p>
 <table>
 	<thead>
 			<tr>
@@ -282,15 +295,15 @@
 	<tbody>
 			<tr>
 					<td><code>lifeagents config set app audience household</code></td>
-					<td>Alle gekoppelten Haushaltsmitglieder bekommen den Knopf (Kinder sehen nur Eigenes).</td>
+					<td>Alle gekoppelten Haushaltsmitglieder bekommen den Knopf, Kinder sehen nur Eigenes (so ist es eingestellt).</td>
 			</tr>
 			<tr>
 					<td><code>lifeagents config set app audience owner</code></td>
-					<td>Nur der Owner bekommt den Knopf (Probelauf, so ist es nach der Installation eingestellt).</td>
+					<td>Nur der Owner bekommt den Knopf.</td>
 			</tr>
 			<tr>
 					<td><code>lifeagents config set app enabled false</code></td>
-					<td>Schaltet die Übersicht ganz ab. Die Übersicht ist sofort gesperrt, der Knopf verschwindet mit dem nächsten Update; an seiner Stelle ist dann wieder der Menü-Knopf mit den Befehlen.</td>
+					<td>Schaltet die Übersicht ganz ab. Die Übersicht ist sofort gesperrt, der Knopf verschwindet nach etwa einer Minute; an seiner Stelle ist dann wieder der Menü-Knopf mit den Befehlen.</td>
 			</tr>
 			<tr>
 					<td><code>lifeagents config set app enabled true</code></td>
@@ -298,7 +311,30 @@
 			</tr>
 	</tbody>
 </table>
-<p>Wird jemand neu mit dem Bot gekoppelt oder wechselt jemand die Sprache, kommt der Knopf bzw. die neue Beschriftung mit dem nächsten <code>lifeagents update</code>.</p>
+<p>Kopplung, Entkoppeln und Sprachwechsel zieht der Server genauso nach. Klappt das wiederholt nicht (etwa weil Telegram nicht erreichbar ist), versucht er es alle zehn Minuten erneut, und <code>lifeagents doctor</code> meldet es nach einer halben Stunde.</p>
+<p>Wie weit die Liste der kommenden Zahlungen reicht, ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Befehl</th>
+					<th>Wirkung</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>lifeagents config set finance app_payments_days 30</code></td>
+					<td>Kommende Zahlungen für so viele Tage im Voraus.</td>
+			</tr>
+			<tr>
+					<td><code>lifeagents config set finance coverage_warn_factor 2</code></td>
+					<td>Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (<code>coverage_buffer_eur</code>).</td>
+			</tr>
+			<tr>
+					<td><code>lifeagents config set finance fixed_rate_warn_months 12</code></td>
+					<td>Hinweis, wenn die Zinsbindung eines Kredits in weniger als so vielen Monaten endet.</td>
+			</tr>
+	</tbody>
+</table>
 
   </article>
 </div>

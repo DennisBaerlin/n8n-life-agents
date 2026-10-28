@@ -370,15 +370,13 @@ BEGIN
     END LOOP;
 
     -- ---------- (2c) Monats-Check: Konto-Deckung bis zum naechsten Geldeingang ----------
-    -- Nur Konten mit >= 1 eingespieltem Kontoauszug (ohne Auszug fehlt die Alltags-Schaetzung -> keine Warnung auf
-    -- Halbwissen). Die Rechnung lebt allein in finance.fn_account_outlook (eine Adresse, auch fuer die Tool-Antwort).
-    -- Gelatcht ueber den Core-Wrapper (stabiler metric_key je Konto).
+    -- Nur Konten aus finance.fn_coverage_accounts (cash, aktiv, >= 1 Kontoauszug; ohne Auszug fehlt die Alltags-
+    -- Schaetzung -> keine Warnung auf Halbwissen). Die Rechnung lebt allein in finance.fn_account_outlook (eine Adresse,
+    -- auch fuer die Tool-Antwort und die Mini-App). Gelatcht ueber den Core-Wrapper (stabiler metric_key je Konto).
     FOR r IN
         SELECT x.o
-        FROM (SELECT finance.fn_account_outlook(a.id) AS o
-              FROM finance.accounts a
-              WHERE a.status = 'active' AND a.account_type = 'cash'
-                AND EXISTS (SELECT 1 FROM finance.bank_statements b WHERE b.account_id = a.id)) x
+        FROM (SELECT finance.fn_account_outlook(c.id) AS o
+              FROM finance.fn_coverage_accounts() c(id)) x
         WHERE (x.o->>'ok')::boolean AND (x.o->>'shortfall')::numeric > 0
     LOOP
         v_alerts := v_alerts || jsonb_build_object(

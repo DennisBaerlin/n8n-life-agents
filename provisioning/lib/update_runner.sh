@@ -292,8 +292,40 @@ update_run_requested() {
     done
   fi
 
-  [ "$(jq -r '.claimed' <<<"$claim")" != null ] || return 0
+  if [ "$(jq -r '.claimed' <<<"$claim")" = null ]; then
+    _ur_menu_refresh
+    return 0
+  fi
   id="$(jq -r '.claimed.id' <<<"$claim")"; tag="$(jq -r '.claimed.tag' <<<"$claim")"; kind="$(jq -r '.claimed.kind' <<<"$claim")"
-  _ur_run_one "$id" "$tag" "$kind" "$installed"
+  _ur_run_one "$id" "$tag" "$kind" "$installed"   # ein Update setzt am Ende ohnehin alle Menues (und schliesst den Auftrag)
+  return 0
+}
+
+# _ur_menu_refresh — zweite Auftragsart desselben Runners: offener Menue-Auftrag der Mini-App (core.menu_refresh; Kopplung,
+#   Entkoppeln, Rollen-/Sprachwechsel, app.enabled/audience) -> nur die Knoepfe neu setzen (_set_bot_menu_buttons, ohne
+#   Befehlsmenues, ohne Update). Vorher die Update-Sperre freigeben: der Menue-Lauf hat seine eigene, und ein Terminal-
+#   Update wartet nur 30 s auf die Update-Sperre (Telegram-Aufrufe duerfen es nie aufhalten). Offen-Pruefung in der DB
+#   (requested_gen > done_gen, Wartezeit nach Fehlschlag), sonst still — der Leerlauf erzeugt kein Journal.
+_ur_menu_refresh() {
+  exec 9>&- 2>/dev/null || true
+  unset LIFEAGENTS_UPDATE_LOCK_HELD
+  local claim gen token
+  claim="$(_ur_sql '{}' "SELECT core.fn_menu_refresh_claim();" 2>/dev/null || true)"
+  [ -n "$claim" ] || return 0
+  [ "$(jq -r '.open // false' <<<"$claim" 2>/dev/null || true)" = true ] || return 0
+  gen="$(jq -r '.gen // 0' <<<"$claim")"
+  token="${TELEGRAM_BOT_TOKEN:-}"
+  [ -n "$token" ] || token="$(read_env_value "$(lifeagents_env_file core)" TELEGRAM_BOT_TOKEN 2>/dev/null || true)"
+  if [ -z "$token" ]; then
+    # als Fehlschlag verbuchen: Wartezeit 10 Min, beim dritten Mal aufgeben (sonst jede Minute dieselbe Warnung)
+    _ur_alert "Übersicht-Knopf: kein Bot-Token in core.env — Menü-Auftrag wartet."
+    _ur_sql "$(jq -nc --argjson g "${gen:-0}" '{gen:$g}')" \
+      "SELECT core.fn_menu_refresh_finish((:'p'::jsonb->>'gen')::bigint, false);" >/dev/null 2>&1 || true
+    return 0
+  fi
+  need_cmd curl || return 0
+  [ -n "${REPO_ROOT:-}" ] || REPO_ROOT="${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}"
+  _ur_notice "Übersicht-Knopf: Haushalt oder Einstellung geändert — Menü-Knöpfe werden neu gesetzt."
+  _set_bot_menu_buttons "$token"
   return 0
 }

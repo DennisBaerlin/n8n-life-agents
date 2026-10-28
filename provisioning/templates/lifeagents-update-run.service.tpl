@@ -1,5 +1,5 @@
 [Unit]
-Description=n8n-life-agents: Update-Auftraege aus dem Chat ausfuehren (root-Runner)
+Description=n8n-life-agents: Auftraege aus dem Chat ausfuehren (Update, Menue-Knoepfe der Uebersicht; root-Runner)
 Documentation=https://github.com/@@REPO_SLUG@@/blob/main/docs/reference/provisioning.md
 After=network-online.target postgresql.service
 Wants=network-online.target

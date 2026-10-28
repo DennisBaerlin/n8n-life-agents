@@ -150,6 +150,13 @@ main() {
       _warn "Das letzte Update hat nicht vollständig geklappt:"
       printf '%s\n' "$_help" | sed 's/^/         /'
     fi
+    # Menue-Auftrag der Uebersicht (core.menu_refresh): derselbe Runner setzt die Knoepfe nach Kopplung/Sprachwechsel;
+    # offen seit > 30 min = der Runner laeuft nicht; aufgegeben (3 Fehlschlaege in Folge) = Telegram lehnt einen Chat ab.
+    if [ -n "$(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c \
+          "SELECT 1 FROM core.menu_refresh WHERE (requested_gen > done_gen AND requested_at < now() - interval '30 minutes')
+              OR gave_up_at > now() - interval '7 days'" 2>/dev/null || true)" ]; then
+      _warn "Übersicht-Knöpfe nicht vollständig nachgezogen (Kopplung/Sprache geändert, Telegram lehnte ab) — journalctl -u lifeagents-update-run -n 50"
+    fi
   fi
 
   # --- LLM-Gateway (lib/install_llm_gateway.sh): ALLE Claude-Aufrufe laufen darueber -> Ausfall = ROT ---

@@ -137,7 +137,17 @@ $verified = @($out | Where-Object { "$_" -match 'verifiziert' }).Count
 if ($verified -ne $sets.Count) { Fail "Sofort-Verify: $verified von $($sets.Count) Menues verifiziert" }
 if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'false') { Fail 'Menü-Lauf des Installers hat den offenen Menü-Auftrag nicht geschlossen' }
 
-# (4) Menue-Auftrag ueber den Runner (Familie, Release 2): audience owner -> household
+# (4) Menue-Auftrag ueber den Runner (Familie, Release 2): audience owner -> household. Frisches Substrat ohne
+# gekoppelte Person -> fuer die Testdauer eine Test-Kopplung am Owner (sonst liefen Runner- und Fehlerfall leer).
+$famPersons = @'
+SELECT jsonb_agg(CASE WHEN e->>'role' = 'owner' THEN e || jsonb_build_object('telegram_user_id', 4242) ELSE e END ORDER BY o)
+  FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') WITH ORDINALITY AS x(e, o) WHERE c.name = 'family'
+'@
+$addedTid = $false
+if (-not (Invoke-Sql "SELECT 1 FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) p WHERE c.name = 'family' AND COALESCE(p->>'telegram_user_id','') ~ '^[0-9]{1,18}$' LIMIT 1;")) {
+    [void](Invoke-Sql "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', ($famPersons)) WHERE name = 'family' AND jsonb_typeof(metadata->'facts'->'persons') = 'array';")
+    $addedTid = $true
+}
 $tids = @((Invoke-Sql "SELECT p->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) p WHERE c.name = 'family' AND COALESCE(p->>'telegram_user_id','') ~ '^[0-9]{1,18}$';") -split "`n" | Where-Object { $_ })
 function Invoke-Runner([string]$Api) {
     $prev2 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -153,7 +163,7 @@ Invoke-Runner "http://127.0.0.1:$MockPort"
 $req = @(Get-MockTelegramRequests -Container $Container)
 if (@($req | Where-Object { $_.method -eq 'setMyCommands' }).Count -gt 0) { Fail 'Runner hat Befehlsmenüs gesetzt (soll nur die Knöpfe setzen)' }
 $web2 = @($req | Where-Object { $_.method -eq 'setChatMenuButton' -and $_.body.menu_button.type -eq 'web_app' })
-if ($owner.Count -gt 0 -and $web2.Count -ne $tids.Count) { Fail "Runner: $($web2.Count) Übersicht-Knöpfe, erwartet $($tids.Count) (alle gekoppelten Personen bei household)" }
+if ($web2.Count -ne $tids.Count) { Fail "Runner: $($web2.Count) Übersicht-Knöpfe, erwartet $($tids.Count) (alle gekoppelten Personen bei household)" }
 if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'false') { Fail 'Runner hat den Menü-Auftrag nicht geschlossen' }
 Clear-MockTelegramRequests -Container $Container
 Invoke-Runner "http://127.0.0.1:$MockPort"
@@ -175,7 +185,10 @@ if ($tids.Count -gt 0) {
     Write-Host "  Fehlschlag: Auftrag offen mit Wartezeit, Installer-Lauf schließt ihn"
 }
 
-# Aufraeumen: audience wie vorher, Knoepfe dazu passend (Installer-Lauf), Timer wieder an
+# Aufraeumen: Test-Kopplung weg, audience wie vorher, Knoepfe dazu passend (Installer-Lauf), Timer wieder an
+if ($addedTid) {
+    [void](Invoke-Sql "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(e - 'telegram_user_id' ORDER BY o) FROM jsonb_array_elements(metadata->'facts'->'persons') WITH ORDINALITY AS x(e, o))) WHERE name = 'family';")
+}
 if ($audienceBefore) { [void](Invoke-Sql "UPDATE core.config SET value = '$audienceBefore' WHERE category = 'app' AND key = 'audience';") }
 $prev4 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 [void](& docker exec $Container bash -c $sh 2>&1)

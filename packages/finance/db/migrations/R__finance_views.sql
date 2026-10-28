@@ -314,6 +314,10 @@ WITH legs AS (
     UNION ALL
     SELECT e.savings_goal_id, e.account_id, e.delta_native, e.currency, e.value_date, e.kind = 'manual'
     FROM finance.savings_goal_reserve_entries e
+), legs_eur AS (
+    -- EUR je Bein einmal (Kurs-Lookup), dann fuer Summe, Hand-Anteil und Luecke wiederverwendet
+    SELECT l.*, finance.fn_to_eur(l.amount, l.currency, l.fx_date) AS eur
+    FROM legs l
 )
 SELECT l.goal_id,
        g.status                                                       AS goal_status,
@@ -321,13 +325,13 @@ SELECT l.goal_id,
        a.name                                                         AS account_name,
        a.account_type,
        a.currency                                                     AS account_currency,
-       sum(finance.fn_to_eur(l.amount, l.currency, l.fx_date))        AS share_eur,
+       sum(l.eur)                                                     AS share_eur,
        CASE WHEN a.account_type = ANY (finance.fn_goal_pot_account_types()) THEN sum(l.amount) END AS share_native,
-       COALESCE(sum(finance.fn_to_eur(l.amount, l.currency, l.fx_date)) FILTER (WHERE l.is_manual), 0) AS manual_eur,
+       COALESCE(sum(l.eur) FILTER (WHERE l.is_manual), 0)             AS manual_eur,
        -- Mini-App 2026-10-28 (ans Ende angehaengt): ein Bein ohne Wechselkurs faellt sonst STILL aus share_eur (sum
        -- ignoriert NULL) -> als Luecke melden (Muster networth_by_asset_class.has_fx_gap).
-       COALESCE(bool_or(l.amount <> 0 AND finance.fn_to_eur(l.amount, l.currency, l.fx_date) IS NULL), false) AS has_fx_gap
-FROM legs l
+       COALESCE(bool_or(l.amount <> 0 AND l.eur IS NULL), false)      AS has_fx_gap
+FROM legs_eur l
 JOIN finance.savings_goals g ON g.id = l.goal_id
 JOIN finance.accounts a ON a.id = l.account_id
 GROUP BY l.goal_id, g.status, l.account_id, a.name, a.account_type, a.currency;

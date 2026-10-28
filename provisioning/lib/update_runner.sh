@@ -309,12 +309,20 @@ update_run_requested() {
 _ur_menu_refresh() {
   exec 9>&- 2>/dev/null || true
   unset LIFEAGENTS_UPDATE_LOCK_HELD
-  local open token
-  open="$(_ur_sql '{}' "SELECT core.fn_menu_refresh_claim()->>'open';" 2>/dev/null || true)"
-  [ "$open" = true ] || return 0
+  local claim gen token
+  claim="$(_ur_sql '{}' "SELECT core.fn_menu_refresh_claim();" 2>/dev/null || true)"
+  [ -n "$claim" ] || return 0
+  [ "$(jq -r '.open // false' <<<"$claim" 2>/dev/null || true)" = true ] || return 0
+  gen="$(jq -r '.gen // 0' <<<"$claim")"
   token="${TELEGRAM_BOT_TOKEN:-}"
   [ -n "$token" ] || token="$(read_env_value "$(lifeagents_env_file core)" TELEGRAM_BOT_TOKEN 2>/dev/null || true)"
-  [ -n "$token" ] || { _ur_alert "Übersicht-Knopf: kein Bot-Token in core.env — Menü-Auftrag bleibt offen."; return 0; }
+  if [ -z "$token" ]; then
+    # als Fehlschlag verbuchen: Wartezeit 10 Min, beim dritten Mal aufgeben (sonst jede Minute dieselbe Warnung)
+    _ur_alert "Übersicht-Knopf: kein Bot-Token in core.env — Menü-Auftrag wartet."
+    _ur_sql "$(jq -nc --argjson g "${gen:-0}" '{gen:$g}')" \
+      "SELECT core.fn_menu_refresh_finish((:'p'::jsonb->>'gen')::bigint, false);" >/dev/null 2>&1 || true
+    return 0
+  fi
   need_cmd curl || return 0
   [ -n "${REPO_ROOT:-}" ] || REPO_ROOT="${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}"
   _ur_notice "Übersicht-Knopf: Haushalt oder Einstellung geändert — Menü-Knöpfe werden neu gesetzt."

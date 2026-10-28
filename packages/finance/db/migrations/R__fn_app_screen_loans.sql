@@ -4,9 +4,9 @@
 --   Quelle finance.loan_overview, nur ausstehende Kredite (finance.fn_loan_is_outstanding = active + paused). Je Kredit:
 --   Rohname, Restschuld positiv in Kontowaehrung, „Rate · Zins“, gap wie loan_summary (Restschuld ohne Kurs), Balken
 --   „getilgt“ nur mit Kreditbetrag (Prozent rechnet die DB). Hero = Restschuld gesamt in EUR.
---   Pille (Prioritaet): pausiert -> neutral; Zinsbindung endet in [heute, heute + finance.fixed_rate_warn_months) ->
---   warn + Banner (mit voraussichtlicher Restschuld zum Bindungsende, wenn loan_overview sie kennt); Bindung schon
---   abgelaufen -> warn ohne Banner (das Datum ist evtl. nur nicht nachgepflegt); sonst keine.
+--   Pille (Prioritaet warn vor neutral): Zinsbindung endet in [heute, heute + finance.fixed_rate_warn_months) -> warn +
+--   Banner (mit voraussichtlicher Restschuld zum Bindungsende, wenn loan_overview sie kennt), auch wenn pausiert; Bindung
+--   schon abgelaufen -> warn ohne Banner (das Datum ist evtl. nur nicht nachgepflegt); sonst pausiert -> neutral.
 --   ZERO-TRUST-SICHTBARKEIT (core.fn_app_sees_household): owner/partner sehen alle; sonst nur borrower_person_id = ich
 --   (Haushaltskredit mit NULL bleibt unsichtbar). Keine Kontonamen, keine IDs, kein Kreditgeber in der Antwort.
 --   params.probe = true -> {ok, empty, banners}. Fehler als Daten, nie RAISE (forbidden / bad_request).
@@ -42,9 +42,10 @@ BEGIN
 
     WITH l AS (
         SELECT lo.*,
-               CASE WHEN lo.status = 'paused' THEN 'paused'
-                    WHEN lo.interest_rate_fixed_until >= v_today AND lo.interest_rate_fixed_until < v_warn_to THEN 'ends'
-                    WHEN lo.interest_rate_fixed_until < v_today THEN 'ended' END AS flag
+               -- warn vor neutral: auch ein pausierter Kredit braucht die Anschlussfinanzierung
+               CASE WHEN lo.interest_rate_fixed_until >= v_today AND lo.interest_rate_fixed_until < v_warn_to THEN 'ends'
+                    WHEN lo.interest_rate_fixed_until < v_today THEN 'ended'
+                    WHEN lo.status = 'paused' THEN 'paused' END AS flag
           FROM finance.loan_overview lo
          WHERE finance.fn_loan_is_outstanding(lo.status)
            AND (v_hh OR lo.borrower_person_id = v_pid)

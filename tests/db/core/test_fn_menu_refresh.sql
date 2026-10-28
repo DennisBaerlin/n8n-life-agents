@@ -106,6 +106,24 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3f] Erfolg schliesst, retry_after weg, kein Rueckschritt: %', c; END IF;
   RAISE NOTICE 'PASS [3] Claim/Finish: Generationen, Auftrag im Lauf bleibt offen, Fehlschlag wartet 10 Min';
 
+  -- [3g] dauerhaft scheiternder Chat: beim dritten Fehlschlag in Folge gibt der Auftrag auf (geschlossen + gave_up_at),
+  --      ein Erfolg setzt Zaehler und Stempel zurueck
+  PERFORM pg_temp.set_person('amr_owner', 'language', '"de"');
+  g := pg_temp.gen();
+  PERFORM core.fn_menu_refresh_finish(g, false);
+  PERFORM core.fn_menu_refresh_finish(g, false);
+  IF (SELECT done_gen < requested_gen AND failures = 2 AND gave_up_at IS NULL FROM core.menu_refresh) IS NOT TRUE THEN
+    RAISE EXCEPTION 'FAIL [3g] nach 2 Fehlschlaegen offen mit Zaehler 2'; END IF;
+  PERFORM core.fn_menu_refresh_finish(g, false);
+  IF (SELECT done_gen = requested_gen AND failures = 0 AND retry_after IS NULL AND gave_up_at IS NOT NULL
+        FROM core.menu_refresh) IS NOT TRUE THEN
+    RAISE EXCEPTION 'FAIL [3h] dritter Fehlschlag: aufgegeben (geschlossen, gave_up_at)'; END IF;
+  PERFORM pg_temp.set_person('amr_owner', 'language', '"ko"');
+  PERFORM core.fn_menu_refresh_finish(pg_temp.gen(), true);
+  IF (SELECT gave_up_at IS NULL AND failures = 0 AND done_gen = requested_gen FROM core.menu_refresh) IS NOT TRUE THEN
+    RAISE EXCEPTION 'FAIL [3i] Erfolg setzt gave_up_at/Zaehler zurueck'; END IF;
+  RAISE NOTICE 'PASS [3g-i] dritter Fehlschlag gibt auf, Erfolg setzt zurueck';
+
   -- ===== 4) Rechte =====
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'core.fn_menu_refresh_mark()'::regprocedure) THEN
     RAISE EXCEPTION 'FAIL [4a] Trigger-fn muss SECURITY DEFINER sein'; END IF;

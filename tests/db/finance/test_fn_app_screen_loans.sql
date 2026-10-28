@@ -2,7 +2,7 @@
 -- finance.fn_app_screen_loans(p jsonb) — Mini-App-Bildschirm „Kredite“ (docs/package-contract.md §3.12, View-Modell v1).
 --   1) Haushalt (owner = partner): ausstehende Kredite (active + paused, nie paid_off), Restschuld positiv in
 --      Kontowaehrung, „Rate · Zins“, getilgt-Balken nur mit Kreditbetrag, Hero = Restschuld gesamt in EUR.
---      Pillen: pausiert -> neutral (auch bei bald endender Bindung); Bindung endet in [heute, heute + 12 Monate) -> warn;
+--      Pillen (warn vor neutral): Bindung endet in [heute, heute + 12 Monate) -> warn, auch pausiert; pausiert sonst neutral;
 --      genau 12 Monate -> keine; abgelaufen -> warn „endete“.
 --   2) Kind: nur Kredite mit borrower_person_id = ich; Volltextsuche: kein Haushalts-/Partnerkredit, keine Kontonamen, kein *id.
 --   3) probe -> {ok, empty, banners}: Banner nur fuer die bald endende Bindung (mit Restschuld zum Bindungsende), nicht
@@ -13,7 +13,7 @@ BEGIN;
 DO $$
 DECLARE
   t DATE := CURRENT_DATE;
-  v_giro INT; v_l1 INT; v_l2 INT; v_l3 INT; v_l4 INT; v_l5 INT; v_l6 INT; v_l7 INT;
+  v_giro INT; v_l1 INT; v_l2 INT; v_l3 INT; v_l4 INT; v_l5 INT; v_l6 INT; v_l7 INT; v_l8 INT;
   v jsonb; v_txt text; v_it jsonb;
 BEGIN
   INSERT INTO agent.persons (person_id, full_name, role) VALUES
@@ -40,9 +40,11 @@ BEGIN
             'interest_rate_fixed_until', (t + interval '12 months')::date::text))->>'loan_id')::int;
   v_l7 := (finance.fn_create_loan(jsonb_build_object('name', '__apl_bezahlt__', 'lender', 'Bank', 'current_balance', 700,
             'interest_rate', 4, 'monthly_annuity', 100, 'first_payment_date', (t + 5)::text, 'debit_account_id', v_giro))->>'loan_id')::int;
-  IF v_l1 IS NULL OR v_l2 IS NULL OR v_l3 IS NULL OR v_l4 IS NULL OR v_l5 IS NULL OR v_l6 IS NULL OR v_l7 IS NULL THEN
+  v_l8 := (finance.fn_create_loan(jsonb_build_object('name', '__apl_pause_frei__', 'lender', 'Bank', 'current_balance', 200,
+            'interest_rate', 4, 'monthly_annuity', 50, 'first_payment_date', (t + 5)::text, 'debit_account_id', v_giro))->>'loan_id')::int;
+  IF v_l8 IS NULL OR v_l1 IS NULL OR v_l2 IS NULL OR v_l3 IS NULL OR v_l4 IS NULL OR v_l5 IS NULL OR v_l6 IS NULL OR v_l7 IS NULL THEN
     RAISE EXCEPTION 'SETUP FAIL Kredite anlegen'; END IF;
-  UPDATE finance.loans SET status = 'paused' WHERE id = v_l4;
+  UPDATE finance.loans SET status = 'paused' WHERE id IN (v_l4, v_l8);
   UPDATE finance.loans SET interest_rate_fixed_until = t - 30 WHERE id = v_l5;
   UPDATE finance.loans SET status = 'paid_off' WHERE id = v_l7;
 
@@ -51,11 +53,11 @@ BEGIN
   IF (v->>'ok')::boolean IS NOT TRUE OR v->'title' <> core.fn_ui_tpl('finance.app.loans.title')
      OR jsonb_array_length(v->'banners') <> 0 OR jsonb_array_length(v->'sections') <> 1 THEN
     RAISE EXCEPTION 'FAIL [1a] View-Modell v1 / volle View ohne Banner: %', v; END IF;
-  IF v->'hero'->'value' <> core.fn_ui_money(13100, 'EUR') OR (v->'hero'->>'gap')::boolean
+  IF v->'hero'->'value' <> core.fn_ui_money(13300, 'EUR') OR (v->'hero'->>'gap')::boolean
      OR v->'hero'->'label' <> core.fn_ui_tpl('finance.app.loans.hero') THEN
-    RAISE EXCEPTION 'FAIL [1b] Hero 13100 (ohne paid_off) erwartet: %', v->'hero'; END IF;
-  IF jsonb_array_length(v->'sections'->0->'items') <> 6 OR v::text LIKE '%__apl_bezahlt__%' THEN
-    RAISE EXCEPTION 'FAIL [1c] 6 ausstehende Kredite erwartet: %', v->'sections'; END IF;
+    RAISE EXCEPTION 'FAIL [1b] Hero 13300 (ohne paid_off) erwartet: %', v->'hero'; END IF;
+  IF jsonb_array_length(v->'sections'->0->'items') <> 7 OR v::text LIKE '%__apl_bezahlt__%' THEN
+    RAISE EXCEPTION 'FAIL [1c] 7 ausstehende Kredite erwartet: %', v->'sections'; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_haus__';
   IF v_it->'value' <> core.fn_ui_money(8000, 'EUR') OR (v_it->'progress'->>'pct')::numeric IS DISTINCT FROM 20.0
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.loans.rate_line',
@@ -68,8 +70,10 @@ BEGIN
   IF v_it IS NULL OR jsonb_typeof(v_it->'pill') <> 'null' OR jsonb_typeof(v_it->'progress') <> 'null' THEN
     RAISE EXCEPTION 'FAIL [1e] Partner-Kredit: Rohname, keine Pille (Bindung in 3 Jahren), kein Balken ohne Kreditbetrag: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_pausiert__';
+  IF v_it->'pill'->>'state' <> 'warn' THEN RAISE EXCEPTION 'FAIL [1f] pausiert + Bindung bald -> warn: %', v_it; END IF;
+  SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_pause_frei__';
   IF v_it->'pill'->>'state' <> 'neutral' OR v_it->'pill'->>'icon' <> 'pause' OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.paused') THEN
-    RAISE EXCEPTION 'FAIL [1f] pausiert schlaegt die bald endende Bindung: %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [1f2] pausiert ohne Bindung -> neutral pause: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_abgelaufen__';
   IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.fixed_ended',
        jsonb_build_object('date', core.fn_ui_date(t - 30))) THEN
@@ -95,6 +99,8 @@ BEGIN
 
   -- ===== 3) probe + Banner =====
   v := finance.fn_app_screen_loans('{"person_id":"apl_owner","params":{"probe":true}}');
+  IF v->'banners'->0->'text'->'params'->>'name' <> '__apl_pausiert__' THEN RAISE EXCEPTION 'FAIL [3a0] fruehestes Bindungsende zuerst: %', v; END IF;
+  v := jsonb_set(v, '{banners}', jsonb_build_array(v->'banners'->1));
   IF v->>'empty' <> 'false' OR jsonb_array_length(v->'banners') <> 1 OR v->'banners'->0->>'state' <> 'warn'
      OR v->'banners'->0->>'icon' <> 'calendar' OR v->'banners'->0->'target' <> '{"screen":"loans","params":{}}'::jsonb
      OR v->'banners'->0->'text'->>'value' <> 'finance.app.loans.banner_fixed_ends_rest'

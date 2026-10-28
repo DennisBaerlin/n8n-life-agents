@@ -26,7 +26,10 @@ CREATE TABLE IF NOT EXISTS core.menu_refresh (
     done_gen      bigint NOT NULL DEFAULT 0,
     requested_at  timestamptz,                  -- letzter Ausloeser (doctor: offen seit > 30 Min -> gelb)
     retry_after   timestamptz,                  -- nach einem gescheiterten Lauf: frueheste naechste Uebernahme
-    CONSTRAINT menu_refresh_gen_order CHECK (done_gen <= requested_gen)
+    failures      int NOT NULL DEFAULT 0,       -- gescheiterte Laeufe in Folge; beim 3. gibt der Auftrag auf
+    gave_up_at    timestamptz,                  -- letzte Aufgabe (dauerhaft unerreichbarer Chat); doctor 7 Tage gelb
+    CONSTRAINT menu_refresh_gen_order CHECK (done_gen <= requested_gen),
+    CONSTRAINT menu_refresh_failures_range CHECK (failures BETWEEN 0 AND 3)
 );
 -- Rechte wie core.update_requests: schreiben nur der DEFINER-Trigger und der Superuser (claim/finish); die Lesesicht
 -- von core_ro (Sammel-Grant in util_create_core_ro.sql) ist harmlos, die Zeile traegt nur Zaehler und Zeitstempel.

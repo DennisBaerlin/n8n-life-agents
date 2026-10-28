@@ -39,6 +39,8 @@ DECLARE
     v_res    jsonb;
     v_nav    jsonb;
     v_first  jsonb;
+    v_prev   record;
+    v_home   boolean;
     v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing',
                                      'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes',
                                      'core.fmt.no', 'core.fmt.removed']);
@@ -121,10 +123,27 @@ BEGIN
         RETURN core.fn_app_refusal(CASE WHEN v_res->>'code' IN ('forbidden', 'unavailable') THEN v_res->>'code'
                                         ELSE 'error' END, v_chat);
     END IF;
-    -- Startseite (auch Tab zurueck) traegt die eingesammelten Banner, jede andere Seite keine
-    v_nav := core.fn_app_nav(v_pid);
+    -- Startseite (auch Tab zurueck) traegt die eingesammelten Banner, jede andere Seite keine. Startseite = kein frueherer
+    -- Bildschirm (ord, screen) ist fuer diese Person nicht leer; erst dann alle probes (fn_app_nav), sonst bricht die
+    -- Suche beim ersten nicht-leeren Vorgaenger ab (ein Reiter-Wechsel kostet nicht die Arbeit aller Bildschirme).
+    v_home := true;
+    FOR v_prev IN SELECT s.package, s.handler_fn FROM core.app_screens s
+                   WHERE (s.ord, s.screen) < (SELECT s2.ord, s2.screen FROM core.app_screens s2 WHERE s2.screen = v_screen)
+                   ORDER BY s.ord, s.screen LOOP
+        CONTINUE WHEN NOT core.fn_package_active(v_prev.package) OR to_regprocedure(v_prev.handler_fn || '(jsonb)') IS NULL;
+        BEGIN
+            EXECUTE format('SELECT %s($1)', v_prev.handler_fn) INTO v_nav
+              USING jsonb_build_object('person_id', v_pid, 'params', jsonb_build_object('probe', true));
+        EXCEPTION WHEN OTHERS THEN
+            CONTINUE;
+        END;
+        IF jsonb_typeof(v_nav) = 'object' AND (v_nav->>'ok') = 'true' AND (v_nav->>'empty') = 'false' THEN
+            v_home := false;
+            EXIT;
+        END IF;
+    END LOOP;
     v_res := v_res || jsonb_build_object('banners',
-        CASE WHEN v_nav->'screens'->0->>'screen' = v_screen THEN v_nav->'banners' ELSE '[]'::jsonb END);
+        CASE WHEN v_home THEN core.fn_app_nav(v_pid)->'banners' ELSE '[]'::jsonb END);
     RETURN jsonb_build_object('ok', true, 'view', v_res,
         'ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell, 'doc', v_res)));
   EXCEPTION WHEN OTHERS THEN

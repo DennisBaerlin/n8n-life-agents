@@ -76,7 +76,7 @@ BEGIN
             'gap', v_state = 'neutral',
             'pill', jsonb_build_object(
                 'state', v_state,
-                'icon', CASE v_state WHEN 'ok' THEN 'check' WHEN 'warn' THEN 'clock' ELSE 'alert' END,
+                'icon', CASE v_state WHEN 'ok' THEN 'check' WHEN 'warn' THEN 'clock' WHEN 'neutral' THEN 'info' ELSE 'alert' END,
                 'text', CASE v_state
                     WHEN 'alert' THEN core.fn_ui_tpl('finance.app.payments.pill_short')
                     WHEN 'warn'  THEN core.fn_ui_tpl('finance.app.payments.pill_tight')
@@ -129,8 +129,9 @@ BEGIN
                              'date', core.fn_ui_date(u.due_date), 'account', u.src_name,
                              'to', CASE WHEN u.tgt_vis THEN to_jsonb(u.tgt_name)
                                         ELSE core.fn_ui_tpl('finance.app.payments.household') END)) END AS sub,
+               -- der Zeilenbetrag ist in der Quellwaehrung (auch fuer die neutrale Ziel-Zeile)
                CASE WHEN u.src_vis THEN core.fn_ui_money(u.amount, u.src_cur)
-                    ELSE core.fn_ui_money(abs(u.planned_amount), u.tgt_cur) END AS value,
+                    ELSE core.fn_ui_money(abs(u.planned_amount), u.src_cur) END AS value,
                CASE WHEN u.src_vis AND u.target_account_id IS NULL AND u.amount < 0 THEN u.amount END AS out_native,
                u.src_cur
           FROM u

@@ -178,7 +178,7 @@ $f$;
 CREATE OR REPLACE FUNCTION core.fn_test_app_bn2(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
   SELECT CASE WHEN COALESCE((p->'params'->>'probe')::boolean, false)
               THEN jsonb_build_object('ok', true, 'empty', false, 'banners', jsonb_build_array(
-                     jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl('core.app.title', '{"n":{"kind":"text","value":"bn2-alert"}}'),
+                     jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl('core.app.error.denied', '{"n":{"kind":"text","value":"bn2-alert"}}'),
                                         'target', jsonb_build_object('screen', 'bn2', 'params', '{}'::jsonb))))
               ELSE core.fn_test_app_view('bn2') END;
 $f$;
@@ -212,7 +212,9 @@ BEGIN
      OR b->1->'text'->'params'->'n'->>'value' IS DISTINCT FROM 'bn1-warn'
      OR b->1->'target'->>'screen' IS DISTINCT FROM 'bn1' THEN
     RAISE EXCEPTION 'FAIL [9d] erwartet [bn2-alert, bn1-warn] (ok/kein-tpl/fremdes Ziel verworfen), got %', b; END IF;
-  IF r->'ui'->'t' ? 'core.app.title' IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [9e] Banner-Texte fehlen in ui.t: %', r; END IF;
+  -- core.app.error.denied steht in keinem Shell-Key und in keiner View: nur das Banner bringt ihn nach ui.t
+  IF r->'ui'->'t'->>'core.app.error.denied' IS DISTINCT FROM 'DE:core.app.error.denied' THEN
+    RAISE EXCEPTION 'FAIL [9e] Banner-Text fehlt in ui.t: %', r; END IF;
   RAISE NOTICE 'PASS [9] Banner eingesammelt, sortiert, einzeln geprueft';
 
   -- [10] Einzelabruf der Startseite (Tab zurueck) -> dieselben Banner; anderer Bildschirm -> nur seine leere Liste,

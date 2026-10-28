@@ -209,6 +209,10 @@ BEGIN
     SET LOCAL ROLE finance_ro;
     IF finance.fn_to_eur(10, 'USD') IS DISTINCT FROM 9.26 THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_to_eur]'; END IF;
     PERFORM count(*) FROM finance.depot_holdings_overview;
+    -- Depot-Rendite: die View ruft fn_depot_performance (INVOKER) -> fn_xirr, core.fn_household_persons, core.fn_today
+    PERFORM return_pa_pct, return_since_start_pct, missing_reason FROM finance.depot_performance;
+    IF abs(finance.fn_xirr(ARRAY['2021-01-01', '2022-01-01']::date[], ARRAY[-100, 110]::numeric[]) - 0.1) > 1e-9 THEN
+      RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_xirr]'; END IF;
     -- Uebersicht R3: loan_overview ruft fn_loan_projected_payoff -> fn_loan_simulate (EXECUTE gegen den Aufrufer)
     PERFORM payoff_date_projected, interest_remaining_projected FROM finance.loan_overview;
     RESET ROLE;

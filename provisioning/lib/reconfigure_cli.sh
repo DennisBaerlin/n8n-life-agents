@@ -4,7 +4,8 @@
 # templates/lifeagents.tpl (mit den household-Bibliotheken + fetch_release.sh) — kein Shebang, kein set -e.
 #   ohne Argument  Auswahl „Grundsystem" + installierte Pakete mit Zugangsdaten (Esc = nichts tun).
 #   core           _host_reconfigure: Internet-Adresse, Telegram-Bot, Anthropic, Google (+ Name/Geburtsdatum, solange noch
-#                  kein Owner-Skelett existiert) erneut fragen (Enter = behalten) ODER unverändert neu anwenden.
+#                  kein Owner-Skelett existiert) einzeln aus einer Auswahl aendern (nur das Gewaehlte wird gefragt,
+#                  Enter = behalten) ODER unverändert neu anwenden.
 #                  Anwenden = voller Converge des installierten Baums (run_installed_release = `lifeagents update` ohne
 #                  Download). Bei uns anders als `package reconfigure` (nur Credential-Upsert, kein Redeploy): Host-Keys
 #                  tragen abgeleiteten Zustand (WEBHOOK_URL, Telegram-Webhook, Befehlsmenues, Owner-Skelett, Pairing)
@@ -17,10 +18,11 @@ lifeagents reconfigure [core|<paket>] — Angaben nach der Installation ändern.
 
   (ohne Argument)  Auswahl-Liste: Grundsystem oder ein Paket mit Zugangsdaten.
   core             Grundsystem: Internet-Adresse, Telegram-Bot-Token, Anthropic- und Google-Schlüssel
-                   (und Name/Geburtsdatum, solange du noch nie mit dem Bot verbunden warst) erneut
-                   erfragen (Enter = behalten) oder unverändert neu anwenden (repariert z. B. den
-                   Telegram-Webhook oder das Befehlsmenü). Danach richtet es alles neu ein — wie
-                   'lifeagents update', nur ohne Download (dauert einige Minuten).
+                   (und Name/Geburtsdatum, solange du noch nie mit dem Bot verbunden warst) einzeln
+                   ändern — du wählst aus einer Liste, gefragt wird nur das Gewählte — oder
+                   unverändert neu anwenden (repariert z. B. den Telegram-Webhook oder das
+                   Befehlsmenü). Danach richtet es alles neu ein — wie 'lifeagents update', nur
+                   ohne Download (dauert einige Minuten).
   <paket>          Zugangsdaten eines Pakets erneut erfragen (= lifeagents package reconfigure <paket>).
 
 Nicht hier: die n8n-Anmeldung (in n8n selbst), Name/Geburtsdatum nach dem Verbinden (pflegt der
@@ -102,19 +104,35 @@ EOF
     *)     log "Abgebrochen — nichts geändert."; return 0 ;;
   esac
 
-  # Vorher-Stand merken, dann jede Frage mit „Enter = behalten" (_host_key_ask reask: speichert selbst nichts).
+  # Vorher-Stand merken, dann eine Auswahl: nur die gewaehlte Angabe wird gefragt („Enter = behalten", _host_key_ask
+  # reask speichert selbst nichts), danach zurueck zur Auswahl — Muster „Eine Angabe ändern" der Uebersicht, aber OHNE
+  # _review_edit (das speichert sofort; hier gilt: erst nach „Fertig" speichern, Strg-C/Abbrechen = nichts geaendert).
   local -A before=()
+  local pick missing proxy_asked=0
   for k in $keys TRUSTED_PROXIES; do eval "before[$k]=\${$k:-}"; done
-  for k in $keys; do
-    _host_key_ask "$k" 1
-    # Eine Pflichtangabe darf nicht leer bleiben — sofort abbrechen (noch ist nichts gespeichert), statt die uebrigen
-    # Antworten erst abzufragen und am Ende zu verwerfen; der Converge wuerde sonst erneut fragen bzw. abbrechen.
-    if _host_key_required "$k"; then
-      eval "v=\${$k:-}"
-      [ -n "$v" ] || die "„$(_host_key_label "$k")“ ist Pflicht und fehlt noch — es wurde nichts geändert. Bitte erneut: lifeagents reconfigure core"
-    fi
-    # Neu eine Adresse -> jetzt auch: wo laeuft der Reverse Proxy? (gibt es nur mit Adresse; setzt nur die Variable)
-    if [ "$k" = "DOMAIN" ] && [ -z "${before[DOMAIN]}" ] && [ -n "${DOMAIN:-}" ]; then _ask_trusted_proxies 1; fi
+  while :; do
+    # shellcheck disable=SC2086  # Key-Namen sind [A-Z_] (kein Globbing/Leerzeichen)
+    pick="$( { for k in $keys; do printf '%s: %s\t%s\n' "$(_host_key_label "$k")" "$(_review_status host - "$k")" "$k"; done
+               printf '%s\t%s\n' "Fertig — speichern und anwenden" 'done' "Abbrechen — nichts ändern" abort; } \
+             | ui_choose 'Welche Angabe ändern? (Esc = abbrechen, nichts geändert)' 0)"
+    case "$pick" in
+      done)
+        missing=''
+        for k in $keys; do
+          _host_key_required "$k" || continue
+          eval "v=\${$k:-}"
+          [ -n "$v" ] || missing="${missing:+$missing, }$(_host_key_label "$k")"
+        done
+        if [ -n "$missing" ]; then warn "Pflichtangabe fehlt noch: ${missing} — bitte zuerst eintragen."; continue; fi
+        break ;;
+      ''|abort) log "Abgebrochen — nichts geändert."; return 0 ;;
+      *)
+        _host_key_ask "$pick" 1
+        # Neu eine Adresse -> einmal im Lauf auch: wo laeuft der Reverse Proxy? (gibt es nur mit Adresse; setzt nur die Variable)
+        if [ "$pick" = "DOMAIN" ] && [ -z "${before[DOMAIN]}" ] && [ -n "${DOMAIN:-}" ] && [ "$proxy_asked" = 0 ]; then
+          _ask_trusted_proxies 1; proxy_asked=1
+        fi ;;
+    esac
   done
 
   for k in "${!before[@]}"; do

@@ -66,9 +66,9 @@ curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/down
 
 The installer then guides you **step by step**, and **all questions come first**: internet address, n8n login, details about you (including the language for the bot's fixed messages), Telegram token, Anthropic and (optionally) Google keys, and which packages to install. A short box before each question explains what it is for and where to get it. Keys are checked online right away, every answer is saved immediately (Ctrl+C and a re-run only asks for the rest), and a final **summary** lets you confirm, change a single answer or cancel. After that everything runs without further questions: one line per step, technical details in `/var/log/lifeagents/install.log` (`--verbose` shows everything).
 
-At the end the installer checks whether Telegram can reach your server — if not, you get a **ready-made Caddyfile** for your reverse proxy and can re-check after setting it up. It then shows a **pairing link** (`t.me/<your-bot>?start=…`), waits until you open it in Telegram and finishes configuring the bot for you.
+At the end the installer checks whether Telegram can reach your server — if not, you get a **ready-made Caddyfile** for your reverse proxy and can re-check after setting it up. It also checks whether phones and laptops reach your proxy over IPv4 **and** IPv6 (a FritzBox MyFRITZ! address often points to the router itself over IPv6) and names the one fix if not, without ever blocking the install. It then shows a **pairing link** (`t.me/<your-bot>?start=…`), waits until you open it in Telegram and finishes configuring the bot for you.
 
-Step-by-step guide including reverse proxy, router (FritzBox) and Telegram bot setup: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German).
+Step-by-step guide including reverse proxy, router and Telegram bot setup: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German); FritzBox users: **[FritzBox setup](https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)** (German, a MyFRITZ! share for the proxy machine, not a plain port forward).
 
 <details>
 <summary><strong>What the run does in detail</strong></summary>

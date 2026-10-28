@@ -64,17 +64,22 @@ _missing_required_host_keys() {
 
 # load_install_env — Werte aus core.env (INSTALL_ENV_FILE) in die Env laden, NUR wenn nicht schon (per Prozess-Env)
 # gesetzt (override-first). Laeuft fuer JEDES Profil (Dev-Re-Runs profitieren ebenso). Fehlt die
-# Datei -> no-op.
+# Datei, wird nur normalisiert.
 load_install_env() {
-  [ -f "${INSTALL_ENV_FILE:-}" ] || return 0
   local k v
-  for k in $_INSTALL_ENV_KEYS; do
-    eval "v=\${$k:-}"
-    if [ -z "$v" ]; then
-      v="$(read_env_value "$INSTALL_ENV_FILE" "$k" || true)"
-      [ -n "$v" ] && eval "$k=\$v; export $k"
-    fi
-  done
+  if [ -f "${INSTALL_ENV_FILE:-}" ]; then
+    for k in $_INSTALL_ENV_KEYS; do
+      eval "v=\${$k:-}"
+      if [ -z "$v" ]; then
+        v="$(read_env_value "$INSTALL_ENV_FILE" "$k" || true)"
+        [ -n "$v" ] && eval "$k=\$v; export $k"
+      fi
+    done
+  fi
+  # Internet-Adresse: EINE Regel fuer jeden Eingabeweg (Prozess-Env/--domain/--unattended UND core.env) — eine
+  # eingefuegte URL (https://name:443/) wird zum Namen, bevor ein Aufrufer (provision.sh, reconfigure, household
+  # pair-owner) damit rechnet; die Fragen nutzen dieselbe Regel (_input_normalize).
+  if [ -n "${DOMAIN:-}" ]; then DOMAIN="$(normalize_domain "$DOMAIN")"; export DOMAIN; fi
   # Explizit 0: endet die Schleife mit einem LEEREN letzten Key, waere der Funktions-Status sonst 1
   # (&&-Liste) -> set -e killt provision.sh STILL (die &&-Exemption unterdrueckt sogar den ERR-Trap).
   # Latenter Zweitlauf-Crash seit die optionalen Keys am Listen-Ende stehen koennen (Install-UX-Phase).
@@ -136,7 +141,7 @@ _persist_install_env() {
 # ab), die household-Facts-Validierung (Vor-/Nachname non-empty, birth_date DATE-castbar + nicht in
 # der Zukunft -> sonst schlaegt der Skelett-Seed fehl = kein Pairing), WEBHOOK_URL (FQDN).
 # Das n8n-Login-Passwort prueft `_owner_password_ok` (bootstrap_owner.sh: 8-64/Ziffer/Grossbuchstabe).
-_validate_domain()    { printf '%s' "$1" | grep -qiE '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; }
+_validate_domain()    { [ -z "$(domain_problem "$1")" ]; }   # Regel + Klartext-Grund: common.sh domain_problem
 _validate_email()     { printf '%s' "$1" | grep -qE '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'; }
 _validate_name()      { printf '%s' "$1" | grep -qE '[^[:space:]]'; }   # mind. ein Nicht-Whitespace
 _validate_any()       { return 0; }                                     # validator-Enum 'none' (Paket-Wizard)
@@ -204,6 +209,25 @@ _store_answer() {
   return 0
 }
 
+# _input_normalize <KEY> <wert> -> der Wert, wie er geprueft und gespeichert wird (EINE Tabelle fuer alle Eingabewege:
+#   Prompt, Uebersicht, reconfigure; provision.sh normalisiert Env/--domain/--unattended/core.env mit derselben Regel).
+#   DOMAIN: eingefuegte URL -> Name (common.sh normalize_domain). Alle anderen Keys unveraendert.
+_input_normalize() {
+  case "$1" in
+    DOMAIN) normalize_domain "$2" ;;
+    *)      printf '%s' "$2" ;;
+  esac
+}
+
+# _input_problem <KEY> <wert> -> Klartext-Grund fuer einen ungueltigen Wert, sofern es einen genaueren als „ungültig"
+#   gibt (sonst leer). Immer rc 0.
+_input_problem() {
+  case "$1" in
+    DOMAIN) domain_problem "$2" ;;
+  esac
+  return 0
+}
+
 # _prompt_validated <varname> <prompt> <secret?> <validator-fn> [required] [seen_file] [help] [confirm] [reask]
 #   DER eine Prompt-Wrapper fuer Host-Keys UND den Paket-Secrets-Wizard (parametrisiertes Ziel).
 #   Reihenfolge der Gates (Erstfrage, reask=0):
@@ -230,9 +254,13 @@ _store_answer() {
 _prompt_validated() {
   local name="$1" prompt="$2" secret="${3:-0}" vfn="$4" required="${5:-0}" seenf="${6:-${INSTALL_ENV_FILE:-}}"
   local help="${7:-}" confirm="${8:-0}" reask="${9:-0}"
-  local cur val="" again i=0 rc label hint=''
+  local cur val="" raw again i=0 rc label hint='' problem
   label="$(_prompt_label "$prompt")"
   eval "cur=\${$name:-}"
+  if [ -n "$cur" ]; then
+    raw="$cur"; cur="$(_input_normalize "$name" "$cur")"
+    [ "$cur" = "$raw" ] || eval "$name=\$cur; export $name"
+  fi
   if [ "$reask" = "1" ]; then
     ui_interactive || return 0
     if [ -z "$cur" ] && [ -n "$seenf" ]; then cur="$(read_env_value "$seenf" "$name" 2>/dev/null || true)"; fi
@@ -244,7 +272,7 @@ _prompt_validated() {
     if [ -n "$cur" ]; then
       if ! _is_live_validator "$vfn" && ! "$vfn" "$cur"; then
         # Die Domain landet in n8n.env, das Shell-Schritte sourcen -> ein ungueltiger Wert ist ein Abbruch, kein Hinweis.
-        [ "$name" = DOMAIN ] && die "Die vorgegebene Internet-Adresse „${cur}“ ist ungültig (erwartet z. B. bot.example.org). Bitte korrigieren und erneut starten."
+        [ "$name" = DOMAIN ] && die "Die vorgegebene Internet-Adresse „${cur}“ ist ungültig: $(_input_problem DOMAIN "$cur"). Bitte korrigieren und erneut starten."
         warn "Gespeicherter Wert für „${label}“ ist ungültig — bitte prüfen (Protokoll: $name)."
       fi
       return 0
@@ -273,6 +301,7 @@ _prompt_validated() {
       _store_answer "$seenf" "$name" ""
       return 0
     fi
+    raw="$val"; val="$(_input_normalize "$name" "$val")"
     rc=0
     if _is_live_validator "$vfn"; then
       { printf '  prüfe …' > /dev/tty; } 2>/dev/null || true
@@ -294,11 +323,13 @@ _prompt_validated() {
     fi
     if [ "$rc" -eq 0 ]; then
       eval "$name=\$val; export $name"
-      ok "  übernommen."
+      if [ "$val" != "$raw" ] && [ "$secret" != "1" ]; then ok "  übernommen als ${val}."; else ok "  übernommen."; fi
       [ "$reask" = "1" ] || _store_answer "$seenf" "$name" "$val"
       return 0
     fi
-    warn "  Das passt nicht (ungültig oder Tippfehler) — bitte erneut."
+    problem="$(_input_problem "$name" "$val")"
+    if [ -n "$problem" ]; then warn "  ${problem} — bitte erneut."
+    else warn "  Das passt nicht (ungültig oder Tippfehler) — bitte erneut."; fi
     i=$((i+1))
   done
   if [ "$reask" = "1" ]; then

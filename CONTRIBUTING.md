@@ -219,7 +219,8 @@ The **free substrate suites** (`scripts/dev/hitl_gate_test.ps1`, `real_ingress_t
 `bot_menu_test.ps1`, `cron_text_test.ps1` — the last one triggers every cron and checks its Telegram texts in the
 recipient's language, ~2 min per case) run against the mock Telegram/LLM in your own Docker substrate;
 `release_fetch_test.ps1` tests the anonymous release download against a mock GitHub in a container (no n8n
-needed). They are not
+needed), `reachability_test.ps1` the installer/doctor reachability check (IPv4/IPv6, FritzBox trap) against mock
+endpoints in a container. They are not
 gates either (they need the substrate); run the one matching the surface you touched, or all of them at once with `scripts/dev/run_free_gates.ps1` (merge/release state; `-Parallel` splits them across two substrates).
 
 ### `--no-verify`

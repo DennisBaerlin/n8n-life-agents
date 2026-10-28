@@ -143,7 +143,8 @@ _schedule_placeholder_map() {
 #   /webhook-waiting/* wie bisher (kein Update verschlechtert eine laufende Installation). Entschieden wird NUR beim
 #   Core-Deploy (Installation/update/reconfigure) und in core.env HITL_CHAT_APPROVAL festgehalten; Paket-Deploys
 #   (package install, config set schedule) uebernehmen diesen Wert -> alle Workflows im selben Modus, doctor liest ihn.
-#   LIFEAGENTS_HITL_CHAT_APPROVAL=true|false erzwingt den Wert (NUR Test-Substrat, bootstrap_test_n8n -HitlChatApproval).
+#   LIFEAGENTS_HITL_CHAT_APPROVAL=true|false erzwingt den Wert (NUR Test-Substrat, bootstrap_test_n8n -HitlChatApproval;
+#   dort gibt es keinen /etc/hosts-Pin, darum raeumt dieser Zweig bewusst nichts auf).
 _hitl_chat_approval() {
   local scope="${1:-core}" envf; envf="$(lifeagents_env_file core)"
   if [ -z "${_HITL_CHAT_APPROVAL_VAL:-}" ] && [ "$scope" != core ] && [ -z "${LIFEAGENTS_HITL_CHAT_APPROVAL:-}" ]; then
@@ -161,6 +162,8 @@ _hitl_chat_approval() {
           else
             warn "Bestätigen im Chat bleibt AUS: ${wh%/}${HITL_ROUTE_SUFFIX} erreicht n8n nicht. Ergänze im Reverse Proxy die Weiterleitung von ${HITL_ROUTE_SUFFIX} (wie /webhook-waiting/*) und führe danach 'lifeagents update' erneut aus. Bis dahin öffnen die Bestätigungs-Knöpfe eine Webseite."
           fi
+        else
+          hosts_pin_prune ''   # keine echte Domain (mehr) -> ein Pin einer frueheren Adresse ist nur noch Drift
         fi ;;
     esac
     [ "$_HITL_CHAT_APPROVAL_VAL" = true ] && log "Bestätigen im Chat: an (Knöpfe antworten über Telegram)."

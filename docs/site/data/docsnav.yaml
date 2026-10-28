@@ -42,6 +42,8 @@
   pages:
     - slug: installation
       title: Installation & Betrieb
+    - slug: fritzbox
+      title: FritzBox einrichten
     - slug: update-hilfe
       title: Wenn ein Update fehlschlägt
     - slug: pakete

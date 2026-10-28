@@ -79,7 +79,7 @@ _doctor_app_check() {
     res="$(_app_fetch "${base}/webhook/${app}" --resolve "${host}:${port}:${ip}")"
     if [ "${res%|*}" = "${ref%|*}" ]; then ok_fams="${ok_fams:+${ok_fams} + }IPv${fam}"
     elif [ "${res##*|}" = 1 ]; then
-      _warn "Übersicht über IPv${fam}: die Domain zeigt auf die FRITZ!Box selbst — Handy und Laptop öffnen statt der Übersicht zufällig eine FritzBox-Seite. Abhilfe: Port 443 auch für IPv6 an den Proxy-Rechner freigeben und dessen eigene MyFRITZ!-Adresse als Domain nehmen (Doku: Installation → FritzBox einrichten)"
+      _warn "Übersicht über IPv${fam}: die Domain zeigt auf die FRITZ!Box selbst — Handy und Laptop öffnen statt der Übersicht zufällig eine FritzBox-Seite. Abhilfe: beim Proxy-Rechner 'MyFRITZ!-Freigabe' statt 'Portfreigabe' anlegen und dessen eigene MyFRITZ!-Adresse als Domain nehmen (Doku: Installation → FritzBox einrichten)"
     else
       _warn "Übersicht über IPv${fam} lädt nicht (HTTP ${res%%|*}): unter dieser Adresse der Domain antwortet nicht dein Reverse Proxy — Handy und Laptop scheitern dann zufällig. DNS-Eintrag (A/AAAA) und Portfreigabe prüfen"
     fi

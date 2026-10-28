@@ -5,8 +5,8 @@
 --   "projected balance + low-balance alert"; die DB rechnet, das LLM formuliert nur.
 --   Modell (Einzelumsaetze werden nicht gespeichert -> Alltagsausgaben sind eine Schaetzung):
 --     d0 = Tag nach dem bestaetigten Stand (last_reconciled_at, sonst heute); Basis = Saldo zum Vortag von d0.
---     Stand(d) = Basis + Buchungen in [d0, d] + offene Dauerauftrags-Vorkommen in [d0, d] (Quelle -, Transfer-Ziel +,
---     Kreditrate ueber fn_recurring_occurrence_amount) + Alltagsausgaben je Tag x Tage.
+--     Stand(d) = Basis + Buchungen in [d0, d] + offene Dauerauftrags-Vorkommen in [d0, d] (finance.fn_upcoming_payments:
+--     Quelle -, Transfer-Ziel +, Kredit-Schlussrate = Abloese) + Alltagsausgaben je Tag x Tage.
 --     Alltagsausgaben je Tag = Summe unmatched_out / Summe neu abgeglichener Tage (period_end - damaliger Schnitt) der
 --     letzten 3 Auszuege (0 ohne Historie).
 --     Horizont = naechstes Vorkommen der groessten Einnahme AUF DIESES Konto (Einnahme oder Transfer-Ziel) nach heute,
@@ -68,13 +68,12 @@ BEGIN
     WITH days AS (
         SELECT gs::date AS d FROM generate_series(v_d0, v_horizon, interval '1 day') gs
     ), flows AS (
-        SELECT o.due_date AS d,
-               CASE WHEN r.account_id = p_account_id
-                    THEN COALESCE(finance.fn_recurring_occurrence_amount(r.id, o.due_date), r.amount)
-                    ELSE abs(r.amount) END AS amt
-        FROM finance.fn_recurring_due_open(v_d0, v_horizon) o
-        JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
-        WHERE r.account_id = p_account_id OR r.target_account_id = p_account_id
+        -- Dauerauftraege aus der einen Quelle finance.fn_upcoming_payments: Quell-Seite = Buchungsbetrag (Kredit-
+        -- Schlussrate = Abloese), Ziel-Seite eines Uebertrags = abs(geplanter Betrag)
+        SELECT u.due_date AS d,
+               CASE WHEN u.account_id = p_account_id THEN u.amount ELSE abs(u.planned_amount) END AS amt
+        FROM finance.fn_upcoming_payments(v_d0, v_horizon) u
+        WHERE u.account_id = p_account_id OR u.target_account_id = p_account_id
         UNION ALL
         SELECT t.transaction_date, t.amount FROM finance.transactions t
         WHERE t.account_id = p_account_id AND t.transaction_date BETWEEN v_d0 AND v_horizon

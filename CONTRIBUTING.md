@@ -159,6 +159,10 @@ that touches it. Content editors install the pinned binary once:
 # build_site.ps1 hard-asserts the version (a different Hugo changes the output byte-wise).
 ```
 
+The Mini App sample screenshots (`docs/site/static/img/app-uebersicht-*.png`) are rendered, not hand-made:
+`scripts/dev/render_app_screenshots.ps1` loads the real app page with invented sample values in headless Chrome
+or Edge (light + dark). Re-run it whenever the net-worth screen changes visibly, then `build_site.ps1`.
+
 ### Required for the DB / n8n tiers: Docker Desktop
 
 Every test substrate (`bootstrap_test_db.ps1` for the DB tier, `bootstrap_test_n8n.ps1` for the n8n

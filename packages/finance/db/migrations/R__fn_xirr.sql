@@ -4,7 +4,7 @@
 --   Konvention Act/365 wie Excel XIRR und Portfolio Performance „IZF" (NPVFunction: Tage / 365.0). Vorzeichen aus Sicht
 --   des Anlegers: Einzahlung (Kauf) negativ, Auszahlung (Verkauf, Dividende, Endwert) positiv.
 --   p_annualize = true  -> Jahresrendite r (Excel-XIRR-kompatibel); NULL, wenn sie nicht darstellbar ist (Ueberlauf bei
---                          sehr kurzer Periode mit grossem Gewinn).
+--                          sehr kurzer Periode mit grossem Gewinn); -1 bei entsprechend grossem Verlust.
 --                 false -> Rendite ueber die ganze Periode erster..letzter Fluss, nicht annualisiert
 --                          ((1 + r)^(Tage/365) - 1); fuer Zeitraeume unter einem Jahr (GIPS: nie hochrechnen).
 --   Verfahren: geloest wird nach dem Periodenfaktor y = (1 + r)^(T/365) (T = Tage erster..letzter Fluss), damit kurze
@@ -113,6 +113,8 @@ BEGIN
     END IF;
     v_ln := ln(v_y) * 365.0 / v_days;
     IF v_ln > 700 THEN RETURN NULL; END IF;
+    -- grosser Verlust in kurzer Zeit: (1 + r) unterhalb der float-Grenze -> praktisch -100 % (exp() wuerfe underflow)
+    IF v_ln < -700 THEN RETURN -1; END IF;
     RETURN round((exp(v_ln) - 1)::numeric, 12);
 END;
 $$;

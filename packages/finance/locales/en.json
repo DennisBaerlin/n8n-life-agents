@@ -279,6 +279,7 @@
   "finance.app.depot.d_perf_value": "Value today",
   "finance.app.depot.d_perf_takeover": "Transferred holdings count from",
   "finance.app.depot.d_perf_how": "Takes into account when and how much you bought, sold and received in dividends",
+  "finance.app.depot.d_perf_stale": "A price is out of date, so the return is provisional",
   "finance.enum.pension_type.statutory": "Statutory pension",
   "finance.enum.pension_type.occupational": "Occupational pension (bAV)",
   "finance.enum.pension_type.riester": "Riester",

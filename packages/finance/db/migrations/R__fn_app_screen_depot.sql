@@ -22,8 +22,9 @@
 --   RENDITE JE DEPOT (vor den Depot-Abschnitten): ein Abschnitt aus finance.fn_depot_performance mit derselben Personen-
 --     Sicht; je Depot mit Einzahlung eine Zeile (Kinder-Depot „… · nicht in Alle Depots"), „Alle Depots" zuletzt und nur
 --     ab zwei Haushalts-Depots. Pille = Rendite pro Jahr (ab 365 Tagen) bzw. seit Beginn (darunter, Untertitel „noch kein
---     ganzes Jahr"), ok/up | alert/down | neutral bei 0,0; ohne Kurs/Wechselkurs warn + gap. Aufklappen: Wert heute,
---     „Uebernommene Positionen zaehlen ab" (nur wenn verschoben), ein Erklaer-Satz.
+--     ganzes Jahr"), ok/up | alert/down | neutral bei 0,0, warn/clock bei veraltetem Kurs (Zahl bleibt); ohne
+--     Kurs/Wechselkurs warn + gap. Aufklappen: Wert heute, Hinweis veralteter Kurs, „Uebernommene Positionen zaehlen ab"
+--     (nur wenn verschoben), ein Erklaer-Satz. Depot-Auswahl ueberall = finance.fn_visible_depots.
 --   ZERO-TRUST-SICHTBARKEIT (core.fn_app_sees_household): owner/partner sehen alle aktiven Depots, alle anderen nur
 --     Depots mit owner_person_id = ich (dann ohne Kinder-Trennung: der Hero ist die eigene Summe).
 --   params.probe = true -> {ok, empty, banners}: je Depot mit Kurs veraltet/fehlt ein warn-Banner, target = depot.
@@ -66,9 +67,7 @@ BEGIN
                    EXISTS (SELECT 1 FROM finance.depot_holdings_overview o
                             WHERE o.account_id = a.id AND o.price_status IN ('stale', 'missing')) AS price_issue,
                    EXISTS (SELECT 1 FROM finance.depot_holdings_overview o WHERE o.account_id = a.id) AS has_pos
-              FROM finance.accounts a
-             WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
-               AND (v_hh OR a.owner_person_id = v_pid)
+              FROM finance.fn_visible_depots(v_hh, v_pid) a
         )
         SELECT jsonb_build_object('ok', true, 'empty', NOT COALESCE(bool_or(d.has_pos), false),
                    'banners', COALESCE(jsonb_agg(jsonb_build_object(
@@ -89,20 +88,12 @@ BEGIN
                                            AND o.unrealized_gain_eur IS NOT NULL),
            COALESCE(bool_or(o.market_value_eur IS NULL) FILTER (WHERE NOT d.kid), false)
       INTO v_date, v_gain, v_book, v_pos_gap
-      FROM (SELECT a.id, (v_hh AND hp.role IS NOT DISTINCT FROM 'child') AS kid
-              FROM finance.accounts a
-              LEFT JOIN core.fn_household_persons() hp ON hp.person_id = a.owner_person_id
-             WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
-               AND (v_hh OR a.owner_person_id = v_pid)) d
+      FROM finance.fn_visible_depots(v_hh, v_pid) d
       JOIN finance.depot_holdings_overview o ON o.account_id = d.id;
 
     -- je sichtbarem Depot: Positionen, Wert, Luecke, Kurs-Problem
     WITH d AS (
-        SELECT a.id, a.name, (v_hh AND hp.role IS NOT DISTINCT FROM 'child') AS kid
-          FROM finance.accounts a
-          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = a.owner_person_id
-         WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
-           AND (v_hh OR a.owner_person_id = v_pid)
+        SELECT v.id, v.name, v.kid FROM finance.fn_visible_depots(v_hh, v_pid) v
     ), h AS (
         SELECT d.id AS depot_id, d.name AS depot_name, d.kid,
                o.holding_id, o.name, o.shares, o.currency, o.average_purchase_price, o.book_value, o.book_value_eur,
@@ -194,15 +185,19 @@ BEGIN
                              WHEN (r.x ->> 'is_child')::boolean
                              THEN core.fn_ui_tpl('finance.app.depot.perf_child', jsonb_build_object('name', r.x ->> 'depot_name'))
                              ELSE r.x -> 'depot_name' END,
-               'sub', core.fn_ui_tpl(CASE WHEN (r.x ->> 'period_days')::int < 365 THEN 'finance.app.depot.perf_since_short'
-                                          ELSE 'finance.app.depot.perf_since' END,
-                                     jsonb_build_object('date', core.fn_ui_date((r.x ->> 'start_date')::date))),
+               'sub', CASE WHEN r.x ->> 'start_date' IS NOT NULL THEN core.fn_ui_tpl(
+                          CASE WHEN (r.x ->> 'period_days')::int < 365 THEN 'finance.app.depot.perf_since_short'
+                               ELSE 'finance.app.depot.perf_since' END,
+                          jsonb_build_object('date', core.fn_ui_date((r.x ->> 'start_date')::date))) END,
                'value', NULL,
                'gap', r.x ->> 'missing_reason' IN ('no_price', 'no_fx'),
                'pill', CASE
+                   -- veralteter Kurs: Zahl bleibt, Pille warnt (Uhr) statt Gewinn-/Verlust-Farbe
                    WHEN r.pct IS NOT NULL THEN jsonb_build_object(
-                       'state', CASE WHEN round(r.pct, 1) > 0 THEN 'ok' WHEN round(r.pct, 1) < 0 THEN 'alert' ELSE 'neutral' END,
-                       'icon', CASE WHEN round(r.pct, 1) > 0 THEN 'up' WHEN round(r.pct, 1) < 0 THEN 'down' ELSE 'info' END,
+                       'state', CASE WHEN (r.x ->> 'price_stale')::boolean THEN 'warn'
+                                     WHEN round(r.pct, 1) > 0 THEN 'ok' WHEN round(r.pct, 1) < 0 THEN 'alert' ELSE 'neutral' END,
+                       'icon', CASE WHEN (r.x ->> 'price_stale')::boolean THEN 'clock'
+                                    WHEN round(r.pct, 1) > 0 THEN 'up' WHEN round(r.pct, 1) < 0 THEN 'down' ELSE 'info' END,
                        'text', core.fn_ui_tpl(CASE WHEN r.x ->> 'return_pa_pct' IS NOT NULL THEN 'finance.app.depot.perf_pa'
                                                    ELSE 'finance.app.depot.perf_total_return' END,
                                               jsonb_build_object('pct', core.fn_ui_num(round(r.pct, 1), 1, true))))
@@ -219,6 +214,8 @@ BEGIN
                               CASE WHEN r.x ->> 'value_eur' IS NOT NULL THEN jsonb_build_object(
                                   'label', core.fn_ui_tpl('finance.app.depot.d_perf_value'),
                                   'value', core.fn_ui_money((r.x ->> 'value_eur')::numeric, 'EUR')) END,
+                              CASE WHEN (r.x ->> 'price_stale')::boolean AND r.pct IS NOT NULL THEN jsonb_build_object(
+                                  'label', core.fn_ui_tpl('finance.app.depot.d_perf_stale'), 'value', NULL) END,
                               CASE WHEN r.x ->> 'takeover_start_date' IS NOT NULL THEN jsonb_build_object(
                                   'label', core.fn_ui_tpl('finance.app.depot.d_perf_takeover'),
                                   'value', core.fn_ui_date((r.x ->> 'takeover_start_date')::date)) END,

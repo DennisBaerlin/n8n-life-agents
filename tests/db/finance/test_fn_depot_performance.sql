@@ -187,6 +187,36 @@ BEGIN
   UPDATE finance.accounts SET status = 'closed' WHERE id = v_f;
   RAISE NOTICE 'PASS [2] ohne Kurs/Wechselkurs: Wert NULL + Grund, nie 0';
 
+  -- ===== 2b) veralteter Kurs, Stichtag in der Zukunft, alles an einem Tag =====
+  -- Stichtag 31.07.: juengster Kurs 30.06. ist 31 Tage alt (> price_stale_days 7) -> Zahl bleibt, price_stale
+  v := finance.fn_depot_performance(jsonb_build_object('as_of', DATE '2026-07-31'));
+  SELECT r INTO v_row FROM jsonb_array_elements(v->'rows') r WHERE r->>'depot_name' = '__dpf_a__';
+  IF (v_row->>'price_stale')::boolean IS NOT TRUE OR jsonb_typeof(v_row->'missing_reason') <> 'null'
+     OR (v_row->>'value_eur')::numeric IS DISTINCT FROM 11040.00 THEN   -- 10 x 999 (Kurs 01.07.) + 10 x 105
+    RAISE EXCEPTION 'FAIL [2e] veralteter Kurs: Wert + Rendite bleiben, price_stale, got %', v_row; END IF;
+  v := finance.fn_depot_performance(jsonb_build_object('as_of', c_as_of));
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') r WHERE (r->>'price_stale')::boolean) THEN
+    RAISE EXCEPTION 'FAIL [2f] am 30.06. ist kein Kurs veraltet'; END IF;
+  IF (finance.fn_depot_performance(jsonb_build_object('as_of', core.fn_today() + 30))->>'as_of')::date IS DISTINCT FROM core.fn_today() THEN
+    RAISE EXCEPTION 'FAIL [2g] Stichtag nie nach heute'; END IF;
+  -- Uebernahme mit Kurs am selben Tag = Stichtag: 0,00 % seit Beginn statt „nicht berechenbar"
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__dpf_s__', 'stocks_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_e;
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_e, 'DPF00000010', 'DPFS1', 'S eins', 'EUR') RETURNING id INTO h_e1;
+  g1 := gen_random_uuid();
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares, unit_price, group_id) VALUES
+    (v_giro, -50, c_as_of, 'buy', h_e1, 2, 25, g1);
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, group_id) VALUES
+    (v_giro, 50, c_as_of, 'position_takeover', g1);
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('DPFS1', 40, 'EUR', c_as_of);
+  v := finance.fn_depot_performance(jsonb_build_object('as_of', c_as_of));
+  SELECT r INTO v_row FROM jsonb_array_elements(v->'rows') r WHERE r->>'depot_name' = '__dpf_s__';
+  IF (v_row->>'return_since_start_pct')::numeric IS DISTINCT FROM 0.00 OR (v_row->>'period_days')::int IS DISTINCT FROM 0
+     OR jsonb_typeof(v_row->'missing_reason') <> 'null' OR (v_row->>'value_eur')::numeric IS DISTINCT FROM 80.00 THEN
+    RAISE EXCEPTION 'FAIL [2h] alles an einem Tag: 0,00 %% seit Beginn, Wert 80, got %', v_row; END IF;
+  UPDATE finance.accounts SET status = 'closed' WHERE id = v_e;
+  RAISE NOTICE 'PASS [2b] veralteter Kurs markiert, Stichtag <= heute, Ein-Tages-Depot 0 %%';
+
   -- ===== 3) Personen-Sicht =====
   v := finance.fn_depot_performance(jsonb_build_object('as_of', c_as_of, 'person_id', 'dpf_kid'));
   SELECT count(*) INTO v_n FROM jsonb_array_elements(v->'rows') r;
@@ -212,7 +242,7 @@ BEGIN
   IF v_n <> 5 OR (SELECT count(*) FROM finance.depot_performance WHERE is_total) <> 1 THEN
     RAISE EXCEPTION 'FAIL [4c] View: 5 aktive Test-Depots + eine Gesamt-Zeile, got %', v_n; END IF;
   PERFORM account_id, depot_name, owner_person_id, is_child, is_total, value_eur, start_date, period_days,
-          return_pa_pct, return_since_start_pct, takeover_start_date, missing_reason FROM finance.depot_performance;
+          return_pa_pct, return_since_start_pct, takeover_start_date, price_stale, missing_reason FROM finance.depot_performance;
   RAISE NOTICE 'PASS [4] bad_request + View';
 END $$;
 ROLLBACK;

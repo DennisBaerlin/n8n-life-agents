@@ -279,6 +279,7 @@
   "finance.app.depot.d_perf_value": "Wert heute",
   "finance.app.depot.d_perf_takeover": "Übernommene Positionen zählen ab",
   "finance.app.depot.d_perf_how": "Berücksichtigt, wann du wie viel gekauft und verkauft und an Dividenden bekommen hast",
+  "finance.app.depot.d_perf_stale": "Ein Kurs ist veraltet, die Rendite ist vorläufig",
   "finance.enum.pension_type.statutory": "Gesetzliche Rente",
   "finance.enum.pension_type.occupational": "Betriebliche AV (bAV)",
   "finance.enum.pension_type.riester": "Riester",

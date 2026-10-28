@@ -1,13 +1,17 @@
 -- ============================================================
 -- finance.fn_depot_performance(p jsonb) — Depot-Rendite je Depot und gesamt (READ, STABLE)
 --   Geldgewichtete Rendite (XIRR, Act/365, finance.fn_xirr) aus Sicht des Anlegers: sie beruecksichtigt, wann wie viel
---   eingezahlt wurde (wie Portfolio Performance „IZF"). Eingabe (alles optional): as_of (Stichtag, Standard
---   core.fn_today()), person_id (Sicht wie die Mini-App: core.fn_app_sees_household; ohne = Haushalt).
+--   eingezahlt wurde (wie Portfolio Performance „IZF"). Eingabe (alles optional): as_of (Stichtag, Standard und
+--   Obergrenze core.fn_today()), person_id (Sicht wie die Mini-App: core.fn_app_sees_household; ohne = Haushalt; nur
+--   aus dem DEFINER-Handler finance.fn_app_screen_depot nutzbar, unter *_ro fehlt das EXECUTE auf den Rollen-Helfer).
+--   Depot-Auswahl = finance.fn_visible_depots (dieselbe wie der Depot-Hero).
 --   Rueckgabe {ok, as_of, rows:[…]}: eine Zeile je aktivem Depot (stocks_depot/crypto_depot) + EINE Gesamt-Zeile
 --   (is_total, account_id/depot_name NULL), sortiert: Haushalt nach Wert, Kinder-Depots, gesamt zuletzt. Felder:
 --   account_id, depot_name, owner_person_id, is_child, is_total, value_eur (Wert am Stichtag), start_date (erster
 --   Fluss), period_days (erster..letzter Fluss), return_pa_pct (ab 365 Tagen, sonst NULL), return_since_start_pct
---   (unter 365 Tagen, nicht annualisiert — GIPS), takeover_start_date, missing_reason.
+--   (unter 365 Tagen, nicht annualisiert — GIPS; alles an einem Tag: Auszahlung / Einzahlung - 1), takeover_start_date,
+--   price_stale (eine Position steht auf einem veralteten Kurs, Regel fn_price_status relativ zum Stichtag: die Zahl
+--   gilt, ist aber mit Vorsicht zu lesen), missing_reason.
 --   GELDFLUESSE in EUR zum Buchungstag (fn_to_eur(amount, Kontowaehrung, Datum)): jede Buchung mit holding_id einer
 --     Position des Depots mit ihrem Vorzeichen (Kauf -, Verkauf/Dividende +, Positions-Gebuehr -); ausverkaufte
 --     Positionen zaehlen mit. Endwert = Bestand am Stichtag (Summe shares bis as_of) x juengster Kurs <= as_of,
@@ -26,7 +30,7 @@
 --   Bekannte Grenzen: Depot-Gebuehren ohne holding_id (category fee am Verrechnungskonto) zaehlen nicht (kein Depot
 --     zuordenbar); Fluesse einer Uebernahme-Position vor S (auch fruehere, ausverkaufte Zyklen) gehen im Startwert auf;
 --     geschlossene Depots fehlen (wie in der App).
---   INVOKER: liest nur finance + core.fn_household_persons (publiziertes Fenster); die View finance.depot_performance
+--   INVOKER: liest nur finance + core.fn_household_persons (publiziertes Fenster, via fn_visible_depots); die View finance.depot_performance
 --   (R__v_depot_performance.sql) ruft sie fuer den Agent-Read (finance_ro), finance.fn_app_screen_depot fuer die App.
 --   Fehler als Daten: p kein Objekt / person_id kein Text -> {ok:false, code:'bad_request'}; as_of laeuft ueber
 --   core.fn_resolve_input_dates (auch relativ, z. B. "yesterday"; Unsinn -> {ok:false, code:'invalid_date'}).
@@ -51,18 +55,15 @@ BEGIN
     v_dates := core.fn_resolve_input_dates(p, ARRAY['as_of']);
     IF NOT (v_dates ->> 'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates -> 'p';
-    v_as_of := COALESCE(NULLIF(p ->> 'as_of', '')::date, core.fn_today());
+    -- nie nach heute: ein kuenftiger Endwert zum heutigen Kurs verteilte den Gewinn auf eine zu lange Zeit
+    v_as_of := least(COALESCE(NULLIF(p ->> 'as_of', '')::date, core.fn_today()), core.fn_today());
     v_pid := NULLIF(p ->> 'person_id', '');
     IF v_pid IS NOT NULL THEN
         v_hh := core.fn_app_sees_household(v_pid);
     END IF;
 
     WITH dep AS (
-        SELECT a.id, a.name, a.owner_person_id, (v_hh AND hp.role IS NOT DISTINCT FROM 'child') AS kid
-          FROM finance.accounts a
-          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = a.owner_person_id
-         WHERE a.status = 'active' AND a.account_type IN ('stocks_depot', 'crypto_depot')
-           AND (v_hh OR a.owner_person_id = v_pid)
+        SELECT * FROM finance.fn_visible_depots(v_hh, v_pid)
     ), hold AS (
         SELECT h.id, h.account_id, h.symbol
           FROM finance.depot_holdings h
@@ -92,13 +93,15 @@ BEGIN
                                          WHERE tx.holding_id = pos.id AND tx.d <= s.as_of) * s.price, 2),
                                  s.currency, s.as_of) AS s_eur,
                lp.price AS lp_price,
+               -- veraltet relativ zum Stichtag, mit DER Regel fn_price_status (die misst gegen heute: Datum verschieben)
+               (finance.fn_price_status(lp.as_of + (current_date - v_as_of)) = 'stale') AS lp_stale,
                finance.fn_to_eur(round(pos.shares_now * lp.price, 2), lp.currency, v_as_of) AS value_eur
           FROM pos
           LEFT JOIN LATERAL (SELECT mp.as_of, mp.price, mp.currency
                                FROM finance.market_prices mp
                               WHERE mp.symbol = pos.symbol AND mp.as_of >= pos.d_take AND mp.as_of <= v_as_of
                               ORDER BY mp.as_of LIMIT 1) s ON pos.d_take IS NOT NULL
-          LEFT JOIN LATERAL (SELECT mp.price, mp.currency
+          LEFT JOIN LATERAL (SELECT mp.as_of, mp.price, mp.currency
                                FROM finance.market_prices mp
                               WHERE mp.symbol = pos.symbol AND mp.as_of <= v_as_of
                               ORDER BY mp.as_of DESC LIMIT 1) lp ON true
@@ -131,14 +134,19 @@ BEGIN
         SELECT dep.id AS key, dep.id AS account_id, dep.name, dep.owner_person_id, dep.kid, false AS total FROM dep
         UNION ALL
         SELECT 0, NULL, NULL, NULL, false, true WHERE EXISTS (SELECT 1 FROM dep WHERE NOT dep.kid)
-    ), price_gap AS (
-        -- Position mit Bestand ohne Kurs (Endwert) je Depot
-        SELECT DISTINCT st.account_id FROM st WHERE st.shares_now > 0 AND st.lp_price IS NULL
+    ), pstat AS (
+        -- je Depot: Position mit Bestand ohne Kurs bzw. mit veraltetem Kurs (Endwert)
+        SELECT st.account_id, bool_or(st.lp_price IS NULL) AS no_price, COALESCE(bool_or(st.lp_stale), false) AS stale
+          FROM st
+         WHERE st.shares_now > 0
+         GROUP BY st.account_id
     ), agg AS (
         SELECT keys.key, keys.account_id, keys.name, keys.owner_person_id, keys.kid, keys.total,
                COALESCE(bool_or(f.kind = 'gap'), false)
-                 OR EXISTS (SELECT 1 FROM price_gap pg JOIN dep ON dep.id = pg.account_id
-                             WHERE pg.account_id = keys.key OR (keys.key = 0 AND NOT dep.kid)) AS no_price,
+                 OR EXISTS (SELECT 1 FROM pstat ps JOIN dep ON dep.id = ps.account_id
+                             WHERE ps.no_price AND (ps.account_id = keys.key OR (keys.key = 0 AND NOT dep.kid))) AS no_price,
+               EXISTS (SELECT 1 FROM pstat ps JOIN dep ON dep.id = ps.account_id
+                        WHERE ps.stale AND (ps.account_id = keys.key OR (keys.key = 0 AND NOT dep.kid))) AS price_stale,
                COALESCE(bool_or(f.kind <> 'gap' AND f.eur IS NULL), false) AS no_fx,
                COALESCE(bool_or(f.kind = 'value' AND f.eur IS NULL), false) AS value_gap,
                COALESCE(sum(f.eur) FILTER (WHERE f.kind = 'value'), 0) AS value_eur,
@@ -146,15 +154,20 @@ BEGIN
                min(f.d) FILTER (WHERE f.kind IN ('flow', 'start') AND f.eur <> 0) AS start_date,
                max(f.d) FILTER (WHERE f.eur <> 0) AS end_date,
                max(f.shifted) AS takeover_start_date,
-               array_agg(f.d) FILTER (WHERE f.eur IS NOT NULL) AS ds,
-               array_agg(f.eur) FILTER (WHERE f.eur IS NOT NULL) AS es
+               sum(f.eur) FILTER (WHERE f.eur > 0) AS paid_out,
+               sum(f.eur) FILTER (WHERE f.eur < 0) AS paid_in,
+               -- nur Fluesse <> 0: fn_xirr misst die Periode ueber genau die Tage, die auch period_days bestimmen
+               array_agg(f.d) FILTER (WHERE f.eur <> 0) AS ds,
+               array_agg(f.eur) FILTER (WHERE f.eur <> 0) AS es
           FROM keys
           LEFT JOIN keyed f ON f.key = keys.key
          GROUP BY keys.key, keys.account_id, keys.name, keys.owner_person_id, keys.kid, keys.total
     ), res AS (
         SELECT agg.*, r.reason, (agg.end_date - agg.start_date) AS days,
-               CASE WHEN r.reason IS NULL
-                    THEN finance.fn_xirr(agg.ds, agg.es, (agg.end_date - agg.start_date) >= 365) END AS rate
+               CASE WHEN r.reason IS NOT NULL THEN NULL
+                    -- alles an einem Tag (z. B. Uebernahme heute, Kurs von heute): Auszahlung / Einzahlung - 1
+                    WHEN agg.end_date = agg.start_date THEN COALESCE(agg.paid_out, 0) / -agg.paid_in - 1
+                    ELSE finance.fn_xirr(agg.ds, agg.es, (agg.end_date - agg.start_date) >= 365) END AS rate
           FROM agg
           CROSS JOIN LATERAL (SELECT CASE WHEN agg.no_price THEN 'no_price'
                                           WHEN agg.no_fx THEN 'no_fx'
@@ -172,6 +185,7 @@ BEGIN
                'return_pa_pct', CASE WHEN res.days >= 365 THEN round(100 * res.rate, 2) END,
                'return_since_start_pct', CASE WHEN res.days < 365 THEN round(100 * res.rate, 2) END,
                'takeover_start_date', res.takeover_start_date,
+               'price_stale', res.price_stale,
                'missing_reason', COALESCE(res.reason, CASE WHEN res.rate IS NULL THEN 'no_result' END))
              ORDER BY res.total, res.kid,
                       CASE WHEN NOT (res.no_price OR res.value_gap) THEN res.value_eur END DESC NULLS LAST,

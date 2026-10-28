@@ -43,7 +43,10 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2c] Ueberlauf annualisiert -> NULL'; END IF;
   v := finance.fn_xirr(ARRAY['2026-01-01', '2026-01-02']::date[], ARRAY[-100, 1000]::numeric[], false);
   IF v IS NULL OR abs(v - 9) > 1e-9 THEN RAISE EXCEPTION 'FAIL [2d] Periodenrendite 9,0, got %', v; END IF;
-  RAISE NOTICE 'PASS [2] Periodenrendite unter 1 Jahr, kein Ueberlauf';
+  -- -99 % an einem Tag: annualisiert praktisch -100 % statt float-underflow
+  IF finance.fn_xirr(ARRAY['2026-01-01', '2026-01-02']::date[], ARRAY[-100, 1]::numeric[]) IS DISTINCT FROM -1 THEN
+    RAISE EXCEPTION 'FAIL [2e] Unterlauf annualisiert -> -1'; END IF;
+  RAISE NOTICE 'PASS [2] Periodenrendite unter 1 Jahr, kein Ueber-/Unterlauf';
 
   -- ===== 3) Gleiche Tage + nicht berechenbar =====
   v := finance.fn_xirr(ARRAY['2020-01-01', '2020-01-01', '2021-01-01', '2021-01-01']::date[],

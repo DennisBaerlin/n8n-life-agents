@@ -18,7 +18,23 @@ Zum Start gibt es den Bildschirm **Vermögen**:
 
 Steht irgendwo **„unvollständig – ein Kurs oder Wechselkurs fehlt“**, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.
 
-Weitere Bildschirme sind in Vorbereitung: Sparziele, kommende Zahlungen mit Vorschau, ob das Geld auf dem Konto reicht, Kredite und Depot. Sobald es mehr als einen gibt, wechselst du unten über Reiter zwischen ihnen.
+Unten wechselst du über Reiter zwischen den Bildschirmen. Ein Bildschirm, zu dem es für dich nichts gibt, erscheint gar nicht erst.
+
+### Zahlungen
+
+- **Kommende Zahlungen:** alle Daueraufträge der nächsten 30 Tage mit Datum, Konto und Betrag, Abbuchungen mit Minus, Eingänge wie das Gehalt mit Plus. Bei einer Umbuchung zwischen zwei Konten steht das Zielkonto dabei. Oben steht die Summe dessen, was in dieser Zeit abgeht (ohne Umbuchungen zwischen eigenen Konten).
+- **Kontovorschau bis zum nächsten Geldeingang:** für jedes Konto, zu dem du schon einen Kontoauszug eingespielt hast (siehe [Monats-Check](monats-check.html)), der geschätzte Stand heute und der tiefste Stand bis zum nächsten Gehalt, mit Datum. Ein Beispiel: Steht beim Girokonto „Tiefster Stand 140 € am 27.11.“ und darunter **rot „unter Puffer“**, fällt das Konto vor dem nächsten Gehalt unter deinen Sicherheitspuffer (Standard 250 €). **Gelb „knapp“** heißt, der Stand bleibt zwar über dem Puffer, aber unter dem Doppelten davon. **Grün „reicht“** heißt alles gut.
+- Fehlt für ein Konto in Fremdwährung der Wechselkurs, steht dort grau „Kurs fehlt“ statt einer Ampel.
+
+### Kredite
+
+- Jeder laufende oder pausierte Kredit mit der Restschuld, der Monatsrate und dem Zinssatz. Kennst du den ursprünglichen Kreditbetrag, zeigt ein Balken, wie viel schon getilgt ist. Oben steht die Restschuld aller Kredite zusammen.
+- **Gelb „Zinsbindung bis …“** erscheint, wenn die Zinsbindung in weniger als zwölf Monaten endet. Dann ist Zeit, sich um die Anschlussfinanzierung zu kümmern. Ist das Datum schon vorbei, steht dort „Zinsbindung endete am …“.
+- Ein pausierter Kredit trägt den grauen Hinweis „pausiert“.
+
+### Hinweise auf der Startseite
+
+Was Aufmerksamkeit braucht, steht als Hinweis oben auf der Startseite, Rotes vor Gelbem. Ein Tipp darauf öffnet den passenden Bildschirm. Ein Beispiel: „Girokonto: Der tiefste Stand (140 € am 27.11.) liegt unter dem Puffer. Vorschlag: 150 € vom Tagesgeld bis 25.11. umbuchen.“ Oder: „Baufinanzierung: Die Zinsbindung endet am 30.06., Restschuld dann etwa 182.400 €.“
 
 Die Übersicht spricht die Sprache, die du mit `/language` eingestellt hast.
 
@@ -34,9 +50,10 @@ Der Knopf „📊 Übersicht“ sitzt an der Stelle, an der vorher der Menü-Kno
 
 - **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch die Konten und Depots der Kinder.
 - **Kinder** sehen nur, was ihnen gehört: eigene Konten und das eigene Depot. Gemeinsame Haushaltskonten und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name.
+- Bei den **Zahlungen** sehen Kinder nur Daueraufträge von ihren eigenen Konten und Kredite, die auf ihren Namen laufen. Taschengeld vom Elternkonto erscheint als „Vom Haushalt“, ohne den Namen des Dauerauftrags oder des Elternkontos, und einen Umbuchungs-Vorschlag bekommen Kinder nie.
 - **Fremde Telegram-Nutzer** bekommen den Knopf nie zu sehen.
 
-Zum Start bekommt **nur der Owner** den Knopf, als Probelauf. Für die ganze Familie schaltet ihn der Admin frei (siehe unten).
+Alle gekoppelten Haushaltsmitglieder bekommen den Knopf. Wer neu gekoppelt wird, entkoppelt wird oder die Sprache wechselt, sieht den Knopf bzw. die neue Beschriftung nach etwa einer Minute, ohne Update. Soll ihn nur der Owner haben, stellt der Admin das um (siehe unten).
 
 ## Nach einer Stunde neu öffnen
 
@@ -55,13 +72,21 @@ Erscheint statt der Übersicht manchmal eine **FritzBox-Seite** (Anmeldung oder 
 
 ## Für Admins: an- und abschalten
 
-Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein, danach jeweils `lifeagents update` ausführen:
+Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein. Die Knöpfe folgen nach etwa einer Minute von selbst, ein Update ist nicht nötig:
 
 | Befehl | Wirkung |
 |---|---|
-| `lifeagents config set app audience household` | Alle gekoppelten Haushaltsmitglieder bekommen den Knopf (Kinder sehen nur Eigenes). |
-| `lifeagents config set app audience owner` | Nur der Owner bekommt den Knopf (Probelauf, so ist es nach der Installation eingestellt). |
-| `lifeagents config set app enabled false` | Schaltet die Übersicht ganz ab. Die Übersicht ist sofort gesperrt, der Knopf verschwindet mit dem nächsten Update; an seiner Stelle ist dann wieder der Menü-Knopf mit den Befehlen. |
+| `lifeagents config set app audience household` | Alle gekoppelten Haushaltsmitglieder bekommen den Knopf, Kinder sehen nur Eigenes (so ist es eingestellt). |
+| `lifeagents config set app audience owner` | Nur der Owner bekommt den Knopf. |
+| `lifeagents config set app enabled false` | Schaltet die Übersicht ganz ab. Die Übersicht ist sofort gesperrt, der Knopf verschwindet nach etwa einer Minute; an seiner Stelle ist dann wieder der Menü-Knopf mit den Befehlen. |
 | `lifeagents config set app enabled true` | Schaltet sie wieder ein. |
 
-Wird jemand neu mit dem Bot gekoppelt oder wechselt jemand die Sprache, kommt der Knopf bzw. die neue Beschriftung mit dem nächsten `lifeagents update`.
+Kopplung, Entkoppeln und Sprachwechsel zieht der Server genauso nach. Klappt das wiederholt nicht (etwa weil Telegram nicht erreichbar ist), versucht er es alle zehn Minuten erneut, und `lifeagents doctor` meldet es nach einer halben Stunde.
+
+Wie weit die Liste der kommenden Zahlungen reicht, ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:
+
+| Befehl | Wirkung |
+|---|---|
+| `lifeagents config set finance app_payments_days 30` | Kommende Zahlungen für so viele Tage im Voraus. |
+| `lifeagents config set finance coverage_warn_factor 2` | Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (`coverage_buffer_eur`). |
+| `lifeagents config set finance fixed_rate_warn_months 12` | Hinweis, wenn die Zinsbindung eines Kredits in weniger als so vielen Monaten endet. |

@@ -10,6 +10,10 @@
 #     als gesetzt;
 #   - der Mini-App-Knopf „Übersicht“ (setChatMenuButton) nur pro Chat, bei audience=owner nur fuer den Owner, Text aus
 #     dem Katalog, URL https + /webhook/app-<uuid>; nie als Standard-Knopf.
+#   - Menue-Auftrag (core.menu_refresh): ein Wechsel von app.audience legt ihn an, der minuetliche Runner
+#     (`lifeagents update --run-requested`) setzt NUR die Knoepfe (keine Befehlsmenues) fuer alle gekoppelten Personen
+#     und schliesst ihn; Zweitlauf ruft Telegram nicht; scheitert Telegram, bleibt er offen mit Wartezeit; ein
+#     normaler Menue-Lauf (Install/Update) schliesst einen offenen Auftrag mit. Der echte Timer pausiert dafuer kurz.
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1. Kein LLM, kein echtes Telegram.
 # Usage:  .\scripts\dev\bot_menu_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
@@ -35,9 +39,19 @@ function Get-Loc([string]$Pkg, [string]$Lang) { [System.IO.File]::ReadAllText((J
 $core = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\manifest.json'), $Utf8NoBom) | ConvertFrom-Json
 $langs = @($core.languages.list | Sort-Object { [int]$_.ord } | ForEach-Object { [string]$_.code })
 
+function Invoke-Sql([string]$Sql) {
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $Sql)
+    return (($r.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) -join "`n")
+}
+
 Write-Host ""
 Write-Host "Telegram-Befehlsmenue je Sprache (Installer-Code gegen Mock-Telegram)"
 Write-Host ("-" * 64)
+# Der echte Minuten-Runner wuerde einen Menue-Auftrag mit dem echten Telegram-Endpunkt abarbeiten und mit dem Test
+# um den Auftrag konkurrieren -> fuer die Testdauer anhalten (am Ende wieder starten).
+& docker exec $Container systemctl stop lifeagents-update-run.timer 2>$null | Out-Null
+$audienceBefore = Invoke-Sql "SELECT value FROM core.config WHERE category = 'app' AND key = 'audience';"
+[void](Invoke-Sql "UPDATE core.config SET value = 'owner' WHERE category = 'app' AND key = 'audience';")
 Clear-MockTelegramRequests -Container $Container
 
 $lib = '/usr/local/lib/lifeagents'
@@ -121,6 +135,52 @@ if ($owner.Count -gt 0) {
 # (3) Sofort-Verify: jedes gesetzte Menue wurde per getMyCommands verifiziert (Mock speichert je Scope + Sprache).
 $verified = @($out | Where-Object { "$_" -match 'verifiziert' }).Count
 if ($verified -ne $sets.Count) { Fail "Sofort-Verify: $verified von $($sets.Count) Menues verifiziert" }
+if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'false') { Fail 'Menü-Lauf des Installers hat den offenen Menü-Auftrag nicht geschlossen' }
+
+# (4) Menue-Auftrag ueber den Runner (Familie, Release 2): audience owner -> household
+$tids = @((Invoke-Sql "SELECT p->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) p WHERE c.name = 'family' AND COALESCE(p->>'telegram_user_id','') ~ '^[0-9]{1,18}$';") -split "`n" | Where-Object { $_ })
+function Invoke-Runner([string]$Api) {
+    $prev2 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o = & docker exec $Container bash -c "LIFEAGENTS_TELEGRAM_API=$Api TELEGRAM_BOT_TOKEN=mock-token lifeagents update --run-requested" 2>&1
+    $c = $LASTEXITCODE; $ErrorActionPreference = $prev2
+    if ($Verbose) { $o | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
+    if ($c -ne 0) { Fail "Runner brach ab (exit $c): $($o -join ' | ')" }
+}
+[void](Invoke-Sql "UPDATE core.config SET value = 'household' WHERE category = 'app' AND key = 'audience';")
+if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'true') { Fail 'audience-Wechsel hat keinen Menü-Auftrag angelegt' }
+Clear-MockTelegramRequests -Container $Container
+Invoke-Runner "http://127.0.0.1:$MockPort"
+$req = @(Get-MockTelegramRequests -Container $Container)
+if (@($req | Where-Object { $_.method -eq 'setMyCommands' }).Count -gt 0) { Fail 'Runner hat Befehlsmenüs gesetzt (soll nur die Knöpfe setzen)' }
+$web2 = @($req | Where-Object { $_.method -eq 'setChatMenuButton' -and $_.body.menu_button.type -eq 'web_app' })
+if ($owner.Count -gt 0 -and $web2.Count -ne $tids.Count) { Fail "Runner: $($web2.Count) Übersicht-Knöpfe, erwartet $($tids.Count) (alle gekoppelten Personen bei household)" }
+if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'false') { Fail 'Runner hat den Menü-Auftrag nicht geschlossen' }
+Clear-MockTelegramRequests -Container $Container
+Invoke-Runner "http://127.0.0.1:$MockPort"
+if (@(Get-MockTelegramRequests -Container $Container).Count -gt 0) { Fail 'Runner ohne offenen Auftrag hat Telegram aufgerufen' }
+Write-Host "  Runner: Menü-Auftrag -> $($web2.Count) Übersicht-Knopf/Knöpfe, Zweitlauf still"
+
+# (5) Telegram scheitert (geschlossener Port) -> Auftrag bleibt offen, Wartezeit; ein Installer-Menue-Lauf schliesst ihn
+if ($tids.Count -gt 0) {
+    [void](Invoke-Sql "UPDATE core.config SET value = 'owner' WHERE category = 'app' AND key = 'audience';")
+    Invoke-Runner 'http://127.0.0.1:9'
+    $st = Invoke-Sql "SELECT (requested_gen > done_gen)::text || '|' || (retry_after > now())::text FROM core.menu_refresh;"
+    if ($st -ne 'true|true') { Fail "Fehlschlag: Auftrag muss offen bleiben mit Wartezeit, got '$st'" }
+    $prev3 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $o3 = & docker exec $Container bash -c $sh 2>&1
+    $ErrorActionPreference = $prev3
+    if ($Verbose) { $o3 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
+    $st = Invoke-Sql "SELECT (requested_gen > done_gen)::text || '|' || (retry_after IS NULL)::text FROM core.menu_refresh;"
+    if ($st -ne 'false|true') { Fail "Installer-Menü-Lauf hat den offenen Auftrag nicht geschlossen, got '$st'" }
+    Write-Host "  Fehlschlag: Auftrag offen mit Wartezeit, Installer-Lauf schließt ihn"
+}
+
+# Aufraeumen: audience wie vorher, Knoepfe dazu passend (Installer-Lauf), Timer wieder an
+if ($audienceBefore) { [void](Invoke-Sql "UPDATE core.config SET value = '$audienceBefore' WHERE category = 'app' AND key = 'audience';") }
+$prev4 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+[void](& docker exec $Container bash -c $sh 2>&1)
+& docker exec $Container systemctl start lifeagents-update-run.timer 2>$null | Out-Null
+$ErrorActionPreference = $prev4
 
 Write-Host ("-" * 64)
 if ($failed -eq 0) { Write-Host "bot_menu_test: OK ($($sets.Count) Menues, Texte je Sprache aus dem Katalog)" -ForegroundColor Green }

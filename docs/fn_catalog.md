@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 403 fn-Dateien.
+Umfang: 405 fn-Dateien.
 
 ## finance.fn_account_free_balance (READ, STABLE) — freier Saldo eines saldo-basierten Kontos
 - `finance.fn_account_free_balance(p_account int) -> numeric`
@@ -964,6 +964,16 @@ Umfang: 403 fn-Dateien.
 - `career.fn_market_trend(p_plan_facts jsonb) -> jsonb`
 - jsonb-Keys: target_locations, target_roles, title
 - career.fn_market_trend (WS-4 — deterministischer Stellen-Nachfrage-Trend der primaeren Ziel-Rolle) Rechnet fuer target_roles[0] den Posting-Count-Trend (aktuellste Messung + Delta gegen die vorherige Messung desselben scope) DETERMINISTISCH in der DB (CLAUDE.md "LLM rechnet nicht"). Karriere-Analog von career.fn_skill_gap (DB rechnet, Render liest), liest den datierten Cache career.market_signals (vom Cron befuellt) — NICHT die kuratierten Fakten (arch-challenge D1). Genutzt vom Renderer (fn_render_career_planning) -> Markt-Zeile im Plan. SCHEMA-QUALIFIZIERT durchgehend (career.*/agent.* explizit): der Render-Pfad laeuft via core.fn_fetch_context (DEFINER, search_path pg_catalog,agent,core OHNE career; der Renderer laeuft als dessen Owner = Superuser -> liest career.* trotz context_ro-Binding). KEINE SECURITY DEFINER noetig (plain wie fn_skill_gap); der Render-unter-context_ro-Test (test_fn_render_career_planning) deckt die Rollen-Perspektiv-Pflicht. RAISE-FREI: kein Cast auf Junk, Division durch 0 geguarded, fehlende Rolle/Zahlen/Cache-Zeilen -> NULL. RUECKGABE jsonb (oder NULL, wenn keine Daten): { role, location, count, prev_count, trend_pct, direction, as_of } trend_pct/direction nur bei >= 2 Messungen (sonst trend_pct null, direction 'flat'). Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_market_trend.sql
+
+## core.fn_menu_refresh_claim
+- `core.fn_menu_refresh_claim() -> jsonb`
+- jsonb-Keys: --
+- core.fn_menu_refresh_claim() — Menue-Auftrag der Mini-App uebernehmen (READ; Tabelle + Trigger: packages/core/db/core.menu_refresh_init.sql). Aufrufer nur bash als Superuser (provisioning/lib/deploy_workflows.sh _set_bot_menu_buttons, der root-Runner update --run-requested fragt damit „offen?“). Muster core.fn_update_request_claim, aber ohne Sperr-Zustand: ein Menue-Lauf ist idempotent, die Generation sorgt dafuer, dass ein waehrend des Laufs entstandener Auftrag offen bleibt (core.fn_menu_refresh_finish schliesst nur bis gen). RUECKGABE: {open, gen} — gen = aktuelle requested_gen; open = Unerledigtes UND keine Wartezeit nach einem Fehlschlag (retry_after). Tests: tests/db/core/test_fn_menu_refresh.sql
+
+## core.fn_menu_refresh_finish
+- `core.fn_menu_refresh_finish(p_gen bigint, p_ok boolean) -> void`
+- jsonb-Keys: --
+- core.fn_menu_refresh_finish(p_gen bigint, p_ok boolean) — Menue-Auftrag der Mini-App abschliessen (WRITE, Betrieb) Gegenstueck zu core.fn_menu_refresh_claim; Aufrufer nur bash als Superuser (_set_bot_menu_buttons). p_ok = true (alle Knoepfe gesetzt): done_gen = GREATEST(done_gen, LEAST(p_gen, requested_gen)) -> genau bis zur uebernommenen Generation, nie zurueck; retry_after weg. p_ok = false (Telegram/DB scheiterte): nichts geschlossen, retry_after = now() + 10 Min (der minuetliche Runner ruft Telegram nicht jede Minute vergeblich; doctor meldet einen Auftrag, der > 30 Min offen ist). Tests: tests/db/core/test_fn_menu_refresh.sql
 
 ## agent.fn_merge_member_identity (WS-5a — geteilter Identitaets-Merge-Kern)
 - `agent.fn_merge_member_identity(p_person_id text, p_uid bigint, p_role text) -> jsonb`

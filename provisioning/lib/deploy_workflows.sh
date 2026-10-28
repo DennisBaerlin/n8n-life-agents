@@ -849,13 +849,31 @@ _tg_set_menu_button() {
 #   fuer berechtigte Personen (app.enabled, app.audience owner|household, mind. ein Bildschirm eines aktiven Pakets),
 #   nie als Standard-Knopf: der waere fuer jeden Fremden sichtbar. Alle anderen bekannten Chats und alle Chats aus der
 #   Merkliste $LIFEAGENTS_DIR/app-menu-chats, die nicht mehr im Haushalt sind, bekommen das Befehlsmenue zurueck; ein
-#   gescheitertes Zuruecksetzen bleibt auf der Merkliste (naechstes Update versucht es erneut). URL = WEBHOOK_URL +
-#   webhook/<_app_path>, nur https (Telegram verlangt es). Spalten mit '|' getrennt (Tab ist IFS-Leerraum: leere Felder
-#   wuerden verschmelzen). Best-effort, nie fatal.
+#   gescheitertes Zuruecksetzen bleibt auf der Merkliste. URL = WEBHOOK_URL + webhook/<_app_path>, nur https (Telegram
+#   verlangt es). Spalten mit '|' getrennt (Tab ist IFS-Leerraum: leere Felder wuerden verschmelzen). Best-effort, nie
+#   fatal (immer rc 0, sicher unter set -e in allen Aufrufern).
+#   Menue-Auftrag (core.menu_refresh, packages/core/db/core.menu_refresh_init.sql): jeder Lauf uebernimmt vorher die
+#   aktuelle Generation (core.fn_menu_refresh_claim) und schliesst sie nur, wenn kein Telegram-Aufruf scheiterte
+#   (core.fn_menu_refresh_finish; sonst naechster Versuch des Runners in ~10 Min). Eigene kurze Sperre um den ganzen
+#   Lauf: Update und minuetlicher Runner schreiben die Merkliste nie gleichzeitig; die Update-Sperre bleibt dafuer frei
+#   (ein Terminal-Update wartet nur 30 s auf sie).
 _set_bot_menu_buttons() {
+  local lockf="${LIFEAGENTS_MENU_LOCK:-/run/lifeagents-menu.lock}"
+  if need_cmd flock && { : >>"$lockf"; } 2>/dev/null; then
+    ( flock -w 60 8 || { warn "Übersicht-Knopf: ein anderer Menü-Lauf hängt — übersprungen, nächster Versuch folgt."; exit 0; }
+      _set_bot_menu_buttons_run "$1" ) 8>>"$lockf" || true
+  else
+    _set_bot_menu_buttons_run "$1" || true
+  fi
+  return 0
+}
+_set_bot_menu_buttons_run() {
   local token="$1" wh path url enabled audience screens rows tid role lang text tj uj body kind ok_n=0 reset_n=0
-  local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc keep=' ' seen=' '
+  local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc keep=' ' seen=' ' gen fails=0
   need_cmd jq || return 0
+  # Generation VOR dem Lesen uebernehmen: was danach markiert wird, bleibt fuer den naechsten Lauf offen.
+  gen="$(runuser -u "$DB_SUPERUSER" -- psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_menu_refresh_claim()->>'gen'" 2>/dev/null || true)"
+  case "$gen" in ''|*[!0-9]*) gen='' ;; esac
   wh="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"
   path="$(_app_path)"
   url=''
@@ -875,7 +893,7 @@ _set_bot_menu_buttons() {
   case "$screens" in ''|*[!0-9]*) screens=0 ;; esac
   [ -n "$url" ] || [ "$enabled" != true ] || [ "$screens" -eq 0 ] || note "Übersicht-Knopf: keine https-WEBHOOK_URL bzw. kein INGRESS_ID_KEY — nur Befehlsmenüs."
   uj="$(jq -Rn --arg u "$url" '$u')"
-  core_loc="$REPO_ROOT/packages/core/locales"
+  core_loc="${REPO_ROOT:-${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}}/packages/core/locales"
   while IFS='|' read -r tid role lang _; do
     [ "$tid" = cfg ] && continue
     printf '%s' "$tid" | grep -qE '^[0-9]{1,18}$' || continue
@@ -897,7 +915,8 @@ _set_bot_menu_buttons() {
     if _tg_set_menu_button "$token" "$body"; then
       if [ "$kind" = web_app ]; then ok_n=$((ok_n + 1)); else reset_n=$((reset_n + 1)); fi
     else
-      warn "Übersicht-Knopf für einen Chat nicht gesetzt (Token/Netz/Chat?) — unkritisch, das nächste Update versucht es erneut."
+      fails=$((fails + 1))
+      warn "Übersicht-Knopf für einen Chat nicht gesetzt (Token/Netz/Chat?) — unkritisch, neuer Versuch in etwa 10 Minuten."
     fi
   done <<EOF
 $rows
@@ -911,13 +930,18 @@ EOF
         reset_n=$((reset_n + 1))
       else
         keep="${keep}${tid} "
-        warn "Befehlsmenü für einen früheren Chat nicht zurückgesetzt — das nächste Update versucht es erneut."
+        fails=$((fails + 1))
+        warn "Befehlsmenü für einen früheren Chat nicht zurückgesetzt — neuer Versuch in etwa 10 Minuten."
       fi
     done < "$state"
   fi
   if [ -d "$(dirname "$state")" ]; then
     # shellcheck disable=SC2086  # numerisch geprüfte ids, Leerzeichen-Liste -> bewusst aufgeteilt
     { printf '%s\n' $seen $keep > "$state" && chmod 0600 "$state"; } 2>/dev/null || true
+  fi
+  if [ -n "$gen" ]; then
+    runuser -u "$DB_SUPERUSER" -- psql -X -tA -q -d "$N8N_DB_NAME" \
+      -c "SELECT core.fn_menu_refresh_finish(${gen}, $([ "$fails" -eq 0 ] && echo true || echo false))" >/dev/null 2>&1 || true
   fi
   ok "Übersicht-Knopf: ${ok_n} Chat(s) mit Knopf, ${reset_n} mit Befehlsmenü."
 }

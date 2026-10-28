@@ -170,6 +170,12 @@ main() {
       _warn "Das letzte Update hat nicht vollständig geklappt:"
       printf '%s\n' "$_help" | sed 's/^/         /'
     fi
+    # Menue-Auftrag der Uebersicht (core.menu_refresh): derselbe Runner setzt die Knoepfe nach Kopplung/Sprachwechsel;
+    # offen seit > 30 min = Telegram lehnt wiederholt ab (Versuch alle 10 min) oder der Runner laeuft nicht.
+    if [ -n "$(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c \
+          "SELECT 1 FROM core.menu_refresh WHERE requested_gen > done_gen AND requested_at < now() - interval '30 minutes'" 2>/dev/null || true)" ]; then
+      _warn "Übersicht-Knöpfe seit über 30 Minuten nicht nachgezogen (Kopplung/Sprache geändert) — journalctl -u lifeagents-update-run -n 50"
+    fi
   fi
 
   # --- LLM-Gateway (lib/install_llm_gateway.sh): ALLE Claude-Aufrufe laufen darueber -> Ausfall = ROT ---

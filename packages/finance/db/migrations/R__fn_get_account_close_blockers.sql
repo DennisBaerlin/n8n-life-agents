@@ -4,7 +4,7 @@
 --   finance_ro lesbar; VOR der Bestaetigungskarte) UND den Guard in fn_close_account. Vorher liess sich ein Konto mit Guthaben schliessen
 --   (das Geld verschwand aus dem Vermoegen: Views zaehlen nur aktive Konten) und laufende Dauerauftraege feuerten
 --   danach taeglich den Closed-Konto-Trigger (Owner-Alarm).
---   Blocker-Arten (kind): balance (Saldo <> 0) · settlement_for_depot (Verrechnungskonto aktiver Depots) ·
+--   Blocker-Arten (kind): balance (Saldo <> 0) · settlement_for_depot (Verrechnungskonto aktiver Depots bzw. P2P-Konten) ·
 --   depot_holdings (Depot mit Bestand; ein Depot-Saldo ist immer 0) · savings_plans (aktive/pausierte Sparplaene
 --   auf dem Depot) · loans (aktiver/pausierter Kredit mit diesem Konto als Kredit- oder Belastungskonto) ·
 --   recurring_payments (Dauerauftraege mit diesem Konto als Quelle/Ziel, die noch laufen koennen -- status
@@ -72,7 +72,7 @@ BEGIN
                     WHEN 'balance'              THEN 'it still holds a balance of ' || (e->>'balance') || ' ' || (e->>'currency')
                                                      || ' (transfer it out first)'
                     WHEN 'settlement_for_depot' THEN 'it is the settlement account for ' || (e->>'depot_count')
-                                                     || ' active depot(s) (close or re-link the depot first)'
+                                                     || ' active depot(s) or P2P account(s) (close or re-link them first)'
                     WHEN 'depot_holdings'       THEN 'the depot still holds ' || (e->>'holding_count') || ' position(s) (sell or move them first)'
                     WHEN 'savings_plans'        THEN 'savings plan(s) still run on it (active or paused; close them first): ' || (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(e->'names') x)
                     WHEN 'loans'                THEN 'it is used by loan(s): ' || (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(e->'names') x)

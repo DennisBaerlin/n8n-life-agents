@@ -6,7 +6,7 @@ function Build-SetAccount {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('account_name','new_name','bank','account_number','owner_person',
+    $trig = Build-Trigger @('account_name','new_name','bank','account_number','owner_person','settlement_account',
                            'notes','fixed_deposit_maturity_date','fixed_deposit_auto_renew',
                            'ownership','has_transmortal_poa')  # WS-0b estate
 
@@ -28,6 +28,16 @@ function Build-SetAccount {
     $errPerson = Build-ToolError 'Person unresolved' @(1100, 480) `
         "=The owner person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
+    # Bank-Import-Modul: optionales Verrechnungskonto (Name -> id; leer = unveraendert). Muster tool_create_account
+    # (Resolve Settlement); ob die Kontoart eins haben darf, prueft die DB (fn_settlement_account_reason) im Probelauf.
+    $resSettle = Build-Pg 'Resolve Settlement' @(1100, 360) `
+        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'settlement_account', ''), NULL, TRUE);" `
+        ([ordered]@{ settlement_account = '$(''Start'').item.json.settlement_account' })
+    $ifSettleBad = Build-If 'Settlement invalid?' @(1320, 360) `
+        "={{ !!`$('Start').item.json.settlement_account && `$('Resolve Settlement').item.json.hit_count !== 1 }}" 'true' 'equals' 'boolean'
+    $errSettle = Build-ToolError 'Settlement unresolved' @(1540, 480) `
+        "=Settlement account '{{ `$('Start').item.json.settlement_account }}' resolves to {{ `$('Resolve Settlement').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Settlement').item.json.candidates) }}. Ask the user which exact account."
+
     # "DB ist das Gesetz": fn_set_account laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate
     # in den echten Write (partielles UPDATE der Stammdaten).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_account' -DryPos @(880, 0) -WritePos @(2200, 0) `
@@ -39,6 +49,7 @@ function Build-SetAccount {
             bank                        = '$(''Start'').item.json.bank'
             account_number              = '$(''Start'').item.json.account_number'
             owner_person_id             = '$(''Resolve Person'').item.json.person_id'
+            settlement_id               = '($(''Start'').item.json.settlement_account ? $(''Resolve Settlement'').item.json.id : null)'
             notes                       = '$(''Start'').item.json.notes'
             fixed_deposit_maturity_date = '$(''Start'').item.json.fixed_deposit_maturity_date'
             fixed_deposit_auto_renew    = '$(''Start'').item.json.fixed_deposit_auto_renew'
@@ -56,6 +67,7 @@ function Build-SetAccount {
         (New-HitlLine 'finance.label.bank'               "$S.bank" -If "$S.bank")
         (New-HitlLine 'finance.label.iban_number' "$S.account_number" -If "$S.account_number")
         (New-HitlLine 'finance.label.owner_person'       "($P.full_name || $S.owner_person)" -If "$S.owner_person")
+        (New-HitlLine 'finance.label.settlement_account' "$S.settlement_account" -If "$S.settlement_account")
         (New-HitlLine 'finance.label.maturity'           (Get-DryEffectiveExpr 'fixed_deposit_maturity_date') -Kind date -If "$S.fixed_deposit_maturity_date")
         (New-HitlLine 'finance.label.auto_renew'       "$S.fixed_deposit_auto_renew" -Kind bool -If "$S.fixed_deposit_auto_renew")
         (New-HitlLine 'finance.label.ownership'          "$S.ownership" -Kind enum -Enum 'finance.enum.ownership' -If "$S.ownership")
@@ -84,9 +96,9 @@ function Build-SetAccount {
 
     $stickyOv = Build-Sticky 'Doc set_account' @(2200, -220) `
         'fn_set_account: partielles Stammdaten-UPDATE' `
-        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE). Kein freundlicher {ok:false}-Fall — der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
+        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE). Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Kontonummer schon vergeben, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
 
-    $nodes = @($trig, $resAcct, $ifAcct, $errAcct, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval,
+    $nodes = @($trig, $resAcct, $ifAcct, $errAcct, $resPerson, $ifPersonBad, $errPerson, $resSettle, $ifSettleBad, $errSettle) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ret, $stickyDry, $stickyOv)
 
     $conns = [ordered]@{
@@ -99,6 +111,11 @@ function Build-SetAccount {
         'Resolve Person'           = @{ main = @( ,@( E 'Person invalid?' ) ) }
         'Person invalid?'          = @{ main = @(
             @( E 'Person unresolved' ),
+            @( E 'Resolve Settlement' )
+        ) }
+        'Resolve Settlement'       = @{ main = @( ,@( E 'Settlement invalid?' ) ) }
+        'Settlement invalid?'      = @{ main = @(
+            @( E 'Settlement unresolved' ),
             @( E 'Dry run' )
         ) }
         'Dry run'                  = @{ main = @( ,@( E 'Dry run ok?' ) ) }

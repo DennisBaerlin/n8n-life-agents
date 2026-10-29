@@ -26,8 +26,13 @@
 --     0 (Gruppe, ckey 'g:') = schon gebuchter Ad-hoc-Transfer dieses Kontos (von Hand oder aus dem Auszug des
 --         Partnerkontos): Gruppe nur aus transfer/fee-Beinen ohne Dauerauftrag/Zins, mit Bein auf einem anderen Konto;
 --         Summe der Gruppen-Beine auf DIESEM Konto = Zeilenbetrag, +-5 Tage (Dauerauftrags-Transfers bleiben 't:').
+--         Zeile mit transfer_fee (Auszahlung mit Gebuehr): auch Gruppe ohne Gebuehr-Bein = Zeile + Gebuehr (expected <>
+--         amount; die Prepare bucht die Gebuehr als eigene Buchung nach, nie in die fremde Gruppe).
 --     T = Gegen-IBAN = Kontonummer eines anderen aktiven eigenen Kontos, kein Dauerauftrag getroffen -> neuer Transfer
 --         (other_account_id; Buchbarkeit/Abgleich/pending_pair prueft die Prepare).
+--         Eine Ein-/Auszahlungs-Zeile ohne Gegen-IBAN (sub_kind deposit|withdrawal, Bondora-Datei) trifft das
+--         Verrechnungskonto (settlement_account_id) dieses Kontos. kind interest_line | legacy_return (Datei mit
+--         gedrucktem Endstand) trifft nie etwas: die Prepare bucht sie als je eine Summe.
 --   Lernen: ein Treffer eines Nicht-Transfer-Dauerauftrags schlaegt die Schluessel der Zeile vor, die die Kette noch
 --   nicht hat (learn_mandate / learn_iban; gespeichert erst beim Buchen).
 --   RUECKGABE: {matched:[{line_idx, stage, kind (recurring|interest|booked|transfer), recurring_payment_id, due_date,
@@ -59,7 +64,8 @@ BEGIN
                     THEN upper(regexp_replace(o.l->>'creditor_id', '\s', '', 'g')) || '|'
                          || upper(regexp_replace(o.l->>'mandate_ref', '\s', '', 'g')) END AS mkey,
                lower(COALESCE(o.l->>'counterparty', '') || ' ' || COALESCE(o.l->>'purpose', '')) AS txt,
-               NULLIF(o.l->>'kind', '') AS kind, upper(o.l->>'isin') AS isin, upper(o.l->>'symbol') AS symbol
+               NULLIF(o.l->>'kind', '') AS kind, upper(o.l->>'isin') AS isin, upper(o.l->>'symbol') AS symbol,
+               NULLIF(o.l->>'sub_kind', '') AS sub_kind, NULLIF(o.l->>'transfer_fee', '')::numeric AS tfee
         FROM jsonb_array_elements(COALESCE(p_lines, '[]'::jsonb)) WITH ORDINALITY AS o(l, ord)
         WHERE (o.l->>'date')::date > p_cut
     ),
@@ -162,11 +168,14 @@ BEGIN
                g.name, NULL::text, abs(l.d - g.tx_date), NULL::text, NULL::text, g.tx_date, g.group_id, NULL::int
         FROM lines l
         JOIN (SELECT t.group_id, sum(t.amount) AS amt, min(t.id) AS tx_id, min(t.transaction_date) AS tx_date,
-                     min(t.description) AS name
+                     min(t.description) AS name, bool_or(t.category::text = 'fee') AS has_fee
               FROM finance.transactions t
               WHERE t.account_id = p_account_id AND t.group_id IS NOT NULL
                 AND t.transaction_date > p_cut AND t.transaction_date <= p_period_end + 5
-              GROUP BY t.group_id) g ON g.amt = l.amt AND abs(l.d - g.tx_date) <= 5
+              GROUP BY t.group_id) g
+          -- Auszahlung mit Gebuehr (Profil), deren Transfer das Partnerkonto ohne Gebuehr gebucht hat: Gruppe = Zeile +
+          -- Gebuehr -> expected <> amount, apply bucht die Gebuehr als eigene Buchung nach
+          ON (g.amt = l.amt OR (l.tfee > 0 AND NOT g.has_fee AND g.amt = l.amt + l.tfee)) AND abs(l.d - g.tx_date) <= 5
         WHERE (l.kind IS NULL OR l.kind IN ('cash', 'fee'))
           AND NOT EXISTS (SELECT 1 FROM finance.transactions x WHERE x.group_id = g.group_id
                           AND (x.category::text NOT IN ('transfer', 'fee') OR x.recurring_payment_id IS NOT NULL
@@ -178,7 +187,11 @@ BEGIN
                a.name, CASE WHEN l.amt < 0 THEN 'source' ELSE 'target' END, 0, NULL::text, NULL::text, NULL::date,
                NULL::uuid, a.id
         FROM lines l
-        JOIN finance.accounts a ON a.account_number = l.iban AND a.status = 'active' AND a.id <> p_account_id
+        JOIN finance.accounts a ON a.status = 'active' AND a.id <> p_account_id
+             AND (a.account_number = l.iban
+                  -- Ein-/Auszahlung ohne Gegen-IBAN (Bondora-Datei): das Verrechnungskonto dieses Kontos
+                  OR (l.iban IS NULL AND l.sub_kind IN ('deposit', 'withdrawal')
+                      AND a.id = (SELECT s.settlement_account_id FROM finance.accounts s WHERE s.id = p_account_id)))
         WHERE l.amt <> 0 AND (l.kind IS NULL OR l.kind = 'cash')
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(

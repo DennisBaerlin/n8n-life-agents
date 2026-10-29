@@ -951,6 +951,18 @@
                                                                                      "name":  "purchases_cash_effect",
                                                                                      "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).settlement_change || 0 }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6a24ea95-089e-512e-8342-636181250cbb",
+                                                                                     "name":  "interest_correction",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.interest_correction || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "73c49a0c-e3f2-5e12-83de-6ff466cb6b08",
+                                                                                     "name":  "legacy_returns",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.legacy_returns || 0 }}",
+                                                                                     "type":  "number"
                                                                                  }
                                                                              ]
                                                          },
@@ -969,7 +981,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Bank-Export (CSV/Excel) -\u003e (Einzelkäufe übernehmen) -\u003e Monats-Check, ohne Sprachmodell**\n\nFetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -\u003e Read table (CSV: RFC 4180, Trenner aus der ersten Zeile; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -\u003e Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -\u003e Karte 1 + Gate -\u003e Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; der App-Kontostand des Owners ist Pflicht (sonst closing_balance_required, keine Karte), Zeitraum bis gestern, Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.",
+                                         "content":  "## DB-Automatik\n**Bank-Export (CSV/Excel) -\u003e (Einzelkäufe übernehmen) -\u003e Monats-Check, ohne Sprachmodell**\n\nFetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -\u003e Read table (CSV: RFC 4180, Trenner aus der ersten Zeile; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -\u003e Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -\u003e Karte 1 + Gate -\u003e Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; druckt die Datei Zeitraum + Endstand (Bondora), ist sie ein gedruckter Auszug (Zinskorrektur + Altkredit-Rückflüsse als je eine Summe, Ein-/Auszahlungen über das Verrechnungskonto), sonst ist der App-Kontostand des Owners Pflicht (sonst closing_balance_required, keine Karte, Zeitraum bis gestern); Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.",
                                          "height":  380,
                                          "width":  600,
                                          "color":  4

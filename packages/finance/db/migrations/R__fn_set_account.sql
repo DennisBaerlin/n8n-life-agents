@@ -11,6 +11,8 @@
 --   Nachlass-Attribute, geschlossene ownership-Liste per CHECK; leer=unveraendert).
 --   Kontonummer (Monats-Check WP-B) in der Normalform fn_normalize_account_number; schon bei einem ANDEREN aktiven
 --   Konto vergeben -> {ok:false, reason} ohne Write (UNIQUE-Index = Backstop).
+--   settlement_id (im Tool aufgeloest; leer=unveraendert): Verrechnungskonto, Pruefung fn_settlement_account_reason
+--   (nur Depot/P2P; P2P = das Girokonto, auf das der Anbieter auszahlt, Bank-Import-Modul) -> sonst {ok:false, reason}.
 --   Bankwechsel setzt den Depot-Kalender accounts.plan_execution_days zurueck (NULL = unbekannt): er beschreibt die
 --   Ausfuehrungstage der ALTEN Bank (fn_resolve_plan_schedule belegt neu vor bzw. fragt einmal nach).
 --   RUECKGABE: {ok:true, account_id}. RAISE nur bei not-found (Resolve haette greifen muessen).
@@ -22,6 +24,7 @@ DECLARE
     v_number TEXT := finance.fn_normalize_account_number(p->>'account_number');
     v_taken  TEXT;
     v_dates  JSONB;
+    v_settle INT;
 BEGIN
     -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['fixed_deposit_maturity_date']);
@@ -44,6 +47,14 @@ BEGIN
             'reason', 'The account number ' || v_number || ' already belongs to the account "' || v_taken || '".');
     END IF;
 
+    -- Verrechnungskonto (Bank-Import-Modul): nur Depot/P2P, dieselbe Pruefung wie fn_create_account
+    v_settle := NULLIF(p->>'settlement_id', '')::int;
+    SELECT finance.fn_settlement_account_reason(a.account_type::text, a.currency, v_settle, a.id) INTO v_taken
+    FROM finance.accounts a WHERE a.id = v_id;
+    IF v_taken IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', v_taken);
+    END IF;
+
     UPDATE finance.accounts SET
         name                        = COALESCE(NULLIF(p->>'name', ''), name),
         bank                        = COALESCE(NULLIF(p->>'bank', ''), bank),
@@ -52,6 +63,7 @@ BEGIN
                                                 AND p->>'bank' IS DISTINCT FROM bank
                                            THEN NULL ELSE plan_execution_days END,
         account_number              = COALESCE(v_number, account_number),
+        settlement_account_id       = COALESCE(v_settle, settlement_account_id),
         owner_person_id             = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- WS-4: typisierter Eigentuemer (Slug); leer=unveraendert (Un-Tag->BACKLOG)
         notes                       = COALESCE(NULLIF(p->>'notes', ''), notes),
         fixed_deposit_maturity_date = COALESCE(NULLIF(p->>'fixed_deposit_maturity_date', '')::date, fixed_deposit_maturity_date),

@@ -131,6 +131,14 @@ Monats-Check-Erinnerung (3. und 17., `schedule.reconcile_accounts`): fällig ist
 - **Prompt-Caching im Gateway statt im Node; n8n-2.37-Option auch nach Update aus** (setzt nur den oberen Haltepunkt).
 - **Telegram-Fallback ohne 400-Gate** (s. Build-Gotchas oben).
 
+## Bank-Import-Modul — Mechanik (Kurzform in `packages/finance/CLAUDE.md` *Monats-Check*)
+
+- **Schnitt** (Muster beangulp `identify()` / Portfolio Performance Extractor): Leser im Workflow (`tool_fetch_telegram_file` accept=table: CSV als Text, xlsx als Raster über Extract From File) -> `fn_bank_export_normalize` (Kopfzeile + Profil per Signatur in den ersten 20 Zeilen, Registry `fn_bank_export_profiles`) -> je Bank eine `fn_bank_export_normalize_<bank>` -> kanonische Importzeile -> die geteilte Prepare/Apply-Kette (dieselbe wie das Kontoauszug-PDF).
+- **Gedruckter Endstand** (Profil `printed_balance`, Bondora): Datei = gedruckter Auszug, kein Owner-Saldo; Zinsen als EINE Korrektur (Zeilen - Scheduler-Buchungen), offene Scheduler-Termine bis Zeitraumende übersprungen, Kleinst-Gutschriften als EINE Buchung mit Profil-Label. Ohne gedruckten Endstand (TR) Pflicht-Saldo des Owners (bewusst strenger als hledger/Firefly).
+- **Transfers zwischen eigenen Konten:** Stufe T (Gegen-IBAN = Kontonummer bzw. Verrechnungskonto eines P2P-Kontos bei Ein-/Auszahlung ohne IBAN) und Stufe 0 `g:` (schon gebuchte Gruppe, auch mit fehlender Gebühr) in beiden Import-Reihenfolgen; nie zweimal (`pending_pair`); Bein unterwegs an der Monatsgrenze -> `moved_legs` bzw. `partner_date`; `fn_book_transfer` verweigert abgeglichene Zeiträume; `fn_void_bank_statement` verweigert `partner_reconciled`.
+- **Wertpapier-Zeilen** (TR) nie im Rest; ein Kauf bis zum Datum einer Bestandsübernahme wird nie gebucht (`covered_by_takeover`), erst `fn_replace_takeover_with_lots` macht ihn zur Einzelbuchung.
+- **Bei uns anders:** Der Sammelimport (`fn_import_stage`) bleibt getrennt (Stammdaten, keine Umsätze gegen einen Saldo). Der Rest (Lump) bleibt eine benannte, per Karte bestätigte Zeile (Barausgaben auf Girokonten).
+
 ## Write-Tools-Katalog (`doc_lint` Check 4 ↔ `packages/*/build/workflows/tools/*.ps1`, alle Pakete)
 
 Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag (`docs/fn_catalog.md`). Core-Host-Tools und als `Internal` markierte Tools stehen bewusst nicht hier.
@@ -191,7 +199,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_commit_import` | Bulk-Import 3/3: ganzen Batch atomar committen (EIN Gate) |
 | `tool_reconcile_bank_statement` | Monats-Check: Kontoauszug lesen, Konto per IBAN, Saldo-Probe, erwartete Zahlungen abhaken, Rest als eine Abgleichsbuchung (eine Karte) |
 | `tool_void_bank_statement` | Letzten Kontoauszug eines Kontos samt Buchungen, Skips und Abgleichsstand zurücknehmen |
-| `tool_import_bank_export` | Monats-Check aus der Umsatz-Exportdatei (CSV/Excel) einer Bank mit Export-Profil (fester Leser, kein LLM): App-Kontostand Pflicht, Sparpläne mit exakten Stück, fehlende Trades buchen; vorher optional Bestandsübernahme durch die Einzelkäufe ersetzen (zwei Karten) |
+| `tool_import_bank_export` | Monats-Check aus der Umsatz-Exportdatei (CSV/Excel) einer Bank mit Export-Profil (fester Leser, kein LLM): App-Kontostand Pflicht, wo die Datei keinen Endstand druckt (Bondora: gedruckter Auszug, Zinskorrektur, Ein-/Auszahlungen über das Verrechnungskonto), Sparpläne mit exakten Stück, fehlende Trades buchen; vorher optional Bestandsübernahme durch die Einzelkäufe ersetzen (zwei Karten) |
 | `tool_extract_finance_document` | Vision: Telegram-Foto/PDF → Rohwerte ins Staging (Download via Core-Baustein `agent.tool_fetch_telegram_file`) |
 | `tool_record_job_match` | (career) Weitergeleitete Stelle vormerken (UPSERT auf `(source, external_id)`, `source=forwarded`; `record_`-Verb, HITL owner_info) |
 

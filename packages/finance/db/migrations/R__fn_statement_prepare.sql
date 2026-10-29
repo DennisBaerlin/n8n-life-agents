@@ -126,6 +126,13 @@ DECLARE
     -- Bank-Import-Modul
     v_moved    JSONB := '[]'::jsonb;
     v_partner_at DATE;
+    v_printed_file BOOLEAN := false;   -- Datei mit gedrucktem Endstand (Profil printed_balance)
+    v_int_lines NUMERIC := 0;          -- Summe der Zinszeilen (interest_line) im Zeitraum
+    v_int_booked NUMERIC := 0;         -- Summe der Scheduler-Zinsbuchungen im Zeitraum
+    v_int_corr NUMERIC := 0;           -- Zinskorrektur = Zeilen - gebucht (EINE Buchung)
+    v_legacy   NUMERIC := 0;           -- Summe der Kleinbetraege (legacy_return, EINE Buchung)
+    v_int_skips JSONB := '[]'::jsonb;  -- offene Zins-Vorkommen <= period_end (apply ueberspringt sie)
+    v_legacy_label TEXT;
 BEGIN
     -- ---------- 1a. Broker-CSV: Export normieren, Zeitraum = nach dem bestaetigten Tag bis gestern ----------
     --   Kein gedruckter Saldo: der Owner nennt den Kontostand aus der App (Pflicht, nie ein errechneter Saldo als
@@ -154,6 +161,27 @@ BEGIN
                 'reason', 'The export mixes several sub-accounts (' || (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(v_norm->'account_types') x)
                        || ') - ask the user to export each account on its own.');
         END IF;
+        IF (v_norm->>'printed_balance')::boolean THEN
+        -- Profil mit gedrucktem Endstand (Bondora): Zeitraum + Anfangs-/Endstand aus der Datei = gedruckter Auszug
+        -- (balance_source printed, kein Owner-Saldo). Zinszeilen (interest_line) und Kleinbetraege (legacy_return)
+        -- laufen nicht durch die Zuordnung: sie werden je als EINE Summe gebucht (Schritt 3c).
+        v_printed_file := true;
+        v_ps    := (v_norm->'statement'->>'period_start')::date;
+        v_pe    := (v_norm->'statement'->>'period_end')::date;
+        v_open  := (v_norm->'statement'->>'opening_balance')::numeric;
+        v_close := (v_norm->'statement'->>'closing_balance')::numeric;
+        SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                   'date', (r->>'date')::date, 'amount', (r->>'cash_amount')::numeric,
+                   'kind', CASE WHEN r->>'kind' = 'interest' THEN 'interest_line'
+                                WHEN r->>'sub_kind' = 'legacy_return' THEN 'legacy_return' ELSE r->>'kind' END,
+                   'sub_kind', r->>'sub_kind', 'transfer_fee', r->'transfer_fee',
+                   'purpose', COALESCE(r->>'purpose', r->>'name'), 'name', r->>'name', 'row_no', r->'row_no', 'reason', r->>'reason')
+                 ORDER BY (r->>'date')::date, (r->>'row_no')::int), '[]'::jsonb)
+        INTO v_lines
+        FROM jsonb_array_elements(v_norm->'rows') r;
+        SELECT COALESCE(sum((l->>'amount')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lines) l;
+        v_balance_ok := (v_open + v_sum = v_close);
+        ELSE
         -- so, wie der Nutzer ihn nennt ("1.234,56", "1234.56 EUR"): die eine Adresse fuer freie Geld-Eingaben
         v_owner := round(finance.fn_parse_numeric_or_null(p->>'closing_balance', true), 2);
         IF v_owner IS NULL THEN
@@ -193,6 +221,7 @@ BEGIN
         v_close := v_owner - v_after;
         v_open  := v_close - v_sum;
         v_balance_ok := true;
+        END IF;
         SELECT COALESCE(jsonb_agg(u ORDER BY (u->>'row_no')::int), '[]'::jsonb) INTO v_file_unk
         FROM jsonb_array_elements(v_norm->'unknown_rows') u
         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l WHERE (l->>'row_no')::int = (u->>'row_no')::int);
@@ -315,6 +344,12 @@ BEGIN
 
     FOR v_m IN SELECT e FROM jsonb_array_elements(v_match->'matched') e LOOP
         IF v_m->>'kind' = 'booked' THEN
+            -- Transfer-Gruppe ohne Gebuehr-Bein, die Zeile traegt die Gebuehr (Auszahlung, Partnerkonto zuerst importiert):
+            -- apply bucht die Gebuehr als eigene Buchung dieses Auszugs nach (nie in die Gruppe des Partner-Auszugs)
+            IF v_m->>'group_id' IS NOT NULL AND (v_m->>'amount')::numeric <> (v_m->>'expected')::numeric THEN
+                v_m := v_m || jsonb_build_object('fee_add', (v_m->>'expected')::numeric - (v_m->>'amount')::numeric);
+                v_book_sum := v_book_sum - (v_m->>'fee_add')::numeric;
+            END IF;
             v_booked := v_booked || v_m;
             CONTINUE;
         END IF;
@@ -350,6 +385,10 @@ BEGIN
             END IF;
             IF finance.fn_reconciled_reason(v_other, (v_m->>'line_date')::date) IS NOT NULL THEN
                 v_m := v_m || jsonb_build_object('partner_date', v_partner_at + 1);
+            END IF;
+            -- Auszahlung mit Gebuehr (Profil, z. B. Bondora 1 EUR): Transfer = Betrag - Gebuehr, Gebuehr als eigenes Bein
+            IF (v_lines->((v_m->>'line_idx')::int - 1)->>'transfer_fee')::numeric > 0 THEN
+                v_m := v_m || jsonb_build_object('fee', (v_lines->((v_m->>'line_idx')::int - 1)->>'transfer_fee')::numeric);
             END IF;
         ELSIF v_kind = 'recurring' THEN
             v_head := finance.fn_recurring_lineage_head((v_m->>'recurring_payment_id')::int);
@@ -426,6 +465,32 @@ BEGIN
         v_to_book := v_to_book || v_m;
         v_book_sum := v_book_sum + (v_m->>'amount')::numeric;
     END LOOP;
+
+    -- ---------- 3c. Datei mit gedrucktem Endstand: Zins + Kleinbetraege als je EINE Summe ----------
+    --   Zins: Korrektur = Summe der Zinszeilen - Summe der Scheduler-Zinsbuchungen im Zeitraum (Stufe 0 je Tag waere
+    --   falsch sortiert und liesse Tage ohne Zeile offen); die offenen Scheduler-Vorkommen bis period_end werden
+    --   uebersprungen (der Auszug kennt den echten Zins, sonst buchte der Cron sie spaeter zusaetzlich).
+    --   Kleinbetraege (legacy_return): eine Buchung "other" mit dem Profil-Label. Beides nie in unmatched/Rest.
+    IF v_printed_file THEN
+        SELECT COALESCE(sum((l->>'amount')::numeric) FILTER (WHERE l->>'kind' = 'interest_line'), 0),
+               COALESCE(sum((l->>'amount')::numeric) FILTER (WHERE l->>'kind' = 'legacy_return'), 0),
+               v_in - COALESCE(sum(GREATEST((l->>'amount')::numeric, 0)), 0),
+               v_out - COALESCE(sum(LEAST((l->>'amount')::numeric, 0)), 0)
+        INTO v_int_lines, v_legacy, v_in, v_out
+        FROM jsonb_array_elements(v_lines) l
+        WHERE (l->>'date')::date > v_cut AND l->>'kind' IN ('interest_line', 'legacy_return');
+        SELECT COALESCE(sum(t.amount), 0) INTO v_int_booked
+        FROM finance.transactions t
+        WHERE t.account_id = v_acct.id AND t.interest_period_end IS NOT NULL
+          AND t.transaction_date > v_cut AND t.transaction_date <= v_pe;
+        v_int_corr := v_int_lines - v_int_booked;
+        SELECT COALESCE(jsonb_agg(jsonb_build_object('interest_period_end', o.period_end) ORDER BY o.period_end), '[]'::jsonb)
+        INTO v_int_skips
+        FROM finance.fn_interest_due_open(v_pe) o
+        WHERE o.account_id = v_acct.id AND o.period_end > v_cut AND o.period_end <= v_pe;
+        v_legacy_label := v_norm->>'legacy_return_label';
+        v_book_sum := v_book_sum + v_int_corr + v_legacy;
+    END IF;
 
     -- ---------- 3b. Broker-CSV: Wertpapier-Zeilen ohne Dauerauftrags-Treffer ----------
     --   Position = Holding eines Depots mit diesem Verrechnungskonto (ISIN, Krypto per Symbol). Stufe 0: gebuchter
@@ -566,7 +631,7 @@ BEGIN
     -- Schon gebuchte Zahlung mit Buchungsdatum NACH dem Auszugsende (z. B. am 02.10. bestaetigt, laut Auszug am 30.09.
     -- abgegangen): apply verschiebt sie auf das Zeilendatum; hier zaehlt sie schon zum Stand am period_end, sonst landete
     -- sie zusaetzlich im Rest (doppelt). fn_statement_match liefert nur verschiebbare (kein Bein-Konto abgeglichen).
-    SELECT COALESCE(sum((b->>'amount')::numeric), 0) INTO v_redate_sum
+    SELECT COALESCE(sum(COALESCE(b->>'expected', b->>'amount')::numeric), 0) INTO v_redate_sum   -- gebuchter Betrag (ohne nachgebuchte Gebuehr)
     FROM jsonb_array_elements(v_booked) b WHERE (b->>'tx_date')::date > v_pe;
     -- Monatsgrenze (Spiegelbild): ein Transfer-Bein dieses Kontos, das der Auszug eines ANDEREN Kontos in den letzten
     -- 5 Tagen des Zeitraums gebucht hat und zu dem dieser Auszug keine Zeile hat, ist unterwegs (z. B. am 30.09. bei
@@ -619,7 +684,7 @@ BEGIN
     v_card := jsonb_build_array(
         core.fn_ui_tpl('finance.tpl.statement_period', jsonb_build_object('from', core.fn_ui_date(v_ps), 'to', core.fn_ui_date(v_pe)))
             || jsonb_build_object('label', 'finance.label.statement_period'))
-        || CASE WHEN v_file THEN jsonb_build_array(
+        || CASE WHEN v_file AND NOT v_printed_file THEN jsonb_build_array(
                core.fn_ui_money(v_owner, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_owner_balance'))
                || CASE WHEN v_after <> 0 THEN jsonb_build_array(jsonb_build_object('kind', 'note',
                       'value', 'finance.note.statement_after_period',
@@ -645,6 +710,11 @@ BEGIN
                          THEN core.fn_ui_tpl('finance.tpl.statement_savings_plan_row', jsonb_build_object('name', m->>'name',
                                   'amount', core.fn_ui_money((m->>'amount')::numeric, v_acct.currency),
                                   'shares', core.fn_ui_num((m->>'shares')::numeric, 4),
+                                  'date', core.fn_ui_date((m->>'line_date')::date)))
+                         WHEN m ? 'fee'   -- Auszahlung mit Gebuehr: Transfer und Gebuehr getrennt (Karte = Buchung)
+                         THEN core.fn_ui_tpl('finance.tpl.statement_transfer_fee_row', jsonb_build_object('name', m->>'name',
+                                  'amount', core.fn_ui_money((m->>'amount')::numeric + (m->>'fee')::numeric, v_acct.currency),
+                                  'fee', core.fn_ui_money((m->>'fee')::numeric, v_acct.currency),
                                   'date', core.fn_ui_date((m->>'line_date')::date)))
                          WHEN m->>'learn_mandate' IS NOT NULL OR m->>'learn_iban' IS NOT NULL
                          THEN core.fn_ui_tpl('finance.tpl.statement_matched_row_new', jsonb_build_object('name', m->>'name',
@@ -676,9 +746,14 @@ BEGIN
     IF jsonb_array_length(v_booked) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_booked'))
             || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
-                    core.fn_ui_tpl('finance.tpl.statement_matched_row', jsonb_build_object('name', m->>'name',
+                    CASE WHEN m ? 'fee_add'   -- Gebuehr wird in die schon gebuchte Gruppe nachgebucht
+                         THEN core.fn_ui_tpl('finance.tpl.statement_transfer_fee_row', jsonb_build_object('name', m->>'name',
+                                  'amount', core.fn_ui_money((m->>'expected')::numeric, v_acct.currency),
+                                  'fee', core.fn_ui_money((m->>'fee_add')::numeric, v_acct.currency),
+                                  'date', core.fn_ui_date((m->>'line_date')::date)))
+                         ELSE core.fn_ui_tpl('finance.tpl.statement_matched_row', jsonb_build_object('name', m->>'name',
                         'amount', core.fn_ui_money((m->>'amount')::numeric, v_acct.currency),
-                        'date', core.fn_ui_date((m->>'line_date')::date)))) ORDER BY (m->>'line_date')::date)
+                        'date', core.fn_ui_date((m->>'line_date')::date))) END) ORDER BY (m->>'line_date')::date)
                 FROM jsonb_array_elements(v_booked) m);
     END IF;
     -- Unterwegs (Karte = Buchung): Beine, die apply in einen anderen Monat legt (moved_legs: dieses Konto ab
@@ -764,6 +839,28 @@ BEGIN
                         'date', core.fn_ui_date((u->>'date')::date)))) ORDER BY (u->>'row_no')::int)
                 FROM jsonb_array_elements(v_file_unk) u);
     END IF;
+    -- Datei mit gedrucktem Endstand: Zinskorrektur (Zinsen laut Auszug vs. geschaetzt), Kleinbetraege, Skips
+    IF v_printed_file AND (v_int_lines <> 0 OR v_int_booked <> 0) THEN
+        v_card := v_card || jsonb_build_array(
+            core.fn_ui_money(v_int_corr, v_acct.currency, true) || jsonb_build_object('label', 'finance.label.statement_interest_correction'),
+            jsonb_build_object('kind', 'raw', 'value', core.fn_ui_tpl('finance.tpl.statement_interest_correction_row', jsonb_build_object(
+                'lines', core.fn_ui_money(v_int_lines, v_acct.currency), 'booked', core.fn_ui_money(v_int_booked, v_acct.currency)))));
+    END IF;
+    IF jsonb_array_length(v_int_skips) > 0 THEN
+        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_interest_skips',
+                      'params', jsonb_build_object('count', jsonb_array_length(v_int_skips))));
+    END IF;
+    IF v_legacy <> 0 THEN
+        v_card := v_card || jsonb_build_array(
+            core.fn_ui_money(v_legacy, v_acct.currency, true) || jsonb_build_object('label', 'finance.label.statement_legacy_returns'));
+    END IF;
+    -- Ein-/Auszahlung ohne Gegenkonto (die Datei nennt keins): ohne Verrechnungskonto bleibt sie im Rest
+    IF v_acct.settlement_account_id IS NULL AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS o(l, ord)
+           WHERE (o.ord)::int IN (SELECT (x)::int FROM jsonb_array_elements_text(v_match->'unmatched') x)
+             AND o.l->>'sub_kind' IN ('deposit', 'withdrawal')) THEN
+        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_no_settlement'));
+    END IF;
     v_card := v_card || jsonb_build_array(
         core.fn_ui_money(v_lump, v_acct.currency) || jsonb_build_object('label',
             CASE WHEN v_acct.account_type::text = 'cash' THEN 'finance.label.statement_everyday' ELSE 'finance.label.statement_other_diff' END),
@@ -778,7 +875,9 @@ BEGIN
                   'b', (SELECT jsonb_agg(jsonb_build_array(m->>'kind', m->>'recurring_payment_id', m->>'due_date',
                                m->>'interest_period_end', m->>'line_idx', m->>'amount', m->>'other_account_id', m->>'partner_date'))
                         FROM jsonb_array_elements(v_to_book) m),
-                  'o', v_moved,
+                  'o', v_moved, 'z', jsonb_build_array(v_int_corr, v_legacy, v_int_skips),
+                  'f', (SELECT jsonb_agg(COALESCE(m->'fee', m->'fee_add')) FROM jsonb_array_elements(v_to_book || v_booked) m
+                        WHERE m ? 'fee' OR m ? 'fee_add'),
                   'p', v_adjust, 'k', v_learn, 'n', v_learn_no, 'm', v_missing, 't', v_trades, 'x', v_tblocked,
                   'r', (SELECT jsonb_agg(jsonb_build_array(b->>'transaction_id', b->>'line_date')) FROM jsonb_array_elements(v_booked) b
                         WHERE (b->>'tx_date')::date > v_pe))::text);
@@ -796,7 +895,9 @@ BEGIN
         'unmatched_out', v_out, 'unmatched_in', v_in,
         'lump', v_lump, 'card_lines', v_card, 'fingerprint', v_fp,
         'source', CASE WHEN v_file THEN 'file' ELSE 'printed' END,
-        'balance_source', CASE WHEN v_file THEN 'owner' ELSE 'printed' END)
+        'balance_source', CASE WHEN v_file AND NOT v_printed_file THEN 'owner' ELSE 'printed' END,
+        'interest_correction', v_int_corr, 'interest_lines', v_int_lines, 'interest_booked', v_int_booked,
+        'interest_skips', v_int_skips, 'legacy_returns', v_legacy, 'legacy_return_label', v_legacy_label)
         || CASE WHEN v_file THEN jsonb_build_object(
                'owner_balance', v_owner, 'after_period', v_after,
                'trades', v_trades, 'trades_blocked', v_tblocked, 'export_unknown', v_file_unk,

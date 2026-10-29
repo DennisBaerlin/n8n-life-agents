@@ -697,7 +697,7 @@ CREATE TABLE IF NOT EXISTS finance.accounts (
     account_type                finance.account_type NOT NULL,
     bank                        varchar(100),
     account_number              varchar(50),            -- IBAN, depot number, P2P account ID — no format enforced
-    settlement_account_id       int REFERENCES finance.accounts(id), -- depot only: linked cash account
+    settlement_account_id       int REFERENCES finance.accounts(id), -- depot: Verrechnungskonto; p2p: verifiziertes Auszahlungskonto (CHECK settlement_kind)
     owner_person_id             text,                   -- Multi-Member: Eigentümer-Person, das EINZIGE Inhaber-Feld (Slug aus family; NULL=Haushalt/gemeinsam); FK unten. WS-4: Freitext-account_holder abgelöst.
     currency                    char(3) NOT NULL DEFAULT 'EUR',
     status                      finance.account_status NOT NULL DEFAULT 'active',
@@ -797,6 +797,17 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS finance_accounts_number_active_uq
     ON finance.accounts (account_number)
     WHERE account_number IS NOT NULL AND status = 'active';
+
+-- Bank-Import-Modul: ein Verrechnungskonto haben nur Depots und P2P-Konten (P2P: das verifizierte Auszahlungskonto,
+-- z. B. Bondora Go&Grow -> Girokonto des Inhabers; der Monats-Check paart Ein-/Auszahlungen ohne Gegen-IBAN damit).
+-- NOT VALID nur beim ersten Anlegen (Altbestand: fn_create_account nahm ein Verrechnungskonto bei jeder Kontoart an):
+-- finance:V032 raeumt auf und VALIDATEt. KEIN DROP+ADD je Apply (Muster finance_transactions_transfer_grouped).
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'finance_accounts_settlement_kind') THEN
+        ALTER TABLE finance.accounts ADD CONSTRAINT finance_accounts_settlement_kind
+            CHECK (settlement_account_id IS NULL OR account_type IN ('stocks_depot', 'crypto_depot', 'p2p')) NOT VALID;
+    END IF;
+END $$;
 
 -- Migration: enforce depot-needs-settlement on already-installed databases
 DO $$ BEGIN

@@ -16,6 +16,8 @@
 #                       Position nur ISIN + Stueck + aktueller Kurs, KEIN Ticker, KEIN Einstand (Owner-Befund 2026-10-23).
 #   mock_photo_070.pdf  Renteninformation DRV (tc75, Werte erfunden) = Szenario "Renteninformation der Testrentenkasse":
 #                       erreichter Anspruch, Hochrechnung, 1-%/2-%-Szenario, EM-Rente, Entgeltpunkte, Regelaltersrente.
+#   mock_photo_084.xlsx Bondora-Go&Grow-Kontoauszug (tc84, Werte erfunden) = Szenario "Bondora-Export": fester Leser
+#                       (Extract From File -> fn_bank_export_normalize), kein Vision-Call.
 #
 # Usage:  .\tests\mock_telegram\make_doc_fixtures.ps1     (danach enable_mock_telegram.ps1 kopiert docs/ in den Container)
 $ErrorActionPreference = 'Stop'
@@ -129,5 +131,55 @@ Write-TextPdf 'mock_photo_070.pdf' @(
     @(50, 572, 11, 'Bisher erworbene Entgeltpunkte:                                       11,4567'),
     @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Alle Werte erfunden.')
 )
+
+# --- mock_photo_084.xlsx: Bondora-Go&Grow-Kontoauszug (Bank-Import-Modul, tc84; Werte erfunden) -----------------------
+# Form wie der echte Export (Blatt "Data": Kopfblock Summary/Opening/Payments in/out/Closing, Zeitraum M/D/YYYY, "All
+# Goals", Kopfzeile Zeile 8, Datum als Text, Zahlen als Zahl). Minimales xlsx aus XML-Teilen (inlineStr, kein Excel noetig).
+# Saldo-Probe: 100 + 0,02 + 0,15 + 500 + 8,71 - 201 = 407,88 (Info-Zeile "Unallocated" saldo-neutral, nicht in "Payments in").
+function New-XlsxCell([string]$Ref, $Value) {
+    if ($null -eq $Value -or ($Value -is [string] -and $Value -eq '')) { return '' }
+    if ($Value -is [string]) { return "<c r=`"$Ref`" t=`"inlineStr`"><is><t>$([System.Security.SecurityElement]::Escape($Value))</t></is></c>" }
+    return "<c r=`"$Ref`"><v>$(([double]$Value).ToString([System.Globalization.CultureInfo]::InvariantCulture))</v></c>"
+}
+$xRows = @(
+    @('Test Person', '', '', 'Summary', ''),
+    @('9/1/2026-9/30/2026', '', '', 'Opening', 100),
+    @('', '', '', 'Payments in', 508.88),
+    @('', '', '', 'Payments out', 201),
+    @('', '', '', 'Closing', 407.88),
+    @(),
+    @('All Goals'),
+    @('Date', 'Payment type', 'In', 'Out', 'Balance'),
+    @('9/1/2026', 'Go & Grow returns', 0.02, '', 100.02),
+    @('9/2/2026', 'SEPA payment', 0.15, '', 100.17),
+    @('9/2/2026', 'Unallocated balance - Liquidity', 0.05, '', 100.17),
+    @('9/3/2026', 'SEPA payment', 500, '', 600.17),
+    @('9/4/2026', 'Go & Grow returns', 8.71, '', 608.88),
+    @('9/10/2026', 'Withdrawal to bank account', '', 201, 407.88)
+)
+$sheet = New-Object System.Text.StringBuilder
+[void]$sheet.Append('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>')
+for ($r = 0; $r -lt $xRows.Count; $r++) {
+    $cells = for ($c = 0; $c -lt $xRows[$r].Count; $c++) { New-XlsxCell ("{0}{1}" -f [char](65 + $c), ($r + 1)) $xRows[$r][$c] }
+    [void]$sheet.Append("<row r=`"$($r + 1)`">$($cells -join '')</row>")
+}
+[void]$sheet.Append('</sheetData></worksheet>')
+$xParts = [ordered]@{
+    '[Content_Types].xml' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'
+    '_rels/.rels' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'
+    'xl/workbook.xml' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    'xl/_rels/workbook.xml.rels' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'
+    'xl/worksheets/sheet1.xml' = $sheet.ToString()
+}
+Add-Type -AssemblyName System.IO.Compression
+$xlsxPath = Join-Path $Out 'mock_photo_084.xlsx'
+if (Test-Path $xlsxPath) { Remove-Item $xlsxPath }
+$fs = [System.IO.File]::Open($xlsxPath, [System.IO.FileMode]::CreateNew)
+$zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+foreach ($k in $xParts.Keys) {
+    $w = New-Object System.IO.StreamWriter($zip.CreateEntry($k).Open(), (New-Object System.Text.UTF8Encoding($false)))
+    $w.Write($xParts[$k]); $w.Dispose()
+}
+$zip.Dispose(); $fs.Dispose()
 
 Get-ChildItem $Out | ForEach-Object { "{0,-22} {1,8} Bytes" -f $_.Name, $_.Length }

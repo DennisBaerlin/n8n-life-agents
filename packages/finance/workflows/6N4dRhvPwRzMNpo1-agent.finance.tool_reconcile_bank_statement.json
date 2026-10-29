@@ -113,7 +113,7 @@
                                                                                  {
                                                                                      "id":  "5f4b493a-8f90-5a0f-afe2-afca13e0e062",
                                                                                      "name":  "error",
-                                                                                     "value":  "={{ [\u0027text/csv\u0027, \u0027application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\u0027].includes($(\u0027Fetch telegram file\u0027).item.json.mime) ? \u0027This is a bank export file (CSV or Excel), not a photo or PDF - call tool_import_bank_export with the same file_id (it also needs the balance the bank app shows right now).\u0027 : $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "value":  "={{ [\u0027text/csv\u0027, \u0027application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\u0027].includes($(\u0027Fetch telegram file\u0027).item.json.mime) ? \u0027This is a bank export file (CSV or Excel), not a photo or PDF - call tool_import_bank_export with the same file_id (unless the file prints its balance, it also needs the balance the bank app shows right now).\u0027 : $(\u0027Fetch telegram file\u0027).item.json.error }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]

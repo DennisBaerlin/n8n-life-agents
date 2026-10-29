@@ -361,6 +361,19 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [11 opening_balance_date: Stichtag, heute-Default, 0, Ablehnungen]';
 
+  -- 12 Verrechnungskonto (Bank-Import-Modul): p2p -> Girokonto ok; ein Girokonto bekommt keins (vorher still angenommen)
+  DECLARE v_c INT; v_r JSONB; BEGIN
+    v_c := (finance.fn_create_account('{"name":"__test_st_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+    v_r := finance.fn_create_account(jsonb_build_object('name', '__test_st_p2p__', 'account_type', 'p2p', 'currency', 'EUR', 'settlement_id', v_c));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+       OR (SELECT settlement_account_id FROM finance.accounts WHERE id = (v_r->>'account_id')::int) IS DISTINCT FROM v_c THEN
+      RAISE EXCEPTION 'FAIL fn_create_account [12 p2p mit Verrechnungskonto]: %', v_r; END IF;
+    v_r := finance.fn_create_account(jsonb_build_object('name', '__test_st_cash__', 'account_type', 'cash', 'currency', 'EUR', 'settlement_id', v_c));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR EXISTS (SELECT 1 FROM finance.accounts WHERE name = '__test_st_cash__') THEN
+      RAISE EXCEPTION 'FAIL fn_create_account [12 Girokonto ohne Verrechnungskonto]: %', v_r; END IF;
+  END;
+  RAISE NOTICE 'PASS fn_create_account [12 Verrechnungskonto nur Depot/P2P]';
+
 END $$;
 
 ROLLBACK;

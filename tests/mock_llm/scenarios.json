@@ -1004,6 +1004,14 @@
     "final": "Fuer das Trade Republic Cash Girokonto gibt es noch keinen bestaetigten Kontostand. Bitte bestaetige zuerst den heutigen Stand, dann schick den Export noch einmal."
   },
   {
+    "_comment": "tc84 Bank-Import-Modul: Bondora-Go&Grow-Kontoauszug (Excel, druckt seinen Endstand) -> tool_import_bank_export ohne Kontostand (fester Leser ueber Extract From File, kein Vision-Call).",
+    "match": "Hier ist mein Bondora-Kontoauszug als Excel",
+    "calls": [
+      { "tool": "tool_import_bank_export", "args": { "file_id": "mock_photo_084", "account_name": "Bondora Go&Grow" } }
+    ],
+    "final": "Ein Konto Bondora Go&Grow kenne ich noch nicht. Soll ich es anlegen?"
+  },
+  {
     "_comment": "tc52 Monats-Check: letzten Kontoauszug zuruecknehmen -> tool_void_bank_statement mit dem Kontonamen.",
     "match": "Nimm den letzten Kontoauszug vom DKB Giro wieder zurueck",
     "calls": [

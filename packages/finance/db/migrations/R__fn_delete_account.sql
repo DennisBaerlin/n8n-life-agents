@@ -95,7 +95,7 @@ BEGIN
     IF v_cnt > 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'This account is the settlement account for ' || v_cnt
-                   || ' depot(s) and cannot be deleted. Re-link or close the depot(s) first.',
+                   || ' depot(s) or P2P account(s) and cannot be deleted. Re-link or close them first.',
             'depot_count', v_cnt);
     END IF;
 

@@ -82,5 +82,5 @@ function New-StatementGateChain {
 # Bank-Export -> Verweis auf tool_import_bank_export mit derselben file_id, statt der rohen Ablehnung (eine Adresse fuer beide Konsumenten).
 function Get-FinanceFileErrorExpr {
     $F = "`$('Fetch telegram file').item.json"
-    return "={{ ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes($F.mime) ? 'This is a bank export file (CSV or Excel), not a photo or PDF - call tool_import_bank_export with the same file_id (it also needs the balance the bank app shows right now).' : $F.error }}"
+    return "={{ ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes($F.mime) ? 'This is a bank export file (CSV or Excel), not a photo or PDF - call tool_import_bank_export with the same file_id (unless the file prints its balance, it also needs the balance the bank app shows right now).' : $F.error }}"
 }

@@ -18,6 +18,11 @@
 --   Bank-Import-Modul: matched kind transfer -> fn_book_transfer (beide Beine am Zeilendatum); Stufe-0-Treffer einer
 --   Transfer-Gruppe (group_id) mit Buchungsdatum nach period_end -> nur die Beine DIESES Kontos aufs Zeilendatum;
 --   prepare.moved_legs -> period_end+1. Gesperrt werden zusaetzlich alle Gegenkonten aus matched/blocked/already_booked.
+--   Auszahlung mit Gebuehr (matched.fee): Transfer = Betrag - Gebuehr, die Gebuehr als Bein (category fee) DIESES Kontos
+--   in derselben group_id. Eine Gruppe, die das Partnerkonto ohne Gebuehr gebucht hat (already_booked.fee_add), bekommt die
+--   Gebuehr als eigene Buchung dieses Auszugs (nie in die fremde Gruppe). Datei mit gedrucktem Endstand: interest_correction (category interest, ohne
+--   interest_period_end) und legacy_returns (category other, Profil-Label) je EINE Buchung am period_end;
+--   interest_skips -> fn_skip_interest_occurrence (in skipped, der Void holt sie zurueck).
 --   RUECKGABE: {ok:true, statement_id, booked_count, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
@@ -45,6 +50,7 @@ DECLARE
     v_redated  INT := 0;
     v_trades   INT := 0;
     v_hold     INT;
+    v_fee      JSONB;
 BEGIN
     v_prep := finance.fn_statement_prepare(p - 'fingerprint');
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -112,12 +118,24 @@ BEGIN
                            'to_account_id',   CASE WHEN (v_m->>'amount')::numeric < 0 THEN (v_m->>'other_account_id')::int ELSE v_acct END,
                            'from_account_name', CASE WHEN (v_m->>'amount')::numeric < 0 THEN v_prep->>'account_name' ELSE v_m->>'name' END,
                            'to_account_name',   CASE WHEN (v_m->>'amount')::numeric < 0 THEN v_m->>'name' ELSE v_prep->>'account_name' END,
-                           'amount', abs((v_m->>'amount')::numeric),
+                           'amount', abs((v_m->>'amount')::numeric) - COALESCE((v_m->>'fee')::numeric, 0),
                            'transaction_date', COALESCE(v_m->>'partner_date', v_m->>'line_date'),
                            'purpose', 'Monats-Check'));
                 IF (v_r->>'ok')::boolean AND v_m ? 'partner_date' THEN
                     UPDATE finance.transactions SET transaction_date = (v_m->>'line_date')::date
                     WHERE id IN ((v_r->>'debit_tx_id')::int, (v_r->>'credit_tx_id')::int) AND account_id = v_acct;
+                END IF;
+                -- Gebuehr der Auszahlung (Profil): eigenes Bein auf DIESEM Konto in derselben Gruppe (ein Write = ein Void)
+                IF (v_r->>'ok')::boolean AND COALESCE((v_m->>'fee')::numeric, 0) > 0 THEN
+                    v_fee := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
+                                 'amount', (v_m->>'fee')::numeric, 'direction', 'outflow', 'category', 'fee',
+                                 'transaction_date', v_m->>'line_date', 'description', 'Gebühr Auszahlung -> ' || (v_m->>'name')));
+                    IF (v_fee->>'ok')::boolean IS DISTINCT FROM true THEN
+                        RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = 'fee: ' || COALESCE(v_fee->>'reason', 'booking refused');
+                    END IF;
+                    UPDATE finance.transactions SET group_id = (SELECT group_id FROM finance.transactions WHERE id = (v_r->>'debit_tx_id')::int)
+                    WHERE id = (v_fee->>'tx_id')::int;
+                    v_ids := v_ids || (v_fee->>'tx_id')::int;
                 END IF;
             ELSIF v_m->>'kind' = 'savings_plan' THEN
                 v_r := finance.fn_book_savings_plan_execution(jsonb_build_object(
@@ -140,6 +158,47 @@ BEGIN
                 v_spe := v_spe || jsonb_build_object('name', v_m->>'name', 'shares', (v_m->>'shares')::numeric,
                                                      'holding_id', (v_r->>'holding_id')::int);
             END IF;
+        END LOOP;
+
+        -- Datei mit gedrucktem Endstand: Zinskorrektur + Kleinbetraege je als EINE Buchung am period_end, offene
+        -- Scheduler-Zins-Vorkommen bis period_end ueberspringen (in skipped -> der Void holt sie zurueck)
+        IF COALESCE((v_prep->>'interest_correction')::numeric, 0) <> 0 THEN
+            v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
+                       'amount', abs((v_prep->>'interest_correction')::numeric),
+                       'direction', CASE WHEN (v_prep->>'interest_correction')::numeric < 0 THEN 'outflow' ELSE 'inflow' END,
+                       'category', 'interest', 'transaction_date', v_prep->>'period_end',
+                       'description', 'Zinskorrektur laut Auszug'));
+            IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = 'interest correction: ' || COALESCE(v_r->>'reason', 'booking refused');
+            END IF;
+            v_ids := v_ids || (v_r->>'tx_id')::int;
+        END IF;
+        IF COALESCE((v_prep->>'legacy_returns')::numeric, 0) <> 0 THEN
+            v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
+                       'amount', abs((v_prep->>'legacy_returns')::numeric),
+                       'direction', CASE WHEN (v_prep->>'legacy_returns')::numeric < 0 THEN 'outflow' ELSE 'inflow' END,
+                       'category', 'other', 'transaction_date', v_prep->>'period_end',
+                       'description', v_prep->>'legacy_return_label'));
+            IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = 'legacy returns: ' || COALESCE(v_r->>'reason', 'booking refused');
+            END IF;
+            v_ids := v_ids || (v_r->>'tx_id')::int;
+        END IF;
+        -- Gebuehr zu einem schon gebuchten Transfer (fee_add, Partnerkonto zuerst importiert): eigene Buchung OHNE die
+        -- Gruppe des Partner-Auszugs (sonst stempelte/loeschte dieser Auszug fremde Beine mit)
+        FOR v_m IN SELECT e FROM jsonb_array_elements(v_prep->'already_booked') e WHERE e ? 'fee_add' LOOP
+            v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
+                       'amount', (v_m->>'fee_add')::numeric, 'direction', 'outflow', 'category', 'fee',
+                       'transaction_date', v_m->>'line_date', 'description', 'Gebühr Auszahlung'));
+            IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = 'fee: ' || COALESCE(v_r->>'reason', 'booking refused');
+            END IF;
+            v_ids := v_ids || (v_r->>'tx_id')::int;
+        END LOOP;
+        FOR v_k IN SELECT e FROM jsonb_array_elements(COALESCE(v_prep->'interest_skips', '[]'::jsonb)) e LOOP
+            PERFORM finance.fn_skip_interest_occurrence(jsonb_build_object('account_id', v_acct,
+                        'period_end', v_k->>'interest_period_end'));
+            v_skipped := v_skipped || v_k;
         END LOOP;
 
         -- Broker-CSV: Wertpapier-Zeilen ohne Treffer aus den Export-Werten buchen (Reihenfolge = Datum, Kauf vor Verkauf).

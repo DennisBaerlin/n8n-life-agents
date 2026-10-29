@@ -9,7 +9,8 @@
 --   + Wertpapier-Felder isin/symbol/shares/price/gross/fee/tax (TR)}; kind cash|fee|interest|buy|sell|dividend|tax|
 --   corporate|unknown, unknown nie still verworfen (unknown_rows).
 --   plpgsql (late-bound): die Profil-fns und fn_bank_export_profiles liegen alphabetisch spaeter.
---   RUECKGABE: Profil-Rueckgabe || {profile} | {ok:false, code:'export_profile_unknown'|'export_invalid', reason, row_no?}.
+--   RUECKGABE: Profil-Rueckgabe || {profile, printed_balance (Registry; dann traegt die Profil-Rueckgabe statement)}
+--   | {ok:false, code:'export_profile_unknown'|'export_invalid', reason, row_no?}.
 --   Fehlertexte nennen nie Zellinhalte des Vorspanns (dort kann der Inhabername stehen).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_normalize(p jsonb)
@@ -44,10 +45,17 @@ BEGIN
                               WHERE o < v_hrow), '[]'::jsonb));
     v_res := CASE v_prof->>'key'
         WHEN 'trade_republic_v1' THEN finance.fn_bank_export_normalize_trade_republic(v_in)
+        WHEN 'bondora_go_grow_v1' THEN finance.fn_bank_export_normalize_bondora(v_in)
     END;
     IF v_res IS NULL THEN
         RAISE EXCEPTION 'fn_bank_export_normalize: profile % has no reader', v_prof->>'key';
     END IF;
-    RETURN CASE WHEN (v_res->>'ok')::boolean THEN v_res || jsonb_build_object('profile', v_prof->>'key') ELSE v_res END;
+    IF (v_res->>'ok')::boolean AND COALESCE((v_prof->>'printed_balance')::boolean, false) AND NOT (v_res ? 'statement') THEN
+        RAISE EXCEPTION 'fn_bank_export_normalize: profile % prints its balance but its reader returned no statement', v_prof->>'key';
+    END IF;
+    RETURN CASE WHEN (v_res->>'ok')::boolean
+                THEN v_res || jsonb_build_object('profile', v_prof->>'key',
+                                                 'printed_balance', COALESCE((v_prof->>'printed_balance')::boolean, false))
+                ELSE v_res END;
 END;
 $$;

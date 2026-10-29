@@ -110,6 +110,35 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_account [Bankwechsel vergisst den Depot-Kalender]';
   END;
 
+  -- Verrechnungskonto (Bank-Import-Modul): p2p -> Girokonto ok; Girokonto selbst, Depot-Ziel, fremde Waehrung -> {ok:false}
+  DECLARE v_c INT; v_c2 INT; v_usd INT; v_p INT; v_r JSONB; BEGIN
+    PERFORM finance.fn_ensure_currency('USD');
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_st_c__', 'cash', 'EUR', 'active') RETURNING id INTO v_c;
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_st_c2__', 'cash', 'EUR', 'active') RETURNING id INTO v_c2;
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_st_usd__', 'cash', 'USD', 'active') RETURNING id INTO v_usd;
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_st_p__', 'p2p', 'EUR', 'active') RETURNING id INTO v_p;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_p, 'settlement_id', v_c));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (SELECT settlement_account_id FROM finance.accounts WHERE id = v_p) <> v_c THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [p2p Verrechnungskonto]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_p, 'notes', 'x'));
+    IF (SELECT settlement_account_id FROM finance.accounts WHERE id = v_p) <> v_c THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [Verrechnungskonto bleibt ohne Feld]'; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_c2, 'settlement_id', v_c));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL fn_set_account [Girokonto ohne Verrechnungskonto]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_p, 'settlement_id', v_usd));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR (SELECT settlement_account_id FROM finance.accounts WHERE id = v_p) <> v_c THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [fremde Waehrung]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_p, 'settlement_id', v_p));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL fn_set_account [sich selbst]: %', v_r; END IF;
+    -- Backstop: der CHECK haelt auch direkte Writes
+    BEGIN
+      UPDATE finance.accounts SET settlement_account_id = v_c WHERE id = v_c2;
+      RAISE EXCEPTION 'FAIL settlement_kind CHECK: Girokonto mit Verrechnungskonto angenommen';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    RAISE NOTICE 'PASS fn_set_account [Verrechnungskonto nur Depot/P2P]';
+  END;
+
 END $$;
 
 ROLLBACK;

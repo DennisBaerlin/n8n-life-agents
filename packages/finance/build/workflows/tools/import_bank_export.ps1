@@ -8,7 +8,7 @@
 # Bedeutung; die Kopfzeile bleibt im Raster) -> finance.fn_replace_takeover_with_lots im Probelauf (core.fn_dry_run):
 # gibt es eine Bestandsuebernahme, deren Einzelkaeufe der Export exakt belegt -> Karte 1 "Einzelkaeufe uebernehmen" ->
 # Gate -> echter Write -> danach (auch bei Ablehnung oder ohne Kandidat) die geteilte Monats-Check-Kette
-# (statement_chain.ps1) mit source:'file' + dem App-Kontostand des Owners (Pflicht) -> Karte 2
+# (statement_chain.ps1) mit source:'file' (+ App-Kontostand des Owners, wo die Datei keinen Endstand druckt) -> Karte 2
 # -> Gate -> Buchung. Rueckgaben tragen nur Aggregate, nie Export-Zeilen.
 function Build-ImportBankExport {
     $CRED_POSTGRES = $CRED_FINANCE_RW
@@ -102,11 +102,13 @@ return [{ json: { ok: true, rows, row_count: rows.length } }];
             ,@('positions_replaced_by_purchases', "={{ (($R) || {}).replaced || [] }}", 'array')
             ,@('positions_not_matching_export', "={{ ($L.mismatched || []) }}", 'array')
             ,@('purchases_cash_effect', "={{ (($R) || {}).settlement_change || 0 }}", 'number')
+            ,@('interest_correction', "={{ `$('Prepare statement').item.json.r.interest_correction || 0 }}", 'number')
+            ,@('legacy_returns', "={{ `$('Prepare statement').item.json.r.legacy_returns || 0 }}", 'number')
         )
 
     $sticky = Build-Sticky 'Überblick' @(220, -520) `
         'Bank-Export (CSV/Excel) -> (Einzelkäufe übernehmen) -> Monats-Check, ohne Sprachmodell' `
-        'Fetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -> Read table (CSV: RFC 4180, Trenner aus der ersten Zeile; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -> Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -> Karte 1 + Gate -> Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; der App-Kontostand des Owners ist Pflicht (sonst closing_balance_required, keine Karte), Zeitraum bis gestern, Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.' 380 600
+        'Fetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -> Read table (CSV: RFC 4180, Trenner aus der ersten Zeile; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -> Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -> Karte 1 + Gate -> Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; druckt die Datei Zeitraum + Endstand (Bondora), ist sie ein gedruckter Auszug (Zinskorrektur + Altkredit-Rückflüsse als je eine Summe, Ein-/Auszahlungen über das Verrechnungskonto), sonst ist der App-Kontostand des Owners Pflicht (sonst closing_balance_required, keine Karte, Zeitraum bis gestern); Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.' 380 600
     $stickyLots = Build-Sticky 'Zwei Karten' @(1320, -560) `
         'Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht' `
         'Karte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde; der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -> stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -> weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.' 320 300

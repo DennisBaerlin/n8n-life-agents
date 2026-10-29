@@ -22,7 +22,8 @@
 --   (fn_recurring_valid_from) — fruehere Vorkommen stecken im Saldo;
 --   der Monats-Check schneidet dort ab (derselbe Auszug -> already_covered, der naechste schliesst ohne Abweichung an).
 --   settlement_id ist bereits im n8n-Workflow aufgeloest (Ambiguitaet/Depot-Pflicht dort).
---   Die DB-CHECK finance_accounts_depot_needs_settlement bleibt harter Backstop.
+--   Pruefung des Verrechnungskontos: finance.fn_settlement_account_reason (nur Depot/P2P, P2P -> Girokonto).
+--   Die DB-CHECKs finance_accounts_depot_needs_settlement + _settlement_kind bleiben harter Backstop.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date} (balance =
 --   Post-State nach dem Saldo-Trigger, in derselben Transaktion gelesen; opening_balance_date = geschriebener
 --   Stichtag oder NULL ohne Saldo — die Karte liest ihn aus dem Probelauf). Korrigierbar -> {ok:false, reason} OHNE Write:
@@ -148,8 +149,9 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A depot has no cash balance of its own - put the cash balance on its settlement account and record the positions as holdings.');
     END IF;
-    -- Verrechnungskonto muss Geld tragen koennen (Kaeufe buchen dort; Depot/Kredit -> Trigger-RAISE beim ersten Kauf).
-    v_reason := finance.fn_bookable_account_reason(NULLIF(p->>'settlement_id', '')::int);
+    -- Verrechnungskonto: nur Depot/P2P, muss Geld tragen koennen (Kaeufe buchen dort; Depot/Kredit -> Trigger-RAISE beim
+    -- ersten Kauf), bei P2P ein Girokonto; die Waehrung prueft der Block weiter unten (ein Depot erbt sie).
+    v_reason := finance.fn_settlement_account_reason(v_acct_type::text, NULL, NULLIF(p->>'settlement_id', '')::int);
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
@@ -220,7 +222,7 @@ BEGIN
     IF NULLIF(p->>'settlement_id', '') IS NOT NULL AND EXISTS (
         SELECT 1 FROM finance.accounts WHERE id = (p->>'settlement_id')::int AND currency <> v_currency) THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'The depot currency (' || v_currency || ') must match the currency of its settlement account ('
+            'reason', 'The account currency (' || v_currency || ') must match the currency of its settlement account ('
                    || (SELECT currency FROM finance.accounts WHERE id = (p->>'settlement_id')::int) || ').');
     END IF;
 

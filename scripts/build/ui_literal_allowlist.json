@@ -182,6 +182,24 @@
                       "reason":  "data:buchungstext (gespeicherte Beschreibung der Abgleichsbuchung, Originalsprache; Muster Saldo-Abgleich)"
                   },
                   {
+                      "where":  "packages/finance/db/migrations/R__fn_apply_bank_statement.sql",
+                      "literal":  "Gebühr Auszahlung",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung der nachgebuchten Auszahlungs-Gebuehr, Originalsprache; Bank-Import-Modul)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_apply_bank_statement.sql",
+                      "literal":  "Gebühr Auszahlung -> ",
+                      "count":  1,
+                      "reason":  "data:buchungstext (gespeicherte Beschreibung des Gebuehr-Beins einer Auszahlung, Originalsprache; Muster 'Transfer -> <Konto>')"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_bank_export_profiles.sql",
+                      "literal":  "Rückflüsse Bondora-Altkredite",
+                      "count":  1,
+                      "reason":  "data:buchungstext (Profil-Label = gespeicherte Beschreibung der Sammelbuchung, Originalsprache; Bank-Import-Modul)"
+                  },
+                  {
                       "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
                       "literal":  " (Gebühr ",
                       "count":  1,

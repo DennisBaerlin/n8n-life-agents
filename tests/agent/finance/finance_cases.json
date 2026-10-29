@@ -1000,5 +1000,18 @@
                                },
         "expected_behavior":  "Ruft tool_import_bank_export mit der file_id, dem Kontonamen und dem genannten Kontostand (1234.56) auf - nicht tool_reconcile_bank_statement oder tool_extract_finance_document. Rechnet keinen Saldo selbst. Eine Karte schickt das Tool selbst; meldet es no_starting_point (Konto ohne bestaetigten Stand), erklaert der Agent, dass zuerst der heutige Kontostand bestaetigt werden muss, und erfindet keine Buchung.",
         "notes":  "Broker-CSV Paket B. Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_083.csv (erfundene Werte, Trade-Republic-Spalten). Das Fixture-Konto hat keinen Stichtag -> fn_statement_prepare antwortet no_starting_point (kein Write), Routing + Argumente sind trotzdem geprueft."
+    },
+    {
+        "id":  "tc84",
+        "name":  "Bank-Export: Bondora-Kontoauszug (Excel) geht ohne Kontostand an den Datei-Import",
+        "task":  "Hier ist mein Bondora-Kontoauszug als Excel fuer das Konto Bondora Go&Grow [attachment file_id=mock_photo_084 type=document]",
+        "chat_id":  "test_tc84",
+        "expected_tool":  "tool_import_bank_export",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_084",
+                                   "account_name":  "Bondora Go&Grow"
+                               },
+        "expected_behavior":  "Ruft tool_import_bank_export mit der file_id und dem Kontonamen auf, OHNE nach einem Kontostand zu fragen (der Bondora-Auszug druckt seinen Endstand) - nicht tool_reconcile_bank_statement oder tool_extract_finance_document. Meldet das Tool account_unknown, fragt der Agent, ob das Konto angelegt werden soll, und erfindet keine Buchung.",
+        "notes":  "Bank-Import-Modul Paket 2. Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_084.xlsx (erfundene Werte, Bondora-Form). Das Tool liest die Datei ueber Extract From File (xlsx-Zweig von tool_fetch_telegram_file) und fn_bank_export_normalize; ohne Fixture-Konto antwortet fn_statement_prepare account_unknown (kein Write). Ein Fehler im Excel-Zweig waere ein Tool-Fehler -> FAIL."
     }
 ]

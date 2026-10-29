@@ -27,7 +27,7 @@ const LOG_FILE = process.env.N8NTEST_MOCK_TG_LOG || '/tmp/mock_telegram.jsonl';
 // Fehlt das Dokument, bleibt alles wie bisher (1x1-PNG fuer mock_photo_*).
 const DOC_DIR = path.join(__dirname, 'docs');
 function docFor(fid) {
-  for (const ext of ['pdf', 'png', 'csv']) {
+  for (const ext of ['pdf', 'png', 'csv', 'xlsx']) {
     const p = path.join(DOC_DIR, fid + '.' + ext);
     if (fs.existsSync(p)) return { ext, p };
   }
@@ -71,13 +71,14 @@ function buildResult(method, body) {
       // (Marker-Liste GEMINI_FILES in tests/mock_llm/server.js). Foto-Test-Dateien (file_id mock_photo_*) -> 'photos/<id>.png'
       // -> der Download liefert ein echtes 1x1-PNG (Vision-Import-Pfad: tool_extract_finance_document, die Antwort des
       // Vision-Aufrufs kommt aus dem Mock-LLM-Szenario). Liegt ein echtes Dokument unter docs/, zeigt der Pfad darauf
-      // (PDF -> 'documents/<id>.pdf', Broker-CSV-Export -> 'documents/<id>.csv'). Alle anderen file_ids unveraendert.
+      // (PDF -> 'documents/<id>.pdf', Bank-Export -> 'documents/<id>.csv' bzw. '.xlsx'). Alle anderen file_ids unveraendert.
       {
         const fid = (body && body.file_id) || '';
         const doc = /^mock_photo_\w+$/.test(fid) ? docFor(fid) : null;
         const fp = /^mock_voice_\w+$/.test(fid) ? 'voice/' + fid + '.oga'
           : (doc && doc.ext === 'pdf') ? 'documents/' + fid + '.pdf'
           : (doc && doc.ext === 'csv') ? 'documents/' + fid + '.csv'
+          : (doc && doc.ext === 'xlsx') ? 'documents/' + fid + '.xlsx'
           : (/^mock_photo_\w+$/.test(fid) ? 'photos/' + fid + '.png' : 'mock/path');
         return { file_id: fid, file_unique_id: 'mock', file_size: 1, file_path: fp };
       }
@@ -121,11 +122,11 @@ const server = http.createServer((req, res) => {
 
   // Download einer Foto-/Dokument-Test-Datei: echtes Dokument aus docs/, sonst ein gueltiges 1x1-PNG (image/png),
   // damit agent.tool_fetch_telegram_file es annimmt.
-  const dd = req.url.match(/^\/file\/bot[^/]*\/(?:photos|documents)\/(mock_photo_\w+)\.(png|pdf|csv)$/);
+  const dd = req.url.match(/^\/file\/bot[^/]*\/(?:photos|documents)\/(mock_photo_\w+)\.(png|pdf|csv|xlsx)$/);
   if (dd) {
     const doc = docFor(dd[1]);
     if (doc && doc.ext === dd[2]) {
-      res.writeHead(200, { 'Content-Type': doc.ext === 'pdf' ? 'application/pdf' : doc.ext === 'csv' ? 'text/csv' : 'image/png' });
+      res.writeHead(200, { 'Content-Type': doc.ext === 'pdf' ? 'application/pdf' : doc.ext === 'csv' ? 'text/csv' : doc.ext === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'image/png' });
       res.end(fs.readFileSync(doc.p));
       return;
     }

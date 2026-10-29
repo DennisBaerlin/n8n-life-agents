@@ -32,6 +32,7 @@ Buchhalter (`agent.finance`, CQRS) + Berater (`agent.finance_advisor`, bucht nie
 - **Void** nur für den jüngsten Auszug eines Kontos (`last_reconciled_at = period_end`), stellt `prev_*`, Skips und gelernte Schlüssel wieder her.
 - **CSV-Profile:** Header-Signatur + feste Zuordnung in `fn_broker_csv_normalize`; Pflicht-Saldo des Owners (bewusst strenger als hledger/Firefly). Wertpapier-Zeilen nie im Rest; ein Kauf bis zum Datum einer Bestandsübernahme wird nie gebucht (`covered_by_takeover`), erst `fn_replace_takeover_with_lots` macht ihn zur Einzelbuchung (nach dem bestätigten Tag mit Cash-Wirkung).
 - **Vorschau/Warnung:** `fn_account_outlook` ist die eine Rechen-Adresse für Tool-Antwort und Advisor-Alert `account_coverage:<konto>` (nur Konten mit Auszug); `recurring_missing:<kopf>` = jüngste zwei Termine der Kette übersprungen.
+- **Projektions-Kern:** jede Kontostands-Vorschau rechnet über `fn_account_projection` (Kontovorschau mit Alltagsausgaben, Spar-Deckung `fn_account_funding` ohne, Schwelle 0, 24 Monate); keine zweite Tagesreihe bauen. Bei uns anders (arch-challenge 2026-10-29): kein Zahler-/Anteils-Feld je Sparplan (externe Zahler sind Eingangs-rps ohne Quellkonto) und keine Sichtbarkeits-Stufen je Konto (es bleibt `core.fn_app_sees_household`); gewollter Abbau aus Guthaben ist ohne Markierung keine Lücke.
 
 ## DB-Hard-Guarantees
 

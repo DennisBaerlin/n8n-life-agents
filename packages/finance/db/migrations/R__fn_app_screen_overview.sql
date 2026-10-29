@@ -14,6 +14,9 @@
 --     Ein Kind (oder jede andere Rolle) sieht wie bisher nur Eigenes; der Hero heisst dann „Mein Vermoegen".
 --   Schulden = Kredite (immer, auch bei 0 oder ohne Kurs) + jede negative Anlageart (ueberzogenes Konto), Besitz = der
 --     Rest -> Besitz + Schulden = Netto (Hero). Anteils-Balken = Anteil am Besitz. „Kredite" fuehrt zum Bildschirm Kredite.
+--   Besitz in zwei Abschnitten (Liquiditaets-Leiter, Owner 2026-10-29), je mit Summe: „Liquide" = Konten (fester Wert),
+--     P2P (fester Wert, Auszahlung nicht garantiert: keine Einlagensicherung) und Depot (Wert schwankt); „Gebunden" =
+--     Festgeld (fester Wert bis Faelligkeit), Immobilien, Vorsorge. Der Untertitel nennt Anteil + Wertverhalten.
 --   Konten: Untertitel mit Besitzer (Name bzw. „Gemeinsam") nur fuer Haushalts-Betrachter.
 --   params.probe = true -> nur {ok, empty} (Navigation zeigt nur nicht-leere Bildschirme).
 --   Fehler als Daten, nie RAISE: Frei-SQL-Sitzung -> forbidden, kaputte Eingabe -> bad_request.
@@ -32,6 +35,9 @@ DECLARE
     v_hh       boolean;
     v_total    numeric;
     v_assets   numeric;
+    v_liquid   numeric;
+    v_bound    numeric;
+    v_bound_it jsonb;
     v_debts    numeric;
     v_gap      boolean;
     v_classes  jsonb;
@@ -59,33 +65,45 @@ BEGIN
     -- jede negative Anlageart (ueberzogenes Konto); Besitz = der Rest.
     WITH b AS (
         SELECT n.bucket, sum(n.value_eur) AS val, bool_or(n.has_fx_gap) AS gap,
-               (n.bucket = 'loan' OR COALESCE(sum(n.value_eur), 0) < 0) AS is_debt
+               (n.bucket = 'loan' OR COALESCE(sum(n.value_eur), 0) < 0) AS is_debt,
+               n.bucket IN ('cash', 'p2p', 'depot') AS liquid
           FROM finance.networth_by_asset_class n
           LEFT JOIN core.fn_household_persons() hp ON hp.person_id = n.owner_person_id
          WHERE (v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND n.owner_person_id = v_pid)
          GROUP BY n.bucket
     ), g AS (
         SELECT COALESCE(sum(val) FILTER (WHERE NOT is_debt), 0) AS assets,
+               COALESCE(sum(val) FILTER (WHERE NOT is_debt AND liquid), 0) AS liquid,
+               COALESCE(sum(val) FILTER (WHERE NOT is_debt AND NOT liquid), 0) AS bound,
                COALESCE(sum(val) FILTER (WHERE is_debt), 0) AS debts,
                COALESCE(sum(val), 0) AS total, COALESCE(bool_or(gap), false) AS gap FROM b
     ), ord AS (
-        SELECT b.*, array_position(ARRAY['cash', 'fixed_deposit', 'p2p', 'depot', 'real_estate', 'pension', 'loan'],
-                                   b.bucket) AS o
+        SELECT b.*, array_position(ARRAY['cash', 'p2p', 'depot', 'fixed_deposit', 'real_estate', 'pension', 'loan'],
+                                   b.bucket) AS o,
+               -- Wertverhalten im Untertitel: fester Wert / ohne Einlagensicherung / schwankt; Immobilie + Vorsorge nur Anteil
+               CASE b.bucket WHEN 'cash' THEN 'finance.app.overview.share_stable'
+                             WHEN 'fixed_deposit' THEN 'finance.app.overview.share_stable'
+                             WHEN 'p2p' THEN 'finance.app.overview.share_p2p'
+                             WHEN 'depot' THEN 'finance.app.overview.share_volatile'
+                             ELSE 'finance.app.overview.share' END AS share_key
           FROM b
-    )
-    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    ), it AS (
+        SELECT ord.o, ord.bucket, ord.liquid, ord.is_debt, jsonb_build_object(
                'label', jsonb_build_object('kind', 'enum', 'enum', 'finance.enum.asset_bucket', 'value', ord.bucket),
                'sub', CASE WHEN ord.val > 0 AND g.assets > 0
-                           THEN core.fn_ui_tpl('finance.app.overview.share', jsonb_build_object(
+                           THEN core.fn_ui_tpl(ord.share_key, jsonb_build_object(
                                     'pct', core.fn_ui_num(round(100 * ord.val / g.assets, 1), 1))) END,
                'value', core.fn_ui_money(ord.val, 'EUR'),
                'gap', ord.gap,
                'pill', NULL,
                'progress', CASE WHEN ord.val > 0 AND g.assets > 0
                                 THEN jsonb_build_object('pct', round(100 * ord.val / g.assets, 1), 'state', 'neutral') END,
-               'target', NULL)
-             ORDER BY ord.o, ord.bucket) FILTER (WHERE ord.bucket IS NOT NULL AND NOT ord.is_debt),
-             '[]'::jsonb),
+               'target', NULL) AS item
+          FROM ord CROSS JOIN g
+         WHERE ord.bucket IS NOT NULL AND NOT ord.is_debt
+    )
+    SELECT COALESCE((SELECT jsonb_agg(it.item ORDER BY it.o, it.bucket) FROM it WHERE it.liquid), '[]'::jsonb),
+           COALESCE((SELECT jsonb_agg(it.item ORDER BY it.o, it.bucket) FROM it WHERE NOT it.liquid), '[]'::jsonb),
            COALESCE(jsonb_agg(jsonb_build_object(
                'label', jsonb_build_object('kind', 'enum', 'enum', 'finance.enum.asset_bucket', 'value', ord.bucket),
                'sub', NULL,
@@ -96,8 +114,8 @@ BEGIN
                'target', CASE WHEN ord.bucket = 'loan'
                               THEN jsonb_build_object('screen', 'loans', 'params', '{}'::jsonb) END)
              ORDER BY ord.o, ord.bucket) FILTER (WHERE ord.is_debt), '[]'::jsonb),
-           max(g.total), max(g.assets), max(g.debts), COALESCE(bool_or(g.gap), false)
-      INTO v_classes, v_debt_it, v_total, v_assets, v_debts, v_gap
+           max(g.total), max(g.assets), max(g.liquid), max(g.bound), max(g.debts), COALESCE(bool_or(g.gap), false)
+      INTO v_classes, v_bound_it, v_debt_it, v_total, v_assets, v_liquid, v_bound, v_debts, v_gap
       FROM g LEFT JOIN ord ON true;
 
     -- Kinder (nur Haushalts-Betrachter): je Kind Netto + aufklappbar je Anlageart
@@ -163,11 +181,21 @@ BEGIN
        AND a.account_type IN ('cash', 'fixed_deposit', 'p2p')
        AND ((v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND a.owner_person_id = v_pid));
 
-    -- Besitz immer (mit Leer-Text), Schulden/Kinder nur mit Eintraegen, Konten immer
-    v_sections := jsonb_build_array(jsonb_build_object(
-        'title', core.fn_ui_tpl('finance.app.overview.section_assets'),
-        'value', CASE WHEN jsonb_array_length(v_classes) > 0 THEN core.fn_ui_money(v_assets, 'EUR') END,
-        'empty', v_empty, 'items', v_classes));
+    -- Liquide mit Eintraegen oder als Leer-Zustand (wenn es auch nichts Gebundenes gibt), Gebunden/Schulden/Kinder nur mit
+    -- Eintraegen, Konten immer (ein leeres „Liquide" ueber einem vollen „Gebunden" saehe aus, als fehle alles)
+    v_sections := '[]'::jsonb;
+    IF jsonb_array_length(v_classes) > 0 OR jsonb_array_length(v_bound_it) = 0 THEN
+        v_sections := v_sections || jsonb_build_object(
+            'title', core.fn_ui_tpl('finance.app.overview.section_liquid'),
+            'value', CASE WHEN jsonb_array_length(v_classes) > 0 THEN core.fn_ui_money(v_liquid, 'EUR') END,
+            'empty', v_empty, 'items', v_classes);
+    END IF;
+    IF jsonb_array_length(v_bound_it) > 0 THEN
+        v_sections := v_sections || jsonb_build_object(
+            'title', core.fn_ui_tpl('finance.app.overview.section_bound'),
+            'value', core.fn_ui_money(v_bound, 'EUR'),
+            'empty', v_empty, 'items', v_bound_it);
+    END IF;
     IF jsonb_array_length(v_debt_it) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
             'title', core.fn_ui_tpl('finance.app.overview.section_debts'),

@@ -19,7 +19,11 @@ Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeig
 ### Vermögen
 
 - **Vermögen Haushalt:** alles, was dem Haushalt gehört, Kredite schon abgezogen. Darunter steht, wie viel Besitz und wie viel Schulden das sind. Das Vermögen der Kinder zählt hier **nicht** mit.
-- **Besitz:** wie viel auf Konten, in Wertpapieren, Immobilien, Altersvorsorge und so weiter liegt, mit dem Anteil am gesamten Besitz als Zahl und Balken.
+- **Liquide:** woran du schnell kommst, mit der Summe neben der Überschrift. Darin stehen Konten, P2P und Wertpapiere, jeweils mit dem Anteil am gesamten Besitz als Zahl und Balken. Darunter steht, wie sich der Wert verhält:
+  - **fester Wert:** Kontoguthaben.
+  - **fester Wert, Auszahlung nicht garantiert:** P2P. Der Betrag schwankt nicht mit der Börse, es gibt aber keine Einlagensicherung, und die Plattform kann Auszahlungen verzögern.
+  - **Wert schwankt:** Wertpapiere und Krypto. Der heutige Wert kann morgen höher oder niedriger sein.
+- **Gebunden:** was du nicht kurzfristig zu Geld machen kannst, mit Summe: Immobilien, Altersvorsorge und Festgeld (fester Wert, aber bis zur Fälligkeit festgelegt).
 - **Schulden:** die Kredite als Minus-Betrag. Ein Tipp darauf öffnet die Seite Kredite.
 - **Kinder · nicht in der Summe:** für jedes Kind sein eigenes Vermögen. Aufgeklappt siehst du, woraus es besteht (Konten, Wertpapiere usw.).
 - **Konten:** jedes Konto des Haushalts mit Kontostand in der eigenen Währung, wem es gehört („Gemeinsam“ für Haushaltskonten) und dem Datum, an dem du den letzten Kontoauszug bestätigt hast (siehe [Monats-Check](monats-check.html)).
@@ -35,8 +39,13 @@ Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeig
   - **nicht messbar:** die Sparrate geht ohne eigenes Sparkonto ab, dann lässt sich der Stand nicht verfolgen. Abhilfe: dem Ziel im Chat ein Sparkonto zuordnen.
 - **Für Ziele verplant:** jedes Konto und Depot, auf dem Geld für Sparziele liegt. Der Balken zeigt, welcher Anteil verplant ist, darunter steht, wie viel noch frei ist. „gedeckt“ heißt, der Kontostand reicht; „nicht gedeckt“ heißt, es ist weniger auf dem Konto, als für die Ziele zurückgelegt sein sollte; „nicht ermittelbar“ steht da, solange ein Kurs fehlt.
 - **Rücklagen:** etwa die Instandhaltungsrücklage für eine Immobilie, mit Stand, monatlicher Rate und der Empfehlung dazu („unter Empfehlung“ oder „ausreichend“). Aufgeklappt siehst du, wie die Empfehlung zustande kommt: Wohnfläche, Baujahr und Alter, der Satz je m² und Jahr nach der II. Berechnungsverordnung und daraus der Jahres- und Monatsbetrag.
-- **Sparpläne:** was jeder Plan im Monat ausmacht, darunter der Betrag je Ausführung und die nächste Ausführung. Neben der Überschrift steht die Summe aller laufenden Pläne. Aufgeklappt siehst du Wertpapier, Depot, Abbuchungskonto, für wen der Plan ist, das Sparziel, eine geplante Änderung und was die Position heute wert ist. Ein angehaltener Plan steht als „pausiert“ darunter.
-- **Spar-Abbuchungen je Konto:** wie viel jeden Monat von welchem Konto für Sparpläne, Sparziele und Rücklagen abgeht. Aufgeklappt siehst du die einzelnen Raten. So prüfst du schnell, ob ein Konto diese Abbuchungen trägt.
+- **Sparpläne:** was jeder Plan im Monat ausmacht, darunter der Betrag je Ausführung und die nächste Ausführung. Neben der Überschrift steht die Summe aller laufenden Pläne. Aufgeklappt siehst du Wertpapier, Depot, Abbuchungskonto, für wen der Plan ist, das Sparziel, eine geplante Änderung und was die Position heute wert ist. Ein angehaltener Plan steht als „pausiert“ darunter. Neben jedem laufenden Plan steht, ob das Geld auf seinem Abbuchungskonto reicht:
+  - **gedeckt:** in den nächsten zwei Jahren fällt das Konto nie unter null.
+  - **reicht bis …:** an diesem Tag ist das Konto leer, wenn nichts dazukommt.
+  - **Lücke ab …:** das passiert schon in den nächsten drei Monaten.
+
+  Gerechnet wird mit dem Guthaben und allen Daueraufträgen auf und von diesem Konto, auch mit Zahlungen von außerhalb, etwa einem monatlichen Geldgeschenk der Großeltern. Gehen jeden Monat mehr ab als ankommen, ist das kein Fehler, solange das Guthaben reicht. Aufgeklappt stehen dann **„Geld kommt von …“** für jeden Zufluss (Konto bzw. Name der Zahlung, Betrag, Tag) und **„Konto …“** mit dem tiefsten Stand und, falls es weniger wird, um wie viel es im Monat sinkt („baut 40 € im Monat ab“). Gehen von dem Konto auch Miete, Strom oder Kreditraten ab, ist es ein Alltagskonto: Dann rechnet die Übersicht die Alltagsausgaben aus deinen Kontoauszügen ein (siehe [Monats-Check](monats-check.html)); ohne Kontoauszug steht dort „nicht ermittelbar“, weil ein „gedeckt“ ohne die Kartenzahlungen zu optimistisch wäre.
+- **Daueraufträge je Konto:** welche Daueraufträge du bei deiner Bank einrichten musst, gruppiert nach dem Konto, von dem sie abgehen, wie in der Banking-App. Die Zeile zeigt die Summe im Monat; aufgeklappt steht jeder Auftrag zum Abtippen da, etwa „→ Tagesgeld · 150 € · monatlich am 1. · ab 01.11.2026“. Ist für eine Rate noch kein fester Tag hinterlegt, steht dort „Tag frei (gerechnet: 1.)“: Du wählst den Tag bei der Bank, die Übersicht rechnet bis dahin mit dem genannten. Eine geplante Änderung („Änderung ab …“) steht direkt darunter. Spar-Lastschriften ohne Zielkonto, etwa ein Vorsorge-Beitrag, stehen mit ihrem Namen dabei. Bekommt dieses Konto selbst Daueraufträge, hat es eine eigene Ampel wie bei den Sparplänen und zuletzt die Zeile „Konto“ mit Stand, Eingängen und Abgängen im Monat. Sparplan-Ausführungen stehen hier nicht, die zeigt der Abschnitt Sparpläne.
 
 Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist bis heute schon deutlich mehr Zeit vergangen, als Geld zusammengekommen ist, steht dort „hinter Plan“.
 
@@ -65,7 +74,7 @@ Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €
 
 ### Hinweise auf der Startseite
 
-Was Aufmerksamkeit braucht, steht als Hinweis oben auf der Startseite, Rotes vor Gelbem. Ein Tipp darauf öffnet den passenden Bildschirm. Ein Beispiel: „Girokonto: Der tiefste Stand (140 € am 27.11.) liegt unter dem Puffer. Vorschlag: 150 € vom Tagesgeld bis 25.11. umbuchen.“ Oder: „Baufinanzierung: Die Zinsbindung endet am 30.06., Restschuld dann etwa 182.400 €.“ Weitere Beispiele: „Urlaub liegt hinter Plan“ oder „Kurs fehlt oder ist veraltet in Depot X“.
+Was Aufmerksamkeit braucht, steht als Hinweis oben auf der Startseite, Rotes vor Gelbem. Ein Tipp darauf öffnet den passenden Bildschirm. Ein Beispiel: „Girokonto: Der tiefste Stand (140 € am 27.11.) liegt unter dem Puffer. Vorschlag: 150 € vom Tagesgeld bis 25.11. umbuchen.“ Oder: „Baufinanzierung: Die Zinsbindung endet am 30.06., Restschuld dann etwa 182.400 €.“ Weitere Beispiele: „Urlaub liegt hinter Plan“, „Tagesgeld: Das Geld für Sparpläne und Daueraufträge reicht nur bis 15.12.“ (nur bei einer Lücke in den nächsten drei Monaten) oder „Kurs fehlt oder ist veraltet in Depot X“.
 
 Die Übersicht spricht die Sprache, die du mit `/language` eingestellt hast.
 
@@ -80,7 +89,7 @@ Der Knopf „📊 Übersicht“ sitzt an der Stelle, an der vorher der Menü-Kno
 ## Wer was sieht
 
 - **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch die Konten und Depots der Kinder. Sie stehen getrennt und zählen nicht in die Haushalts-Summen.
-- **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name: Liegt Geld für ihr Sparziel auf einem Elternkonto, heißt es bei ihnen nur „Haushaltskonto“. Bei ihrem eigenen Konto oder Depot sieht ein Kind, wie viel darin für Ziele verplant ist.
+- **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name: Liegt Geld für ihr Sparziel auf einem Elternkonto, heißt es bei ihnen nur „Haushaltskonto“. Bei ihrem eigenen Konto oder Depot sieht ein Kind, wie viel darin für Ziele verplant ist. Kommt Geld für ihren Sparplan vom Elternkonto, steht dort „Geld kommt von Haushaltskonto“; ein eigener Dauerauftrag an ein Elternkonto heißt „→ Haushaltskonto“, ohne dessen Stand.
 - Bei den **Zahlungen** sehen Kinder nur Daueraufträge von ihren eigenen Konten und Kredite, die auf ihren Namen laufen. Taschengeld vom Elternkonto erscheint als „Vom Haushalt“, ohne den Namen des Dauerauftrags oder des Elternkontos, und einen Umbuchungs-Vorschlag bekommen Kinder nie.
 - **Fremde Telegram-Nutzer** bekommen den Knopf nie zu sehen.
 
@@ -121,3 +130,5 @@ Wie weit die Liste der kommenden Zahlungen reicht, ab wann ein Konto als knapp g
 | `lifeagents config set finance app_payments_days 30` | Kommende Zahlungen für so viele Tage im Voraus. |
 | `lifeagents config set finance coverage_warn_factor 2` | Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (`coverage_buffer_eur`). |
 | `lifeagents config set finance fixed_rate_warn_months 12` | Hinweis, wenn die Zinsbindung eines Kredits in weniger als so vielen Monaten endet. |
+| `lifeagents config set finance funding_horizon_months 24` | So viele Monate voraus prüft die Seite Ziele, ob das Geld für Sparpläne und Daueraufträge reicht (sonst „reicht bis …“). |
+| `lifeagents config set finance funding_alert_months 3` | Rot „Lücke ab …“ und ein Hinweis auf der Startseite, wenn das Geld schon innerhalb so vieler Monate fehlt. |

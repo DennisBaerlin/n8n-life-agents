@@ -4,11 +4,11 @@
 --   (fn_apply_bank_statement) und die Berater-Warnung account_coverage (fn_advisor_review). Muster Quicken Simplifi
 --   "projected balance + low-balance alert"; die DB rechnet, das LLM formuliert nur.
 --   Modell (Einzelumsaetze werden nicht gespeichert -> Alltagsausgaben sind eine Schaetzung):
---     d0 = Tag nach dem bestaetigten Stand (last_reconciled_at, sonst heute); Basis = Saldo zum Vortag von d0.
---     Stand(d) = Basis + Buchungen in [d0, d] + offene Dauerauftrags-Vorkommen in [d0, d] (finance.fn_upcoming_payments:
---     Quelle -, Transfer-Ziel +, Kredit-Schlussrate = Abloese) + Alltagsausgaben je Tag x Tage.
---     Alltagsausgaben je Tag = Summe unmatched_out / Summe neu abgeglichener Tage (period_end - damaliger Schnitt) der
---     letzten 3 Auszuege (0 ohne Historie).
+--     d0 = Tag nach dem bestaetigten Stand (last_reconciled_at, sonst heute).
+--     Stand(d) = Tagesreihe des EINEN Rechenkerns finance.fn_account_projection(konto, d0, Horizont, Alltag je Tag)
+--     (Basis = Saldo zum Vortag von d0 + Buchungen + offene Dauerauftrags-Vorkommen; Transfer-Ziel in Zielwaehrung);
+--     derselbe Kern rechnet die Spar-Deckung fn_account_funding. Alltagsausgaben je Tag =
+--     finance.fn_account_everyday_per_day (letzte 3 Auszuege, 0 ohne Historie).
 --     Horizont = naechstes Vorkommen der groessten Einnahme AUF DIESES Konto (Einnahme oder Transfer-Ziel) nach heute,
 --     sonst heute + 31. Tiefster Stand ueber [heute, Horizont].
 --   Puffer = core.config finance.coverage_buffer_eur (Default 250), in die Kontowaehrung umgerechnet.
@@ -47,14 +47,7 @@ BEGIN
     v_d0   := COALESCE(v_acct.last_reconciled_at + 1, v_today);
     v_base := COALESCE(finance.fn_get_balance_as_of(p_account_id, v_d0 - 1), 0);
 
-    -- Nenner = die Tage NACH dem damaligen Schnitt (unmatched_out zaehlt nur Zeilen danach; ueberlappende Auszuege
-    -- wuerden mit der vollen Zeitraumlaenge zu niedrig geschaetzt). Schnitt wie fn_statement_prepare.
-    SELECT sum(b.unmatched_out)
-           / NULLIF(sum(b.period_end - GREATEST(b.period_start - 1, b.prev_last_reconciled_at, v_acct.opening_balance_date)), 0),
-           count(*) > 0
-    INTO v_per_day, v_hist
-    FROM (SELECT * FROM finance.bank_statements WHERE account_id = p_account_id ORDER BY period_end DESC LIMIT 3) b;
-    v_per_day := round(COALESCE(v_per_day, 0), 2);
+    SELECT e.per_day, e.has_history INTO v_per_day, v_hist FROM finance.fn_account_everyday_per_day(p_account_id) e;
 
     -- groesste Einnahme auf dieses Konto (Einnahme-rp oder Transfer-Ziel), naechstes offenes Vorkommen nach heute.
     -- Quelle = fn_recurring_due_open (kennt Status/Gueltigkeit; ein erst kuenftig startendes Gehalt zaehlt mit).
@@ -65,29 +58,14 @@ BEGIN
     ORDER BY abs(r.monthly_equivalent) DESC, o.due_date, r.id LIMIT 1;
     v_horizon := COALESCE(v_inc_date, v_today + 31);
 
-    WITH days AS (
-        SELECT gs::date AS d FROM generate_series(v_d0, v_horizon, interval '1 day') gs
-    ), flows AS (
-        -- Dauerauftraege aus der einen Quelle finance.fn_upcoming_payments: Quell-Seite = Buchungsbetrag (Kredit-
-        -- Schlussrate = Abloese), Ziel-Seite eines Uebertrags = abs(geplanter Betrag)
-        SELECT u.due_date AS d,
-               CASE WHEN u.account_id = p_account_id THEN u.amount ELSE abs(u.planned_amount) END AS amt
-        FROM finance.fn_upcoming_payments(v_d0, v_horizon) u
-        WHERE u.account_id = p_account_id OR u.target_account_id = p_account_id
-        UNION ALL
-        SELECT t.transaction_date, t.amount FROM finance.transactions t
-        WHERE t.account_id = p_account_id AND t.transaction_date BETWEEN v_d0 AND v_horizon
-    ), series AS (
-        SELECT dd.d,
-               v_base + COALESCE((SELECT sum(f.amt) FROM flows f WHERE f.d <= dd.d), 0)
-                      + v_per_day * (dd.d - v_d0 + 1) AS bal
-        FROM days dd
+    WITH s AS (
+        SELECT * FROM finance.fn_account_projection(p_account_id, v_d0, v_horizon, v_per_day)
     )
-    SELECT (SELECT bal FROM series WHERE d = GREATEST(v_today, v_d0)),
-           (SELECT bal FROM series WHERE d >= v_today ORDER BY bal, d LIMIT 1),
-           (SELECT d   FROM series WHERE d >= v_today ORDER BY bal, d LIMIT 1),
-           (SELECT COALESCE(sum(amt), 0) FROM flows WHERE amt < 0),
-           (SELECT COALESCE(sum(amt), 0) FROM flows WHERE amt > 0)
+    SELECT (SELECT s.bal FROM s WHERE s.day = GREATEST(v_today, v_d0)),
+           (SELECT s.bal FROM s WHERE s.day >= v_today ORDER BY s.bal, s.day LIMIT 1),
+           (SELECT s.day FROM s WHERE s.day >= v_today ORDER BY s.bal, s.day LIMIT 1),
+           (SELECT COALESCE(sum(s.outflow), 0) FROM s),
+           (SELECT COALESCE(sum(s.inflow), 0) FROM s)
     INTO v_est, v_min, v_min_date, v_out, v_in;
 
     v_buffer := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'coverage_buffer_eur'), '')::numeric, 250);

@@ -10,6 +10,8 @@
 --   4) params.probe -> nur {ok, empty}; fehlende person_id / Muell -> {ok:false, code:'bad_request'} ohne RAISE.
 --   5) Waehrung ohne Kurs -> gap im Hero, in der Anlageart und am Konto.
 --   6) Frei-SQL-Sitzung (finance_ro, selbst MIT EXECUTE) -> {ok:false, code:'forbidden'}; ohne Test-Grant kein EXECUTE.
+--   7) Besitz als Liquiditaets-Leiter: Liquide (Konten, P2P, Depot) / Gebunden (Immobilie) mit Summen, Untertitel mit
+--      Wertverhalten (fester Wert / Auszahlung nicht garantiert / schwankt).
 -- Self-contained (BEGIN..ROLLBACK).
 BEGIN;
 DO $$
@@ -76,18 +78,18 @@ BEGIN
   IF v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note', jsonb_build_object(
        'assets', core.fn_ui_money(14550, 'EUR'), 'debts', core.fn_ui_money(2000, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [1f2] Note Besitz 14550 · Schulden 2000 (Besitz - Schulden = Hero), got %', v->'hero'->'note'; END IF;
-  -- Besitz: Enum-Verweis je bucket, Summe im Titel, Anteile am Besitz aus der DB, kein Kredit
+  -- Besitz (hier nur liquide): Enum-Verweis je bucket, Summe im Titel, Anteile am Besitz aus der DB, kein Kredit
   v_sec := v->'sections'->0;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_assets') OR v_sec->'value' <> core.fn_ui_money(14550, 'EUR') THEN
-    RAISE EXCEPTION 'FAIL [1g] Abschnitt Besitz + Summe 14550, got %', v_sec; END IF;
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_liquid') OR v_sec->'value' <> core.fn_ui_money(14550, 'EUR') THEN
+    RAISE EXCEPTION 'FAIL [1g] Abschnitt Liquide + Summe 14550, got %', v_sec; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'loan') THEN
     RAISE EXCEPTION 'FAIL [1i] Kredit gehoert nicht in den Besitz'; END IF;
   SELECT (i->'value'->>'value')::numeric INTO v_n FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'depot';
   IF v_n IS DISTINCT FROM 500 THEN RAISE EXCEPTION 'FAIL [1j] Depot-Anlageart 500 (ohne Kinderdepot), got %', v_n; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'depot';
   IF (v_it->'progress'->>'pct')::numeric IS DISTINCT FROM 3.4
-     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.overview.share', jsonb_build_object('pct', core.fn_ui_num(3.4, 1))) THEN
-    RAISE EXCEPTION 'FAIL [1k] Depot-Anteil 500/14550 = 3.4 %% (Balken + Untertitel), got %', v_it; END IF;
+     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.overview.share_volatile', jsonb_build_object('pct', core.fn_ui_num(3.4, 1))) THEN
+    RAISE EXCEPTION 'FAIL [1k] Depot-Anteil 500/14550 = 3.4 %% + „Wert schwankt" (Balken + Untertitel), got %', v_it; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->'label'->>'value' = 'cash' AND (i->>'gap')::boolean) THEN
     RAISE EXCEPTION 'FAIL [5b] gap an der Anlageart cash (CHF-Konto) fehlt'; END IF;
@@ -173,6 +175,40 @@ BEGIN
      OR finance.fn_app_screen_overview('{"person_id":"appo_kid","params":{"probe":"ja"}}')->>'ok' <> 'true' THEN
     RAISE EXCEPTION 'FAIL [4b] Muell-Eingaben muessen bad_request (bzw. kein probe) ohne RAISE liefern'; END IF;
   RAISE NOTICE 'PASS [4] probe {ok, empty}; Muell -> bad_request ohne RAISE';
+
+  -- ===== 7) Liquiditaets-Leiter: Liquide (Konten/P2P/Depot) vs. Gebunden (Immobilie), Wertverhalten im Untertitel =====
+  INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
+    VALUES ('__appo_hh_p2p__', 'p2p', 'EUR', 'active', NULL) RETURNING id INTO v_g_cash;
+  UPDATE finance.account_balances SET balance = 1000 WHERE account_id = v_g_cash;
+  INSERT INTO finance.real_estate (name, current_value) VALUES ('__appo_hh_re__', 100000);
+  v := finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_owner'));
+  -- Besitz = 14550 + 1000 + 100000 = 115550; liquide 15550, gebunden 100000
+  IF v->'sections'->0->'title' <> core.fn_ui_tpl('finance.app.overview.section_liquid')
+     OR v->'sections'->0->'value' <> core.fn_ui_money(15550, 'EUR')
+     OR v->'sections'->1->'title' <> core.fn_ui_tpl('finance.app.overview.section_bound')
+     OR v->'sections'->1->'value' <> core.fn_ui_money(100000, 'EUR')
+     OR v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note', jsonb_build_object(
+          'assets', core.fn_ui_money(115550, 'EUR'), 'debts', core.fn_ui_money(2000, 'EUR'))) THEN
+    RAISE EXCEPTION 'FAIL [7a] Liquide 15550 / Gebunden 100000, Note Besitz 115550, got %', v; END IF;
+  SELECT array_agg(i->'label'->>'value' ORDER BY o) INTO v_txt FROM jsonb_array_elements(v->'sections'->0->'items') WITH ORDINALITY AS t(i, o);
+  IF v_txt IS DISTINCT FROM '{cash,p2p,depot}' THEN RAISE EXCEPTION 'FAIL [7b] Reihenfolge liquide cash/p2p/depot, got %', v_txt; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i
+                  WHERE i->'label'->>'value' = 'p2p'
+                    AND i->'sub' = core.fn_ui_tpl('finance.app.overview.share_p2p', jsonb_build_object('pct', core.fn_ui_num(0.9, 1))))
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i
+                     WHERE i->'label'->>'value' = 'cash' AND i->'sub'->>'value' = 'finance.app.overview.share_stable')
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->1->'items') i
+                     WHERE i->'label'->>'value' = 'real_estate'
+                       AND i->'sub' = core.fn_ui_tpl('finance.app.overview.share', jsonb_build_object('pct', core.fn_ui_num(86.5, 1)))) THEN
+    RAISE EXCEPTION 'FAIL [7c] Untertitel: Konten fester Wert, P2P Auszahlung nicht garantiert, Immobilie nur Anteil, got %', v; END IF;
+  -- nur Gebundenes (eigene Immobilie, kein Konto): kein leeres „Liquide" darueber
+  INSERT INTO agent.persons (person_id, full_name, role) VALUES ('appo_solo', 'Solo Beispiel', 'grandparent');
+  INSERT INTO finance.real_estate (name, current_value, owner_person_id) VALUES ('__appo_solo_re__', 50000, 'appo_solo');
+  v := finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_solo'));
+  SELECT array_agg(s->'title'->>'value' ORDER BY o) INTO v_txt FROM jsonb_array_elements(v->'sections') WITH ORDINALITY AS t(s, o);
+  IF v_txt IS DISTINCT FROM '{finance.app.overview.section_bound,finance.app.overview.section_accounts}' THEN
+    RAISE EXCEPTION 'FAIL [7d] nur Gebundenes -> Gebunden + Konten, got %', v_txt; END IF;
+  RAISE NOTICE 'PASS [7] Liquide vs. Gebunden mit Summen, Wertverhalten im Untertitel, kein leeres Liquide';
 END $$;
 
 -- ===== 6) Frei-SQL-Rollen: kein EXECUTE; selbst MIT Test-Grant -> forbidden =====

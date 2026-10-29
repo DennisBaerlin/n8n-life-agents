@@ -4,8 +4,13 @@
 --   Quellen: savings_goal_progress (Ziele mit Zielbetrag; Ampel = finance.fn_savings_goal_pace, die EINE Regel, die auch
 --   der Berater nutzt), savings_goal_account_share (wo liegt das Geld), account_reserve_status + depot_reserve_status
 --   (fuer Ziele verplant je Konto/Depot), maintenance_reserve_status (Ruecklagen + Herleitung nach II. BV),
---   savings_plan_overview (Sparplaene), recurring_cashflow_classified (Spar-Abbuchungen je Konto, dieselbe Klassifikation
---   wie der Berater). Die Seite rechnet nichts.
+--   savings_plan_overview (Sparplaene), fn_account_funding (Spar-Deckung der Konten), fn_account_flows (Zufluesse),
+--   fn_standing_orders + fn_app_order_line (Dauerauftraege je Konto). Die Seite rechnet nichts.
+--   Deckungs-Konten = sichtbare Nicht-Kredit-Konten, die einen aktiven sichtbaren Sparplan bezahlen oder Ziel eines
+--   Dauerauftrags sind (ein Gehaltskonto ohne solche Rolle bekommt keine Ampel: seine Alltagsausgaben sind unbekannt).
+--   Pill = fn_account_funding: ok „gedeckt", warn „reicht bis", alert „Luecke ab", neutral „nicht ermittelbar" (ohne Kurs
+--   -> + gap; Alltagsausgaben eines Ausgabenkontos ohne Auszug unbekannt -> Hinweis in der Konto-Zeile, kein gap).
+--   Die Dauerauftraege (fn_standing_orders) werden einmal je Aufruf gelesen (v_so).
 --   Hero = Summe der sichtbaren Ziele mit Zielbetrag (ohne Ruecklagen, = Summe des Abschnitts), gap bei einem Ziel-Anteil
 --   ohne Wechselkurs (savings_goal_progress.has_fx_gap).
 --   Abschnitte (Uebersicht R3, Owner 2026-10-28):
@@ -23,18 +28,26 @@
 --     Modell-Text und wird nicht angezeigt), Summe der aktiven Plaene im Abschnittstitel. Ein angehaltener Plan steht als
 --     pausiert da; die Titel-Summe entfaellt, wenn ein aktiver Plan keinen Wechselkurs hat (sonst still zu niedrig).
 --     Aufklappen: Wertpapier, Depot, Abbuchungskonto + Beguenstigter (nur Haushalt), Sparziel, geplante
---     Aenderung, Position heute (depot_holdings_overview, Depot + ISIN/Symbol).
---   5 Spar-Abbuchungen je Konto: Summe der laufenden Spar-Abfluesse (cashflow_class saving/saving_internal) je
---     Abbuchungskonto in Kontowaehrung, aufklappbar je Rate. Bewusst ohne Gesamtzeile (interne Umbuchungen zaehlten doppelt).
+--     Aenderung, Position heute (depot_holdings_overview, Depot + ISIN/Symbol). Aktiver Plan (Owner 2026-10-29): Pill =
+--     Deckung seines Verrechnungskontos; Aufklappen zusaetzlich „Geld kommt von" je Zufluss (Quellkonto bzw. Name eines
+--     externen Eingangs wie einer Zuwendung) und „Konto" (Abbau je Monat, tiefster Stand + Datum).
+--   5 Dauerauftraege je Konto (Bank-To-do, arch-challenge 2026-10-29: Gruppe je Quellkonto wie in der Banking-App):
+--     je Abbuchungskonto eine Zeile mit der Monatssumme, Pill nur fuer ein Deckungs-Konto; Aufklappen = je Auftrag
+--     „→ Ziel" = Betrag · Rhythmus · ab Datum, geplante Aenderung als eigene Zeile, Spar-Lastschriften ohne Ziel
+--     (Vorsorge) mit ihrem Namen, bei einem Deckungs-Konto zuletzt „Konto" (Stand · rein · raus im Monat). Abgrenzung:
+--     Sparplan-Ausfuehrungen stehen nur in 4 (ein Fakt, eine Adresse). Bewusst ohne Gesamtzeile (interne Umbuchungen
+--     zaehlten doppelt).
 --   Bekannt: "hinter Plan" bei einem Ziel mit has_fx_gap ist zu hoch gerechnet -> Item traegt gap, kein Banner (BACKLOG).
 --   ZERO-TRUST-SICHTBARKEIT (Rolle loest der Handler selbst auf, core.fn_app_sees_household): owner/partner sehen den
 --     Haushalt, alle anderen nur Ziel/Ruecklage mit beneficiary_person_id = ich, Sparplaene mit beneficiary = ich UND
---     eigenem Depot, Konten/Depots/Abbuchungen mit owner_person_id = ich. Ein fremdes Konto in den Ziel-Details heisst
---     fuer sie neutral „Haushaltskonto".
+--     eigenem Depot, Konten/Depots/Abbuchungen/Deckungs-Pills mit owner_person_id = ich (IS NOT DISTINCT FROM: ein
+--     Haushaltskonto ohne Besitzer ist fuer sie verborgen). Ein fremdes Konto in Details heisst neutral „Haushaltskonto"
+--     (Ziel-Anteile, Zubringer „Geld kommt von", Auftrag „→" an ein verborgenes Konto, ohne dessen Stand).
 --   params.probe = true -> {ok, empty, banners}: Banner "hinter Plan" je sichtbarem Ziel (pace = behind) ohne fx-Luecke
---     (sonst waere der Rueckstand zu hoch gerechnet), target = goals. Der Bildschirm selbst traegt keine Banner (Pills).
---     probe laeuft bei jedem App-Start -> nur Ziele + Ampel, Ruecklagen/Sparplaene/Spar-Abbuchungen/verplantes Geld
---     per EXISTS, keine Details.
+--     (sonst waere der Rueckstand zu hoch gerechnet) + Banner je sichtbarem Deckungs-Konto im Zustand alert (nur alert:
+--     ein gelbes „reicht bis" stuende bei 24 Monaten Horizont monatelang da), target = goals. Der Bildschirm selbst
+--     traegt keine Banner (Pills). probe laeuft bei jedem App-Start -> nur Ziele + Ampel, Deckung nur ueber das
+--     alert-Fenster, Ruecklagen/Sparplaene/Dauerauftraege/verplantes Geld per EXISTS, keine Details.
 --   Fehler als Daten, nie RAISE: Frei-SQL-Sitzung -> forbidden, kaputte Eingabe -> bad_request. Keine IDs in der Antwort.
 --   SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC (EXECUTE nur finance_rw/Host, nie *_ro).
 --   Tests: tests/db/finance/test_fn_app_screen_goals.sql
@@ -56,9 +69,15 @@ DECLARE
     v_reserves  jsonb;
     v_plans     jsonb;
     v_plans_sum numeric;
-    v_outflows  jsonb;
+    v_orders    jsonb;
     v_sections  jsonb;
     v_hh_acct   jsonb := core.fn_ui_tpl('finance.app.common.household_account');
+    v_probe     boolean;
+    v_so        jsonb;
+    v_cov       record;
+    v_f         jsonb;
+    v_fund      jsonb := '{}'::jsonb;
+    v_fund_ban  jsonb := '[]'::jsonb;
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -66,11 +85,58 @@ BEGIN
     IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR jsonb_typeof(p -> 'person_id') IS DISTINCT FROM 'string' THEN
         RETURN jsonb_build_object('ok', false, 'code', 'bad_request');
     END IF;
-    v_pid := p ->> 'person_id';
-    v_hh  := core.fn_app_sees_household(v_pid);
+    v_pid   := p ->> 'person_id';
+    v_hh    := core.fn_app_sees_household(v_pid);
+    v_probe := COALESCE(p -> 'params' -> 'probe' = 'true'::jsonb, false);
+
+    -- Dauerauftraege einmal je Aufruf (Deckungs-Konten, probe-empty, Abschnitt 5 lesen dieselbe Menge)
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('rp_id', so.rp_id, 'head_id', so.head_id, 'kind', so.kind)), '[]'::jsonb)
+      INTO v_so FROM finance.fn_standing_orders() so;
+
+    -- Deckungs-Konten: Spar-Deckung je sichtbarem Konto (Pill + Details in 4/5, alert-Banner). probe rechnet nur das
+    -- alert-Fenster (billig, App-Start); die Karte haelt je Konto die fertige Pill (keine IDs verlassen die DB).
+    FOR v_cov IN
+        SELECT a.id, a.name
+          FROM finance.accounts a
+         WHERE a.status = 'active' AND a.account_type <> 'loan'
+           AND (v_hh OR a.owner_person_id IS NOT DISTINCT FROM v_pid)
+           AND a.id IN (SELECT c.account_id
+                          FROM finance.savings_plans sp
+                          JOIN finance.accounts d ON d.id = sp.depot_id
+                          JOIN finance.recurring_payments c ON c.id = finance.fn_recurring_current(sp.recurring_payment_id, current_date)
+                         WHERE sp.status = 'active'
+                           AND (v_hh OR (sp.beneficiary_person_id = v_pid AND d.owner_person_id = v_pid))
+                        UNION
+                        SELECT r.target_account_id
+                          FROM jsonb_to_recordset(v_so) AS so(rp_id int, head_id int, kind text)
+                          JOIN finance.recurring_payments r ON r.id = so.rp_id
+                         WHERE so.kind = 'transfer')
+         ORDER BY a.name, a.id
+    LOOP
+        v_f := finance.fn_account_funding(v_cov.id, v_probe);
+        CONTINUE WHEN (v_f ->> 'ok') IS DISTINCT FROM 'true';
+        v_fund := v_fund || jsonb_build_object(v_cov.id::text, v_f || jsonb_build_object('pill', CASE v_f ->> 'state'
+            WHEN 'ok'    THEN jsonb_build_object('state', 'ok', 'icon', 'check',
+                                  'text', core.fn_ui_tpl('finance.app.goals.fund_ok'))
+            WHEN 'warn'  THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
+                                  'text', core.fn_ui_tpl('finance.app.goals.fund_until', jsonb_build_object(
+                                              'date', core.fn_ui_date((v_f ->> 'runs_out_on')::date))))
+            WHEN 'alert' THEN jsonb_build_object('state', 'alert', 'icon', 'alert',
+                                  'text', core.fn_ui_tpl('finance.app.goals.fund_gap', jsonb_build_object(
+                                              'date', core.fn_ui_date((v_f ->> 'runs_out_on')::date))))
+            ELSE jsonb_build_object('state', 'neutral', 'icon', 'info',
+                                  'text', core.fn_ui_tpl('finance.app.goals.fund_unknown')) END));
+        IF v_f ->> 'state' = 'alert' THEN
+            v_fund_ban := v_fund_ban || jsonb_build_array(jsonb_build_object(
+                'state', 'alert', 'icon', 'alert',
+                'text', core.fn_ui_tpl('finance.app.goals.banner_fund_gap', jsonb_build_object(
+                            'account', v_cov.name, 'date', core.fn_ui_date((v_f ->> 'runs_out_on')::date))),
+                'target', jsonb_build_object('screen', 'goals', 'params', '{}'::jsonb)));
+        END IF;
+    END LOOP;
 
     -- probe (jeder App-Start): Ziele + Ampel fuer Banner, Ruecklagen/Sparplaene nur per EXISTS, keine Details
-    IF p -> 'params' -> 'probe' = 'true'::jsonb THEN
+    IF v_probe THEN
         WITH g AS (
             SELECT sg.name, sg.target_date, sg.priority, sg.has_fx_gap, finance.fn_savings_goal_pace(sg.id) AS pace
               FROM finance.savings_goal_progress sg
@@ -85,10 +151,11 @@ BEGIN
                             AND NOT EXISTS (SELECT 1 FROM finance.savings_plans s
                                               JOIN finance.accounts d ON d.id = s.depot_id
                                              WHERE v_hh OR (s.beneficiary_person_id = v_pid AND d.owner_person_id = v_pid))
-                            -- Spar-Abbuchungen ohne Ziel/Plan (z. B. nur ein Vorsorge-Beitrag) halten den Bildschirm sichtbar
-                            AND NOT EXISTS (SELECT 1 FROM finance.recurring_cashflow_classified c
-                                             WHERE c.cashflow_class IN ('saving', 'saving_internal') AND c.monthly_equivalent < 0
-                                               AND (v_hh OR c.account_owner_person_id = v_pid))
+                            -- Dauerauftraege ohne Ziel/Plan (z. B. nur ein Vorsorge-Beitrag) halten den Bildschirm sichtbar
+                            AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset(v_so) AS so(rp_id int, head_id int, kind text)
+                                              JOIN finance.recurring_payments r ON r.id = so.rp_id
+                                              JOIN finance.accounts sa ON sa.id = r.account_id
+                                             WHERE v_hh OR sa.owner_person_id IS NOT DISTINCT FROM v_pid)
                             -- verplantes Geld eines Ziels ohne Zielbetrag haelt ihn ebenso sichtbar
                             AND NOT EXISTS (SELECT 1 FROM finance.savings_goal_account_share s
                                               JOIN finance.accounts a ON a.id = s.account_id
@@ -101,7 +168,7 @@ BEGIN
                      FILTER (WHERE g.pace = 'behind' AND NOT g.has_fx_gap), '[]'::jsonb))
           INTO v_banners
           FROM g;
-        RETURN v_banners;
+        RETURN jsonb_set(v_banners, '{banners}', (v_banners -> 'banners') || v_fund_ban);
     END IF;
 
     -- 1 Sparziele (aktiv, mit Zielbetrag): Ampel aus fn_savings_goal_pace, Restzeit, Details (Rate, Konten-Anteile)
@@ -300,41 +367,42 @@ BEGIN
                            THEN core.fn_ui_tpl('finance.app.goals.plan_exec', jsonb_build_object(
                                     'amount', core.fn_ui_money(s.amount_per_execution, s.currency))) END,
                'value', core.fn_ui_money(s.monthly_amount, s.currency),
-               'gap', false,
+               'gap', COALESCE(s.status = 'active' AND (v_fund -> s.settlement_account_id::text ->> 'fx_gap')::boolean, false),
                'pill', CASE WHEN s.status = 'paused'
                             THEN jsonb_build_object('state', 'neutral', 'icon', 'pause',
-                                     'text', core.fn_ui_tpl('finance.app.goals.pace.paused')) END,
+                                     'text', core.fn_ui_tpl('finance.app.goals.pace.paused'))
+                            WHEN s.status = 'active' THEN v_fund -> s.settlement_account_id::text -> 'pill' END,
                'progress', NULL,
                'target', NULL,
-               'details', (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (
-                   SELECT 1 AS o, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_security'),
+               'details', (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o, x.k), '[]'::jsonb) FROM (
+                   SELECT 1 AS o, 0::numeric AS k, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_security'),
                               'value', CASE WHEN s.isin IS NOT NULL
                                             THEN core.fn_ui_tpl('finance.app.goals.d_security_value', jsonb_build_object(
                                                      'name', COALESCE(s.security_name, s.symbol), 'isin', s.isin))
                                             ELSE to_jsonb(COALESCE(s.security_name, s.symbol)) END) AS d
                     WHERE COALESCE(s.security_name, s.symbol) IS NOT NULL
                    UNION ALL
-                   SELECT 2, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_depot'), 'value', s.depot_name)
+                   SELECT 2, 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_depot'), 'value', s.depot_name)
                    UNION ALL
-                   SELECT 3, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_from'),
+                   SELECT 3, 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_from'),
                               'value', s.settlement_account_name)
                     WHERE v_hh
                    UNION ALL
-                   SELECT 4, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_for'), 'value', bp.full_name)
+                   SELECT 4, 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_for'), 'value', bp.full_name)
                     WHERE v_hh AND bp.full_name IS NOT NULL
                    UNION ALL
-                   SELECT 5, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_goal'),
+                   SELECT 5, 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_goal'),
                               'value', s.savings_goal_name)
                     WHERE s.savings_goal_name IS NOT NULL
                    UNION ALL
-                   SELECT 6, jsonb_build_object(
+                   SELECT 6, 0, jsonb_build_object(
                               'label', core.fn_ui_tpl('finance.app.goals.d_change', jsonb_build_object(
                                            'date', core.fn_ui_date(s.change_from))),
                               'value', core.fn_ui_tpl('finance.app.goals.plan_exec', jsonb_build_object(
                                            'amount', core.fn_ui_money(s.new_amount_per_execution, s.currency))))
                     WHERE s.change_from IS NOT NULL AND s.new_amount_per_execution IS NOT NULL
                    UNION ALL
-                   SELECT 7, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_position'),
+                   SELECT 7, 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_position'),
                               'value', core.fn_ui_tpl('finance.app.goals.d_position_value', jsonb_build_object(
                                   'value', CASE WHEN o.market_value_eur IS NOT NULL
                                                 THEN core.fn_ui_money(o.market_value_eur, 'EUR') END,
@@ -344,7 +412,38 @@ BEGIN
                             WHERE ho.account_id = s.depot_id
                               AND ((s.isin IS NOT NULL AND ho.isin = s.isin) OR ho.symbol = s.symbol)
                             ORDER BY (ho.isin IS NOT DISTINCT FROM s.isin) DESC, ho.holding_id
-                            LIMIT 1) o) x))
+                            LIMIT 1) o
+                   UNION ALL
+                   -- Geld kommt von: Eingaenge des Verrechnungskontos (Uebertrag mit Quellkonto, externer Eingang mit
+                   -- seinem Namen), groesster zuerst; nur fuer ein sichtbares Deckungs-Konto eines aktiven Plans
+                   SELECT 8, -COALESCE(af.monthly, 0), jsonb_build_object(
+                              'label', core.fn_ui_tpl('finance.app.goals.d_money_from', jsonb_build_object('source',
+                                           CASE WHEN fl.target_account_id IS NULL THEN to_jsonb(fl.name)
+                                                WHEN v_hh OR fa.owner_person_id IS NOT DISTINCT FROM v_pid THEN to_jsonb(fa.name)
+                                                ELSE v_hh_acct END)),
+                              'value', finance.fn_app_order_line(fl.id))
+                     FROM finance.fn_account_flows(s.settlement_account_id) af
+                     JOIN finance.recurring_payments fl ON fl.id = af.rp_id
+                     JOIN finance.accounts fa ON fa.id = fl.account_id
+                    WHERE af.side = 'in' AND s.status = 'active' AND v_fund ? s.settlement_account_id::text
+                   UNION ALL
+                   -- Konto: Abbau je Monat (wenn raus > rein) + tiefster Stand im Horizont; Alltagsausgaben unbekannt -> Hinweis
+                   SELECT 9, 0, jsonb_build_object(
+                              'label', core.fn_ui_tpl('finance.app.goals.d_fund_account', jsonb_build_object(
+                                           'account', s.settlement_account_name)),
+                              'value', CASE WHEN ff.f ->> 'everyday' = 'unknown'
+                                            THEN core.fn_ui_tpl('finance.app.goals.d_fund_everyday_unknown')
+                                            WHEN (ff.f ->> 'monthly_in')::numeric + (ff.f ->> 'monthly_out')::numeric < 0
+                                            THEN core.fn_ui_tpl('finance.app.goals.d_fund_drain_low', jsonb_build_object(
+                                                     'drain', core.fn_ui_money(-((ff.f ->> 'monthly_in')::numeric
+                                                                                 + (ff.f ->> 'monthly_out')::numeric), s.currency),
+                                                     'min', core.fn_ui_money((ff.f ->> 'min_projected')::numeric, s.currency),
+                                                     'date', core.fn_ui_date((ff.f ->> 'min_date')::date)))
+                                            ELSE core.fn_ui_tpl('finance.app.goals.d_fund_low', jsonb_build_object(
+                                                     'min', core.fn_ui_money((ff.f ->> 'min_projected')::numeric, s.currency),
+                                                     'date', core.fn_ui_date((ff.f ->> 'min_date')::date))) END)
+                     FROM (SELECT v_fund -> s.settlement_account_id::text AS f) ff
+                    WHERE s.status = 'active' AND ff.f IS NOT NULL) x))
              ORDER BY (s.status = 'active') DESC, s.name), '[]'::jsonb),
            -- Summe nur ohne fehlenden Wechselkurs (sonst still zu niedrig): NULL -> entfaellt
            CASE WHEN NOT COALESCE(bool_or(finance.fn_to_eur(s.monthly_amount, s.currency) IS NULL)
@@ -356,33 +455,62 @@ BEGIN
       LEFT JOIN core.fn_household_persons() bp ON bp.person_id = s.beneficiary_person_id
      WHERE v_hh OR (s.beneficiary_person_id = v_pid AND d.owner_person_id = v_pid);
 
-    -- 5 Spar-Abbuchungen je Konto (laufende Spar-Abfluesse, Klassifikation wie der Berater), aufklappbar je Rate
-    WITH r AS (
-        SELECT c.account_id, c.account_name, c.currency, c.name, -c.monthly_equivalent AS monthly
-          FROM finance.recurring_cashflow_classified c
-         WHERE c.cashflow_class IN ('saving', 'saving_internal') AND c.monthly_equivalent < 0
-           AND (v_hh OR c.account_owner_person_id = v_pid)
+    -- 5 Dauerauftraege je Konto (Bank-To-do): Gruppe je sichtbarem Abbuchungskonto, Auftraege + Aenderung + Konto-Zeile
+    WITH o AS (
+        SELECT so.rp_id, so.head_id, so.kind, r.name, r.account_id, r.valid_from AS cur_from,
+               abs(r.monthly_equivalent) AS monthly,
+               sa.name AS src_name, sa.currency AS src_cur, ta.name AS tgt_name,
+               (ta.id IS NOT NULL AND (v_hh OR ta.owner_person_id IS NOT DISTINCT FROM v_pid)) AS tgt_vis
+          FROM jsonb_to_recordset(v_so) AS so(rp_id int, head_id int, kind text)
+          JOIN finance.recurring_payments r ON r.id = so.rp_id
+          JOIN finance.accounts sa ON sa.id = r.account_id
+          LEFT JOIN finance.accounts ta ON ta.id = r.target_account_id
+         WHERE v_hh OR sa.owner_person_id IS NOT DISTINCT FROM v_pid
+    ), l AS (
+        SELECT o.account_id, o.monthly, o.rp_id, 0 AS k, NULL::date AS kd, jsonb_build_object(
+                   'label', CASE WHEN o.kind = 'transfer'
+                                 THEN core.fn_ui_tpl('finance.app.goals.d_order_to', jsonb_build_object('account',
+                                          CASE WHEN o.tgt_vis THEN to_jsonb(o.tgt_name) ELSE v_hh_acct END))
+                                 ELSE to_jsonb(o.name) END,
+                   'value', finance.fn_app_order_line(o.rp_id)) AS d
+          FROM o
+        UNION ALL
+        -- geplante Aenderungen der Kette (jedes spaeter startende Glied, nicht nur der Kopf): je eine Zeile darunter
+        SELECT o.account_id, o.monthly, o.rp_id, 1, h.valid_from, jsonb_build_object(
+                   'label', core.fn_ui_tpl('finance.app.goals.d_order_change', jsonb_build_object(
+                                'date', core.fn_ui_date(h.valid_from))),
+                   'value', finance.fn_app_order_line(h.id))
+          FROM o
+          JOIN finance.recurring_payments h ON h.id IN (SELECT finance.fn_recurring_lineage(o.rp_id))
+         WHERE h.valid_from > GREATEST(current_date, o.cur_from)
     ), a AS (
-        SELECT r.account_name, r.currency, sum(r.monthly) AS monthly,
-               jsonb_agg(jsonb_build_object('label', r.name,
-                   'value', core.fn_ui_tpl('finance.app.goals.reserve_rate', jsonb_build_object(
-                                'rate', core.fn_ui_money(r.monthly, r.currency))))
-                 ORDER BY r.monthly DESC, r.name) AS details
-          FROM r
-         GROUP BY r.account_id, r.account_name, r.currency
+        SELECT l.account_id, jsonb_agg(l.d ORDER BY l.monthly DESC, l.rp_id, l.k, l.kd) AS details
+          FROM l GROUP BY l.account_id
+    ), m AS (
+        SELECT o.account_id, min(o.src_name) AS src_name, min(o.src_cur) AS src_cur, sum(o.monthly) AS monthly
+          FROM o GROUP BY o.account_id
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
-               'label', a.account_name,
-               'sub', NULL,
-               'value', core.fn_ui_money(a.monthly, a.currency),
-               'gap', false,
-               'pill', NULL,
+               'label', m.src_name,
+               'sub', core.fn_ui_tpl('finance.app.goals.per_month'),
+               'value', core.fn_ui_money(m.monthly, m.src_cur),
+               'gap', COALESCE((v_fund -> m.account_id::text ->> 'fx_gap')::boolean, false),
+               'pill', v_fund -> m.account_id::text -> 'pill',
                'progress', NULL,
                'target', NULL,
-               'details', a.details)
-             ORDER BY finance.fn_to_eur(a.monthly, a.currency) DESC NULLS LAST, a.account_name), '[]'::jsonb)
-      INTO v_outflows
-      FROM a;
+               'details', a.details || CASE WHEN v_fund ? m.account_id::text THEN jsonb_build_array(jsonb_build_object(
+                   'label', core.fn_ui_tpl('finance.app.goals.d_fund_account', jsonb_build_object('account', m.src_name)),
+                   'value', CASE WHEN v_fund -> m.account_id::text ->> 'everyday' = 'unknown'
+                                 THEN core.fn_ui_tpl('finance.app.goals.d_fund_everyday_unknown')
+                                 ELSE core.fn_ui_tpl('finance.app.goals.d_fund_flows', jsonb_build_object(
+                       'balance', core.fn_ui_money((v_fund -> m.account_id::text ->> 'balance')::numeric, m.src_cur),
+                       'in', core.fn_ui_money((v_fund -> m.account_id::text ->> 'monthly_in')::numeric, m.src_cur),
+                       'out', core.fn_ui_money(-(v_fund -> m.account_id::text ->> 'monthly_out')::numeric, m.src_cur))) END))
+                   ELSE '[]'::jsonb END)
+             ORDER BY finance.fn_to_eur(m.monthly, m.src_cur) DESC NULLS LAST, m.src_name), '[]'::jsonb)
+      INTO v_orders
+      FROM m
+      JOIN a ON a.account_id = m.account_id;
 
     -- Sparziele immer (mit Leer-Text), alles Weitere nur mit Eintraegen
     v_sections := jsonb_build_array(jsonb_build_object(
@@ -408,11 +536,11 @@ BEGIN
                                                         'rate', core.fn_ui_money(v_plans_sum, 'EUR'))) END,
             'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', v_plans);
     END IF;
-    IF jsonb_array_length(v_outflows) > 0 THEN
+    IF jsonb_array_length(v_orders) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
-            'title', core.fn_ui_tpl('finance.app.goals.section_outflows'),
+            'title', core.fn_ui_tpl('finance.app.goals.section_orders'),
             'value', NULL,
-            'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', v_outflows);
+            'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', v_orders);
     END IF;
 
     RETURN jsonb_build_object(

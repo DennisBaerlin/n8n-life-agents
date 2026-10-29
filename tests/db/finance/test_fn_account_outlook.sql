@@ -115,4 +115,34 @@ BEGIN
   RAISE NOTICE 'PASS outlook Randfaelle: Vorkommen vor heute, positiver Uebertrag aufs Konto, Uebertrag vom Konto';
 END $$;
 
+-- Rechenkern-Umbau 2026-10-29 (fn_account_projection, geteilt mit fn_account_funding):
+--   * Ein- und Ausgang am SELBEN Tag zaehlen getrennt in planned_in / planned_out (nicht je Tag verrechnet)
+--   * Bugfix: Ziel-Seite eines Uebertrags aus einer anderen Waehrung in ZIELwaehrung (vorher Quellbetrag roh)
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_a INT; v_usd INT; v_res JSONB;
+BEGIN
+  PERFORM finance.fn_ensure_currency('USD');
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'USD', 1.10, t - 1)
+  ON CONFLICT (base_currency, quote_currency, as_of) DO UPDATE SET rate = EXCLUDED.rate;
+  v_a   := (finance.fn_create_account('{"name":"__t_ol_same__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_usd := (finance.fn_create_account('{"name":"__t_ol_usd__","account_type":"cash","currency":"USD"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_a, 1000, t - 40, 'other');
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+                                          first_payment_date, valid_from)
+  VALUES ('Same rein', v_a, NULL,   200, 30, 'day', t + 3, t + 3),
+         ('Same raus', v_a, NULL,   -80, 30, 'day', t + 3, t + 3),
+         ('Same usd',  v_a, v_usd, -100, 30, 'day', t + 1, t + 1);
+
+  v_res := finance.fn_account_outlook(v_a);
+  IF (v_res->>'planned_in')::numeric IS DISTINCT FROM 200 OR (v_res->>'planned_out')::numeric IS DISTINCT FROM -180
+     OR (v_res->>'horizon_end')::date IS DISTINCT FROM t + 3 OR (v_res->>'min_projected')::numeric IS DISTINCT FROM 900 THEN
+    RAISE EXCEPTION 'FAIL outlook selber Tag: %', v_res; END IF;
+  v_res := finance.fn_account_outlook(v_usd);
+  IF (v_res->>'planned_in')::numeric IS DISTINCT FROM 110.00 OR (v_res->>'horizon_end')::date IS DISTINCT FROM t + 1 THEN
+    RAISE EXCEPTION 'FAIL outlook Uebertrag in Zielwaehrung: %', v_res; END IF;
+  RAISE NOTICE 'PASS outlook: Zu-/Abgang am selben Tag getrennt, Uebertrag EUR -> USD als 110 USD';
+END $$;
+
 ROLLBACK;

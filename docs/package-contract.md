@@ -1146,6 +1146,9 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   (fn-Arity, `member_permeable` fail-closed, Cross-CHECKs) — eine kind/key/fn-Sammeltabelle verloere sie ("DB ist
   Gesetz"). fn-Spalten bleiben `text` + `to_regprocedure` (ein `regprocedure`-Wert in einer Zeile erzeugt kein
   `pg_depend` und blockt `pg_upgrade`, Q5).
+- **Bank-To-do klassifiziert selbst (finance `fn_standing_orders`, arch-challenge 2026-10-29):** Summen lesen sonst
+  `recurring_cashflow_classified`; diese View kennt aber nur HEUTE laufende Zahlungen, die Bank-To-do und die
+  Spar-Deckung brauchen gerade die kommenden. Kredit-Ausschluss über den Ketten-Kopf wie in der View.
 - **Reset-Marker am Tabellen-Objekt statt Manifest-Keep-Liste (Phase B, Q1 ADOPT):** SQL liest keine Manifeste; ein
   Manifest-Block braeuchte eine geseedete Registry nur fuer eine Liste. Der Marker sitzt neben der DDL und faellt
   mit `DROP SCHEMA` (PG `pg_extension_config_dump`). E2E-Cleanup bleibt dagegen Paket-Code (Sentinel-Logik).

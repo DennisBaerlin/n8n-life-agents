@@ -5,12 +5,15 @@
 --      Untertitel (nicht bei erreicht), Details = Konten-Anteile (Summe = Zielstand); „Fuer Ziele verplant" (Konto
 --      nicht gedeckt / Depot nicht ermittelbar); Ruecklagen mit Empfehlungs-Pill (keine Pill ohne Empfehlung) + Herleitung;
 --      Sparplaene aktiv vor pausiert (Soft-Close und gestoppte Beitraege = pausiert), Wert = Monatsbetrag, Summe im Titel,
---      Details; Spar-Abbuchungen je Konto; Ruecklage einer verkauften Immobilie ohne Pill.
+--      Details + Deckungs-Pill des Verrechnungskontos (fn_account_funding); Dauerauftraege je Konto (Bank-To-do „→ Ziel");
+--      Ruecklage einer verkauften Immobilie ohne Pill.
 --   2) Kind sieht nur Eigenes (Ziel beneficiary = ich; Sparplan beneficiary = ich UND eigenes Depot): Volltextsuche ohne
 --      fremde Namen und ohne *id-Feld; eigener Sparplan auf einem Eltern-Depot bleibt unsichtbar.
 --   3) unbekannte Rolle sieht nur Eigenes, unbekannte Person nichts.
 --   4) probe -> {ok, empty, banners}: Banner nur fuer "hinter Plan" ohne fx-Luecke, target = goals.
 --   5) Muell -> bad_request ohne RAISE; Frei-SQL-Sitzung -> forbidden, kein EXECUTE fuer *_ro.
+--   6) Dauerauftraege: Zufluesse am Sparplan („Geld kommt von", extern mit Namen), Tag + „ab", Kind sieht verborgene
+--      Konten neutral, alert-Banner nur fuer sichtbare Deckungs-Konten.
 -- Self-contained (BEGIN..ROLLBACK).
 BEGIN;
 DO $$
@@ -40,6 +43,9 @@ BEGIN
     VALUES ('Kind Konto', 'cash', 'EUR', 'active', 'apgl_kid') RETURNING id INTO v_kid_cash;
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, owner_person_id)
     VALUES ('Kind Depot', 'stocks_depot', 'EUR', 'active', v_kid_cash, 'apgl_kid') RETURNING id INTO v_kid_depot;
+  -- Guthaben, damit die Deckungs-Pillen der Sparplaene gruen sind (Luecke -> eigener Fall in 6)
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_giro, 10000, current_date - 40, 'other'),
+                                                                                         (v_kid_cash, 1000, current_date - 40, 'other');
 
   -- ===== Ziele (365 Tage Laufzeit, 100 vergangen -> erwartet 27.40 %) =====
   INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at, priority)
@@ -109,7 +115,7 @@ BEGIN
   SELECT array_agg(s->'title'->>'value' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v->'sections') WITH ORDINALITY AS t(s, o);
   IF v_labels IS DISTINCT FROM ARRAY['finance.app.goals.section_goals', 'finance.app.goals.section_planned',
                                      'finance.app.goals.section_reserves', 'finance.app.goals.section_plans',
-                                     'finance.app.goals.section_outflows'] THEN
+                                     'finance.app.goals.section_orders'] THEN
     RAISE EXCEPTION 'FAIL [1e] 5 Abschnitte erwartet, got %', v_labels; END IF;
 
   v_sec := v->'sections'->0;
@@ -221,24 +227,34 @@ BEGIN
                     AND i->'value' = core.fn_ui_money(100, 'EUR')
                     AND i->'sub' = core.fn_ui_tpl('finance.app.goals.plan_exec_next', jsonb_build_object(
                                      'amount', core.fn_ui_money(100, 'EUR'), 'date', core.fn_ui_date(current_date + 5)))
-                    AND jsonb_typeof(i->'pill') = 'null'
-                    AND i->'details' = jsonb_build_array(
-                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_security'), 'value', 'Welt ETF'),
-                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_depot'), 'value', '__apgl_hh_depot__'),
-                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_from'), 'value', '__apgl_giro__'))) THEN
-    RAISE EXCEPTION 'FAIL [1s] aktiver Sparplan (Monatsbetrag, je Ausfuehrung, Details), got %', v_sec; END IF;
+                    AND i->'pill' = jsonb_build_object('state', 'ok', 'icon', 'check', 'text', core.fn_ui_tpl('finance.app.goals.fund_ok'))
+                    AND i->'details'->0 = jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_security'), 'value', 'Welt ETF')
+                    AND i->'details'->1 = jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_depot'), 'value', '__apgl_hh_depot__')
+                    AND i->'details'->2 = jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_from'), 'value', '__apgl_giro__')
+                    AND i->'details'->3->'label' = core.fn_ui_tpl('finance.app.goals.d_fund_account', jsonb_build_object('account', '__apgl_giro__'))
+                    AND i->'details'->3->'value'->>'value' = 'finance.app.goals.d_fund_drain_low'
+                    AND jsonb_array_length(i->'details') = 4) THEN
+    RAISE EXCEPTION 'FAIL [1s] aktiver Sparplan (Monatsbetrag, je Ausfuehrung, Deckungs-Pill, Details + Konto), got %', v_sec; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->>'label' = '__apgl_a_paused__' AND jsonb_typeof(i->'sub') = 'null'
                     AND i->'pill' = jsonb_build_object('state', 'neutral', 'icon', 'pause', 'text', core.fn_ui_tpl('finance.app.goals.pace.paused'))) THEN
     RAISE EXCEPTION 'FAIL [1t] pausierter Sparplan'; END IF;
-  -- Spar-Abbuchungen je Konto: nur laufende Spar-Raten (Ruecklage 50 vom Giro; Sparplaene starten erst)
+  -- Dauerauftraege je Konto: nur Uebertraege (Ruecklagen-Rate Giro -> Topf, Tag frei); Sparplan-Ausfuehrungen stehen in 4
   v_sec := v->'sections'->4;
   IF jsonb_array_length(v_sec->'items') <> 1 OR v_sec->'items'->0->>'label' <> '__apgl_giro__'
      OR v_sec->'items'->0->'value' <> core.fn_ui_money(50, 'EUR')
-     OR v_sec->'items'->0->'details' <> jsonb_build_array(jsonb_build_object('label', '__apgl_rp_res__',
-          'value', core.fn_ui_tpl('finance.app.goals.reserve_rate', jsonb_build_object('rate', core.fn_ui_money(50, 'EUR'))))) THEN
-    RAISE EXCEPTION 'FAIL [1y] Spar-Abbuchungen: Giro 50 mit der Ruecklagen-Rate, got %', v_sec; END IF;
-  RAISE NOTICE 'PASS [1] Owner: Hero 6800 + gap, Reihenfolge, Restzeit, verplant, Ruecklagen + Herleitung, Sparplaene, Abbuchungen';
+     OR v_sec->'items'->0->'sub' <> core.fn_ui_tpl('finance.app.goals.per_month')
+     OR v_sec->'items'->0->'pill' <> jsonb_build_object('state', 'ok', 'icon', 'check', 'text', core.fn_ui_tpl('finance.app.goals.fund_ok'))
+     OR v_sec->'items'->0->'details'->0 <> jsonb_build_object(
+          'label', core.fn_ui_tpl('finance.app.goals.d_order_to', jsonb_build_object('account', '__apgl_pot__')),
+          'value', core.fn_ui_tpl('finance.app.goals.amount_rhythm', jsonb_build_object(
+                       'amount', core.fn_ui_money(50, 'EUR'),
+                       'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month_free', jsonb_build_object(
+                                     'day', core.fn_ui_num(extract(day FROM current_date - 30)))))))
+     OR v_sec->'items'->0->'details'->1->'label' <> core.fn_ui_tpl('finance.app.goals.d_fund_account', jsonb_build_object('account', '__apgl_giro__'))
+     OR v_sec->'items'->0->'details'->1->'value'->>'value' <> 'finance.app.goals.d_fund_flows' THEN
+    RAISE EXCEPTION 'FAIL [1y] Dauerauftraege: Giro 50 -> Topf (Tag frei) + Konto-Zeile, got %', v_sec; END IF;
+  RAISE NOTICE 'PASS [1] Owner: Hero 6800 + gap, Reihenfolge, Restzeit, verplant, Ruecklagen + Herleitung, Sparplaene, Dauerauftraege';
 
   IF finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_partner')) <> v THEN
     RAISE EXCEPTION 'FAIL [1u] Partner muss die Haushalts-Sicht bekommen'; END IF;
@@ -338,6 +354,89 @@ BEGIN
      OR finance.fn_app_screen_goals('{"person_id":42}') <> '{"ok":false,"code":"bad_request"}'::jsonb THEN
     RAISE EXCEPTION 'FAIL [5a] Muell -> bad_request'; END IF;
   RAISE NOTICE 'PASS [5a] Muell -> bad_request ohne RAISE';
+
+  -- ===== 6) Dauerauftraege, Zufluesse, Kind-Sicht, alert-Banner =====
+  -- Zubringer Giro -> Kind-Konto am 1. ab naechstem Monat, externe Zuwendung aufs Kind-Konto, Kind -> Giro (verborgen),
+  -- Haushaltskonto ohne Guthaben mit Abfluss in 3 Tagen (Ziel eines Dauerauftrags -> Deckungs-Konto -> alert)
+  DECLARE
+    v_next1 date := (date_trunc('month', current_date) + interval '1 month')::date;
+    v_low int;
+  BEGIN
+    INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, schedule_day_of_month,
+                                            first_payment_date, valid_from) VALUES
+      ('__apgl_rp_feed__', v_giro, v_kid_cash, -150, 'month', 1, v_next1, v_next1),
+      ('Zuwendung Beispiel', v_kid_cash, NULL, 50, 'month', 1, v_next1, v_next1),
+      ('Rueckgabe Beispiel', v_kid_cash, v_giro, -10, 'month', 15, v_next1 + 14, v_next1 + 14);
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__apgl_low__', 'cash', 'EUR', 'active') RETURNING id INTO v_low;
+    INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('__apgl_rp_low_in__', v_giro, v_low, -10, 'month', current_date + 20, current_date + 20);
+    INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('__apgl_rp_low_out__', v_low, NULL, -100, 'month', current_date + 3, current_date + 3) RETURNING id INTO v_rp;
+    -- der Abfluss ist ein Sparplan (sonst Ausgabenkonto mit unbekannten Alltagsausgaben -> neutral statt alert)
+    INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
+      VALUES ('__apgl_low_plan__', v_hh_depot, 'APGL6', 'Welt ETF', v_rp);
+
+    v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_owner'));
+    v_sec := v->'sections'->3;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
+                    WHERE i->>'label' = 'Alpha Sparplan'
+                      AND i->'details' @> jsonb_build_array(
+                          jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_money_from', jsonb_build_object('source', '__apgl_giro__')),
+                              'value', core.fn_ui_tpl('finance.app.goals.amount_rhythm_from', jsonb_build_object(
+                                  'amount', core.fn_ui_money(150, 'EUR'),
+                                  'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month_day', jsonb_build_object('day', core.fn_ui_num(1))),
+                                  'date', core.fn_ui_date(v_next1)))),
+                          jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_money_from', jsonb_build_object('source', 'Zuwendung Beispiel')),
+                              'value', core.fn_ui_tpl('finance.app.goals.amount_rhythm_from', jsonb_build_object(
+                                  'amount', core.fn_ui_money(50, 'EUR'),
+                                  'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month_day', jsonb_build_object('day', core.fn_ui_num(1))),
+                                  'date', core.fn_ui_date(v_next1)))))) THEN
+      RAISE EXCEPTION 'FAIL [6a] Sparplan: Zufluesse (intern benannt, extern mit Namen), got %', v_sec; END IF;
+    v_sec := v->'sections'->4;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
+                    WHERE i->>'label' = '__apgl_giro__' AND i->'value' = core.fn_ui_money(210, 'EUR')
+                      AND i->'details' @> jsonb_build_array(jsonb_build_object(
+                          'label', core.fn_ui_tpl('finance.app.goals.d_order_to', jsonb_build_object('account', 'Kind Konto')),
+                          'value', core.fn_ui_tpl('finance.app.goals.amount_rhythm_from', jsonb_build_object(
+                              'amount', core.fn_ui_money(150, 'EUR'),
+                              'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month_day', jsonb_build_object('day', core.fn_ui_num(1))),
+                              'date', core.fn_ui_date(v_next1)))))) THEN
+      RAISE EXCEPTION 'FAIL [6b] Giro: 50 + 150 + 10 im Monat, Auftrag ans Kind-Konto mit Tag + ab, got %', v_sec; END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
+                    WHERE i->>'label' = 'Kind Konto'
+                      AND i->'details'->0->'label' = core.fn_ui_tpl('finance.app.goals.d_order_to', jsonb_build_object('account', '__apgl_giro__'))) THEN
+      RAISE EXCEPTION 'FAIL [6c] Haushalt sieht den Auftrag des Kind-Kontos mit Ziel, got %', v_sec; END IF;
+    v := finance.fn_app_screen_goals('{"person_id":"apgl_owner","params":{"probe":true}}');
+    IF NOT (v->'banners' @> jsonb_build_array(jsonb_build_object('state', 'alert', 'icon', 'alert',
+              'text', core.fn_ui_tpl('finance.app.goals.banner_fund_gap', jsonb_build_object(
+                          'account', '__apgl_low__', 'date', core.fn_ui_date(current_date + 3))),
+              'target', jsonb_build_object('screen', 'goals', 'params', '{}'::jsonb)))) THEN
+      RAISE EXCEPTION 'FAIL [6d] alert-Banner fuer das leere Haushaltskonto, got %', v; END IF;
+    RAISE NOTICE 'PASS [6a-d] Haushalt: Zufluesse am Sparplan, Bank-To-do mit Tag/ab, alert-Banner';
+
+    -- Kind: verborgene Konten neutral, kein fremdes Banner, keine IDs
+    v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_kid'));
+    v_txt := v::text;
+    IF v_txt LIKE '%__apgl_%' OR v_txt ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [6e] Kind sieht fremde Namen/IDs: %', v_txt; END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') i
+                    WHERE i->>'label' = 'Alpha Sparplan'
+                      AND i->'details' @> jsonb_build_array(jsonb_build_object(
+                          'label', core.fn_ui_tpl('finance.app.goals.d_money_from', jsonb_build_object(
+                                       'source', core.fn_ui_tpl('finance.app.common.household_account'))),
+                          'value', core.fn_ui_tpl('finance.app.goals.amount_rhythm_from', jsonb_build_object(
+                              'amount', core.fn_ui_money(150, 'EUR'),
+                              'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month_day', jsonb_build_object('day', core.fn_ui_num(1))),
+                              'date', core.fn_ui_date(v_next1)))))) THEN
+      RAISE EXCEPTION 'FAIL [6f] Kind: Zubringer vom verborgenen Giro heisst Haushaltskonto, got %', v; END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') i
+                    WHERE s->'title' = core.fn_ui_tpl('finance.app.goals.section_orders') AND i->>'label' = 'Kind Konto'
+                      AND i->'details'->0->'label' = core.fn_ui_tpl('finance.app.goals.d_order_to', jsonb_build_object(
+                                                         'account', core.fn_ui_tpl('finance.app.common.household_account')))) THEN
+      RAISE EXCEPTION 'FAIL [6g] Kind: eigener Auftrag an verborgenes Konto -> „→ Haushaltskonto", got %', v; END IF;
+    IF finance.fn_app_screen_goals('{"person_id":"apgl_kid","params":{"probe":true}}')->'banners' <> '[]'::jsonb THEN
+      RAISE EXCEPTION 'FAIL [6h] Kind bekommt fremdes Deckungs-Banner'; END IF;
+    RAISE NOTICE 'PASS [6e-h] Kind: verborgene Konten neutral, eigener Auftrag sichtbar, kein fremdes Banner';
+  END;
 END $$;
 
 DO $$

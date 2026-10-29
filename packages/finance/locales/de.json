@@ -836,6 +836,8 @@
   "finance.note.statement_interest_skips": "{count} noch offene Zins-Termine sind damit erledigt (der Auszug nennt den echten Zins).",
   "finance.label.statement_legacy_returns": "Rückflüsse alter Kredite (als eine Summe)",
   "finance.tpl.statement_transfer_fee_row": "{name}: {amount} + Gebühr {fee} am {date}",
+  "finance.tpl.statement_partner_fee_row": "{name}: {amount} am {date} (dort {fee} Gebühr)",
+  "finance.note.statement_pool_unassigned": "{count} Zahlung(en) an oder von einem Anbieter-Sammelkonto konnte der Bot keinem Konto zuordnen; sie bleiben im Rest. Für Einzahlungen hilft die Referenz als Kontonummer des Anbieter-Kontos, für Auszahlungen das Verrechnungskonto.",
   "finance.note.statement_no_settlement": "Ein- und Auszahlungen bleiben im Rest: für dieses Konto ist kein Verrechnungskonto hinterlegt (das Konto, auf das der Anbieter auszahlt).",
   "finance.note.statement_lump": "Alles Übrige auf dem Auszug wird nicht einzeln gespeichert, sondern als eine Summe gebucht. Danach stimmt der Kontostand mit dem Auszug überein.",
   "finance.label.statement_bookings_removed": "Buchungen, die entfernt werden",

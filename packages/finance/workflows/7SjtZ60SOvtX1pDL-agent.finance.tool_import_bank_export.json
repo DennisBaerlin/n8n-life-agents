@@ -16,6 +16,9 @@
                                                                                    "name":  "closing_balance"
                                                                                },
                                                                                {
+                                                                                   "name":  "transfer_account"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -250,7 +253,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "2e897c56-8b87-5c80-8b94-eff2f96ec4c1",
-                                                                                   "leftValue":  "={{ $(\u0027Preview lots\u0027).first().json.r.ok === true \u0026\u0026 ($(\u0027Preview lots\u0027).first().json.r.replaced || []).length \u003e 0 }}",
+                                                                                   "leftValue":  "={{ $(\u0027Preview lots\u0027).first().json.r.ok === true \u0026\u0026 ($(\u0027Preview lots\u0027).first().json.r.replaced || []).length \u003e 0 \u0026\u0026 !$(\u0027Start\u0027).first().json.transfer_account }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -469,7 +472,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_statement_prepare($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027file\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027file\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), transfer_account: $(\u0027Start\u0027).first().json.transfer_account || null }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -583,6 +586,18 @@
                                                                                      "id":  "991d83af-60cd-5701-9581-ae6844309c62",
                                                                                      "name":  "currency",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "18a3c368-95bd-51d4-a2bb-794e3b0dbad7",
+                                                                                     "name":  "payment_amount",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.amount === undefined || $(\u0027Prepare statement\u0027).item.json.r.amount === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.amount) }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c0d78d31-4dcf-5f62-b9d4-7c589fc25437",
+                                                                                     "name":  "payment_date",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.date || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -739,7 +754,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_apply_bank_statement($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027file\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), fingerprint: $(\u0027Prepare statement\u0027).item.json.r.fingerprint }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027file\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), transfer_account: $(\u0027Start\u0027).first().json.transfer_account || null, fingerprint: $(\u0027Prepare statement\u0027).item.json.r.fingerprint }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -963,6 +978,12 @@
                                                                                      "name":  "legacy_returns",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.legacy_returns || 0 }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "198073fb-f895-50f8-91d8-f8920f4f1d1c",
+                                                                                     "name":  "provider_payments_unassigned",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.pool_unassigned || 0 }}",
+                                                                                     "type":  "number"
                                                                                  }
                                                                              ]
                                                          },
@@ -981,7 +1002,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Bank-Export (CSV/Excel) -\u003e (Einzelkäufe übernehmen) -\u003e Monats-Check, ohne Sprachmodell**\n\nFetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -\u003e Read table (CSV: RFC 4180, Trenner aus der ersten Zeile; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -\u003e Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -\u003e Karte 1 + Gate -\u003e Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; druckt die Datei Zeitraum + Endstand (Bondora), ist sie ein gedruckter Auszug (Zinskorrektur + Altkredit-Rückflüsse als je eine Summe, Ein-/Auszahlungen über das Verrechnungskonto), sonst ist der App-Kontostand des Owners Pflicht (sonst closing_balance_required, keine Karte, Zeitraum bis gestern); Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.",
+                                         "content":  "## DB-Automatik\n**Bank-Export (CSV/Excel) -\u003e (Einzelkäufe übernehmen) -\u003e Monats-Check, ohne Sprachmodell**\n\nFetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -\u003e Read table (CSV: RFC 4180, Trenner aus den ersten 20 Zeilen; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -\u003e Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -\u003e Karte 1 + Gate -\u003e Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; druckt die Datei Zeitraum + Endstand (Bondora), ist sie ein gedruckter Auszug (Zinskorrektur + Altkredit-Rückflüsse als je eine Summe, Ein-/Auszahlungen über das Verrechnungskonto), sonst ist der App-Kontostand des Owners Pflicht (sonst closing_balance_required, keine Karte, Zeitraum bis gestern); Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. Zahlungen an/von einem Anbieter-Sammelkonto (Bondora) ordnet die Prepare einem P2P-Konto zu; passt genau eine zu zwei Konten, antwortet sie transfer_choice_required (keine Karte) und der Agent ruft nach der Antwort des Nutzers mit transfer_account erneut. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.",
                                          "height":  380,
                                          "width":  600,
                                          "color":  4
@@ -997,7 +1018,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht**\n\nKarte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde; der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -\u003e stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -\u003e weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.",
+                                         "content":  "## DB-Automatik\n**Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht**\n\nKarte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde (nie im zweiten Aufruf nach transfer_choice_required); der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -\u003e stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -\u003e weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.",
                                          "height":  320,
                                          "width":  300,
                                          "color":  4

@@ -55,6 +55,13 @@
 --   moved_legs[] = Transfer-Beine dieses Kontos, die der Auszug eines ANDEREN Kontos in den letzten 5 Tagen gebucht
 --   hat und die hier keine Zeile haben (unterwegs) -> zaehlen nicht zum Stand am period_end, apply setzt period_end+1.
 --   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label: cash "Alltagsausgaben", sonst "Sonstige Abweichung".
+--   POOL-REGEL (Profil counterparty_pattern, Bondora): Geldzeile an/von einem Anbieter-Sammelkonto -> P2P-Konto des Profils,
+--   nur buchbar und am Zeilendatum nicht abgeglichen (Eingang: Verrechnungskonto bzw. gleicher Inhaber ohne anderes
+--   Verrechnungskonto, Gebuehr-Bein partner_fee beim P2P-Konto; Ausgang: Referenz = Kontonummer als ganzes Wort im
+--   Verwendungszweck). GENAU eine Zeile mit zwei Kandidaten: Eingabe transfer_account (Kontoname laut Nutzer, 'none' =
+--   keins); fehlt sie oder passt sie zu keinem -> {ok:false, code:'transfer_choice_required', candidates[2] (Namen, nach
+--   id), amount, date} ohne Karte (der Agent fragt, Muster account_ambiguous; die Karte zeigt danach die Zuordnung).
+--   Sonst (mehrere solche Zeilen, 0 oder 3+ Kandidaten, 'none') Rest + Hinweis (pool_unassigned = Anzahl).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_statement_prepare(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -133,6 +140,11 @@ DECLARE
     v_legacy   NUMERIC := 0;           -- Summe der Kleinbetraege (legacy_return, EINE Buchung)
     v_int_skips JSONB := '[]'::jsonb;  -- offene Zins-Vorkommen <= period_end (apply ueberspringt sie)
     v_legacy_label TEXT;
+    v_pool_pr  JSONB;                  -- Profil mit counterparty_pattern (Pool-Regel)
+    v_pool_c   JSONB;                  -- Kandidaten-Konten des Profils
+    v_pool_pick JSONB;                 -- gewaehlte Kandidaten einer Zeile
+    v_pool     JSONB := '[]'::jsonb;   -- Pool-Treffer (kind transfer, Stufe P)
+    v_pool_amb JSONB := '[]'::jsonb;   -- Pool-Zeilen ohne Zuordnung (bleiben im Rest)
 BEGIN
     -- ---------- 1a. Broker-CSV: Export normieren, Zeitraum = nach dem bestaetigten Tag bis gestern ----------
     --   Kein gedruckter Saldo: der Owner nennt den Kontostand aus der App (Pflicht, nie ein errechneter Saldo als
@@ -341,6 +353,99 @@ BEGIN
     v_match := finance.fn_statement_match(v_acct.id, v_cut, v_pe, v_lines);
     v_out := (v_match->>'unmatched_out')::numeric;
     v_in  := (v_match->>'unmatched_in')::numeric;
+
+    -- ---------- 3a. Pool-Regel (Anbieter mit Sammelkonto, z. B. Bondora) ----------
+    --   Eine noch offene Geldzeile, deren Gegenpart-Name zum counterparty_pattern eines Profils passt. Kandidaten = aktive,
+    --   buchbare P2P-Konten dieses Profils (fn_bank_export_account_profile) in der Kontowaehrung, die am Zeilendatum noch
+    --   NICHT abgeglichen sind (deren eigener Auszug haette die Bewegung schon gepaart oder im Rest - nie doppelt).
+    --   Eingang (Auszahlung, Bondora zahlt nur auf das verifizierte Konto): das P2P-Konto, dessen Verrechnungskonto dieses
+    --   Konto ist, sonst eines desselben Inhabers (nie Haushalt) OHNE anderes Verrechnungskonto -> Transfer + Gebuehr-Bein
+    --   (Profil withdrawal_fee) beim P2P-Konto. Ausgang (Einzahlung): Referenz = Kontonummer als ganzes Wort im
+    --   Verwendungszweck, sonst alle Kandidaten. Genau ein Kandidat -> Transfer. GENAU eine Zeile mit zwei Kandidaten:
+    --   ohne transfer_account -> code transfer_choice_required (der Agent fragt, Muster account_ambiguous); mit Namen eines
+    --   der beiden -> Transfer; 'none' -> Rest; anderer Name -> erneut transfer_choice_required. Mehrere solche Zeilen oder
+    --   0/3+ Kandidaten (bei vorhandenen Profil-Konten): Rest + Hinweis (pool_unassigned). Die Zeilen laufen danach durch
+    --   dieselben Pruefungen wie Stufe T (buchbar, Waehrung, pending_pair).
+    FOR v_line, v_idx IN SELECT e, (o)::int FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS x(e, o)
+                         WHERE (o)::int IN (SELECT (u)::int FROM jsonb_array_elements_text(v_match->'unmatched') u)
+                           AND (e->>'kind' IS NULL OR e->>'kind' = 'cash') AND (e->>'amount')::numeric <> 0 LOOP
+        SELECT pr INTO v_pool_pr FROM jsonb_array_elements(finance.fn_bank_export_profiles()) pr
+        WHERE pr ? 'counterparty_pattern' AND COALESCE(v_line->>'counterparty', '') ~* (pr->>'counterparty_pattern') LIMIT 1;
+        CONTINUE WHEN v_pool_pr IS NULL;
+        SELECT COALESCE(jsonb_agg(jsonb_build_object('account_id', a.id, 'name', a.name, 'number', a.account_number,
+                   'settles_here', a.settlement_account_id = v_acct.id,
+                   'same_owner_free', a.owner_person_id = v_acct.owner_person_id AND a.settlement_account_id IS NULL,
+                   'usable', finance.fn_bookable_account_reason(a.id) IS NULL
+                             AND finance.fn_reconciled_reason(a.id, (v_line->>'date')::date) IS NULL)
+                 ORDER BY a.id), '[]'::jsonb)
+        INTO v_pool_c
+        FROM finance.accounts a
+        WHERE a.status = 'active' AND a.account_type::text = 'p2p' AND a.id <> v_acct.id AND a.currency = v_acct.currency
+          AND finance.fn_bank_export_account_profile(a.id) = v_pool_pr->>'key';
+        CONTINUE WHEN jsonb_array_length(v_pool_c) = 0;   -- kein Konto dieses Anbieters im Haushalt: normale Zeile
+        SELECT COALESCE(jsonb_agg(c), '[]'::jsonb) INTO v_pool_c FROM jsonb_array_elements(v_pool_c) c WHERE (c->>'usable')::boolean;
+        IF (v_line->>'amount')::numeric > 0 THEN
+            v_pool_pick := COALESCE(
+                (SELECT jsonb_agg(c) FROM jsonb_array_elements(v_pool_c) c WHERE (c->>'settles_here')::boolean),
+                (SELECT jsonb_agg(c) FROM jsonb_array_elements(v_pool_c) c WHERE (c->>'same_owner_free')::boolean),
+                '[]'::jsonb);
+        ELSE
+            v_pool_pick := COALESCE(
+                (SELECT jsonb_agg(c) FROM jsonb_array_elements(v_pool_c) c
+                 WHERE c->>'number' IS NOT NULL
+                   -- ganzes Wort (Leerraum-getrennt, Satzzeichen am Rand egal); kein Regex aus der Kontonummer
+                   AND (c->>'number') IN (SELECT btrim(t, '.,;:()[]{}"''') FROM regexp_split_to_table(upper(COALESCE(v_line->>'purpose', '')), '[[:space:]]+') t)),
+                v_pool_c);
+        END IF;
+        v_line := v_line || jsonb_build_object('line_idx', v_idx, 'pool_fee',
+                      CASE WHEN (v_line->>'amount')::numeric > 0 THEN (v_pool_pr->>'withdrawal_fee')::numeric END);
+        IF jsonb_array_length(v_pool_pick) = 1 THEN
+            v_pool := v_pool || jsonb_build_object('line', v_line, 'pick', v_pool_pick->0);
+        ELSE
+            v_pool_amb := v_pool_amb || jsonb_build_object('line_idx', v_idx, 'amount', round((v_line->>'amount')::numeric, 2),
+                                                           'date', v_line->>'date', 'line', v_line, 'candidates', v_pool_pick);
+        END IF;
+    END LOOP;
+    -- Wahl des Nutzers: nur bei GENAU einer Zeile mit zwei Kandidaten (nie eine Antwort fuer mehrere Zahlungen)
+    IF (SELECT count(*) FROM jsonb_array_elements(v_pool_amb) a WHERE jsonb_array_length(a->'candidates') = 2) = 1 THEN
+        SELECT a INTO v_m FROM jsonb_array_elements(v_pool_amb) a WHERE jsonb_array_length(a->'candidates') = 2;
+        IF lower(btrim(COALESCE(p->>'transfer_account', ''))) <> 'none' THEN
+            SELECT c INTO v_pool_pr FROM jsonb_array_elements(v_m->'candidates') c
+            WHERE NULLIF(btrim(p->>'transfer_account'), '') IS NOT NULL
+              AND finance.fn_name_matches(c->>'name', btrim(p->>'transfer_account'), false)
+            ORDER BY (c->>'account_id')::int LIMIT 1;
+            IF v_pool_pr IS NULL THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'transfer_choice_required',
+                    'candidates', (SELECT jsonb_agg(c->>'name' ORDER BY (c->>'account_id')::int) FROM jsonb_array_elements(v_m->'candidates') c),
+                    'amount', v_m->'amount', 'date', v_m->'date',
+                    'reason', 'A payment of ' || (v_m->>'amount') || ' on ' || (v_m->>'date') || ' '
+                           || CASE WHEN (v_m->>'amount')::numeric < 0 THEN 'to' ELSE 'from' END
+                           || ' a provider''s shared account fits two accounts ('
+                           || (SELECT string_agg(c->>'name', ' / ' ORDER BY (c->>'account_id')::int) FROM jsonb_array_elements(v_m->'candidates') c)
+                           || ') - ask the user which one it belongs to (or none), then call again with transfer_account'
+                           || CASE WHEN NULLIF(btrim(p->>'transfer_account'), '') IS NOT NULL
+                                   THEN ' (the given "' || btrim(p->>'transfer_account') || '" is neither of them)' ELSE '' END || '.');
+            END IF;
+            v_pool := v_pool || jsonb_build_object('line', v_m->'line', 'pick', v_pool_pr);
+            SELECT COALESCE(jsonb_agg(a), '[]'::jsonb) INTO v_pool_amb FROM jsonb_array_elements(v_pool_amb) a
+            WHERE (a->>'line_idx')::int <> (v_m->>'line_idx')::int;
+        END IF;
+    END IF;
+    -- zugeordnete Pool-Zeilen -> Treffer (kind transfer, Stufe P)
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('line_idx', (x->'line'->>'line_idx')::int, 'stage', 'P', 'kind', 'transfer',
+               'other_account_id', (x->'pick'->>'account_id')::int, 'name', x->'pick'->>'name',
+               'line_date', x->'line'->>'date', 'amount', round((x->'line'->>'amount')::numeric, 2),
+               'expected', round((x->'line'->>'amount')::numeric, 2),
+               'side', CASE WHEN (x->'line'->>'amount')::numeric < 0 THEN 'source' ELSE 'target' END)
+               || CASE WHEN (x->'line'->>'pool_fee')::numeric > 0
+                       THEN jsonb_build_object('partner_fee', (x->'line'->>'pool_fee')::numeric) ELSE '{}'::jsonb END), '[]'::jsonb),
+           v_out - COALESCE(sum(LEAST((x->'line'->>'amount')::numeric, 0)), 0),
+           v_in - COALESCE(sum(GREATEST((x->'line'->>'amount')::numeric, 0)), 0)
+    INTO v_pool, v_out, v_in
+    FROM jsonb_array_elements(v_pool) x;
+    v_match := jsonb_set(jsonb_set(v_match, '{matched}', (v_match->'matched') || v_pool), '{unmatched}',
+                   COALESCE((SELECT jsonb_agg(u) FROM jsonb_array_elements(v_match->'unmatched') u
+                             WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_pool) x WHERE (x->>'line_idx')::int = (u #>> '{}')::int)), '[]'::jsonb));
 
     FOR v_m IN SELECT e FROM jsonb_array_elements(v_match->'matched') e LOOP
         IF v_m->>'kind' = 'booked' THEN
@@ -711,6 +816,11 @@ BEGIN
                                   'amount', core.fn_ui_money((m->>'amount')::numeric, v_acct.currency),
                                   'shares', core.fn_ui_num((m->>'shares')::numeric, 4),
                                   'date', core.fn_ui_date((m->>'line_date')::date)))
+                         WHEN m ? 'partner_fee'   -- Pool-Eingang: die Gebuehr bucht das Gegenkonto (Karte = Buchung)
+                         THEN core.fn_ui_tpl('finance.tpl.statement_partner_fee_row', jsonb_build_object('name', m->>'name',
+                                  'amount', core.fn_ui_money((m->>'amount')::numeric, v_acct.currency),
+                                  'fee', core.fn_ui_money((m->>'partner_fee')::numeric, v_acct.currency),
+                                  'date', core.fn_ui_date((m->>'line_date')::date)))
                          WHEN m ? 'fee'   -- Auszahlung mit Gebuehr: Transfer und Gebuehr getrennt (Karte = Buchung)
                          THEN core.fn_ui_tpl('finance.tpl.statement_transfer_fee_row', jsonb_build_object('name', m->>'name',
                                   'amount', core.fn_ui_money((m->>'amount')::numeric + (m->>'fee')::numeric, v_acct.currency),
@@ -854,6 +964,11 @@ BEGIN
         v_card := v_card || jsonb_build_array(
             core.fn_ui_money(v_legacy, v_acct.currency, true) || jsonb_build_object('label', 'finance.label.statement_legacy_returns'));
     END IF;
+    -- Pool-Zeilen ohne Zuordnung (keine, zwei ohne Wahl, mehrere Kandidaten): bleiben im Rest
+    IF jsonb_array_length(v_pool_amb) > 0 THEN
+        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_pool_unassigned',
+                      'params', jsonb_build_object('count', jsonb_array_length(v_pool_amb))));
+    END IF;
     -- Ein-/Auszahlung ohne Gegenkonto (die Datei nennt keins): ohne Verrechnungskonto bleibt sie im Rest
     IF v_acct.settlement_account_id IS NULL AND EXISTS (
            SELECT 1 FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS o(l, ord)
@@ -876,8 +991,9 @@ BEGIN
                                m->>'interest_period_end', m->>'line_idx', m->>'amount', m->>'other_account_id', m->>'partner_date'))
                         FROM jsonb_array_elements(v_to_book) m),
                   'o', v_moved, 'z', jsonb_build_array(v_int_corr, v_legacy, v_int_skips),
-                  'f', (SELECT jsonb_agg(COALESCE(m->'fee', m->'fee_add')) FROM jsonb_array_elements(v_to_book || v_booked) m
-                        WHERE m ? 'fee' OR m ? 'fee_add'),
+                  'f', (SELECT jsonb_agg(COALESCE(m->'fee', m->'fee_add', m->'partner_fee')) FROM jsonb_array_elements(v_to_book || v_booked) m
+                        WHERE m ? 'fee' OR m ? 'fee_add' OR m ? 'partner_fee'),
+                  'q', v_pool_amb,
                   'p', v_adjust, 'k', v_learn, 'n', v_learn_no, 'm', v_missing, 't', v_trades, 'x', v_tblocked,
                   'r', (SELECT jsonb_agg(jsonb_build_array(b->>'transaction_id', b->>'line_date')) FROM jsonb_array_elements(v_booked) b
                         WHERE (b->>'tx_date')::date > v_pe))::text);
@@ -897,7 +1013,8 @@ BEGIN
         'source', CASE WHEN v_file THEN 'file' ELSE 'printed' END,
         'balance_source', CASE WHEN v_file AND NOT v_printed_file THEN 'owner' ELSE 'printed' END,
         'interest_correction', v_int_corr, 'interest_lines', v_int_lines, 'interest_booked', v_int_booked,
-        'interest_skips', v_int_skips, 'legacy_returns', v_legacy, 'legacy_return_label', v_legacy_label)
+        'interest_skips', v_int_skips, 'legacy_returns', v_legacy, 'legacy_return_label', v_legacy_label,
+        'pool_unassigned', jsonb_array_length(v_pool_amb))
         || CASE WHEN v_file THEN jsonb_build_object(
                'owner_balance', v_owner, 'after_period', v_after,
                'trades', v_trades, 'trades_blocked', v_tblocked, 'export_unknown', v_file_unk,

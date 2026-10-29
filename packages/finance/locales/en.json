@@ -836,6 +836,8 @@
   "finance.note.statement_interest_skips": "{count} still open interest periods are settled by this (the statement shows the real interest).",
   "finance.label.statement_legacy_returns": "Returns from old loans (as one total)",
   "finance.tpl.statement_transfer_fee_row": "{name}: {amount} + fee {fee} on {date}",
+  "finance.tpl.statement_partner_fee_row": "{name}: {amount} on {date} ({fee} fee there)",
+  "finance.note.statement_pool_unassigned": "{count} payment(s) to or from a provider's shared account could not be assigned to an account and stay in the rest. For deposits, store the reference as the provider account's account number; for payouts, set its settlement account.",
   "finance.note.statement_no_settlement": "Deposits and withdrawals stay in the rest: no settlement account is set for this account (the account the provider pays out to).",
   "finance.note.statement_lump": "Everything else on the statement is not stored line by line but booked as one total. Afterwards the balance matches the statement.",
   "finance.label.statement_bookings_removed": "Bookings that will be removed",

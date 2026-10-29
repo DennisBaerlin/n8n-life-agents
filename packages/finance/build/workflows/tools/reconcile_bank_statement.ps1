@@ -9,7 +9,7 @@
 function Build-ReconcileBankStatement {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $idFetch = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:fetch_telegram_file' $CoreServiceMap) 'Build-ReconcileBankStatement'
-    $trig = Build-Trigger @('file_id', 'doc_hint', 'account_name')
+    $trig = Build-Trigger @('file_id', 'doc_hint', 'account_name', 'transfer_account')
 
     # Extraktions-Vertrag (EN, Modell-Instruktion): nur gedruckte Rohwerte. KEINE Apostrophe (JS-String im jsonBody).
     $sysText = 'You read a German bank account statement (Kontoauszug) of ONE account and output only its printed raw values - never compute, never guess. is_statement = true only for a real account statement with an opening and a closing balance (Kontoauszug, Rechnungsabschluss, credit card statement); false for anything else (depot statement, insurance or pension letter, a plain transaction list without balances, pending transactions / vorgemerkte Umsaetze). account_number = the IBAN of this account exactly as printed (for a credit card statement the printed card number, masked digits allowed). currency = ISO code (EUR for Euro). period_start and period_end = the statement period as YYYY-MM-DD (Zeitraum / von ... bis; if only a statement date is printed, use the first booking date and the statement date). opening_balance = Kontostand alt / Saldo alt at the start; closing_balance = Kontostand neu / Saldo neu at the end; negative when overdrawn (S, Soll or minus). lines = EVERY booking in order: date = booking date (Buchungstag) as YYYY-MM-DD; amount = signed number, negative for debits (S, Soll, minus, Lastschrift, Abbuchung, Kartenzahlung), positive for credits (H, Haben, Gutschrift, Eingang); counterparty = name of the payee or payer; counterparty_iban = the IBAN of the other side if printed; creditor_id = Glaeubiger-ID (CI) if printed; mandate_ref = Mandatsreferenz (MREF) if printed; purpose = Verwendungszweck, shortened to the essential words. Carry-over lines (Uebertrag), page subtotals, the Saldo alt / Saldo neu lines and summary boxes are NOT lines; a booked interest, fee or Rechnungsabschluss posting IS a line. If the document holds several consecutive statements of the same account, merge them only when each opening balance equals the previous closing balance. German number format 1.234,56 means 1234.56. Use an empty string for any text field that is not printed.'
@@ -85,6 +85,7 @@ return [{ json: { ok: true, account_number: txt(s.account_number), currency: txt
     $stmtParams = [ordered]@{
         account_number  = "$S.account_number"
         account_name    = "`$('Start').item.json.account_name || null"
+        transfer_account = "`$('Start').item.json.transfer_account || null"   # Pool-Regel: Wahl des Nutzers nach transfer_choice_required
         currency        = "$S.currency"
         period_start    = "$S.period_start"
         period_end      = "$S.period_end"

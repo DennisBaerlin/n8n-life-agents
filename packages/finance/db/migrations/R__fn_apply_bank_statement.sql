@@ -19,7 +19,8 @@
 --   Transfer-Gruppe (group_id) mit Buchungsdatum nach period_end -> nur die Beine DIESES Kontos aufs Zeilendatum;
 --   prepare.moved_legs -> period_end+1. Gesperrt werden zusaetzlich alle Gegenkonten aus matched/blocked/already_booked.
 --   Auszahlung mit Gebuehr (matched.fee): Transfer = Betrag - Gebuehr, die Gebuehr als Bein (category fee) DIESES Kontos
---   in derselben group_id. Eine Gruppe, die das Partnerkonto ohne Gebuehr gebucht hat (already_booked.fee_add), bekommt die
+--   in derselben group_id. Pool-Regel (matched.partner_fee): das Gebuehr-Bein liegt beim auszahlenden P2P-Konto (am
+--   Zeilendatum bzw. partner_date), ebenfalls in derselben group_id. Eine Gruppe, die das Partnerkonto ohne Gebuehr gebucht hat (already_booked.fee_add), bekommt die
 --   Gebuehr als eigene Buchung dieses Auszugs (nie in die fremde Gruppe). Datei mit gedrucktem Endstand: interest_correction (category interest, ohne
 --   interest_period_end) und legacy_returns (category other, Profil-Label) je EINE Buchung am period_end;
 --   interest_skips -> fn_skip_interest_occurrence (in skipped, der Void holt sie zurueck).
@@ -125,11 +126,17 @@ BEGIN
                     UPDATE finance.transactions SET transaction_date = (v_m->>'line_date')::date
                     WHERE id IN ((v_r->>'debit_tx_id')::int, (v_r->>'credit_tx_id')::int) AND account_id = v_acct;
                 END IF;
-                -- Gebuehr der Auszahlung (Profil): eigenes Bein auf DIESEM Konto in derselben Gruppe (ein Write = ein Void)
-                IF (v_r->>'ok')::boolean AND COALESCE((v_m->>'fee')::numeric, 0) > 0 THEN
-                    v_fee := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
-                                 'amount', (v_m->>'fee')::numeric, 'direction', 'outflow', 'category', 'fee',
-                                 'transaction_date', v_m->>'line_date', 'description', 'Gebühr Auszahlung -> ' || (v_m->>'name')));
+                -- Gebuehr der Auszahlung (Profil) in derselben Gruppe (ein Write = ein Void): fee = Bein auf DIESEM Konto
+                -- (Bondora-Datei), partner_fee = Bein beim auszahlenden P2P-Konto (Pool-Regel auf der Bank-Seite)
+                IF (v_r->>'ok')::boolean AND COALESCE((v_m->>'fee')::numeric, (v_m->>'partner_fee')::numeric, 0) > 0 THEN
+                    v_fee := finance.fn_book_transaction(jsonb_build_object(
+                                 'account_id', CASE WHEN v_m ? 'fee' THEN v_acct ELSE (v_m->>'other_account_id')::int END,
+                                 'amount', COALESCE((v_m->>'fee')::numeric, (v_m->>'partner_fee')::numeric),
+                                 'direction', 'outflow', 'category', 'fee',
+                                 'transaction_date', CASE WHEN v_m ? 'fee' THEN v_m->>'line_date'
+                                                          ELSE COALESCE(v_m->>'partner_date', v_m->>'line_date') END,
+                                 'description', 'Gebühr Auszahlung -> '
+                                                || CASE WHEN v_m ? 'fee' THEN v_m->>'name' ELSE v_prep->>'account_name' END));
                     IF (v_fee->>'ok')::boolean IS DISTINCT FROM true THEN
                         RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = 'fee: ' || COALESCE(v_fee->>'reason', 'booking refused');
                     END IF;

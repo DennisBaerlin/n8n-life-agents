@@ -16,6 +16,9 @@
                                                                                    "name":  "account_name"
                                                                                },
                                                                                {
+                                                                                   "name":  "transfer_account"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -288,7 +291,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_statement_prepare($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_number: $(\u0027Shape statement\u0027).item.json.account_number, account_name: $(\u0027Start\u0027).item.json.account_name || null, currency: $(\u0027Shape statement\u0027).item.json.currency, period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, opening_balance: $(\u0027Shape statement\u0027).item.json.opening_balance, closing_balance: $(\u0027Shape statement\u0027).item.json.closing_balance, lines: $(\u0027Shape statement\u0027).item.json.lines }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_number: $(\u0027Shape statement\u0027).item.json.account_number, account_name: $(\u0027Start\u0027).item.json.account_name || null, transfer_account: $(\u0027Start\u0027).item.json.transfer_account || null, currency: $(\u0027Shape statement\u0027).item.json.currency, period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, opening_balance: $(\u0027Shape statement\u0027).item.json.opening_balance, closing_balance: $(\u0027Shape statement\u0027).item.json.closing_balance, lines: $(\u0027Shape statement\u0027).item.json.lines }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -402,6 +405,18 @@
                                                                                      "id":  "21738918-f49b-5972-adc6-b31459f94734",
                                                                                      "name":  "currency",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7045b497-1cbc-5aff-ae08-e64272c19292",
+                                                                                     "name":  "payment_amount",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.amount === undefined || $(\u0027Prepare statement\u0027).item.json.r.amount === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.amount) }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2470ba7b-1f0a-5cab-97c5-cd47c530d2b2",
+                                                                                     "name":  "payment_date",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.date || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -558,7 +573,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_apply_bank_statement($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_number: $(\u0027Shape statement\u0027).item.json.account_number, account_name: $(\u0027Start\u0027).item.json.account_name || null, currency: $(\u0027Shape statement\u0027).item.json.currency, period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, opening_balance: $(\u0027Shape statement\u0027).item.json.opening_balance, closing_balance: $(\u0027Shape statement\u0027).item.json.closing_balance, lines: $(\u0027Shape statement\u0027).item.json.lines, fingerprint: $(\u0027Prepare statement\u0027).item.json.r.fingerprint }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_number: $(\u0027Shape statement\u0027).item.json.account_number, account_name: $(\u0027Start\u0027).item.json.account_name || null, transfer_account: $(\u0027Start\u0027).item.json.transfer_account || null, currency: $(\u0027Shape statement\u0027).item.json.currency, period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, opening_balance: $(\u0027Shape statement\u0027).item.json.opening_balance, closing_balance: $(\u0027Shape statement\u0027).item.json.closing_balance, lines: $(\u0027Shape statement\u0027).item.json.lines, fingerprint: $(\u0027Prepare statement\u0027).item.json.r.fingerprint }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

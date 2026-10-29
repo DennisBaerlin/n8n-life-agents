@@ -30,6 +30,14 @@ Ein Dokument kannst du auch ohne Text schicken. Der Bot liest es zuerst selbst u
 
 Beim ersten Mal am Betrag, am Datum und am Namen des Empfängers. Danach merkt er sich die Kennung der Lastschrift (Gläubiger-ID und Mandatsreferenz) bzw. die IBAN des Empfängers. Ab dann erkennt er die Zahlung sicher, auch wenn sich der Betrag ändert. Wechselst du den Anbieter, ist das eine neue Kennung. Der Bot zeigt die Zahlung dann zuerst als „unbekannt" und fragt nach.
 
+## Überträge zwischen deinen Konten
+
+Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen **Übertrag**: Das Geld verschwindet nicht als Ausgabe, sondern kommt beim anderen Konto an. Es ist egal, welchen Auszug du zuerst schickst. Der zweite erkennt den Übertrag wieder und bucht ihn nicht noch einmal.
+
+- **Geld unterwegs:** Geht eine Überweisung am Monatsende ab und kommt erst im nächsten Monat an, zählt sie beim anderen Konto im neuen Monat. Die Karte zeigt das im Abschnitt „Unterwegs“.
+- **Anderer Betrag:** Passt eine Zeile zu einem schon gebuchten Übertrag, aber nicht im Betrag, bucht der Bot keinen zweiten. Die Zeile bleibt im Rest.
+- **Zurücknehmen mit Übertrag:** Ist das andere Konto schon für diesen Tag bestätigt, lässt sich der Auszug nicht mehr allein zurücknehmen. Der Bot sagt dir, wessen Auszug du zuerst zurücknehmen musst.
+
 ## Sicher gegen Fehler
 
 - **Rechenprobe:** Anfangsstand plus alle Zeilen muss genau den Endstand ergeben. Stimmt das nicht (z. B. eine Seite fehlt), übernimmt der Bot nichts und sagt dir die Differenz.
@@ -57,6 +65,18 @@ Zusätzlich zum normalen Ablauf:
 - **Käufe, Verkäufe und Dividenden,** die noch nicht erfasst sind, bucht er mit den Werten aus dem Export. Was schon erfasst ist, hakt er ab.
 - **Einzelkäufe statt einer Übernahme:** Hast du eine Position beim Einrichten als einen Bestand eingetragen, ersetzt der Bot sie auf Wunsch durch die echten Einzelkäufe aus dem Export. Dafür kommt vorher eine eigene Karte. Er ersetzt nur, wenn die Stückzahlen genau übereinstimmen. Käufe nach dem Tag deines bestätigten Kontostands werden dabei echte Käufe und mindern den Kontostand; die Karte zeigt diese Wirkung.
 - **Unbekannte Zeilen** (eine neue Umsatzart, eine korrigierte Dividende) bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.
+
+## Bondora Go&Grow (Excel-Kontoauszug)
+
+Den Kontoauszug von Bondora Go&Grow lädst du in der Bondora-App als Excel-Datei herunter und schickst ihn an den Bot. Diese Datei enthält Zeitraum, Anfangs- und Endstand. Du musst also keinen Kontostand nennen. Auch sie liest ein fester Leser, kein Sprachmodell.
+
+- **Verrechnungskonto:** Bondora zahlt nur auf dein verifiziertes Bankkonto aus. Sag dem Bot einmal, welches das ist, z. B. „Mein Go&Grow zahlt auf mein Trade-Republic-Konto aus". Dann bucht er Ein- und Auszahlungen als Übertrag mit diesem Konto. Ohne Verrechnungskonto bleiben sie im Rest, und die Karte weist darauf hin.
+- **Gebühr:** Bondora behält bei jeder Auszahlung 1 € ein. Der Bot bucht sie als Gebühr beim Go&Grow-Konto, die Karte zeigt sie getrennt vom Übertrag.
+- **Zinsen:** Der Bot schätzt die täglichen Zinsen vorab. Der Auszug enthält die echten. Der Bot bucht die Differenz als eine Zinskorrektur und schließt die noch offenen Zinstage ab, nichts zählt doppelt.
+- **Kleinstbeträge alter Bondora-Kredite** (Rückflüsse aus Krediten außerhalb von Go&Grow) bucht er als eine Summe.
+- **Zeilen „Unallocated balance"** ändern deinen Stand nicht. Der Bot bucht sie nicht.
+
+**Auf deinem Bankkonto:** Bondora zahlt über ein Sammelkonto aus, das alle Kunden teilen. Kommt eine Zahlung von Bondora auf deinem Bankkonto an, ordnet der Bot sie dem Go&Grow-Konto zu, das auf dieses Konto auszahlt. Bei einer Einzahlung an Bondora entscheidet die Bondora-Referenz im Verwendungszweck. Hinterlege sie als Kontonummer des Go&Grow-Kontos. Fehlt die Referenz und kommen zwei Go&Grow-Konten in Frage (z. B. deins und das eines anderen Haushaltsmitglieds), fragt der Bot einmal nach, welches gemeint ist. Die Karte zeigt die Zuordnung, bevor gebucht wird. Kann er eine Zahlung nicht zuordnen, bleibt sie im Rest, und die Karte sagt, was hilft: bei Einzahlungen die Referenz als Kontonummer, bei Auszahlungen das Verrechnungskonto.
 
 ## Konten ohne Kontoauszug
 

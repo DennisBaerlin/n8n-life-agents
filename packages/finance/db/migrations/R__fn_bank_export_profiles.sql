@@ -10,7 +10,9 @@
 --   je Auszahlung (Bondora-Hilfe: 1 EUR), small_inflow_max = Grenze fuer Kleinst-Gutschriften alter Bondora-Kredite
 --   (legacy_return, gebucht als eine Summe mit legacy_return_label).
 --   RUECKGABE: [{key, bank, bank_pattern (POSIX-Regex, case-insensitiv gegen accounts.bank bzw. name), required[],
---   printed_balance, withdrawal_fee?, small_inflow_max?, legacy_return_label?}]
+--   printed_balance, withdrawal_fee?, small_inflow_max?, legacy_return_label?, counterparty_pattern?}]
+--   counterparty_pattern: Gegenpart-Name des Anbieter-Sammelkontos (Pool-Regel in fn_statement_prepare: Ein-/Auszahlungen
+--   auf einem Bankkonto ohne eigene Gegen-IBAN werden einem P2P-Konto dieses Profils zugeordnet).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_profiles()
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
@@ -21,5 +23,6 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
         jsonb_build_object('key', 'bondora_go_grow_v1', 'bank', 'Bondora', 'bank_pattern', 'bondora|go[[:space:]]*&[[:space:]]*grow',
                            'required', jsonb_build_array('date', 'payment type', 'in', 'out', 'balance'),
                            'printed_balance', true, 'withdrawal_fee', 1.00, 'small_inflow_max', 1.00,
+                           'counterparty_pattern', 'bondora|go[[:space:]]*&[[:space:]]*grow',
                            'legacy_return_label', 'Rückflüsse Bondora-Altkredite'));
 $$;

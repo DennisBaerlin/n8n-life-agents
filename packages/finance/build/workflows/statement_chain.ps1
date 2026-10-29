@@ -26,6 +26,9 @@ function New-StatementGateChain {
         ,@('closing_balance', "={{ $P.closing_balance === undefined || $P.closing_balance === null ? '' : String($P.closing_balance) }}", 'string')
         ,@('balance_date', "={{ $P.balance_date || '' }}", 'string')
         ,@('currency', "={{ $P.currency || '' }}", 'string')
+        # Pool-Regel (transfer_choice_required): die EINE unklare Zahlung, damit der Agent sie beim Nachfragen nennt
+        ,@('payment_amount', "={{ $P.amount === undefined || $P.amount === null ? '' : String($P.amount) }}", 'string')
+        ,@('payment_date', "={{ $P.date || '' }}", 'string')
     )
 
     $summary = New-HitlSummary -Pos @(($X + 440), 0) -Title $Title `

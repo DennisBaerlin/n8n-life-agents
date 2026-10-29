@@ -13,7 +13,7 @@
 function Build-ImportBankExport {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $idFetch = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:fetch_telegram_file' $CoreServiceMap) 'Build-ImportBankExport'
-    $trig = Build-Trigger @('file_id', 'account_name', 'closing_balance')
+    $trig = Build-Trigger @('file_id', 'account_name', 'closing_balance', 'transfer_account')
 
     $fetch = Build-CallWorkflow 'Fetch telegram file' @(220, 0) $idFetch 'agent.tool_fetch_telegram_file' `
         ([ordered]@{ file_id = "={{ `$('Start').item.json.file_id }}"; accept = 'table' })
@@ -69,7 +69,8 @@ return [{ json: { ok: true, rows, row_count: rows.length } }];
     # dieselbe Meldung wie die Prepare -> direkt weiter in die Kette (die meldet sie als Daten).
     $lotsDry = Build-Pg 'Preview lots' @(1100, 0) "=SELECT core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, `$1::jsonb) AS r;" $lotsParams
     $L = "`$('Preview lots').first().json.r"
-    $ifLots = Build-If 'Lots to replace?' @(1320, 0) "={{ $L.ok === true && ($L.replaced || []).length > 0 }}" 'true' 'equals' 'boolean'
+    # Zweiter Aufruf nach transfer_choice_required (transfer_account gesetzt): Karte 1 kam schon im ersten Aufruf -> nie erneut
+    $ifLots = Build-If 'Lots to replace?' @(1320, 0) "={{ $L.ok === true && ($L.replaced || []).length > 0 && !`$('Start').first().json.transfer_account }}" 'true' 'equals' 'boolean'
     $lotsSummary = New-HitlSummary -Name 'Lots summary' -Pos @(1540, -200) -Title 'finance.hitl.replace_takeover_lots' `
         -TitleParams @{ account = "`$('Start').first().json.account_name" } -LinesExpr "($L.card_lines || [])"
     $lotsApproval = Build-CallWorkflow 'Request lots approval' @(1760, -200) $GateId 'agent.tool_human_approval' `
@@ -87,11 +88,17 @@ return [{ json: { ok: true, rows, row_count: rows.length } }];
         ,@('error', "={{ `$('Replace lots').item.json.r.reason }}", 'string')
     )
 
+    # Pool-Regel (Bank-Import-Modul Paket 3): passt GENAU eine Zahlung an/von einem Anbieter-Sammelkonto (Bondora) zu
+    # zwei Konten, antwortet die Prepare transfer_choice_required (Kandidaten als Daten, keine Karte); der Agent fragt den
+    # Nutzer (Muster account_ambiguous) und ruft erneut mit transfer_account (Kontoname bzw. 'none'). Die Karte zeigt die
+    # Zuordnung vor dem Buchen. Bewusst keine wartende Knopf-Frage mitten im Tool (ohne Karte-offen-Sperre liefen sonst
+    # parallele Agenten-Laeufe, Vorfall 2026-10-22).
     $stmtParams = [ordered]@{
-        source          = "'file'"
-        account_name    = "`$('Start').first().json.account_name || null"
-        closing_balance = "`$('Start').first().json.closing_balance === undefined || `$('Start').first().json.closing_balance === null ? null : String(`$('Start').first().json.closing_balance)"
-        table           = $tableExpr
+        source           = "'file'"
+        account_name     = "`$('Start').first().json.account_name || null"
+        closing_balance  = "`$('Start').first().json.closing_balance === undefined || `$('Start').first().json.closing_balance === null ? null : String(`$('Start').first().json.closing_balance)"
+        table            = $tableExpr
+        transfer_account = "`$('Start').first().json.transfer_account || null"
     }
     $R = "`$('Replace lots').isExecuted ? `$('Replace lots').first().json.r : null"
     $chain = New-StatementGateChain -X 2420 -StmtParams $stmtParams -Title 'finance.hitl.import_bank_export' `
@@ -104,14 +111,15 @@ return [{ json: { ok: true, rows, row_count: rows.length } }];
             ,@('purchases_cash_effect', "={{ (($R) || {}).settlement_change || 0 }}", 'number')
             ,@('interest_correction', "={{ `$('Prepare statement').item.json.r.interest_correction || 0 }}", 'number')
             ,@('legacy_returns', "={{ `$('Prepare statement').item.json.r.legacy_returns || 0 }}", 'number')
+            ,@('provider_payments_unassigned', "={{ `$('Prepare statement').item.json.r.pool_unassigned || 0 }}", 'number')
         )
 
     $sticky = Build-Sticky 'Überblick' @(220, -520) `
         'Bank-Export (CSV/Excel) -> (Einzelkäufe übernehmen) -> Monats-Check, ohne Sprachmodell' `
-        'Fetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -> Read table (CSV: RFC 4180, Trenner aus der ersten Zeile; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -> Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -> Karte 1 + Gate -> Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; druckt die Datei Zeitraum + Endstand (Bondora), ist sie ein gedruckter Auszug (Zinskorrektur + Altkredit-Rückflüsse als je eine Summe, Ein-/Auszahlungen über das Verrechnungskonto), sonst ist der App-Kontostand des Owners Pflicht (sonst closing_balance_required, keine Karte, Zeitraum bis gestern); Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.' 380 600
+        'Fetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -> Read table (CSV: RFC 4180, Trenner aus den ersten 20 Zeilen; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -> Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -> Karte 1 + Gate -> Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; druckt die Datei Zeitraum + Endstand (Bondora), ist sie ein gedruckter Auszug (Zinskorrektur + Altkredit-Rückflüsse als je eine Summe, Ein-/Auszahlungen über das Verrechnungskonto), sonst ist der App-Kontostand des Owners Pflicht (sonst closing_balance_required, keine Karte, Zeitraum bis gestern); Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. Zahlungen an/von einem Anbieter-Sammelkonto (Bondora) ordnet die Prepare einem P2P-Konto zu; passt genau eine zu zwei Konten, antwortet sie transfer_choice_required (keine Karte) und der Agent ruft nach der Antwort des Nutzers mit transfer_account erneut. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.' 380 600
     $stickyLots = Build-Sticky 'Zwei Karten' @(1320, -560) `
         'Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht' `
-        'Karte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde; der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -> stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -> weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.' 320 300
+        'Karte 1 kommt nur, wenn der Probelauf eine Position ersetzen würde (nie im zweiten Aufruf nach transfer_choice_required); der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -> stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -> weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.' 320 300
 
     $nodes = @($trig, $fetch, $ifFile, $errFile, $tok, $ifTok, $errTok, $lotsDry, $ifLots, $lotsSummary, $lotsApproval,
                $ifLotsOk, $lotsApply, $ifReplaced, $errReplaced) + $chain.Nodes + @($sticky, $stickyLots)

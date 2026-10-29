@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_replace_takeover_with_lots (ATOMIC WRITE) -- Bestandsuebernahme durch die echten Einzelkaeufe ersetzen (Paket B)
 --   Live-Befund 2026-10-28: eine Position wurde als EINE Uebernahme erfasst, der Broker-Export kennt die Einzelkaeufe.
---   Eingabe jsonb: account_name (Verrechnungskonto = das Cashkonto des Exports), csv:{header, rows} (Tokenizer-Ausgabe),
+--   Eingabe jsonb: account_name (Verrechnungskonto = das Cashkonto des Exports), table:{rows} (Raster des Lesers),
 --   fingerprint (opt, aus dem Probelauf).
 --   Je Position eines Depots mit diesem Verrechnungskonto, die GENAU EIN Uebernahme-Paar hat (eine group_id mit einem
 --   Kauf + einer position_takeover-Gegenbuchung) und im Export Kaeufe bis zum Uebernahme-Datum:
@@ -25,7 +25,7 @@
 --   RUECKGABE: {ok:true, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
 --   cash_lots_count}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
 --   settlement_balance, settlement_change (Saldo nachher - vorher, DB-Delta), card_lines, fingerprint}
---   | {ok:false, code (csv_profile_unknown|csv_invalid|account_unknown|account_ambiguous|not_bookable|stale_preview), reason}.
+--   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|stale_preview), reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_replace_takeover_with_lots(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -58,7 +58,7 @@ DECLARE
     v_pl       JSONB;
     v_fp       TEXT;
 BEGIN
-    v_norm := finance.fn_broker_csv_normalize(COALESCE(p->'csv', '{}'::jsonb));
+    v_norm := finance.fn_bank_export_normalize(COALESCE(p->'table', '{}'::jsonb));
     IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_norm;
     END IF;

@@ -18,14 +18,21 @@
 --         Namens-Token des Dauerauftrags (>= 4 Zeichen) im Zeilentext steht, +-5 % (mind. 2,00).
 --   Zuordnung gierig in fester Ordnung (Stufe -> |Betragsabweichung| -> |Tage| -> Zeile -> Kandidat): jede Zeile und
 --   jeder Kandidat hoechstens einmal (Muster YNAB/Actual: gleiche Betraege am selben Tag werden so stabil verteilt).
---   Broker-CSV (Paket B): Zeilen mit kind (fn_broker_csv_normalize) treffen nur passende Kandidaten: buy nur einen
+--   Bank-Export-Datei: Zeilen mit kind (fn_bank_export_normalize) treffen nur passende Kandidaten: buy nur einen
 --   Sparplan bzw. gebuchten Kauf DERSELBEN Position (ISIN, Krypto per Symbol), cash/fee nie einen Sparplan oder Kauf,
 --   interest den Zins ohne Textsuche, sell/dividend/tax/corporate/unknown nichts (die Prepare behandelt sie selbst).
 --   Gedruckter Auszug = kind NULL = Verhalten wie zuvor.
+--   Bank-Import-Modul (Transfers zwischen eigenen Konten, beide Import-Reihenfolgen):
+--     0 (Gruppe, ckey 'g:') = schon gebuchter Ad-hoc-Transfer dieses Kontos (von Hand oder aus dem Auszug des
+--         Partnerkontos): Gruppe nur aus transfer/fee-Beinen ohne Dauerauftrag/Zins, mit Bein auf einem anderen Konto;
+--         Summe der Gruppen-Beine auf DIESEM Konto = Zeilenbetrag, +-5 Tage (Dauerauftrags-Transfers bleiben 't:').
+--     T = Gegen-IBAN = Kontonummer eines anderen aktiven eigenen Kontos, kein Dauerauftrag getroffen -> neuer Transfer
+--         (other_account_id; Buchbarkeit/Abgleich/pending_pair prueft die Prepare).
 --   Lernen: ein Treffer eines Nicht-Transfer-Dauerauftrags schlaegt die Schluessel der Zeile vor, die die Kette noch
 --   nicht hat (learn_mandate / learn_iban; gespeichert erst beim Buchen).
---   RUECKGABE: {matched:[{line_idx, stage, kind (recurring|interest|booked), recurring_payment_id, due_date,
---   interest_period_end, transaction_id, tx_date, line_date, amount, expected, name, side, learn_mandate, learn_iban}],
+--   RUECKGABE: {matched:[{line_idx, stage, kind (recurring|interest|booked|transfer), recurring_payment_id, due_date,
+--   interest_period_end, transaction_id, group_id ('g:'-Treffer), other_account_id (Stufe T), tx_date, line_date, amount,
+--   expected, name, side, learn_mandate, learn_iban}],
 --   unmatched:[line_idx], unmatched_out, unmatched_in}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_statement_match(p_account_id int, p_cut date, p_period_end date, p_lines jsonb)
@@ -77,7 +84,8 @@ BEGIN
         SELECT l.idx, '0'::text AS stage, 'booked' AS kind, 't:' || t.id AS ckey, t.recurring_payment_id AS rp_id,
                t.recurring_due_date AS due, t.interest_period_end AS ipe, t.id AS tx_id, l.d, l.amt, t.amount AS expected,
                COALESCE(r.name, t.description) AS name, NULL::text AS side, abs(l.d - t.transaction_date) AS ddiff,
-               NULL::text AS learn_mandate, NULL::text AS learn_iban, t.transaction_date AS tx_date
+               NULL::text AS learn_mandate, NULL::text AS learn_iban, t.transaction_date AS tx_date,
+               NULL::uuid AS group_id, NULL::int AS other_id
         FROM lines l
         JOIN finance.transactions t ON t.account_id = p_account_id
              AND (t.recurring_payment_id IS NOT NULL OR t.interest_period_end IS NOT NULL)
@@ -105,7 +113,7 @@ BEGIN
                         SELECT 1 FROM finance.recurring_payment_keys k
                         WHERE k.key_type = 'counterparty_iban' AND k.key_value = l.iban
                           AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id))) THEN l.iban END,
-               NULL::date
+               NULL::date, NULL::uuid, NULL::int
         FROM lines l
         CROSS JOIN occ o
         CROSS JOIN LATERAL (
@@ -141,23 +149,48 @@ BEGIN
         -- Zins-Vorkommen (Stufe B, nur Zeilen mit "zins")
         SELECT l.idx, 'B'::text, 'interest', 'i:' || i.period_end, NULL::int, NULL::date, i.period_end, NULL::int, l.d, l.amt,
                finance.fn_interest_amount_due(p_account_id, i.period_end), 'interest', NULL, abs(l.d - i.value_date),
-               NULL, NULL, NULL::date
+               NULL, NULL, NULL::date, NULL::uuid, NULL::int
         FROM lines l
         JOIN finance.fn_interest_due_open(p_period_end + 5) i ON i.account_id = p_account_id
         WHERE l.amt > 0 AND (l.kind = 'interest' OR (l.kind IS NULL AND l.txt LIKE '%zins%'))
           AND (l.d - i.value_date) BETWEEN -5 AND 10
           AND abs(l.amt - finance.fn_interest_amount_due(p_account_id, i.period_end))
               <= GREATEST(finance.fn_interest_amount_due(p_account_id, i.period_end) * 0.05, 0.10)
+        UNION ALL
+        -- Stufe 0 (Gruppe): schon gebuchter Ad-hoc-Transfer (von Hand oder aus dem Auszug des Partnerkontos)
+        SELECT l.idx, '0'::text, 'booked', 'g:' || g.group_id, NULL::int, NULL::date, NULL::date, g.tx_id, l.d, l.amt, g.amt,
+               g.name, NULL::text, abs(l.d - g.tx_date), NULL::text, NULL::text, g.tx_date, g.group_id, NULL::int
+        FROM lines l
+        JOIN (SELECT t.group_id, sum(t.amount) AS amt, min(t.id) AS tx_id, min(t.transaction_date) AS tx_date,
+                     min(t.description) AS name
+              FROM finance.transactions t
+              WHERE t.account_id = p_account_id AND t.group_id IS NOT NULL
+                AND t.transaction_date > p_cut AND t.transaction_date <= p_period_end + 5
+              GROUP BY t.group_id) g ON g.amt = l.amt AND abs(l.d - g.tx_date) <= 5
+        WHERE (l.kind IS NULL OR l.kind IN ('cash', 'fee'))
+          AND NOT EXISTS (SELECT 1 FROM finance.transactions x WHERE x.group_id = g.group_id
+                          AND (x.category::text NOT IN ('transfer', 'fee') OR x.recurring_payment_id IS NOT NULL
+                               OR x.interest_period_end IS NOT NULL))
+          AND EXISTS (SELECT 1 FROM finance.transactions x WHERE x.group_id = g.group_id AND x.account_id <> p_account_id)
+        UNION ALL
+        -- Stufe T: Gegen-IBAN = Kontonummer eines anderen aktiven eigenen Kontos -> neuer Transfer
+        SELECT l.idx, 'T'::text, 'transfer', 'x:' || l.idx, NULL::int, NULL::date, NULL::date, NULL::int, l.d, l.amt, l.amt,
+               a.name, CASE WHEN l.amt < 0 THEN 'source' ELSE 'target' END, 0, NULL::text, NULL::text, NULL::date,
+               NULL::uuid, a.id
+        FROM lines l
+        JOIN finance.accounts a ON a.account_number = l.iban AND a.status = 'active' AND a.id <> p_account_id
+        WHERE l.amt <> 0 AND (l.kind IS NULL OR l.kind = 'cash')
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
                'line_idx', p.idx, 'stage', p.stage::text, 'kind', p.kind, 'ckey', p.ckey,
                'recurring_payment_id', p.rp_id, 'due_date', p.due, 'interest_period_end', p.ipe,
-               'transaction_id', p.tx_id, 'tx_date', p.tx_date, 'line_date', p.d, 'amount', p.amt, 'expected', round(p.expected, 2),
+               'transaction_id', p.tx_id, 'group_id', p.group_id, 'other_account_id', p.other_id,
+               'tx_date', p.tx_date, 'line_date', p.d, 'amount', p.amt, 'expected', round(p.expected, 2),
                'name', p.name, 'side', p.side, 'learn_mandate', p.learn_mandate, 'learn_iban', p.learn_iban)
              ORDER BY p.stage::text, abs(p.amt - p.expected), p.ddiff, p.idx, p.ckey), '[]'::jsonb)
     INTO v_pairs
     FROM (SELECT idx, stage::text AS stage, kind, ckey, rp_id, due, ipe, tx_id, d, amt, expected, name, side, ddiff,
-                 learn_mandate, learn_iban, tx_date FROM pairs) p;
+                 learn_mandate, learn_iban, tx_date, group_id, other_id FROM pairs) p;
 
     FOR v_pair IN SELECT e FROM jsonb_array_elements(v_pairs) e LOOP
         CONTINUE WHEN (v_pair->>'line_idx')::int = ANY(v_used_lines) OR (v_pair->>'ckey') = ANY(v_used_cands);

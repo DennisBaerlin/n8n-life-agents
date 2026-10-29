@@ -1,6 +1,6 @@
 -- ============================================================
 -- test_bank_statement_csv -- Monats-Check aus dem Broker-CSV-Export (Paket B)
---   fn_statement_prepare (source:'csv') + fn_apply_bank_statement + fn_statement_match (kind-Filter).
+--   fn_statement_prepare (source:'file', Bank-Export-Datei) + fn_apply_bank_statement + fn_statement_match (kind-Filter).
 --   Werte erfunden, Daten relativ zu core.fn_today(). Szenario: TR-Cashkonto mit Startsaldo 1000 (Stichtag heute-20),
 --   Depot daran, Bestandsuebernahme ALT (10 Stueck, heute-12), Sparplan SPX (50/Monat, Faelligkeit im Zeitraum).
 --   Export: Einzahlung +200 (netto), Sparplan-Kauf 0.6 Stueck, Kauf NEU (neue Position), Kauf ALT vor der Uebernahme
@@ -67,18 +67,18 @@ BEGIN
         pg_temp.tr_row(T - 1, 'TRADING', 'SELL', 'FUND', 'Sparplan ETF', 'IE00TESTSP01', '-0.5000000000', '90.000000', '45.00', '-1.00', '', 'id-15'));
     -- Zeitraum-Summe: 200 - 50 - 41 + 3.75 + 58.50 (Verkauf netto nach Steuer) - 30 - 2 - 32 - 91 - 20 + 44 = 40.25
     -- -> Stand gestern 1040.25, heute -10 -> 1030.25 (deutsch geschrieben wie vom Nutzer genannt)
-    v_p := jsonb_build_object('source', 'csv', 'account_name', '__t_bc_tr__', 'closing_balance', '1.030,25',
-                              'csv', jsonb_build_object('header', v_hdr, 'rows', v_rows));
+    v_p := jsonb_build_object('source', 'file', 'account_name', '__t_bc_tr__', 'closing_balance', '1.030,25',
+                              'table', jsonb_build_object('rows', jsonb_build_array(v_hdr) || v_rows));
 
     -- ---------- Ablehnungen ohne Karte ----------
     v_res := finance.fn_statement_prepare(v_p - 'closing_balance');
     IF v_res->>'code' IS DISTINCT FROM 'closing_balance_required' OR v_res ? 'card_lines' THEN
         RAISE EXCEPTION 'FAIL [C1 Owner-Saldo Pflicht]: %', v_res;
     END IF;
-    v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('csv', jsonb_build_object('header', '["a","b"]'::jsonb, 'rows', '[]'::jsonb)));
-    IF v_res->>'code' IS DISTINCT FROM 'csv_profile_unknown' THEN RAISE EXCEPTION 'FAIL [C2 fremdes Profil]: %', v_res; END IF;
-    v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('csv', jsonb_build_object('header', v_hdr,
-                 'rows', v_rows || jsonb_build_array(jsonb_set(v_rows->0, '{2}', '"JUNIOR"')))));
+    v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('table', jsonb_build_object('rows', '[["a","b"]]'::jsonb)));
+    IF v_res->>'code' IS DISTINCT FROM 'export_profile_unknown' THEN RAISE EXCEPTION 'FAIL [C2 fremdes Profil]: %', v_res; END IF;
+    v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('table', jsonb_build_object(
+                 'rows', jsonb_build_array(v_hdr) || v_rows || jsonb_build_array(jsonb_set(v_rows->0, '{2}', '"JUNIOR"')))));
     IF v_res->>'code' IS DISTINCT FROM 'multiple_sub_accounts' THEN RAISE EXCEPTION 'FAIL [C3 Unterkonten]: %', v_res; END IF;
     PERFORM finance.fn_create_account('{"name":"__t_bc_nostart__","account_type":"cash","currency":"EUR"}'::jsonb);
     v_res := finance.fn_statement_prepare(v_p || '{"account_name":"__t_bc_nostart__"}'::jsonb);
@@ -114,8 +114,8 @@ BEGIN
        OR v_prep->'trades_blocked'->1->>'reason' <> 'security_unknown' OR (v_prep->'trades_blocked'->1->>'amount')::numeric <> -20 THEN
         RAISE EXCEPTION 'FAIL [C11 covered_by_takeover + Krypto ohne Krypto-Depot]: %', v_prep->'trades_blocked';
     END IF;
-    IF jsonb_array_length(v_prep->'csv_unknown') <> 1 OR (v_prep->'csv_unknown'->0->>'cash_amount')::numeric <> -2 THEN
-        RAISE EXCEPTION 'FAIL [C12 csv_unknown]: %', v_prep->'csv_unknown';
+    IF jsonb_array_length(v_prep->'export_unknown') <> 1 OR (v_prep->'export_unknown'->0->>'cash_amount')::numeric <> -2 THEN
+        RAISE EXCEPTION 'FAIL [C12 export_unknown]: %', v_prep->'export_unknown';
     END IF;
     IF jsonb_array_length(v_prep->'seen_refs') <> 11 OR (v_prep->>'late_count')::int <> 0 THEN
         RAISE EXCEPTION 'FAIL [C13 seen_refs/late]: %', v_prep->'seen_refs';
@@ -163,7 +163,7 @@ BEGIN
     UPDATE finance.transactions SET transaction_date = T - 4
     WHERE holding_id = v_old AND category::text = 'buy' AND shares = 1 AND bank_statement_id = (v_app->>'statement_id')::int;
     v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('closing_balance', 1025.25,
-                 'csv', jsonb_build_object('header', v_hdr, 'rows', v_rows || jsonb_build_array(
+                 'table', jsonb_build_object('rows', jsonb_build_array(v_hdr) || v_rows || jsonb_build_array(
                      pg_temp.tr_row(T - 7, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-5.000000', '', '', 'id-13', 'Spaet')))));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'late_count')::int <> 1 THEN
         RAISE EXCEPTION 'FAIL [C20 spaete Zeile]: %', v_res;

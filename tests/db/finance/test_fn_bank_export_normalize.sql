@@ -1,10 +1,11 @@
 -- ============================================================
--- test_fn_broker_csv_normalize -- Golden-File je Profil (Broker-CSV Paket B)
---   finance.fn_broker_csv_normalize / fn_broker_csv_profiles / fn_broker_csv_account_profile.
+-- test_fn_bank_export_normalize -- Golden-File je Profil (Bank-Import-Modul; TR aus Broker-CSV Paket B)
+--   finance.fn_bank_export_normalize (Dispatcher) / fn_bank_export_profiles / fn_bank_export_account_profile.
 --   Fixture = Trade-Republic-Spaltenform (nach den Portfolio-Performance-Fixtures TransactionExport01..06), Werte
---   frei erfunden. Deckt: Profil-Erkennung per Header, Cash-Wirkung amount+fee+tax, Kauf/Verkauf (Stueck als Betrag),
---   Krypto ohne ISIN, Dividende netto, Dividenden-Korrektur -> unknown, unbekannter Typ -> unknown_rows (nie still
---   verworfen), date vor datetime, Leerzeile, unlesbare Zahl -> csv_invalid, fremder Header -> csv_profile_unknown.
+--   frei erfunden. Deckt: Profil-Erkennung per Kopfzeile (auch hinter einem Vorspann), Cash-Wirkung amount+fee+tax,
+--   Kauf/Verkauf (Stueck als Betrag), Krypto ohne ISIN, Dividende netto, Dividenden-Korrektur -> unknown, unbekannter Typ
+--   -> unknown_rows (nie still verworfen), date vor datetime, Leerzeile, unlesbare Zahl -> export_invalid, fremder
+--   Header -> export_profile_unknown.
 -- ============================================================
 BEGIN;
 DO $$
@@ -38,7 +39,7 @@ DECLARE
     v_r   JSONB;
     v_acct INT;
 BEGIN
-    v_res := finance.fn_broker_csv_normalize(jsonb_build_object('header', v_hdr, 'rows', v_rows));
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows', jsonb_build_array(v_hdr) || v_rows));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->>'profile' IS DISTINCT FROM 'trade_republic_v1' THEN
         RAISE EXCEPTION 'FAIL [N1 Profil erkannt]: %', v_res;
     END IF;
@@ -47,11 +48,11 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [N1/N2 Profil + Zeilen]';
 
-    -- die eine Adresse "welche Bank kann CSV": Trade Republic mit seinen Pflichtspalten
-    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(finance.fn_broker_csv_profiles()) pr
+    -- die eine Adresse "welche Bank kann Datei-Import": Trade Republic mit seinen Pflichtspalten
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(finance.fn_bank_export_profiles()) pr
                    WHERE pr->>'key' = 'trade_republic_v1' AND pr->>'bank' = 'Trade Republic'
                      AND pr->'required' = '["datetime","category","type","amount","currency"]'::jsonb) THEN
-        RAISE EXCEPTION 'FAIL [N0 fn_broker_csv_profiles]: %', finance.fn_broker_csv_profiles();
+        RAISE EXCEPTION 'FAIL [N0 fn_bank_export_profiles]: %', finance.fn_bank_export_profiles();
     END IF;
 
     SELECT r INTO v_r FROM jsonb_array_elements(v_res->'rows') r WHERE (r->>'row_no')::int = 2;
@@ -107,34 +108,41 @@ BEGIN
     RAISE NOTICE 'PASS [N3-N13 Zuordnung]';
 
     -- Semikolon-Variante liefert der Tokenizer gleich; Gross-/Kleinschreibung + BOM im Header egal
-    v_res := finance.fn_broker_csv_normalize(jsonb_build_object(
-        'header', '["﻿Datetime","Category","Type","Amount","Currency"]'::jsonb,
-        'rows', '[["2026-09-02T08:00:00Z","CASH","TRANSFER_IN","5.00","EUR"]]'::jsonb));
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows',
+        '[["﻿Datetime","Category","Type","Amount","Currency"],["2026-09-02T08:00:00Z","CASH","TRANSFER_IN","5.00","EUR"]]'::jsonb));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true
        OR (v_res->'rows'->0->>'date')::date <> DATE '2026-09-02' OR (v_res->'rows'->0->>'cash_amount')::numeric <> 5 THEN
         RAISE EXCEPTION 'FAIL [N14 Mindest-Header, BOM, datetime-Datum]: %', v_res;
     END IF;
     RAISE NOTICE 'PASS [N14 Mindest-Header]';
 
-    v_res := finance.fn_broker_csv_normalize(jsonb_build_object('header', '["Buchungstag","Betrag"]'::jsonb,
-                 'rows', '[["01.09.2026","1,00"]]'::jsonb));
-    IF v_res->>'code' IS DISTINCT FROM 'csv_profile_unknown' THEN
+    -- Kopfzeile hinter einem Vorspann (Bondora-Form: Titel + Leerzeile): Zeilennummern bleiben Datei-Zeilen
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows',
+        '[["Kontoauszug Test"],["",""],["datetime","category","type","amount","currency"],["2026-09-02T08:00:00Z","CASH","TRANSFER_IN","5.00","EUR"]]'::jsonb));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->>'profile' <> 'trade_republic_v1'
+       OR (v_res->'rows'->0->>'row_no')::int <> 4 THEN
+        RAISE EXCEPTION 'FAIL [N19 Kopfzeile hinter Vorspann]: %', v_res;
+    END IF;
+    RAISE NOTICE 'PASS [N19 Vorspann]';
+
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows', '[["Buchungstag","Betrag"],["01.09.2026","1,00"]]'::jsonb));
+    IF v_res->>'code' IS DISTINCT FROM 'export_profile_unknown' THEN
         RAISE EXCEPTION 'FAIL [N15 fremder Header]: %', v_res;
     END IF;
-    v_res := finance.fn_broker_csv_normalize(jsonb_build_object('header', v_hdr,
-                 'rows', jsonb_build_array(jsonb_set(v_rows->0, '{10}', '"1,234.50"'))));
-    IF v_res->>'code' IS DISTINCT FROM 'csv_invalid' OR (v_res->>'row_no')::int <> 2 THEN
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows',
+                 jsonb_build_array(v_hdr, jsonb_set(v_rows->0, '{10}', '"1,234.50"'))));
+    IF v_res->>'code' IS DISTINCT FROM 'export_invalid' OR (v_res->>'row_no')::int <> 2 THEN
         RAISE EXCEPTION 'FAIL [N16 unlesbare Zahl]: %', v_res;
     END IF;
     RAISE NOTICE 'PASS [N15/N16 Ablehnungen]';
 
     -- Konto -> Profil (Bank-Name, sonst Konto-Name)
     v_acct := (finance.fn_create_account('{"name":"__t_csv_tr__","account_type":"cash","currency":"EUR","bank":"Trade Republic Bank"}'::jsonb)->>'account_id')::int;
-    IF finance.fn_broker_csv_account_profile(v_acct) IS DISTINCT FROM 'trade_republic_v1' THEN
+    IF finance.fn_bank_export_account_profile(v_acct) IS DISTINCT FROM 'trade_republic_v1' THEN
         RAISE EXCEPTION 'FAIL [N17 Konto-Profil per Bank]';
     END IF;
     v_acct := (finance.fn_create_account('{"name":"__t_csv_giro__","account_type":"cash","currency":"EUR","bank":"Testbank"}'::jsonb)->>'account_id')::int;
-    IF finance.fn_broker_csv_account_profile(v_acct) IS NOT NULL THEN
+    IF finance.fn_bank_export_account_profile(v_acct) IS NOT NULL THEN
         RAISE EXCEPTION 'FAIL [N18 andere Bank ohne Profil]';
     END IF;
     RAISE NOTICE 'PASS [N17/N18 Konto-Profil]';

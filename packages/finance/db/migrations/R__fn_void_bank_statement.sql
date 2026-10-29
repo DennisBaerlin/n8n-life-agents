@@ -6,8 +6,12 @@
 --   (learned_key_ids), den Abgleichsstand davor (prev_last_reconciled_*) und das Aggregat selbst (gibt den Zeitraum
 --   fuer ein erneutes Einspielen frei). Bewusst NICHT: eine gelernte Kontonummer und Plan-Anpassungen (eigene
 --   Stammdaten-Aenderungen; Korrektur ueber set_account / set_recurring_payment).
+--   Void-Schutz: liegt ein Transfer-Bein dieses Auszugs auf einem anderen Konto, das an dessen Datum schon abgeglichen
+--   ist (dessen Auszug kam danach), -> {ok:false, code:'partner_reconciled', account} ohne Write (erst dort zuruecknehmen).
+--   Eine Bein-Verschiebung an der Monatsgrenze (moved_legs) bleibt bestehen (Datum innerhalb der eigenen Gruppe).
 --   Eingabe jsonb: account_id.
---   RUECKGABE: {ok:true, voided_tx_count, period_start, period_end, restored_last_reconciled_at} | {ok:false, reason}
+--   RUECKGABE: {ok:true, voided_tx_count, period_start, period_end, restored_last_reconciled_at}
+--   | {ok:false, code?, account?, reason}
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_void_bank_statement(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -18,6 +22,7 @@ DECLARE
     v_tx    INT;
     v_r     JSONB;
     v_n     INT := 0;
+    v_partner TEXT;
 BEGIN
     PERFORM 1 FROM finance.account_balances WHERE account_id = v_acct FOR UPDATE;
     SELECT * INTO v_s FROM finance.bank_statements WHERE account_id = v_acct ORDER BY period_end DESC LIMIT 1;
@@ -29,6 +34,19 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'The balance was confirmed again after this statement (on ' || v_last
                    || '); the statement can no longer be taken back on its own.');
+    END IF;
+    -- Void-Schutz (Bank-Import-Modul): ein Transfer-Bein dieses Auszugs auf einem ANDEREN Konto, das an dessen Datum
+    -- schon abgeglichen ist, steckt in dessen bestaetigtem Stand -> Loeschen wuerde ihn still falsch machen.
+    SELECT a.name INTO v_partner
+    FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id
+    WHERE t.account_id <> v_acct
+      AND t.bank_statement_id = v_s.id   -- apply stempelt jedes Bein seiner Gruppen
+      AND finance.fn_reconciled_reason(t.account_id, t.transaction_date) IS NOT NULL
+    ORDER BY a.name LIMIT 1;
+    IF v_partner IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'partner_reconciled', 'account', v_partner,
+            'reason', 'This statement booked a transfer with "' || v_partner || '", whose balance was confirmed afterwards - '
+                   || 'take back the latest statement of "' || v_partner || '" first.');
     END IF;
 
     BEGIN

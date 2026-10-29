@@ -138,7 +138,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const item = items[0];\nconst res = (o) =\u003e [{ json: Object.assign({ ok: false, b64: \u0027\u0027, mime: \u0027\u0027, text: \u0027\u0027, error: \u0027\u0027 }, o) }];\nconst meta = item.binary \u0026\u0026 item.binary.data ? item.binary.data : null;\nif (!meta) return res({ error: \u0027no binary file received from Telegram\u0027 });\nconst buf = await this.helpers.getBinaryDataBuffer(0, \u0027data\u0027);\nif (!buf || !buf.length) return res({ error: \u0027empty file\u0027 });\nif (buf.length \u003e 10 * 1024 * 1024) return res({ error: \u0027file too large (max 10 MB)\u0027 });\nconst mime = meta.mimeType || \u0027image/jpeg\u0027;\nconst accept = String($(\u0027Start\u0027).first().json.accept || \u0027\u0027).toLowerCase();\nconst ext = String(meta.fileExtension || (meta.fileName || \u0027\u0027).split(\u0027.\u0027).pop() || \u0027\u0027).toLowerCase();\nconst csvMimes = [\u0027text/csv\u0027, \u0027text/comma-separated-values\u0027, \u0027text/plain\u0027, \u0027application/vnd.ms-excel\u0027, \u0027application/octet-stream\u0027];\nif (accept === \u0027csv\u0027 \u0026\u0026 ext === \u0027csv\u0027 \u0026\u0026 csvMimes.includes(mime)) {\n  if (buf.includes(0)) return res({ error: \u0027the CSV file is not a text file\u0027 });\n  return res({ ok: true, mime: \u0027text/csv\u0027, text: buf.toString(\u0027utf8\u0027).replace(/^﻿/, \u0027\u0027) });\n}\n// ohne accept=csv: CSV als Fehler, aber mit mime text/csv -\u003e der Konsument kann auf seinen CSV-Weg verweisen\nif (ext === \u0027csv\u0027) return res({ mime: \u0027text/csv\u0027, error: \u0027this is a CSV file, not a photo or PDF\u0027 });\nif (mime === \u0027image/heic\u0027 || mime === \u0027image/heif\u0027) return res({ error: \u0027HEIC/HEIF images are not supported - ask the user to send it as a normal photo (JPG/PNG) or as PDF\u0027 });\nconst allowed = [\u0027image/jpeg\u0027,\u0027image/png\u0027,\u0027image/webp\u0027,\u0027image/gif\u0027,\u0027application/pdf\u0027];\nif (!allowed.includes(mime)) return res({ error: \u0027unsupported file type \u0027 + mime + (accept === \u0027csv\u0027 ? \u0027 (send the CSV export file)\u0027 : \u0027 (send a photo or PDF)\u0027) });\nif (mime !== \u0027application/pdf\u0027 \u0026\u0026 Math.ceil(buf.length / 3) * 4 \u003e 5 * 1024 * 1024) return res({ error: \u0027image too large (max 5 MB) - ask the user to send a smaller photo or a PDF\u0027 });\nreturn res({ ok: true, b64: buf.toString(\u0027base64\u0027), mime });"
+                                         "jsCode":  "const item = items[0];\nconst res = (o, bin) =\u003e [Object.assign({ json: Object.assign({ ok: false, b64: \u0027\u0027, mime: \u0027\u0027, text: \u0027\u0027, rows: [], error: \u0027\u0027 }, o) }, bin ? { binary: bin } : {})];\nconst XLSX = \u0027application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\u0027;\nconst meta = item.binary \u0026\u0026 item.binary.data ? item.binary.data : null;\nif (!meta) return res({ error: \u0027no binary file received from Telegram\u0027 });\nconst buf = await this.helpers.getBinaryDataBuffer(0, \u0027data\u0027);\nif (!buf || !buf.length) return res({ error: \u0027empty file\u0027 });\nif (buf.length \u003e 10 * 1024 * 1024) return res({ error: \u0027file too large (max 10 MB)\u0027 });\nconst mime = meta.mimeType || \u0027image/jpeg\u0027;\nconst accept = String($(\u0027Start\u0027).first().json.accept || \u0027\u0027).toLowerCase();\nconst ext = String(meta.fileExtension || (meta.fileName || \u0027\u0027).split(\u0027.\u0027).pop() || \u0027\u0027).toLowerCase();\nconst csvMimes = [\u0027text/csv\u0027, \u0027text/comma-separated-values\u0027, \u0027text/plain\u0027, \u0027application/vnd.ms-excel\u0027, \u0027application/octet-stream\u0027];\nif (accept === \u0027table\u0027 \u0026\u0026 ext === \u0027csv\u0027 \u0026\u0026 csvMimes.includes(mime)) {\n  if (buf.includes(0)) return res({ error: \u0027the CSV file is not a text file\u0027 });\n  return res({ ok: true, mime: \u0027text/csv\u0027, text: buf.toString(\u0027utf8\u0027).replace(/^﻿/, \u0027\u0027) });\n}\nif (accept === \u0027table\u0027 \u0026\u0026 ext === \u0027xlsx\u0027) {\n  if (buf[0] !== 0x50 || buf[1] !== 0x4B) return res({ error: \u0027the Excel file is damaged (not an .xlsx workbook)\u0027 });\n  return res({ ok: true, mime: XLSX, sheet: true }, item.binary);\n}\nif (accept === \u0027table\u0027 \u0026\u0026 ext === \u0027xls\u0027) return res({ error: \u0027old Excel format (.xls) - ask the user to export the file as .xlsx or CSV\u0027 });\n// ohne accept=table: Tabellen-Datei als Fehler, aber mit ihrem mime -\u003e der Konsument kann auf den Export-Weg verweisen\nif (ext === \u0027csv\u0027) return res({ mime: \u0027text/csv\u0027, error: \u0027this is a CSV file, not a photo or PDF\u0027 });\nif (ext === \u0027xlsx\u0027 || ext === \u0027xls\u0027) return res({ mime: XLSX, error: \u0027this is an Excel file, not a photo or PDF\u0027 });\nif (mime === \u0027image/heic\u0027 || mime === \u0027image/heif\u0027) return res({ error: \u0027HEIC/HEIF images are not supported - ask the user to send it as a normal photo (JPG/PNG) or as PDF\u0027 });\nconst allowed = [\u0027image/jpeg\u0027,\u0027image/png\u0027,\u0027image/webp\u0027,\u0027image/gif\u0027,\u0027application/pdf\u0027];\nif (!allowed.includes(mime)) return res({ error: \u0027unsupported file type \u0027 + mime + (accept === \u0027table\u0027 ? \u0027 (send the export file: CSV or Excel)\u0027 : \u0027 (send a photo or PDF)\u0027) });\nif (mime !== \u0027application/pdf\u0027 \u0026\u0026 Math.ceil(buf.length / 3) * 4 \u003e 5 * 1024 * 1024) return res({ error: \u0027image too large (max 5 MB) - ask the user to send a smaller photo or a PDF\u0027 });\nreturn res({ ok: true, b64: buf.toString(\u0027base64\u0027), mime });"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -148,6 +148,73 @@
                                    ],
                       "id":  "daf9e0bd-0326-505c-95df-8536d9b12538",
                       "name":  "To base64"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "9b50ec3d-2444-5152-803a-681e3ea04ced",
+                                                                                   "leftValue":  "={{ $json.sheet === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       240,
+                                       60
+                                   ],
+                      "id":  "847e344f-293a-5393-b872-97e40ad19927",
+                      "name":  "Spreadsheet?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "xlsx",
+                                         "binaryPropertyName":  "data",
+                                         "options":  {
+                                                         "headerRow":  false,
+                                                         "includeEmptyCells":  true
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.extractFromFile",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       460,
+                                       160
+                                   ],
+                      "id":  "04587f17-0497-5083-bfc3-7327215473a5",
+                      "name":  "Read sheet",
+                      "alwaysOutputData":  true,
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const XLSX = \u0027application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\u0027;\nconst all = $input.all();\nconst out = (ok, rows, error) =\u003e [{ json: { ok, b64: \u0027\u0027, mime: XLSX, text: \u0027\u0027, rows, error } }];\nif (all.some((i) =\u003e i.json \u0026\u0026 i.json.error)) return out(false, [], \u0027the Excel file could not be read\u0027);\nconst rows = all.map((i) =\u003e i.json.row).filter((r) =\u003e Array.isArray(r));\nif (!rows.length) return out(false, [], \u0027the Excel file has no rows on its first sheet\u0027);\nreturn out(true, rows, \u0027\u0027);"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       680,
+                                       100
+                                   ],
+                      "id":  "b4959194-b278-5a36-bfe6-7a3f4ae23a87",
+                      "name":  "Collect rows"
                   },
                   {
                       "parameters":  {
@@ -179,6 +246,12 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "d932c80e-b7d4-5169-b29d-79ce2fbbd058",
+                                                                                     "name":  "rows",
+                                                                                     "value":  "={{ $json.rows || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7281924a-3396-5d26-bd72-ce0bf271dad0",
                                                                                      "name":  "error",
                                                                                      "value":  "={{ $json.error }}",
                                                                                      "type":  "string"
@@ -192,7 +265,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       240,
+                                       900,
                                        0
                                    ],
                       "id":  "5d233369-20cb-53da-8dd3-a524379e41e4",
@@ -200,7 +273,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.tool_fetch_telegram_file (Baustein, KEIN LLM)**\n\nEingang file_id (Telegram Foto ODER Dokument/PDF) -\u003e Get document (Download, resource=file) -\u003e To base64 (Binär-Validierung: Größe \u003c=10 MB, Bilder \u003c=5 MB als base64 (~3,75 MB roh), MIME jpeg/png/webp/gif + application/pdf — die Grenzen der Claude-Vision; HEIC/HEIF freundlich abgelehnt; mit accept=csv zusätzlich eine Datei mit Endung .csv als Text, BOM entfernt) -\u003e Return { ok, b64, mime, text, error } (text nur bei CSV, sonst leer). Leere file_id / unbrauchbare Datei -\u003e { ok:false, error } als DATEN (inline-konsumiert, KEIN Tool-Error). REINES PLUMBING: keine Vision, kein LLM, kein API-Key -- die Bezahl-API-/Vision-Privacy lebt im Finanz-Konsumenten (tool_extract_finance_document). DUAL-USE: inline per executeWorkflow ODER als Agent-Tool bindbar.",
+                                         "content":  "## Ablauf\n**agent.tool_fetch_telegram_file (Baustein, KEIN LLM)**\n\nEingang file_id (Telegram Foto ODER Dokument/PDF) -\u003e Get document (Download, resource=file) -\u003e To base64 (Binär-Validierung: Größe \u003c=10 MB, Bilder \u003c=5 MB als base64 (~3,75 MB roh), MIME jpeg/png/webp/gif + application/pdf — die Grenzen der Claude-Vision; HEIC/HEIF freundlich abgelehnt; mit accept=table zusätzlich .csv als Text (BOM entfernt) und .xlsx als Raster) -\u003e Return { ok, b64, mime, text, rows, error } (text nur bei CSV, rows nur bei Excel). Leere file_id / unbrauchbare Datei -\u003e { ok:false, error } als DATEN (inline-konsumiert, KEIN Tool-Error). REINES PLUMBING: keine Vision, kein LLM, kein API-Key -- die Bezahl-API-/Vision-Privacy lebt im Finanz-Konsumenten (tool_extract_finance_document). DUAL-USE: inline per executeWorkflow ODER als Agent-Tool bindbar.",
                                          "height":  300,
                                          "width":  560,
                                          "color":  4
@@ -213,6 +286,22 @@
                                    ],
                       "id":  "7b5584b9-9a55-5f0d-95e0-e4ea9ebe0e17",
                       "name":  "Doc: Telegram-Datei holen"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**xlsx -\u003e Raster (nur accept=table)**\n\nTo base64 prüft Endung + ZIP-Kennung und reicht das Binary mit sheet:true weiter. Read sheet (Extract From File, erstes Blatt, headerRow aus, leere Zellen als leerer Text) liefert je Zeile ein Item; Collect rows fasst sie zu EINEM Rückgabe-Item rows[][] zusammen. Die Bedeutung (Kopfzeile, Bank) kennt dieser Baustein nicht, die erkennt der Konsument. Kaputte Datei oder leeres Blatt -\u003e Collect rows liefert ok:false als Daten (ein Ausgang, nie zwei Rückgaben).",
+                                         "height":  400,
+                                         "width":  260,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       240,
+                                       320
+                                   ],
+                      "id":  "9d183f9f-ffee-5118-b2b6-26b7dfc590b8",
+                      "name":  "Excel-Zweig"
                   }
               ],
     "connections":  {
@@ -261,12 +350,52 @@
                                                        [
                                                            {
                                                                "index":  0,
-                                                               "node":  "Return",
+                                                               "node":  "Spreadsheet?",
                                                                "type":  "main"
                                                            }
                                                        ]
                                                    ]
                                       },
+                        "Spreadsheet?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Read sheet",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Return",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Read sheet":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Collect rows",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Collect rows":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Return",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
                         "No file id":  {
                                            "main":  [
                                                         [

@@ -33,21 +33,28 @@
 --   (fn_create_account opening_balance + opening_balance_date; derselbe Auszug ist danach already_covered).
 --   codes: invalid_statement, account_unknown (+candidates), account_ambiguous, not_bookable, currency_mismatch,
 --   period_in_future, already_covered, already_imported, balance_check_failed (+difference).
---   BROKER-CSV (source:'csv', Paket B): Eingabe {source, account_name, closing_balance = Kontostand laut Bank-App JETZT
---   (Pflicht), csv:{header, rows} = Tokenizer-Ausgabe}. fn_broker_csv_normalize liest den Export (kein LLM); Zeitraum =
+--   BANK-EXPORT-DATEI (source:'file', Bank-Import-Modul): Eingabe {source, account_name, closing_balance = Kontostand laut App JETZT
+--   (Pflicht), table:{rows} = Raster des Lesers}. fn_bank_export_normalize liest den Export (kein LLM); Zeitraum =
 --   Schnitt+1 bis gestern (Schnitt = last_reconciled_at bzw. opening_balance_date, sonst no_starting_point); Stand am
 --   period_end = closing_balance - Summe der Zeilen danach; Anfang daraus (keine Saldo-Probe, der drift zeigt einen
 --   unvollstaendigen Export). Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
 --   Schnitt+1. Sparplan-Treffer mit exakter Stueckzahl (shares_estimated false). Wertpapier-Zeilen ohne Treffer: Stufe 0
 --   gegen gebuchte Trades, sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend), nicht buchbar ->
---   trades_blocked[] (covered_by_takeover, oversell, security_unknown); unknown-Zeilen des Exports -> csv_unknown[].
+--   trades_blocked[] (covered_by_takeover, oversell, security_unknown); unknown-Zeilen des Exports -> export_unknown[].
 --   Review 2026-10-28: Steuer auf Kauf/Verkauf = eigene Buchung (trades[].tax, nie im Rest); Verkaufs-Check zaehlt
 --   Sparplan-Kaeufe und Kaeufe DIESES Exports mit; Verkauf/Dividende einer erst im Export gekauften Position wird gebucht;
 --   neue Position nur ins EINE Depot der passenden Art (Krypto ohne ISIN -> crypto_depot); Stufe 0 auch gegen eine von
 --   Hand vor dem Schnitt datierte Buchung (+-5 Tage, nie doppelt); App-Kontostand ueber fn_parse_numeric_or_null.
---   Zusaetzliche codes: csv_profile_unknown, csv_invalid, closing_balance_required (keine Karte), no_starting_point,
+--   Zusaetzliche codes: export_profile_unknown, export_invalid, closing_balance_required (keine Karte), no_starting_point,
 --   multiple_sub_accounts. Zusaetzliche Rueckgabe: source, balance_source (printed|owner), owner_balance, after_period,
---   trades, trades_blocked, csv_unknown, late_count, seen_refs (Hashes fuer finance.statement_seen_refs).
+--   trades, trades_blocked, export_unknown, late_count, seen_refs (Hashes fuer finance.statement_seen_refs).
+--   BANK-IMPORT-MODUL (Transfers zwischen eigenen Konten, alle Wege): matched kind transfer (Stufe T, other_account_id)
+--   -> apply bucht fn_book_transfer; nicht buchbar -> blocked[].reason not_bookable | currency_mismatch | pending_pair
+--   (offener Transfer mit dem Gegenkonto +-5 Tage, den keine Zeile trifft: nie ein zweiter) | partner_reconciled (Gegenkonto
+--   mehr als 5 Tage nach dem Zeilendatum abgeglichen); bis 5 Tage -> matched.partner_date = dessen Abgleich+1 (unterwegs).
+--   moved_legs[] = Transfer-Beine dieses Kontos, die der Auszug eines ANDEREN Kontos in den letzten 5 Tagen gebucht
+--   hat und die hier keine Zeile haben (unterwegs) -> zaehlen nicht zum Stand am period_end, apply setzt period_end+1.
+--   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label: cash "Alltagsausgaben", sonst "Sonstige Abweichung".
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_statement_prepare(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -95,8 +102,8 @@ DECLARE
     v_lump     NUMERIC;
     v_card     JSONB := '[]'::jsonb;
     v_fp       TEXT;
-    -- Broker-CSV (Paket B)
-    v_csv      BOOLEAN := COALESCE(p->>'source', '') = 'csv';
+    -- Bank-Export-Datei (Broker-CSV Paket B, Bank-Import-Modul)
+    v_file      BOOLEAN := COALESCE(p->>'source', '') = 'file';
     v_norm     JSONB;
     v_owner    NUMERIC;
     v_after    NUMERIC := 0;
@@ -115,7 +122,10 @@ DECLARE
     v_ttax     NUMERIC;
     v_trades   JSONB := '[]'::jsonb;
     v_tblocked JSONB := '[]'::jsonb;
-    v_csv_unk  JSONB := '[]'::jsonb;
+    v_file_unk  JSONB := '[]'::jsonb;
+    -- Bank-Import-Modul
+    v_moved    JSONB := '[]'::jsonb;
+    v_partner_at DATE;
 BEGIN
     -- ---------- 1a. Broker-CSV: Export normieren, Zeitraum = nach dem bestaetigten Tag bis gestern ----------
     --   Kein gedruckter Saldo: der Owner nennt den Kontostand aus der App (Pflicht, nie ein errechneter Saldo als
@@ -123,8 +133,8 @@ BEGIN
     --   = dieser Stand - Summe der Zeitraum-Zeilen -> die Abweichung zum System am Schnitt ist der drift (Export
     --   unvollstaendig oder falsche Zahl), die Saldo-Probe entfaellt (fester Leser, keine Lesefehler).
     --   Spaete Zeilen: Datum im Zeitraum des letzten CSV-Abgleichs, Referenz dort nicht gesehen -> Datum = Schnitt+1.
-    IF v_csv THEN
-        v_norm := finance.fn_broker_csv_normalize(COALESCE(p->'csv', '{}'::jsonb));
+    IF v_file THEN
+        v_norm := finance.fn_bank_export_normalize(COALESCE(p->'table', '{}'::jsonb));
         IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
             RETURN v_norm;
         END IF;
@@ -183,7 +193,7 @@ BEGIN
         v_close := v_owner - v_after;
         v_open  := v_close - v_sum;
         v_balance_ok := true;
-        SELECT COALESCE(jsonb_agg(u ORDER BY (u->>'row_no')::int), '[]'::jsonb) INTO v_csv_unk
+        SELECT COALESCE(jsonb_agg(u ORDER BY (u->>'row_no')::int), '[]'::jsonb) INTO v_file_unk
         FROM jsonb_array_elements(v_norm->'unknown_rows') u
         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l WHERE (l->>'row_no')::int = (u->>'row_no')::int);
         IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_norm->'currencies') c WHERE c <> v_acct.currency) THEN
@@ -261,7 +271,7 @@ BEGIN
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'not_bookable', 'reason', v_reason);
     END IF;
-    IF NOT v_csv AND NULLIF(p->>'currency', '') IS NOT NULL AND upper(p->>'currency') <> v_acct.currency THEN
+    IF NOT v_file AND NULLIF(p->>'currency', '') IS NOT NULL AND upper(p->>'currency') <> v_acct.currency THEN
         RETURN jsonb_build_object('ok', false, 'code', 'currency_mismatch',
             'reason', 'The statement is in ' || upper(p->>'currency') || ' but the account "' || v_acct.name
                    || '" is kept in ' || v_acct.currency || '.');
@@ -309,7 +319,39 @@ BEGIN
             CONTINUE;
         END IF;
         v_kind := v_m->>'kind';
-        IF v_kind = 'recurring' THEN
+        IF v_kind = 'transfer' THEN
+            -- Ad-hoc-Transfer (Stufe T): nur buchbar, wenn das Gegenkonto buchbar ist, dieselbe Waehrung hat, kein noch
+            -- offener Transfer mit ihm +-5 Tage existiert (nie zweimal: die Bank zeigt einen anderen Betrag als die
+            -- Buchung) und es am Zeilendatum nicht abgeglichen ist (sonst doppelt dort). Sonst blocked = Rest.
+            -- Unterwegs: ist das Gegenkonto hoechstens 5 Tage nach dem Zeilendatum abgeglichen (dessen Auszug kam
+            -- zuerst, das Geld kam dort erst danach an), zaehlt sein Bein ab dem Tag nach seinem Abgleich
+            -- (partner_date); sonst stimmte dessen bestaetigter Stand nicht und der Folgeauszug buchte es doppelt.
+            v_other := (v_m->>'other_account_id')::int;
+            SELECT last_reconciled_at INTO v_partner_at FROM finance.accounts WHERE id = v_other;
+            v_reason := CASE
+                WHEN finance.fn_bookable_account_reason(v_other) IS NOT NULL THEN 'not_bookable'
+                WHEN (SELECT currency FROM finance.accounts WHERE id = v_other) <> v_acct.currency THEN 'currency_mismatch'
+                WHEN EXISTS (
+                    SELECT 1 FROM finance.transactions t
+                    WHERE t.account_id = v_acct.id AND t.group_id IS NOT NULL AND t.category::text = 'transfer'
+                      AND t.recurring_payment_id IS NULL AND t.transaction_date > v_cut
+                      AND abs(t.transaction_date - (v_m->>'line_date')::date) <= 5
+                      AND EXISTS (SELECT 1 FROM finance.transactions o WHERE o.group_id = t.group_id AND o.account_id = v_other)
+                      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_match->'matched') b
+                                      WHERE (b->>'group_id')::uuid = t.group_id)) THEN 'pending_pair'
+                WHEN finance.fn_reconciled_reason(v_other, (v_m->>'line_date')::date) IS NOT NULL
+                     AND v_partner_at - (v_m->>'line_date')::date > 5 THEN 'partner_reconciled'
+            END;
+            IF v_reason IS NOT NULL THEN
+                v_blocked := v_blocked || (v_m || jsonb_build_object('reason', v_reason));
+                v_out := v_out + LEAST((v_m->>'amount')::numeric, 0);
+                v_in  := v_in + GREATEST((v_m->>'amount')::numeric, 0);
+                CONTINUE;
+            END IF;
+            IF finance.fn_reconciled_reason(v_other, (v_m->>'line_date')::date) IS NOT NULL THEN
+                v_m := v_m || jsonb_build_object('partner_date', v_partner_at + 1);
+            END IF;
+        ELSIF v_kind = 'recurring' THEN
             v_head := finance.fn_recurring_lineage_head((v_m->>'recurring_payment_id')::int);
             SELECT * INTO v_plan FROM finance.savings_plans WHERE recurring_payment_id = v_head;
             IF FOUND AND v_lines->((v_m->>'line_idx')::int - 1)->>'shares' IS NOT NULL THEN
@@ -393,7 +435,7 @@ BEGIN
     --   (covered_by_takeover: erst die Einzelkaeufe uebernehmen), Verkauf ueber den Bestand (oversell), unbekannte
     --   Position bei Verkauf/Dividende bzw. kein eindeutiges Depot beim Kauf (security_unknown).
     --   Wertpapier-Geldfluesse (Kauf/Verkauf/Dividende/Steuer/Kapitalmassnahme) zaehlen nie in unmatched_out/in.
-    IF v_csv THEN
+    IF v_file THEN
         FOR v_line, v_idx IN SELECT e, (o)::int FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS x(e, o)
                              WHERE (o)::int IN (SELECT (u)::int FROM jsonb_array_elements_text(v_match->'unmatched') u) LOOP
             IF v_line->>'kind' IN ('buy', 'sell', 'dividend', 'tax', 'corporate') THEN
@@ -526,6 +568,26 @@ BEGIN
     -- sie zusaetzlich im Rest (doppelt). fn_statement_match liefert nur verschiebbare (kein Bein-Konto abgeglichen).
     SELECT COALESCE(sum((b->>'amount')::numeric), 0) INTO v_redate_sum
     FROM jsonb_array_elements(v_booked) b WHERE (b->>'tx_date')::date > v_pe;
+    -- Monatsgrenze (Spiegelbild): ein Transfer-Bein dieses Kontos, das der Auszug eines ANDEREN Kontos in den letzten
+    -- 5 Tagen des Zeitraums gebucht hat und zu dem dieser Auszug keine Zeile hat, ist unterwegs (z. B. am 30.09. bei
+    -- Bondora abgegangen, am 02.10. bei der Bank angekommen) -> apply verschiebt es auf period_end+1; es zaehlt nicht
+    -- zum Stand am period_end (sonst Rest jetzt + zweiter Transfer im Folgemonat).
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('transaction_id', t.id, 'amount', t.amount, 'tx_date', t.transaction_date,
+               'name', t.description) ORDER BY t.id), '[]'::jsonb)
+    INTO v_moved
+    FROM finance.transactions t
+    WHERE t.account_id = v_acct.id AND t.group_id IS NOT NULL AND t.category::text IN ('transfer', 'fee')
+      AND t.recurring_payment_id IS NULL
+      AND t.transaction_date > v_cut AND t.transaction_date BETWEEN v_pe - 5 AND v_pe
+      AND EXISTS (SELECT 1 FROM finance.bank_statements s WHERE s.id = t.bank_statement_id AND s.account_id <> v_acct.id)
+      AND EXISTS (SELECT 1 FROM finance.transactions o WHERE o.group_id = t.group_id AND o.account_id <> v_acct.id)
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_booked) b WHERE (b->>'group_id')::uuid = t.group_id)
+      -- eine Zeile dazu gibt es doch (anderer Betrag -> pending_pair, zaehlt im Rest): das Bein bleibt, sonst doppelt
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_blocked) b
+                      WHERE b->>'reason' = 'pending_pair' AND abs((b->>'line_date')::date - t.transaction_date) <= 5
+                        AND EXISTS (SELECT 1 FROM finance.transactions o WHERE o.group_id = t.group_id
+                                    AND o.account_id = (b->>'other_account_id')::int));
+    SELECT v_redate_sum - COALESCE(sum((x->>'amount')::numeric), 0) INTO v_redate_sum FROM jsonb_array_elements(v_moved) x;
 
     -- ---------- 4. fehlende Zahlungen, unbekannte Mandate ----------
     SELECT COALESCE(jsonb_agg(jsonb_build_object('recurring_payment_id', o.recurring_payment_id, 'name', r.name,
@@ -557,7 +619,7 @@ BEGIN
     v_card := jsonb_build_array(
         core.fn_ui_tpl('finance.tpl.statement_period', jsonb_build_object('from', core.fn_ui_date(v_ps), 'to', core.fn_ui_date(v_pe)))
             || jsonb_build_object('label', 'finance.label.statement_period'))
-        || CASE WHEN v_csv THEN jsonb_build_array(
+        || CASE WHEN v_file THEN jsonb_build_array(
                core.fn_ui_money(v_owner, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_owner_balance'))
                || CASE WHEN v_after <> 0 THEN jsonb_build_array(jsonb_build_object('kind', 'note',
                       'value', 'finance.note.statement_after_period',
@@ -619,6 +681,21 @@ BEGIN
                         'date', core.fn_ui_date((m->>'line_date')::date)))) ORDER BY (m->>'line_date')::date)
                 FROM jsonb_array_elements(v_booked) m);
     END IF;
+    -- Unterwegs (Karte = Buchung): Beine, die apply in einen anderen Monat legt (moved_legs: dieses Konto ab
+    -- period_end+1; partner_date: das Bein beim Gegenkonto ab dem Tag nach dessen Abgleich)
+    IF jsonb_array_length(v_moved) > 0 OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_to_book) m WHERE m ? 'partner_date') THEN
+        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_in_transit'))
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+                    core.fn_ui_tpl('finance.tpl.statement_in_transit_row', jsonb_build_object('name', x->>'name',
+                        'amount', core.fn_ui_money((x->>'amount')::numeric, v_acct.currency),
+                        'date', core.fn_ui_date(v_pe + 1)))) ORDER BY (x->>'transaction_id')::int)
+                FROM jsonb_array_elements(v_moved) x), '[]'::jsonb)
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+                    core.fn_ui_tpl('finance.tpl.statement_in_transit_row', jsonb_build_object('name', m->>'name',
+                        'amount', core.fn_ui_money(-(m->>'amount')::numeric, v_acct.currency),
+                        'date', core.fn_ui_date((m->>'partner_date')::date)))) ORDER BY (m->>'line_idx')::int)
+                FROM jsonb_array_elements(v_to_book) m WHERE m ? 'partner_date'), '[]'::jsonb);
+    END IF;
     IF jsonb_array_length(v_missing) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_missing'))
             || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
@@ -678,17 +755,18 @@ BEGIN
                   ORDER BY (x->>'line_date')::date, (x->>'line_idx')::int)
                 FROM jsonb_array_elements(v_tblocked) x);
     END IF;
-    IF jsonb_array_length(v_csv_unk) > 0 THEN
-        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_csv_unknown'))
+    IF jsonb_array_length(v_file_unk) > 0 THEN
+        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_export_unknown'))
             || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
-                    core.fn_ui_tpl('finance.tpl.statement_csv_unknown_row', jsonb_build_object(
+                    core.fn_ui_tpl('finance.tpl.statement_export_unknown_row', jsonb_build_object(
                         'name', COALESCE(u->>'name', u->>'type'), 'type', u->>'type',
                         'amount', core.fn_ui_money((u->>'cash_amount')::numeric, v_acct.currency),
                         'date', core.fn_ui_date((u->>'date')::date)))) ORDER BY (u->>'row_no')::int)
-                FROM jsonb_array_elements(v_csv_unk) u);
+                FROM jsonb_array_elements(v_file_unk) u);
     END IF;
     v_card := v_card || jsonb_build_array(
-        core.fn_ui_money(v_lump, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_everyday'),
+        core.fn_ui_money(v_lump, v_acct.currency) || jsonb_build_object('label',
+            CASE WHEN v_acct.account_type::text = 'cash' THEN 'finance.label.statement_everyday' ELSE 'finance.label.statement_other_diff' END),
         jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_lump'));
     -- S7: die IBAN, die dieser Auszug dem Konto beibringt, steht sichtbar auf der Karte (Kontrolle durch den Nutzer)
     IF v_learn_no IS NOT NULL THEN
@@ -698,7 +776,9 @@ BEGIN
 
     v_fp := md5(jsonb_build_object('a', v_acct.id, 'c', v_cut, 'd', v_drift, 's', v_s_end, 'l', v_lump,
                   'b', (SELECT jsonb_agg(jsonb_build_array(m->>'kind', m->>'recurring_payment_id', m->>'due_date',
-                               m->>'interest_period_end', m->>'line_idx', m->>'amount')) FROM jsonb_array_elements(v_to_book) m),
+                               m->>'interest_period_end', m->>'line_idx', m->>'amount', m->>'other_account_id', m->>'partner_date'))
+                        FROM jsonb_array_elements(v_to_book) m),
+                  'o', v_moved,
                   'p', v_adjust, 'k', v_learn, 'n', v_learn_no, 'm', v_missing, 't', v_trades, 'x', v_tblocked,
                   'r', (SELECT jsonb_agg(jsonb_build_array(b->>'transaction_id', b->>'line_date')) FROM jsonb_array_elements(v_booked) b
                         WHERE (b->>'tx_date')::date > v_pe))::text);
@@ -708,17 +788,18 @@ BEGIN
         'period_start', v_ps, 'period_end', v_pe, 'opening_balance', v_open, 'closing_balance', v_close,
         'cut', v_cut, 'stmt_at_cut', v_stmt_cut, 'drift', v_drift, 'gap', v_gap,
         'matched', v_to_book, 'already_booked', v_booked, 'blocked', v_blocked, 'savings_plan_pending', v_pending,
+        'moved_legs', v_moved,
         'missing', v_missing, 'unknown_mandates', v_unknown, 'plan_adjustments', v_adjust, 'learn', v_learn,
         'learned_account_number', v_learn_no,
         'line_count', jsonb_array_length(v_lines),
         'matched_count', jsonb_array_length(v_to_book) + jsonb_array_length(v_booked),
         'unmatched_out', v_out, 'unmatched_in', v_in,
         'lump', v_lump, 'card_lines', v_card, 'fingerprint', v_fp,
-        'source', CASE WHEN v_csv THEN 'csv' ELSE 'printed' END,
-        'balance_source', CASE WHEN v_csv THEN 'owner' ELSE 'printed' END)
-        || CASE WHEN v_csv THEN jsonb_build_object(
+        'source', CASE WHEN v_file THEN 'file' ELSE 'printed' END,
+        'balance_source', CASE WHEN v_file THEN 'owner' ELSE 'printed' END)
+        || CASE WHEN v_file THEN jsonb_build_object(
                'owner_balance', v_owner, 'after_period', v_after,
-               'trades', v_trades, 'trades_blocked', v_tblocked, 'csv_unknown', v_csv_unk,
+               'trades', v_trades, 'trades_blocked', v_tblocked, 'export_unknown', v_file_unk,
                'late_count', (SELECT count(*) FROM jsonb_array_elements(v_lines) l WHERE (l->>'late')::boolean),
                'seen_refs', (SELECT COALESCE(jsonb_agg(DISTINCT l->>'ext_ref'), '[]'::jsonb)
                              FROM jsonb_array_elements(v_lines) l WHERE l->>'ext_ref' IS NOT NULL))

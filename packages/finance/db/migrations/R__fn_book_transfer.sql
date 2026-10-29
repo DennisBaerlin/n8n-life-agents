@@ -11,7 +11,8 @@
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, fx_rate, from_balance,
 --   to_balance} (Post-State: neue NATIVE Salden beider Konten, in derselben Transaktion gelesen).
 --   Korrigierbar (Konto==Konto / from_amount<=0 / Cross-Currency ohne gueltiges to_amount / Depot- oder
---   Kreditkonto, finance.fn_bookable_account_reason, Audit Paket 2) ->
+--   Kreditkonto, finance.fn_bookable_account_reason, Audit Paket 2 / ein Konto am Buchungsdatum schon abgeglichen,
+--   finance.fn_reconciled_reason, Bank-Import-Modul: sonst zaehlte das Bein dort doppelt) ->
 --   {ok:false, reason} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_transfer(p jsonb)
@@ -56,7 +57,8 @@ BEGIN
     END IF;
 
     -- Kontotyp (Audit Paket 2, Punkt 7): Depot-/Kreditkonten tragen keine freien Geld-Bewegungen.
-    v_reason := COALESCE(finance.fn_bookable_account_reason(v_from), finance.fn_bookable_account_reason(v_to));
+    v_reason := COALESCE(finance.fn_bookable_account_reason(v_from), finance.fn_bookable_account_reason(v_to),
+                         finance.fn_reconciled_reason(v_from, v_date), finance.fn_reconciled_reason(v_to, v_date));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;

@@ -31,7 +31,7 @@
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",
       "import_stage_rows", "update_staging_row", "commit_import", "extract_finance_document",
-      "reconcile_bank_statement", "void_bank_statement", "import_broker_csv",
+      "reconcile_bank_statement", "void_bank_statement", "import_bank_export",
       "set_onboarding_section"
     ],
     "crons": ["cron_refresh_fx_rates", "cron_refresh_market_prices", "cron_remind_interest", "cron_reconcile_accounts", "cron_remind_pension_statement", "cron_remind_missing_prices"],
@@ -227,7 +227,7 @@
     "agent.finance.tool_reconcile_accounts_batch": { "tier": "owner_approval", "reason": "reconcile_: Sammel-Saldo-Korrektur." },
     "agent.finance.tool_commit_import": { "tier": "owner_approval", "reason": "commit_: Bulk-Import committen (atomarer Multi-Row-Write)." },
     "agent.finance.tool_reconcile_bank_statement": { "tier": "owner_approval", "reason": "reconcile_: Kontoauszug abgleichen (Daueraufträge, Rest als Abgleich, atomarer Multi-Row-Write)." },
-    "agent.finance.tool_import_broker_csv": { "tier": "owner_approval", "reason": "import_: Broker-CSV-Export als Monats-Check (Einzelkäufe statt Übernahme, Trades, Rest als Abgleich; atomare Multi-Row-Writes)." },
+    "agent.finance.tool_import_bank_export": { "tier": "owner_approval", "reason": "import_: Bank-Export-Datei (CSV/Excel) als Monats-Check (Einzelkäufe statt Übernahme, Trades, Rest als Abgleich; atomare Multi-Row-Writes)." },
     "agent.finance.tool_void_bank_statement": { "tier": "owner_approval", "reason": "void_: letzten Kontoauszug samt Buchungen zurücknehmen." },
     "agent.finance.tool_create_account": { "tier": "owner_info", "reason": "create_: Konto anlegen (additiv)." },
     "agent.finance.tool_create_insurance": { "tier": "owner_info", "reason": "create_: Versicherung anlegen." },

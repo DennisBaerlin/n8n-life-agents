@@ -55,7 +55,7 @@ BEGIN
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP dust: %', v_res; END IF;
     v_dst := (v_res->>'holding_id')::int;
 
-    v_csv := jsonb_build_object('header', v_hdr, 'rows', jsonb_build_array(
+    v_csv := jsonb_build_object('rows', jsonb_build_array(v_hdr) || jsonb_build_array(
         pg_temp.tr_row(T - 60, 'BUY',  'IE00LOTSALT1', '1.0000000000',  '-10.00', '-1.00', 'l-01'),
         pg_temp.tr_row(T - 50, 'SELL', 'IE00LOTSALT1', '-1.0000000000', '12.00',  '-1.00', 'l-02'),
         pg_temp.tr_row(T - 40, 'BUY',  'IE00LOTSALT1', '4.0000000000',  '-80.00', '-1.00', 'l-03'),
@@ -71,10 +71,10 @@ BEGIN
         pg_temp.tr_row(T - 40, 'BUY',  'IE00LOTSDST1', '1.0000000000',  '-20.00', '', 'l-11'),
         pg_temp.tr_row(T - 35, 'BUY',  'IE00LOTSDST1', '0.0000500000',  '-0.01', '', 'l-12'),
         pg_temp.tr_row(T - 30, 'SELL', 'IE00LOTSDST1', '-0.9999900000', '20.00', '', 'l-13')));
-    v_p := jsonb_build_object('account_name', '__t_lots_tr__', 'csv', v_csv);
+    v_p := jsonb_build_object('account_name', '__t_lots_tr__', 'table', v_csv);
 
     -- Monats-Check VOR dem Ersetzen: Kauf heute-8 steckt in der Uebernahme -> nie gebucht
-    v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('source', 'csv', 'closing_balance', 878));
+    v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('source', 'file', 'closing_balance', 878));
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'trades_blocked') b
                       WHERE b->>'reason' = 'covered_by_takeover' AND (b->>'amount')::numeric = -90)
@@ -137,7 +137,7 @@ BEGIN
     RAISE NOTICE 'PASS [L8 erneut]';
 
     -- Monats-Check DANACH: Kauf heute-8 schon gebucht (Stufe 0), nur der Kauf heute-2 wird gebucht, drift 0
-    v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('source', 'csv', 'closing_balance', 878));
+    v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('source', 'file', 'closing_balance', 878));
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR (v_prep->>'drift')::numeric <> 0 OR (v_prep->>'lump')::numeric <> 0
        OR jsonb_array_length(v_prep->'trades') <> 1 OR (v_prep->'trades'->0->>'amount')::numeric <> -32
        OR jsonb_array_length(v_prep->'trades_blocked') <> 0

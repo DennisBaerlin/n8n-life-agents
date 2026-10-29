@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Die geteilte Monats-Check-Kette (Broker-CSV Paket B: 2. Konsument -> vereinheitlicht): Prepare statement
 # (finance.fn_statement_prepare) -> Karte -> Gate -> Apply statement (finance.fn_apply_bank_statement, fingerprint aus der
-# Karte) -> Return. Konsumenten: tool_reconcile_bank_statement (gedruckter Auszug per Vision) und tool_import_broker_csv
-# (Broker-Export per festem Leser). Die Rohwerte ($StmtParams) liefert der Konsument; alles Rechnen + die Kartenzeilen
+# Karte) -> Return. Konsumenten: tool_reconcile_bank_statement (gedruckter Auszug per Vision) und tool_import_bank_export
+# (Bank-Export-Datei per festem Leser). Die Rohwerte ($StmtParams) liefert der Konsument; alles Rechnen + die Kartenzeilen
 # kommen aus der DB (eine Adresse). Helper-Datei ohne Build-* (Builder-Discovery liefert 0 Builder); gelesen nur in
 # Funktionskoerpern -> Ladereihenfolge egal.
 #
@@ -78,9 +78,9 @@ function New-StatementGateChain {
 }
 
 # Get-FinanceFileErrorExpr: Fehlertext der Vision-Konsumenten (tool_reconcile_bank_statement, tool_extract_finance_document),
-# wenn tool_fetch_telegram_file die Datei ablehnt. Eine CSV-Datei (mime text/csv) ist ein Broker-Export -> Verweis auf
-# tool_import_broker_csv mit derselben file_id, statt der rohen Ablehnung (eine Adresse fuer beide Konsumenten).
+# wenn tool_fetch_telegram_file die Datei ablehnt. Eine CSV- oder Excel-Datei (mime text/csv bzw. xlsx) ist ein
+# Bank-Export -> Verweis auf tool_import_bank_export mit derselben file_id, statt der rohen Ablehnung (eine Adresse fuer beide Konsumenten).
 function Get-FinanceFileErrorExpr {
     $F = "`$('Fetch telegram file').item.json"
-    return "={{ $F.mime === 'text/csv' ? 'This is a CSV export file, not a photo or PDF - call tool_import_broker_csv with the same file_id (it also needs the balance the bank app shows right now).' : $F.error }}"
+    return "={{ ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes($F.mime) ? 'This is a bank export file (CSV or Excel), not a photo or PDF - call tool_import_bank_export with the same file_id (it also needs the balance the bank app shows right now).' : $F.error }}"
 }

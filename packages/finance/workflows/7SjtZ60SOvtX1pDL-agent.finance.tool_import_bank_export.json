@@ -1,6 +1,6 @@
 {
     "id":  "7SjtZ60SOvtX1pDL",
-    "name":  "agent.finance.tool_import_broker_csv",
+    "name":  "agent.finance.tool_import_bank_export",
     "nodes":  [
                   {
                       "parameters":  {
@@ -27,7 +27,7 @@
                                        0,
                                        0
                                    ],
-                      "id":  "f45ccf77-673f-5e3c-adc2-8714815d9389",
+                      "id":  "ddc0e5ad-adb2-5d53-92a2-f8b24917f128",
                       "name":  "Start"
                   },
                   {
@@ -43,7 +43,7 @@
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
                                                                               "file_id":  "={{ $(\u0027Start\u0027).item.json.file_id }}",
-                                                                              "accept":  "csv"
+                                                                              "accept":  "table"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -64,7 +64,7 @@
                                        220,
                                        0
                                    ],
-                      "id":  "6eb16f1a-c796-5b11-aad3-37599d98b0a0",
+                      "id":  "b5c113a4-7f8e-5d21-b200-e83068705450",
                       "name":  "Fetch telegram file"
                   },
                   {
@@ -77,7 +77,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "c1568302-49a4-586d-9d64-e899a47b04a4",
+                                                                                   "id":  "26b08574-e71a-5426-8a9e-efa4c9509cdc",
                                                                                    "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -98,7 +98,7 @@
                                        440,
                                        0
                                    ],
-                      "id":  "262a0b19-07d7-5db2-89e1-617333a547e6",
+                      "id":  "675cbf3f-efa0-597d-a542-2224af484059",
                       "name":  "File ok?"
                   },
                   {
@@ -106,13 +106,13 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "003eda03-1d6f-572c-9d8b-f605b21a9f60",
+                                                                                     "id":  "968d50e4-8dc1-5e7a-b889-f092ac584197",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c74b93c5-4b3e-532a-a9a2-b27b3aefc856",
+                                                                                     "id":  "b4bb09d9-67e3-5fe7-8f08-7e98b3fccf4e",
                                                                                      "name":  "error",
                                                                                      "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
                                                                                      "type":  "string"
@@ -129,12 +129,12 @@
                                        660,
                                        200
                                    ],
-                      "id":  "f2c2015e-7c7a-5eee-b258-a67302fb60d8",
+                      "id":  "6391ee77-4217-5db4-8bff-693bff970197",
                       "name":  "File unusable"
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const f = $(\u0027Fetch telegram file\u0027).first().json;\nconst fail = (code, m) =\u003e [{ json: { ok: false, code, error: m, header: [], rows: [] } }];\nconst t = String(f.text || \u0027\u0027);\nif (!t.trim()) return fail(\u0027not_a_csv\u0027, \u0027This file is not a CSV export (it is a photo or PDF). A printed bank statement goes to tool_reconcile_bank_statement.\u0027);\nconst first = t.split(/\\r?\\n/, 1)[0] || \u0027\u0027;\nconst delim = first.split(\u0027;\u0027).length \u003e first.split(\u0027,\u0027).length ? \u0027;\u0027 : \u0027,\u0027;\nconst rows = []; let row = []; let fld = \u0027\u0027; let q = false;\nfor (let i = 0; i \u003c t.length; i++) {\n  const c = t[i];\n  if (q) { if (c === \u0027\"\u0027) { if (t[i + 1] === \u0027\"\u0027) { fld += \u0027\"\u0027; i++; } else q = false; } else fld += c; }\n  else if (c === \u0027\"\u0027) q = true;\n  else if (c === delim) { row.push(fld); fld = \u0027\u0027; }\n  else if (c === \u0027\\n\u0027 || c === \u0027\\r\u0027) { if (c === \u0027\\r\u0027 \u0026\u0026 t[i + 1] === \u0027\\n\u0027) i++; row.push(fld); rows.push(row); row = []; fld = \u0027\u0027; }\n  else fld += c;\n}\nif (fld !== \u0027\u0027 || row.length) { row.push(fld); rows.push(row); }\nconst header = rows.shift() || [];\nif (header.length \u003c 2) return fail(\u0027csv_invalid\u0027, \u0027The file has no readable table (header row missing).\u0027);\nif (rows.length \u003e 20000) return fail(\u0027csv_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\nreturn [{ json: { ok: true, header, rows, row_count: rows.length } }];"
+                                         "jsCode":  "const f = $(\u0027Fetch telegram file\u0027).first().json;\nconst fail = (code, m) =\u003e [{ json: { ok: false, code, error: m, rows: [] } }];\nconst cell = (v) =\u003e (v === null || v === undefined) ? \u0027\u0027 : String(v);\nif (Array.isArray(f.rows) \u0026\u0026 f.rows.length) {\n  const grid = f.rows.map((r) =\u003e (Array.isArray(r) ? r : []).map(cell));\n  if (grid.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\n  return [{ json: { ok: true, rows: grid, row_count: grid.length } }];\n}\nconst t = String(f.text || \u0027\u0027);\nif (!t.trim()) return fail(\u0027not_an_export\u0027, \u0027This file is not a bank export (it is a photo or PDF). A printed bank statement goes to tool_reconcile_bank_statement.\u0027);\nconst head = t.split(/\\r?\\n/, 20).join(\u0027\\n\u0027);\nconst delim = head.split(\u0027;\u0027).length \u003e head.split(\u0027,\u0027).length ? \u0027;\u0027 : \u0027,\u0027;\nconst rows = []; let row = []; let fld = \u0027\u0027; let q = false;\nfor (let i = 0; i \u003c t.length; i++) {\n  const c = t[i];\n  if (q) { if (c === \u0027\"\u0027) { if (t[i + 1] === \u0027\"\u0027) { fld += \u0027\"\u0027; i++; } else q = false; } else fld += c; }\n  else if (c === \u0027\"\u0027) q = true;\n  else if (c === delim) { row.push(fld); fld = \u0027\u0027; }\n  else if (c === \u0027\\n\u0027 || c === \u0027\\r\u0027) { if (c === \u0027\\r\u0027 \u0026\u0026 t[i + 1] === \u0027\\n\u0027) i++; row.push(fld); rows.push(row); row = []; fld = \u0027\u0027; }\n  else fld += c;\n}\nif (fld !== \u0027\u0027 || row.length) { row.push(fld); rows.push(row); }\nif (rows.length \u003c 2 || !rows.some((r) =\u003e r.length \u003e= 2)) return fail(\u0027export_invalid\u0027, \u0027The file has no readable table (header row missing).\u0027);\nif (rows.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\nreturn [{ json: { ok: true, rows, row_count: rows.length } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -142,8 +142,8 @@
                                        660,
                                        0
                                    ],
-                      "id":  "3617c7c2-7751-5d3c-8899-75fcbd27900d",
-                      "name":  "Tokenize CSV"
+                      "id":  "14043041-b51f-5b67-b3d5-0aeb9f59acce",
+                      "name":  "Read table"
                   },
                   {
                       "parameters":  {
@@ -155,7 +155,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "3ad2dc9f-4dbf-5e66-bc56-25590f7739a7",
+                                                                                   "id":  "11cf91e2-6188-57dc-8475-f756059d7671",
                                                                                    "leftValue":  "={{ $json.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -176,7 +176,7 @@
                                        880,
                                        0
                                    ],
-                      "id":  "045b2321-edd1-543f-86e2-1c3574cd41aa",
+                      "id":  "eadbc3f7-970b-5993-b9ba-7019cfffc066",
                       "name":  "Table read?"
                   },
                   {
@@ -184,21 +184,21 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "aee21ea9-1d72-599d-adfc-a59a2377bbaa",
+                                                                                     "id":  "1a8310d1-074b-5ada-90a9-d544b1ad2a64",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f9ba2dc5-552e-5ce8-a819-64c473acf8ed",
+                                                                                     "id":  "162cdeb4-a1ce-5189-9c42-259e8472cc3c",
                                                                                      "name":  "code",
-                                                                                     "value":  "={{ $(\u0027Tokenize CSV\u0027).item.json.code }}",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.code }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "fce5437f-8978-5890-9cfb-1a821930531e",
+                                                                                     "id":  "393d883e-fb48-5aa0-a586-c7749be5bc8f",
                                                                                      "name":  "error",
-                                                                                     "value":  "={{ $(\u0027Tokenize CSV\u0027).item.json.error }}",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.error }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -213,15 +213,15 @@
                                        1100,
                                        200
                                    ],
-                      "id":  "cd9e73d1-ba89-56a4-b86f-ecc10e9bd9aa",
-                      "name":  "Not a CSV"
+                      "id":  "e5ccd7b9-f6c2-52cc-b1c4-d77c04f5f086",
+                      "name":  "Not an export"
                   },
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_replace_takeover_with_lots(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, csv: ({ header: $(\u0027Tokenize CSV\u0027).first().json.header, rows: $(\u0027Tokenize CSV\u0027).first().json.rows }) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -230,7 +230,7 @@
                                        1100,
                                        0
                                    ],
-                      "id":  "6587f7d8-1726-59e6-8b5b-c717ee3052ce",
+                      "id":  "5272cf9b-abc3-54bf-ad42-d10e08845012",
                       "name":  "Preview lots",
                       "credentials":  {
                                           "postgres":  {
@@ -249,7 +249,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "558d8038-393a-5c8a-8670-9bf9403e3084",
+                                                                                   "id":  "2e897c56-8b87-5c80-8b94-eff2f96ec4c1",
                                                                                    "leftValue":  "={{ $(\u0027Preview lots\u0027).first().json.r.ok === true \u0026\u0026 ($(\u0027Preview lots\u0027).first().json.r.replaced || []).length \u003e 0 }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -270,7 +270,7 @@
                                        1320,
                                        0
                                    ],
-                      "id":  "20fa24fa-e29e-5862-85cc-0e51cb2e0d7d",
+                      "id":  "8d3c1d30-2f53-50cd-86d4-94d834074362",
                       "name":  "Lots to replace?"
                   },
                   {
@@ -278,7 +278,7 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "bb43e75c-f69d-50ad-8234-7064460f61ca",
+                                                                                     "id":  "5640d22e-4ca8-54ab-b9fe-e367b001e654",
                                                                                      "name":  "summary",
                                                                                      "value":  "={{ ({ title: \u0027finance.hitl.replace_takeover_lots\u0027, title_params: { account: ($(\u0027Start\u0027).first().json.account_name) }, lines: [  ].concat(($(\u0027Preview lots\u0027).first().json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
@@ -295,7 +295,7 @@
                                        1540,
                                        -200
                                    ],
-                      "id":  "199d4dbb-449c-5dac-a146-b070438dc089",
+                      "id":  "c5632a1a-2fc2-5d11-9193-0ba41624d81e",
                       "name":  "Lots summary"
                   },
                   {
@@ -333,7 +333,7 @@
                                        1760,
                                        -200
                                    ],
-                      "id":  "7ea746a1-3b93-5452-942e-713f95563930",
+                      "id":  "46cd189b-0363-57b2-b3d9-1e2c019c69e2",
                       "name":  "Request lots approval"
                   },
                   {
@@ -346,7 +346,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "12630037-f424-5c2c-94fe-462b8c1f083a",
+                                                                                   "id":  "1f7faeab-f642-598c-954a-1840eb096f99",
                                                                                    "leftValue":  "={{ $json.approved }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -367,7 +367,7 @@
                                        1980,
                                        -200
                                    ],
-                      "id":  "bff894e9-b657-54ff-8895-3cd74f5753e9",
+                      "id":  "75cbb3c7-dc14-5bc2-9cf0-f7a1e76a2e42",
                       "name":  "Lots approved?"
                   },
                   {
@@ -375,7 +375,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_replace_takeover_with_lots($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, csv: ({ header: $(\u0027Tokenize CSV\u0027).first().json.header, rows: $(\u0027Tokenize CSV\u0027).first().json.rows }), fingerprint: $(\u0027Preview lots\u0027).first().json.r.fingerprint }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), fingerprint: $(\u0027Preview lots\u0027).first().json.r.fingerprint }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -384,7 +384,7 @@
                                        2200,
                                        -300
                                    ],
-                      "id":  "e7923163-3f03-553e-83e4-8503bbc09b7e",
+                      "id":  "a156a9a6-9385-571a-a553-024c66b3fb8f",
                       "name":  "Replace lots",
                       "credentials":  {
                                           "postgres":  {
@@ -403,7 +403,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "d7a3a818-3faa-5392-abf7-2d01e8ca994b",
+                                                                                   "id":  "d877a402-2b14-50ce-a0dc-52c53299eac7",
                                                                                    "leftValue":  "={{ $json.r.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -424,7 +424,7 @@
                                        2420,
                                        -300
                                    ],
-                      "id":  "951258ec-8385-55ad-bf43-d83522fce131",
+                      "id":  "a076d2f7-1926-5c7a-a6df-56d7c7f3693c",
                       "name":  "Lots replaced?"
                   },
                   {
@@ -432,19 +432,19 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "8ccaa566-72c7-5b1f-9a7d-940bbe74a376",
+                                                                                     "id":  "507f94fe-c985-5538-836c-8a7caf227fcc",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a324dcd6-9491-505c-a4c2-2202bbeac73e",
+                                                                                     "id":  "d3192019-b83b-55bd-8830-6907012bd00b",
                                                                                      "name":  "code",
                                                                                      "value":  "={{ $(\u0027Replace lots\u0027).item.json.r.code || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "0fe19e21-72e6-5b63-bb42-ce0c23da8a72",
+                                                                                     "id":  "e4849e51-3ecd-5e88-beec-db93c852c4b0",
                                                                                      "name":  "error",
                                                                                      "value":  "={{ $(\u0027Replace lots\u0027).item.json.r.reason }}",
                                                                                      "type":  "string"
@@ -461,7 +461,7 @@
                                        2640,
                                        -500
                                    ],
-                      "id":  "c4e13606-9bcf-59a3-bca7-df6694404fe7",
+                      "id":  "5a3023f1-e1e8-5a95-8850-d295efe7fb78",
                       "name":  "Lots not replaced"
                   },
                   {
@@ -469,7 +469,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_statement_prepare($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027csv\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), csv: ({ header: $(\u0027Tokenize CSV\u0027).first().json.header, rows: $(\u0027Tokenize CSV\u0027).first().json.rows }) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027file\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -478,7 +478,7 @@
                                        2420,
                                        0
                                    ],
-                      "id":  "b26ac44a-7f85-5f13-9e21-7afddddd727e",
+                      "id":  "2b0d9c15-5f4e-5f97-bfe0-a3c1fba37e08",
                       "name":  "Prepare statement",
                       "credentials":  {
                                           "postgres":  {
@@ -497,7 +497,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "f71cae73-1197-5ff1-826e-ddbb1a20fbb7",
+                                                                                   "id":  "6f5b933d-08df-550b-a211-5852df8b1aca",
                                                                                    "leftValue":  "={{ $json.r.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -518,7 +518,7 @@
                                        2640,
                                        0
                                    ],
-                      "id":  "79128c2e-40a4-51c5-9289-eec24015f86e",
+                      "id":  "f548e81e-c999-5e0e-bb6a-bec7ee1f9b1b",
                       "name":  "Statement ok?"
                   },
                   {
@@ -526,61 +526,61 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "7fecef04-93d9-5e36-a114-dab9e5c403fc",
+                                                                                     "id":  "ec0885bb-9b17-5d92-89fe-13bddaf51f7b",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "63ba8cab-83cf-54cc-83fe-c88c3d9c5dbb",
+                                                                                     "id":  "9d1b674f-8ca2-5a6b-afe5-3a5d6546c90e",
                                                                                      "name":  "code",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.code }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "596852a5-5773-5825-b4eb-c041c13b89cc",
+                                                                                     "id":  "5da38794-441e-555b-8ba2-b4db599777ce",
                                                                                      "name":  "error",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.reason }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "ae117b31-6b7b-5e16-98a5-3e7d48a8508d",
+                                                                                     "id":  "80ce2878-3f28-5979-b38c-4c70aea059db",
                                                                                      "name":  "candidates",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.candidates || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f9b2767d-3efb-5918-9ea1-d7289ba50298",
+                                                                                     "id":  "e3e71a35-0aa4-59bf-94fc-8bb63d9c0714",
                                                                                      "name":  "account_number",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.account_number || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "1d8688ba-8b57-5213-b00e-57259df7b31e",
+                                                                                     "id":  "13ec452e-3180-535a-8694-ef819b3c595c",
                                                                                      "name":  "difference",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.difference === undefined || $(\u0027Prepare statement\u0027).item.json.r.difference === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.difference) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d024bfe8-8065-589d-8080-fd34c318c6dd",
+                                                                                     "id":  "57f0f44c-afe0-531c-bd82-6c8fa08dd8b7",
                                                                                      "name":  "balance_verified",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.balance_verified === true }}",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "8a7146d0-73b4-5a30-b00b-1d9dea1c276f",
+                                                                                     "id":  "ec30583a-30ca-565d-875c-3eeeea3749ea",
                                                                                      "name":  "closing_balance",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.closing_balance === undefined || $(\u0027Prepare statement\u0027).item.json.r.closing_balance === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.closing_balance) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "8aa11a7d-31a4-51b3-b9cc-9d9deefdbe56",
+                                                                                     "id":  "7d5d3de7-dad9-5369-a958-cf115e7caa88",
                                                                                      "name":  "balance_date",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.balance_date || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "e2df0e3d-6ef2-5fa1-98e9-f1fa3a324d5f",
+                                                                                     "id":  "991d83af-60cd-5701-9581-ae6844309c62",
                                                                                      "name":  "currency",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency || \u0027\u0027 }}",
                                                                                      "type":  "string"
@@ -597,7 +597,7 @@
                                        2860,
                                        200
                                    ],
-                      "id":  "c9d07b1d-3bae-5989-abe8-e9f287a353c8",
+                      "id":  "178e6ef7-3bd4-51d2-b372-800d2d5f4118",
                       "name":  "Statement not ready"
                   },
                   {
@@ -605,9 +605,9 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "222a46d1-d6b2-5fd8-98ab-604b378ed5ec",
+                                                                                     "id":  "3fc6a0b8-c801-5176-8b92-21e8707e82d1",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.import_broker_csv\u0027, title_params: { account: ($(\u0027Prepare statement\u0027).item.json.r.account_name) }, lines: [  ].concat(($(\u0027Prepare statement\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.import_bank_export\u0027, title_params: { account: ($(\u0027Prepare statement\u0027).item.json.r.account_name) }, lines: [  ].concat(($(\u0027Prepare statement\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -622,7 +622,7 @@
                                        2860,
                                        0
                                    ],
-                      "id":  "bc42004a-6840-585c-ab84-0428e7657288",
+                      "id":  "511fad63-5b1e-5f27-914a-232b41cc0de0",
                       "name":  "Build Approval Summary"
                   },
                   {
@@ -660,7 +660,7 @@
                                        3080,
                                        0
                                    ],
-                      "id":  "2ca06b34-9be0-557e-b4af-fe40896adc98",
+                      "id":  "adc8b7e3-d1e0-52fb-aa36-4323f38d7f20",
                       "name":  "Request Approval"
                   },
                   {
@@ -673,7 +673,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "59d6a333-4af6-5e7e-a847-af2c8875147d",
+                                                                                   "id":  "6c8cf013-775b-53cb-935c-40ccce9b3a36",
                                                                                    "leftValue":  "={{ $json.approved }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -694,7 +694,7 @@
                                        3300,
                                        0
                                    ],
-                      "id":  "18fee0fd-2b68-5cf4-b44c-0e030c274c6f",
+                      "id":  "eacec8fc-7cf9-504a-9895-00bbc5701f52",
                       "name":  "Approved?"
                   },
                   {
@@ -702,21 +702,21 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "e01bc75f-f29f-5c4c-968f-18d187e8e294",
+                                                                                     "id":  "59277478-fe60-508e-8bf5-6679eb125a8d",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "2e3ad604-a2ee-57fa-8856-2bb4789e9e35",
+                                                                                     "id":  "59f8a75a-bc00-5a6e-b32c-9dcc7fa97521",
                                                                                      "name":  "cancelled",
                                                                                      "value":  "true",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "9b2c87a3-85a0-5723-9edd-ee86178f9474",
+                                                                                     "id":  "5c189577-e95a-5225-a108-67cf81799151",
                                                                                      "name":  "message",
-                                                                                     "value":  "The user cancelled the monthly check from the CSV export (no statement was booked). Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
+                                                                                     "value":  "The user cancelled the monthly check from the bank export (no statement was booked). Do NOT call this tool again in this turn. Tell the user it was cancelled and ask what they want to change.",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -731,7 +731,7 @@
                                        3520,
                                        200
                                    ],
-                      "id":  "5ec5e44b-d8f2-53fc-8639-e7095088eac9",
+                      "id":  "5d7989da-5043-5f62-8cf0-ab1881e5f227",
                       "name":  "Return cancelled"
                   },
                   {
@@ -739,7 +739,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_apply_bank_statement($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027csv\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), csv: ({ header: $(\u0027Tokenize CSV\u0027).first().json.header, rows: $(\u0027Tokenize CSV\u0027).first().json.rows }), fingerprint: $(\u0027Prepare statement\u0027).item.json.r.fingerprint }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027file\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), fingerprint: $(\u0027Prepare statement\u0027).item.json.r.fingerprint }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -748,7 +748,7 @@
                                        3520,
                                        0
                                    ],
-                      "id":  "7a394e13-23d4-5e45-8939-13f367d6f6ad",
+                      "id":  "85e8529e-21f4-54a8-8619-464a8076db71",
                       "name":  "Apply statement",
                       "credentials":  {
                                           "postgres":  {
@@ -767,7 +767,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "2f0b92bf-2ca5-55ca-9fcf-b20eac7cdaf1",
+                                                                                   "id":  "afdecc5a-4318-516a-ac40-31099352a22b",
                                                                                    "leftValue":  "={{ $json.r.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -788,7 +788,7 @@
                                        3740,
                                        0
                                    ],
-                      "id":  "f5d8b9f0-604e-5dbf-b53a-2449cf6509d3",
+                      "id":  "c755248d-1466-57ae-a93e-2710b177cf18",
                       "name":  "Booked?"
                   },
                   {
@@ -796,19 +796,19 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "3e3cbf7c-79d3-56cc-aea6-f9af9c195f07",
+                                                                                     "id":  "dbb3a3b2-ee5a-5737-8ad0-09e428a58bcc",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "26ad3620-60a9-5902-b3d0-d01317d4f7d1",
+                                                                                     "id":  "4ef300c5-be63-5e77-bc67-a2547906af29",
                                                                                      "name":  "code",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.code || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c816115e-07c0-5f4b-a379-460c89658476",
+                                                                                     "id":  "2333585f-a3c9-517b-b76d-b5a78661cdaf",
                                                                                      "name":  "error",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.reason }}",
                                                                                      "type":  "string"
@@ -825,7 +825,7 @@
                                        3960,
                                        200
                                    ],
-                      "id":  "ae2a3c59-41d1-5ece-a98d-faa603b9c5b1",
+                      "id":  "7292eb28-3604-520a-9a9e-c28ac7a5d3c1",
                       "name":  "Not booked"
                   },
                   {
@@ -833,121 +833,121 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "3479e46b-7a3d-5257-aae0-f35f6d5bd7f4",
+                                                                                     "id":  "de660e85-fe5c-5e17-b665-1ab9a0d89711",
                                                                                      "name":  "ok",
                                                                                      "value":  "true",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "e1c6dcf0-68a7-5f2c-9027-8a1b011363e5",
+                                                                                     "id":  "d9460f3c-027f-51dd-a804-fa8220faa0f1",
                                                                                      "name":  "account_name",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.account_name }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "270a3712-b8e6-5393-8ee8-91fcc6b01638",
+                                                                                     "id":  "80225dcf-d251-5b8c-840e-320fb399e788",
                                                                                      "name":  "period_start",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.period_start }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "776485fe-9159-597e-be42-95c141f0325c",
+                                                                                     "id":  "13850bfe-4637-5add-89df-8de33a41b9b0",
                                                                                      "name":  "period_end",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.period_end }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f9848e78-8fe6-5109-8562-1c4bd9e5dbc1",
+                                                                                     "id":  "cb971897-e503-5f0a-8458-f3fa540f49f8",
                                                                                      "name":  "currency",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "ec467d52-85c0-58db-96da-097acf76c698",
+                                                                                     "id":  "bb6d1993-e610-568b-9587-f39636bd807e",
                                                                                      "name":  "booked_count",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.booked_count }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "2c4c15a8-b84d-56db-ad00-5a06a4e85d30",
+                                                                                     "id":  "b7d34e57-e195-5dd0-a560-9c59017dd3f5",
                                                                                      "name":  "everyday_spending",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.lump_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "3b0d923b-f4eb-5adc-a738-287fdbdffaf4",
+                                                                                     "id":  "cf7444bc-c163-5f56-abd0-4b6a657b44d5",
                                                                                      "name":  "difference_before_period",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.drift_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "ba6018fb-b876-5475-b4f5-f609fcdb5c75",
+                                                                                     "id":  "08d99260-7fd5-5bc1-b85e-d08507ed2982",
                                                                                      "name":  "skipped_payments",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.skipped_occurrences }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "3622bcbf-32bb-5016-b26d-643717771043",
+                                                                                     "id":  "9f9b64f4-d43a-555f-8412-d15563f1e140",
                                                                                      "name":  "plan_adjusted",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.plan_adjusted || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f4969040-9e71-5eff-ab26-e88478b5eb31",
+                                                                                     "id":  "6df2df10-8ec2-52af-b9ec-45fa19f9df0f",
                                                                                      "name":  "savings_plan_estimated",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.savings_plan_estimated || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "3fc50fee-693d-5419-bdcf-0be199316e5f",
+                                                                                     "id":  "c24333c9-a14e-5836-a2ae-6beb0f08d276",
                                                                                      "name":  "unknown_direct_debits",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.unknown_mandates || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "9640b099-22b8-5273-a25d-b3fd06c34d2c",
+                                                                                     "id":  "d8c2dc36-1954-5833-9c5d-cdecff7d718e",
                                                                                      "name":  "balance_after",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.balance_after }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "64c10230-0929-5163-88c1-ea17f4452339",
+                                                                                     "id":  "a9925354-faa0-511d-92f3-e6ad3ed918b2",
                                                                                      "name":  "outlook",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
                                                                                      "type":  "object"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "885ff8c7-6c8d-56d7-9fab-0c989c5bf8fd",
+                                                                                     "id":  "e9a38958-a4f6-5b93-ad95-251abf5a21b1",
                                                                                      "name":  "trades_booked",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.trades_booked || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "4b63a19a-bf19-5113-8a1b-ddabce9d8a70",
+                                                                                     "id":  "a73f7480-41cc-5e9b-a061-9f3f71ee6701",
                                                                                      "name":  "trades_not_booked",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.trades_blocked || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "abcc192a-fba3-5550-bbe1-bd23e1979db5",
+                                                                                     "id":  "c222457d-7454-5400-b776-4e954125695f",
                                                                                      "name":  "unknown_export_rows",
-                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.csv_unknown || [] }}",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.export_unknown || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "b14c2f73-edf4-5d8a-aff6-1f997dcc5a54",
+                                                                                     "id":  "3f075089-297a-5a53-b74c-8d7e01d6b9bb",
                                                                                      "name":  "positions_replaced_by_purchases",
                                                                                      "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).replaced || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "b94c6b67-02dc-5fa8-9469-946a48bbd41c",
+                                                                                     "id":  "6991a567-44db-5267-b509-49f0c896242b",
                                                                                      "name":  "positions_not_matching_export",
                                                                                      "value":  "={{ ($(\u0027Preview lots\u0027).first().json.r.mismatched || []) }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "8ab27e23-dc2f-51ce-a8b3-945ab7528df3",
+                                                                                     "id":  "c9d41e04-fe9d-51fc-ae56-dd6b82d9f9a1",
                                                                                      "name":  "purchases_cash_effect",
                                                                                      "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).settlement_change || 0 }}",
                                                                                      "type":  "number"
@@ -964,12 +964,12 @@
                                        3960,
                                        0
                                    ],
-                      "id":  "c54c70f8-47f6-5387-9480-877a6f6b39a7",
+                      "id":  "368d8086-eaea-5618-a5b2-1ae5c812fd32",
                       "name":  "Return"
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Broker-CSV: Export -\u003e (Einzelkäufe übernehmen) -\u003e Monats-Check, ohne Sprachmodell**\n\nFetch telegram file (Core-Baustein, accept=csv: Datei mit Endung .csv als Text, BOM entfernt) -\u003e Tokenize CSV (RFC 4180, Trenner aus der Kopfzeile; kennt keine Bedeutung) -\u003e Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -\u003e Karte 1 + Gate -\u003e Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source csv: finance.fn_broker_csv_normalize liest den Export (Profil per Kopfzeile), der App-Kontostand des Owners ist Pflicht (sonst closing_balance_required, keine Karte), Zeitraum bis gestern, Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.",
+                                         "content":  "## DB-Automatik\n**Bank-Export (CSV/Excel) -\u003e (Einzelkäufe übernehmen) -\u003e Monats-Check, ohne Sprachmodell**\n\nFetch telegram file (Core-Baustein, accept=table: .csv als Text mit entferntem BOM, .xlsx als Raster über Extract From File) -\u003e Read table (CSV: RFC 4180, Trenner aus der ersten Zeile; xlsx: Zellen als Text; kennt keine Bedeutung, die Kopfzeile bleibt im Raster) -\u003e Preview lots = core.fn_dry_run(finance.fn_replace_takeover_with_lots): Positionen mit genau EINER Bestandsübernahme, deren Einzelkäufe der Export exakt belegt (Stück-Summe auf 8 Stellen) -\u003e Karte 1 + Gate -\u003e Replace lots (echter Write; Käufe nach dem bestätigten Kontostand-Tag werden echte Käufe). Danach immer die geteilte Monats-Check-Kette (statement_chain.ps1, gleich in tool_reconcile_bank_statement) mit source file: finance.fn_bank_export_normalize findet Kopfzeile + Bank-Profil und liest den Export; der App-Kontostand des Owners ist Pflicht (sonst closing_balance_required, keine Karte), Zeitraum bis gestern, Wertpapier-Zeilen werden gebucht oder gemeldet, unbekannte Zeilen gemeldet. PRIVACY: die Datei verlässt n8n nicht, die Rückgabe trägt nur Summen und Namen, nie Export-Zeilen.",
                                          "height":  380,
                                          "width":  600,
                                          "color":  4
@@ -980,7 +980,7 @@
                                        220,
                                        -520
                                    ],
-                      "id":  "7eceaf8a-8f2b-5af1-81a5-989b8e54f4c6",
+                      "id":  "a06521ed-1feb-54cb-8877-34c08a9d3568",
                       "name":  "Überblick"
                   },
                   {
@@ -996,7 +996,7 @@
                                        1320,
                                        -560
                                    ],
-                      "id":  "aa6a5d1e-4d88-5718-a296-bbcbed9cde66",
+                      "id":  "012273bf-c8bc-552f-aa0f-fbbbdfe9d23c",
                       "name":  "Zwei Karten"
                   }
               ],
@@ -1028,7 +1028,7 @@
                                                       [
                                                           {
                                                               "index":  0,
-                                                              "node":  "Tokenize CSV",
+                                                              "node":  "Read table",
                                                               "type":  "main"
                                                           }
                                                       ],
@@ -1041,17 +1041,17 @@
                                                       ]
                                                   ]
                                      },
-                        "Tokenize CSV":  {
-                                             "main":  [
-                                                          [
-                                                              {
-                                                                  "index":  0,
-                                                                  "node":  "Table read?",
-                                                                  "type":  "main"
-                                                              }
-                                                          ]
-                                                      ]
-                                         },
+                        "Read table":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Table read?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
                         "Table read?":  {
                                             "main":  [
                                                          [
@@ -1064,7 +1064,7 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Not a CSV",
+                                                                 "node":  "Not an export",
                                                                  "type":  "main"
                                                              }
                                                          ]

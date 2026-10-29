@@ -191,7 +191,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_commit_import` | Bulk-Import 3/3: ganzen Batch atomar committen (EIN Gate) |
 | `tool_reconcile_bank_statement` | Monats-Check: Kontoauszug lesen, Konto per IBAN, Saldo-Probe, erwartete Zahlungen abhaken, Rest als eine Abgleichsbuchung (eine Karte) |
 | `tool_void_bank_statement` | Letzten Kontoauszug eines Kontos samt Buchungen, Skips und Abgleichsstand zurücknehmen |
-| `tool_import_broker_csv` | Monats-Check aus dem CSV-Umsatzexport einer Bank mit CSV-Profil (fester Leser, kein LLM): App-Kontostand Pflicht, Sparpläne mit exakten Stück, fehlende Trades buchen; vorher optional Bestandsübernahme durch die Einzelkäufe ersetzen (zwei Karten) |
+| `tool_import_bank_export` | Monats-Check aus der Umsatz-Exportdatei (CSV/Excel) einer Bank mit Export-Profil (fester Leser, kein LLM): App-Kontostand Pflicht, Sparpläne mit exakten Stück, fehlende Trades buchen; vorher optional Bestandsübernahme durch die Einzelkäufe ersetzen (zwei Karten) |
 | `tool_extract_finance_document` | Vision: Telegram-Foto/PDF → Rohwerte ins Staging (Download via Core-Baustein `agent.tool_fetch_telegram_file`) |
 | `tool_record_job_match` | (career) Weitergeleitete Stelle vormerken (UPSERT auf `(source, external_id)`, `source=forwarded`; `record_`-Verb, HITL owner_info) |
 

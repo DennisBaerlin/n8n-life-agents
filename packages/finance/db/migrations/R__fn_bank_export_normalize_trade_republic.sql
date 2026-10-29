@@ -1,9 +1,8 @@
 -- ============================================================
--- fn_broker_csv_normalize (READ, IMMUTABLE) -- Broker-CSV-Export -> normierte Zeilen (Broker-CSV Paket B)
---   Fester Leser in Code, kein LLM (die Datei geht nicht an Anthropic). Eingabe = Ausgabe des generischen Tokenizers
---   im Workflow: {header:[text], rows:[[text]]} (RFC 4180, Bedeutung kennt der Tokenizer nicht).
---   Profil per Header-Signatur aus fn_broker_csv_profiles (alle required-Spalten vorhanden). Profil trade_republic_v1
---   (Zuordnung nach Portfolio Performance TradeRepublicCSVExtractor): Datum = Spalte date (Buchungstag), sonst die
+-- fn_bank_export_normalize_trade_republic (READ, IMMUTABLE) -- Profil trade_republic_v1 des Bank-Import-Moduls
+--   Fester Leser in Code, kein LLM (die Datei geht nicht an Anthropic). Aufruf NUR ueber den Dispatcher
+--   fn_bank_export_normalize (erkennt Profil + Kopfzeile): Eingabe {header:[text], rows:[[text]] (Zeilen nach der
+--   Kopfzeile), header_row_no}. Zuordnung nach Portfolio Performance TradeRepublicCSVExtractor: Datum = Spalte date (Buchungstag), sonst die
 --   ersten 10 Zeichen von datetime; cash_amount = amount + fee + tax (alle signiert, gerundet auf Cent) = Wirkung aufs
 --   Cashkonto; isin = symbol (bei asset_class CRYPTO NULL, symbol bleibt der Ticker).
 --   kind: buy/sell (TRADING BUY/SELL mit Stueck), dividend (DIVIDEND/DISTRIBUTION/DIVIDEND_EQUIVALENT_PAYMENT,
@@ -14,18 +13,18 @@
 --   DIVIDENDEN-KORREKTUR (PP-Forum): eine Dividenden-Zeile mit negativem amount storniert eine fruehere; sie und GENAU
 --   EINE gleich hohe positive Zeile derselben ISIN + Stueckzahl (die zeitlich naechste = Neu-Buchung) werden unknown (reason dividend_correction) ->
 --   nie automatisch gebucht, die Karte nennt sie. Das Geld zaehlt trotzdem (cash_amount bleibt).
---   RUECKGABE: {ok:true, profile, rows:[{row_no, date, kind, category, type, cash_amount, isin, symbol, name,
+--   RUECKGABE: {ok:true, rows:[{row_no, date, kind, category, type, cash_amount, isin, symbol, name,
 --   asset_class, shares (Betrag), price, gross (|amount|), fee (Betrag), tax (signiert), currency, account_type,
 --   counterparty, counterparty_iban, purpose, ext_ref (md5 der transaction_id), reason}], unknown_rows:[{row_no, date,
 --   category, type, cash_amount, name, reason}], account_types[], currencies[]}
---   | {ok:false, code:'csv_profile_unknown'|'csv_invalid', reason, row_no?}.
---   row_no = Zeile in der Datei (Header = 1).
+--   | {ok:false, code:'export_invalid', reason, row_no?}.
+--   row_no = Zeile in der Datei (Kopfzeile = header_row_no).
 -- ============================================================
-CREATE OR REPLACE FUNCTION finance.fn_broker_csv_normalize(p jsonb)
+CREATE OR REPLACE FUNCTION finance.fn_bank_export_normalize_trade_republic(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
     v_hdr     JSONB;
-    v_prof    JSONB;
+    v_hrow    INT := COALESCE((p->>'header_row_no')::int, 1);
     v_idx     JSONB := '{}'::jsonb;
     v_row     JSONB;
     v_n       INT;
@@ -50,22 +49,12 @@ DECLARE
     v_reason  TEXT;
 BEGIN
     IF jsonb_typeof(p->'header') IS DISTINCT FROM 'array' OR jsonb_typeof(p->'rows') IS DISTINCT FROM 'array' THEN
-        RETURN jsonb_build_object('ok', false, 'code', 'csv_invalid', 'reason', 'The file is not a readable CSV table.');
+        RETURN jsonb_build_object('ok', false, 'code', 'export_invalid', 'reason', 'The file is not a readable table.');
     END IF;
     SELECT jsonb_agg(lower(btrim(h, E' \t\r\n"﻿')) ORDER BY o) INTO v_hdr
     FROM jsonb_array_elements_text(p->'header') WITH ORDINALITY AS x(h, o);
     SELECT jsonb_object_agg(h, o - 1) INTO v_idx
     FROM (SELECT DISTINCT ON (h) h, o FROM jsonb_array_elements_text(v_hdr) WITH ORDINALITY AS x(h, o) ORDER BY h, o) s;
-
-    SELECT pr INTO v_prof FROM jsonb_array_elements(finance.fn_broker_csv_profiles()) pr
-    WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(pr->'required') c WHERE NOT (v_idx ? c))
-    LIMIT 1;
-    IF v_prof IS NULL THEN
-        RETURN jsonb_build_object('ok', false, 'code', 'csv_profile_unknown',
-            'reason', 'This CSV export is not from a supported bank (known: '
-                   || (SELECT string_agg(pr->>'bank', ', ') FROM jsonb_array_elements(finance.fn_broker_csv_profiles()) pr)
-                   || ') or its columns changed.');
-    END IF;
 
     FOR v_row, v_n IN SELECT e, (o)::int FROM jsonb_array_elements(p->'rows') WITH ORDINALITY AS x(e, o) LOOP
         -- komplett leere Zeile (Dateiende, Leerzeile) ueberspringen
@@ -79,14 +68,14 @@ BEGIN
         -- Zahlen strikt (Punkt als Dezimaltrenner, keine Tausender): eine unlesbare Zahl bricht laut ab
         FOREACH v_col IN ARRAY ARRAY['amount', 'fee', 'tax', 'shares', 'price'] LOOP
             IF v_r ? v_col AND NOT pg_input_is_valid(v_r->>v_col, 'numeric') THEN
-                RETURN jsonb_build_object('ok', false, 'code', 'csv_invalid', 'row_no', v_n + 1,
-                    'reason', 'Row ' || (v_n + 1) || ': "' || v_col || '" is not a number (' || (v_r->>v_col) || ').');
+                RETURN jsonb_build_object('ok', false, 'code', 'export_invalid', 'row_no', v_n + v_hrow,
+                    'reason', 'Row ' || (v_n + v_hrow) || ': "' || v_col || '" is not a number (' || (v_r->>v_col) || ').');
             END IF;
         END LOOP;
         v_raw := COALESCE(v_r->>'date', left(v_r->>'datetime', 10));
         IF v_raw IS NULL OR NOT pg_input_is_valid(v_raw, 'date') OR NOT (v_r ? 'amount') THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'csv_invalid', 'row_no', v_n + 1,
-                'reason', 'Row ' || (v_n + 1) || ' has no readable date or amount.');
+            RETURN jsonb_build_object('ok', false, 'code', 'export_invalid', 'row_no', v_n + v_hrow,
+                'reason', 'Row ' || (v_n + v_hrow) || ' has no readable date or amount.');
         END IF;
         v_d   := v_raw::date;
         v_amt := (v_r->>'amount')::numeric;
@@ -122,7 +111,7 @@ BEGIN
         IF v_kind = 'dividend' AND v_amt < 0 THEN v_kind := 'unknown'; v_reason := 'dividend_correction'; END IF;
 
         v_arr := v_arr || jsonb_build_object(
-            'row_no', v_n + 1, 'date', v_d, 'kind', v_kind, 'category', v_cat, 'type', v_typ,
+            'row_no', v_n + v_hrow, 'date', v_d, 'kind', v_kind, 'category', v_cat, 'type', v_typ,
             'cash_amount', round(v_amt + v_fee + v_tax, 2),
             'isin', CASE WHEN v_cls = 'CRYPTO' THEN NULL ELSE upper(v_sym) END,
             'symbol', v_sym, 'name', v_r->>'name', 'asset_class', v_cls,
@@ -152,7 +141,7 @@ BEGIN
         v_pos := NULL;
     END LOOP;
 
-    RETURN jsonb_build_object('ok', true, 'profile', v_prof->>'key', 'rows', v_out,
+    RETURN jsonb_build_object('ok', true, 'rows', v_out,
         'unknown_rows', (SELECT COALESCE(jsonb_agg(jsonb_build_object('row_no', r->'row_no', 'date', r->'date',
                              'category', r->'category', 'type', r->'type', 'cash_amount', r->'cash_amount',
                              'name', COALESCE(r->'name', r->'purpose'), 'reason', r->'reason') ORDER BY (r->>'row_no')::int), '[]'::jsonb)

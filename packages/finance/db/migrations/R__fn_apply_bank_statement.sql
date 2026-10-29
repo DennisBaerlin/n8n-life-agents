@@ -12,10 +12,13 @@
 --   Aggregat in finance.bank_statements, Herkunft bank_statement_id an jeder hier entstandenen Buchung.
 --   Ein {ok:false} einer inneren Buch-fn wird zu RAISE SQLSTATE 'FN001' -> Rollback des Blocks -> {ok:false, reason}
 --   (kein Teilzustand, kein Owner-Alarm).
---   Broker-CSV (source:'csv', Paket B): Sparplan-Treffer mit exakter Stueckzahl ohne shares_estimated; prepare.trades
+--   Bank-Export-Datei (source:'file', Broker-CSV Paket B): Sparplan-Treffer mit exakter Stueckzahl ohne shares_estimated; prepare.trades
 --   ueber fn_book_stock_buy / fn_book_stock_sell / fn_book_dividend (Herkunft bank_statement_id wie jede Buchung hier);
 --   balance_source aus der Prepare; seen_refs -> finance.statement_seen_refs (faellt mit dem Auszug per CASCADE weg).
---   RUECKGABE: {ok:true, statement_id, booked_count, trades_booked, trades_blocked[], csv_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
+--   Bank-Import-Modul: matched kind transfer -> fn_book_transfer (beide Beine am Zeilendatum); Stufe-0-Treffer einer
+--   Transfer-Gruppe (group_id) mit Buchungsdatum nach period_end -> nur die Beine DIESES Kontos aufs Zeilendatum;
+--   prepare.moved_legs -> period_end+1. Gesperrt werden zusaetzlich alle Gegenkonten aus matched/blocked/already_booked.
+--   RUECKGABE: {ok:true, statement_id, booked_count, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
 -- ============================================================
@@ -49,13 +52,18 @@ BEGIN
     END IF;
     v_acct := (v_prep->>'account_id')::int;
 
-    -- Salden aller beteiligten Konten sperren (dieses Konto + Transfer-Gegenkonten), dann unter Lock neu rechnen.
+    -- Salden aller beteiligten Konten sperren (dieses Konto + Transfer-Gegenkonten aus Dauerauftraegen, Ad-hoc-Transfers
+    -- und gebuchten Transfer-Gruppen), dann unter Lock neu rechnen: zwei gleichzeitig bestaetigte Karten zweier Konten
+    -- laufen nacheinander, die zweite sieht die erste (stale_preview statt Doppelbuchung).
     PERFORM 1 FROM finance.account_balances b
     WHERE b.account_id = v_acct
        OR b.account_id IN (SELECT CASE WHEN r.account_id = v_acct THEN r.target_account_id ELSE r.account_id END
                            FROM finance.recurring_payments r
                            WHERE r.id IN (SELECT (m->>'recurring_payment_id')::int
                                           FROM jsonb_array_elements(v_prep->'matched') m))
+       OR b.account_id IN (SELECT (m->>'other_account_id')::int FROM jsonb_array_elements((v_prep->'matched') || (v_prep->'blocked')) m)
+       OR b.account_id IN (SELECT t.account_id FROM finance.transactions t
+                           WHERE t.group_id IN (SELECT (m->>'group_id')::uuid FROM jsonb_array_elements(v_prep->'already_booked') m))
     ORDER BY b.account_id
     FOR UPDATE;
     v_prep := finance.fn_statement_prepare(p - 'fingerprint');
@@ -96,6 +104,21 @@ BEGIN
                 v_r := finance.fn_book_interest_occurrence(jsonb_build_object('account_id', v_acct,
                            'value_date', v_m->>'line_date', 'period_end', v_m->>'interest_period_end',
                            'amount', (v_m->>'amount')::numeric));
+            ELSIF v_m->>'kind' = 'transfer' THEN
+                -- Ad-hoc-Transfer (Stufe T): Abgang = dieses Konto ist Quelle. Unterwegs (partner_date): gebucht am Tag
+                -- nach dem Abgleich des Gegenkontos, danach das Bein DIESES Kontos aufs Zeilendatum
+                v_r := finance.fn_book_transfer(jsonb_build_object(
+                           'from_account_id', CASE WHEN (v_m->>'amount')::numeric < 0 THEN v_acct ELSE (v_m->>'other_account_id')::int END,
+                           'to_account_id',   CASE WHEN (v_m->>'amount')::numeric < 0 THEN (v_m->>'other_account_id')::int ELSE v_acct END,
+                           'from_account_name', CASE WHEN (v_m->>'amount')::numeric < 0 THEN v_prep->>'account_name' ELSE v_m->>'name' END,
+                           'to_account_name',   CASE WHEN (v_m->>'amount')::numeric < 0 THEN v_m->>'name' ELSE v_prep->>'account_name' END,
+                           'amount', abs((v_m->>'amount')::numeric),
+                           'transaction_date', COALESCE(v_m->>'partner_date', v_m->>'line_date'),
+                           'purpose', 'Monats-Check'));
+                IF (v_r->>'ok')::boolean AND v_m ? 'partner_date' THEN
+                    UPDATE finance.transactions SET transaction_date = (v_m->>'line_date')::date
+                    WHERE id IN ((v_r->>'debit_tx_id')::int, (v_r->>'credit_tx_id')::int) AND account_id = v_acct;
+                END IF;
             ELSIF v_m->>'kind' = 'savings_plan' THEN
                 v_r := finance.fn_book_savings_plan_execution(jsonb_build_object(
                            'recurring_payment_id', (v_m->>'recurring_payment_id')::int, 'due_date', v_m->>'due_date',
@@ -191,10 +214,17 @@ BEGIN
                    WHERE (e->>'tx_date')::date > (v_prep->>'period_end')::date LOOP
             UPDATE finance.transactions t SET transaction_date = (v_m->>'line_date')::date
             WHERE t.id = (v_m->>'transaction_id')::int
-               OR t.group_id = (SELECT x.group_id FROM finance.transactions x
-                                WHERE x.id = (v_m->>'transaction_id')::int AND x.group_id IS NOT NULL);
+               OR (v_m->>'group_id' IS NULL
+                   AND t.group_id = (SELECT x.group_id FROM finance.transactions x
+                                     WHERE x.id = (v_m->>'transaction_id')::int AND x.group_id IS NOT NULL))
+               -- Ad-hoc-Transfer ('g:'): nur die Beine DIESES Kontos (das Partnerbein steht im Partner-Auszug)
+               OR (t.group_id = (v_m->>'group_id')::uuid AND t.account_id = v_acct);
             v_redated := v_redated + 1;
         END LOOP;
+        -- Monatsgrenze: unterwegs befindliche Transfer-Beine (prepare.moved_legs) auf period_end+1
+        UPDATE finance.transactions t SET transaction_date = (v_prep->>'period_end')::date + 1
+        WHERE t.id IN (SELECT (x->>'transaction_id')::int FROM jsonb_array_elements(v_prep->'moved_legs') x);
+        v_redated := v_redated + jsonb_array_length(v_prep->'moved_legs');
 
         v_final := finance.fn_reconcile_account(jsonb_build_object('account_id', v_acct,
                        'confirmed_balance', (v_prep->>'closing_balance')::numeric, 'reconciliation_date', v_prep->>'period_end',
@@ -234,7 +264,7 @@ BEGIN
         'booked_count', jsonb_array_length(v_prep->'matched'),
         'trades_booked', v_trades,
         'trades_blocked', COALESCE(v_prep->'trades_blocked', '[]'::jsonb),
-        'csv_unknown', COALESCE(v_prep->'csv_unknown', '[]'::jsonb),
+        'export_unknown', COALESCE(v_prep->'export_unknown', '[]'::jsonb),
         'booked_tx_ids', to_jsonb(v_ids),
         'drift_amount', v_drift,
         'lump_amount', COALESCE((v_final->>'difference')::numeric, 0),

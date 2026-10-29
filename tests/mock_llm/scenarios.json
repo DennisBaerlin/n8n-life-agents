@@ -996,10 +996,10 @@
     "final": "Die Karte zum Monats-Check ist unterwegs."
   },
   {
-    "_comment": "tc83 Broker-CSV (Paket B): Transaktionsexport + App-Kontostand -> tool_import_broker_csv (fester Leser, kein Vision-Call).",
+    "_comment": "tc83 Bank-Export (Broker-CSV Paket B): Transaktionsexport + App-Kontostand -> tool_import_bank_export (fester Leser, kein Vision-Call).",
     "match": "Hier ist der Transaktionsexport von Trade Republic als CSV",
     "calls": [
-      { "tool": "tool_import_broker_csv", "args": { "file_id": "mock_photo_083", "account_name": "Trade Republic Cash Girokonto", "closing_balance": "1234.56" } }
+      { "tool": "tool_import_bank_export", "args": { "file_id": "mock_photo_083", "account_name": "Trade Republic Cash Girokonto", "closing_balance": "1234.56" } }
     ],
     "final": "Fuer das Trade Republic Cash Girokonto gibt es noch keinen bestaetigten Kontostand. Bitte bestaetige zuerst den heutigen Stand, dann schick den Export noch einmal."
   },

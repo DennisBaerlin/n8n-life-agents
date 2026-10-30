@@ -20,7 +20,7 @@ Der Monats-Check hält deine Kontostände und regelmäßigen Zahlungen aktuell, 
 
 ## Woran der Bot das Konto erkennt
 
-An der **IBAN** auf dem Auszug. Legst du ein neues Konto an, fragt der Buchhalter einmal danach. Hast du sie gerade nicht zur Hand, ist das kein Problem: Beim ersten Auszug fragt er, welches deiner Konten gemeint ist, und merkt sich die IBAN.
+An der **IBAN** auf dem Auszug. Legst du ein neues Konto an, weist der Buchhalter einmal darauf hin, dass du sie hinterlegen kannst. Hast du sie gerade nicht zur Hand, ist das kein Problem: Beim ersten Auszug fragt er, welches deiner Konten gemeint ist, und merkt sich die IBAN. Ein CSV-Export enthält die eigene IBAN nicht; für Konten, die du nur per Export abgleichst, trägst du sie einmal selbst ein, z. B. „Trag beim N26-Konto die IBAN DE.. ein“.
 
 **Auszug eines Kontos, das der Bot noch nicht kennt** (z. B. das Konto deines Kindes): Sag einfach, wem es gehört, etwa „das ist das neue Trade-Republic-Konto von Lisa“. Der Buchhalter legt es in **einem** Schritt an, mit der IBAN und dem Endstand aus dem Auszug. Auf der Karte steht der Stichtag, zu dem dieser Stand gilt. Den Auszug selbst spielt er dafür nicht mehr ein: Der Endstand ist der Startpunkt, der Monats-Check beginnt mit dem nächsten Auszug. Geht die Rechenprobe des Auszugs nicht auf, legt er das Konto ohne Kontostand an und fragt dich danach.
 

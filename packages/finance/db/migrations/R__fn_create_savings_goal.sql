@@ -406,7 +406,7 @@ BEGIN
                          'rate_eur_m2', (v_rec->>'rate_eur_m2')::numeric,
                          'band', v_rec->>'band')
                 ELSE '{}'::jsonb END
-        || CASE WHEN v_emerg THEN jsonb_build_object('emergency_reserve', v_es - 'candidates' - 'month_options') ELSE '{}'::jsonb END
+        || CASE WHEN v_emerg THEN jsonb_build_object('emergency_reserve', v_es - 'month_options') ELSE '{}'::jsonb END
         || CASE WHEN v_plan_id IS NOT NULL
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', v_plan_monthly)
                 ELSE '{}'::jsonb END

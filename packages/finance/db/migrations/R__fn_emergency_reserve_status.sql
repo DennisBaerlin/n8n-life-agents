@@ -10,13 +10,12 @@
 --   state: neutral = kein Ziel bestimmbar (Monate ohne Ausgaben-Daten) oder Kurs fehlt; ok = gedeckt; warn = darunter.
 --   Immer (auch ohne Notreserve — Onboarding, Live-Befund 2026-10-30: der Buchhalter wiederholte eine veraltete
 --   Monatsausgabe aus dem Verlauf, rechnete „6 Monatsgehaelter“ selbst und bot Kinderkonten an):
---   basis (frisch), month_options [{months 3|6, eur}] (fertige Betraege, nur mit Ausgaben-Daten) und candidates
---   [{name, free_eur}] = zulaessige Konten (fn_emergency_reserve_account_ok) mit dem noch zuordenbaren Betrag
---   (fn_account_free_balance, derselbe Guard wie die Write-fns, in EUR), nach Name; ohne Kurs free_eur NULL.
---   Andere Monatszahlen nennt der Buchhalter ohne Betrag — den rechnet die Bestaetigungskarte (Probelauf).
---   RUECKGABE jsonb: {exists:false, basis, month_options, candidates} | {exists:true, goal_id, name,
+--   basis (frisch) und month_options [{months 3|6, eur}] (fertige Betraege, nur mit Ausgaben-Daten). Andere
+--   Monatszahlen nennt der Buchhalter ohne Betrag — den rechnet die Bestaetigungskarte (Probelauf). Die Konten mit
+--   freiem Betrag liefert finance.fn_emergency_reserve_candidates (eigene fn: braucht je Konto die Vorschau).
+--   RUECKGABE jsonb: {exists:false, basis, month_options} | {exists:true, goal_id, name,
 --   target_kind ('amount'|'months'), months, target_eur, basis:{monthly_eur, fixed_eur, everyday_eur, everyday_accounts,
---   everyday_provisional}, month_options, candidates, covered_eur, accounts:[{name, eur}], gap_eur, state, has_fx_gap}
+--   everyday_provisional}, month_options, covered_eur, accounts:[{name, eur}], gap_eur, state, has_fx_gap}
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_emergency_reserve_status()
@@ -32,7 +31,6 @@ DECLARE
     v_state  TEXT;
     v_basis  JSONB;
     v_opts   JSONB;
-    v_cands  JSONB;
 BEGIN
     v_snap  := finance.fn_liquidity_snapshot();
     v_month := COALESCE((v_snap->>'monthly_expenses_eur')::numeric, 0);
@@ -45,19 +43,11 @@ BEGIN
     v_opts := CASE WHEN v_month > 0 THEN jsonb_build_array(
                   jsonb_build_object('months', 3, 'eur', round(3 * v_month, 2)),
                   jsonb_build_object('months', 6, 'eur', round(6 * v_month, 2))) ELSE '[]'::jsonb END;
-    -- zulaessige Konten (fn_emergency_reserve_account_ok, dieselbe Regel wie Deckung und Write-fns); frei = derselbe
-    -- Freier-Saldo-Guard wie fn_book_savings_reservation (fn_account_free_balance, Kontowaehrung), heute in EUR
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('name', a.name,
-               'free_eur', finance.fn_to_eur(GREATEST(finance.fn_account_free_balance(a.id), 0), a.currency))
-               ORDER BY a.name), '[]'::jsonb)
-      INTO v_cands
-      FROM finance.accounts a
-     WHERE finance.fn_emergency_reserve_account_ok(a.id);
 
     SELECT * INTO v_g FROM finance.savings_goals WHERE kind = 'emergency_reserve' AND status = 'active'
      ORDER BY id LIMIT 1;
     IF NOT FOUND THEN
-        RETURN jsonb_build_object('exists', false, 'basis', v_basis, 'month_options', v_opts, 'candidates', v_cands);
+        RETURN jsonb_build_object('exists', false, 'basis', v_basis, 'month_options', v_opts);
     END IF;
     v_target := CASE WHEN v_g.target_amount IS NOT NULL THEN v_g.target_amount
                      WHEN v_month > 0 THEN round(v_g.target_months * v_month, 2) END;
@@ -78,7 +68,7 @@ BEGIN
         'target_kind', CASE WHEN v_g.target_amount IS NOT NULL THEN 'amount' ELSE 'months' END,
         'months', v_g.target_months,
         'target_eur', v_target,
-        'basis', v_basis, 'month_options', v_opts, 'candidates', v_cands,
+        'basis', v_basis, 'month_options', v_opts,
         'covered_eur', v_cov,
         'accounts', v_accts,
         'gap_eur', CASE WHEN v_target IS NOT NULL THEN GREATEST(v_target - v_cov, 0) END,

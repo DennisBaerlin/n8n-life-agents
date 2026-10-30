@@ -461,7 +461,7 @@ BEGIN
         'paused_cash_rate',  COALESCE((v_stop_res->>'paused_cash_rate')::boolean, false),
         'paused_plan_count', COALESCE((v_stop_res->>'paused_plan_count')::int, 0))
         || CASE WHEN v_convert THEN jsonb_build_object('converted_to', 'emergency_reserve') ELSE '{}'::jsonb END
-        || CASE WHEN v_kind = 'emergency_reserve' THEN jsonb_build_object('emergency_reserve', finance.fn_emergency_reserve_status() - 'candidates' - 'month_options')
+        || CASE WHEN v_kind = 'emergency_reserve' THEN jsonb_build_object('emergency_reserve', finance.fn_emergency_reserve_status() - 'month_options')
                 ELSE '{}'::jsonb END
         || CASE WHEN v_covered THEN jsonb_build_object('covered', true) ELSE '{}'::jsonb END
         || CASE WHEN v_need IS NOT NULL AND (v_rate IS NULL OR (v_old IS NOT NULL AND v_need <> v_rate))

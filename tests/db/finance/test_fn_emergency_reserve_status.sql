@@ -24,6 +24,25 @@ BEGIN
   PERFORM finance.fn_add_recurring_payment(v_giro, -1200, '__ers_miete__', 1::smallint, 'month'::finance.schedule_unit, 1::smallint,
             t - 60, t - 60, NULL, NULL, NULL);
 
+  -- ===== 0) Vor dem Anlegen (Onboarding, Live-Befund 2026-10-30): der Buchhalter wiederholte eine veraltete
+  --      Monatsausgabe, rechnete "6 Monatsgehaelter" selbst und bot Kinderkonten an -> der Status liefert auch ohne
+  --      Notreserve die frische Basis, fertige Monats-Optionen und die zulaessigen Konten mit freiem Betrag =====
+  INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
+  VALUES ('__ers_kidcash0__', 'cash', 'EUR', 'active', '__ers_kid__') RETURNING id INTO v_dep;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_dep, 700, t - 5, 'other');
+  INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__ers_vorab__', 2000, t + 300) RETURNING id INTO v_g;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g, 'account_id', v_tg, 'amount', 1500));
+  v_s := finance.fn_emergency_reserve_status();
+  IF (v_s->>'exists')::boolean IS DISTINCT FROM false OR (v_s->'basis'->>'monthly_eur')::numeric IS DISTINCT FROM 1200
+     OR v_s->'month_options' IS DISTINCT FROM '[{"months": 3, "eur": 3600.00}, {"months": 6, "eur": 7200.00}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [0a] ohne Notreserve: frische Basis + Monats-Optionen: %', v_s; END IF;
+  -- zulaessig: nur Geld-Konten der Eltern (kein P2P, kein Kinderkonto), frei = Saldo nach allen Ziel-Zuordnungen
+  IF v_s->'candidates' IS DISTINCT FROM
+       '[{"name": "__ers_giro__", "free_eur": 5000.00}, {"name": "__ers_tg__", "free_eur": 6500.00}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [0b] Kandidaten-Konten: %', v_s->'candidates'; END IF;
+  UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = v_g;
+  RAISE NOTICE 'PASS [0] Status ohne Notreserve: Basis, Monats-Optionen, zulaessige Konten';
+
   -- ===== 1) Gesetz =====
   BEGIN
     INSERT INTO finance.savings_goals (name, kind, target_amount, target_months) VALUES ('__ers_x__', 'emergency_reserve', 1000, 3);

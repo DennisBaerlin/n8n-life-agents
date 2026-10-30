@@ -67,7 +67,7 @@ function Build-SetAccount {
         (New-HitlLine 'finance.label.new_name'           "$S.new_name" -If "$S.new_name")
         (New-HitlLine 'finance.label.bank'               "$S.bank" -If "$S.bank")
         (New-HitlLine 'finance.label.iban_number' "$S.account_number" -If "$S.account_number")
-        (New-HitlNote -Key 'finance.note.iban_removed' -If "String($S.remove_account_number || '').toLowerCase().trim() === 'true'")
+        (New-HitlNote -Key 'finance.note.iban_removed' -If "(['true','t','yes','y','on','1'].indexOf(String($S.remove_account_number || '').toLowerCase().trim()) >= 0)")
         (New-HitlLine 'finance.label.owner_person'       "($P.full_name || $S.owner_person)" -If "$S.owner_person")
         (New-HitlLine 'finance.label.settlement_account' "$S.settlement_account" -If "$S.settlement_account")
         (New-HitlLine 'finance.label.maturity'           (Get-DryEffectiveExpr 'fixed_deposit_maturity_date') -Kind date -If "$S.fixed_deposit_maturity_date")

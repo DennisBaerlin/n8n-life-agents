@@ -162,6 +162,14 @@ BEGIN
     v_r := finance.fn_set_account(jsonb_build_object('account_id', v_y, 'notes', 'n', 'remove_account_number', ''));
     IF (SELECT account_number FROM finance.accounts WHERE id = v_y) IS DISTINCT FROM 'DE66500105174400000002' THEN
       RAISE EXCEPTION 'FAIL fn_set_account [leeres remove = unveraendert]'; END IF;
+    -- nur die Ja-Liste der Karte (true/t/yes/y/on/1) entfernt; anderes ("ja", "false") nie, und nie ein Cast-Fehler
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_y, 'remove_account_number', 'ja'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+       OR (SELECT account_number FROM finance.accounts WHERE id = v_y) IS DISTINCT FROM 'DE66500105174400000002' THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [unbekanntes Wort entfernt nichts]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_y, 'remove_account_number', ' YES '));
+    IF (SELECT account_number FROM finance.accounts WHERE id = v_y) IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [YES entfernt wie auf der Karte]: %', v_r; END IF;
     RAISE NOTICE 'PASS fn_set_account [IBAN entfernen + verschieben]';
   END;
 

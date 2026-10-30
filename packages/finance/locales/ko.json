@@ -851,6 +851,7 @@
   "finance.note.statement_export_starts_late": "내보내기가 {date}의 확인된 잔액까지 거슬러 올라가지 않을 수 있습니다. 그 사이 거래가 빠져 있다면 그중 {amount}가 나머지에 포함됩니다. 취소하고 더 긴 기간(예: 올해와 작년)을 내보내는 것이 좋습니다.",
   "finance.note.iban_learned_other": "IBAN {iban}을(를) ‘{account}’ 계좌에 저장해요(이체에서 확인됨). 앞으로 월간 점검은 이런 이체를 계좌 간 이체로 기록해요. 틀렸다면 취소해 주세요.",
   "finance.note.iban_removed": "이 계좌에 저장된 계좌번호(IBAN)를 삭제해요.",
+  "finance.note.iban_learn_conflict": "IBAN {iban}과(와) 이 명세서의 다른 IBAN이 모두 ‘{account}’ 계좌에 해당해요. 둘 다 저장하지 않았어요. 어느 IBAN이 이 계좌의 것인지 알려 주세요.",
   "finance.note.iban_learn_ambiguous": "IBAN {iban}으로 된 이체가 여러 계좌({accounts})에 해당해서 나머지에 남겨 두었어요. 이 IBAN이 어느 계좌의 것인지 알려 주시면 등록할게요.",
   "finance.label.statement_pending_settled": "지난 월간 점검 때 승인 대기였던 결제의 정산",
   "finance.label.statement_trades": "증권 (기록 예정)",

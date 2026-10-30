@@ -100,15 +100,17 @@ BEGIN
 EXCEPTION WHEN SQLSTATE 'TR001' THEN NULL;   -- nur das Zuruecksetzen, FAIL-Meldungen laufen durch
 END $$;
 
--- ---------- S2: zwei Kandidaten -> Hinweis, kein Lernen; zwei Namen -> nur Haushaltskonto ----------
+-- ---------- S2: zwei Kandidaten -> Hinweis, kein Lernen; zwei Namen -> nur Haushaltskonto; eine Person -> nur ihre
+--            Konten (das Haushaltskonto ist fuer einen Einzelnamen nie Kandidat, Code-Review 2026-10-30) ----------
 DO $$
 DECLARE
     ps DATE := date_trunc('month', CURRENT_DATE - 90)::date;
     pe DATE := (date_trunc('month', CURRENT_DATE - 90) + interval '1 month - 1 day')::date;
-    v_a INT; v_n INT; v_j INT; v_prep JSONB;
+    v_a INT; v_n INT; v_n2 INT; v_j INT; v_prep JSONB;
 BEGIN
     v_a := pg_temp.acct('__t_il_a__', '__t_il_max__', 'DE93500105174400000001', ps);
     v_n := pg_temp.acct('__t_il_n26__', '__t_il_max__', NULL, ps);
+    v_n2 := pg_temp.acct('__t_il_tg__', '__t_il_max__', NULL, ps);
     v_j := pg_temp.acct('__t_il_joint__', NULL, NULL, ps);
     v_prep := finance.fn_statement_prepare(pg_temp.stmt('__t_il_a__', ps, pe, 1000, jsonb_build_array(
         pg_temp.ln(ps + 3, -200, 'Maximilian Zweistein', 'DE66500105174400000002'),
@@ -121,10 +123,11 @@ BEGIN
     IF jsonb_array_length(v_prep->'iban_ambiguous') <> 1
        OR v_prep->'iban_ambiguous'->0->>'account_number' <> 'DE66500105174400000002'
        OR (SELECT string_agg(x, ',' ORDER BY x) FROM jsonb_array_elements_text(v_prep->'iban_ambiguous'->0->'candidates') x)
-          <> '__t_il_joint__,__t_il_n26__' THEN
-        RAISE EXCEPTION 'FAIL [L2b eine Person -> eigenes + Haushaltskonto = mehrdeutig]: %', v_prep->'iban_ambiguous';
+          <> '__t_il_n26__,__t_il_tg__' OR (v_prep->'iban_ambiguous'->0->>'conflict')::boolean THEN
+        RAISE EXCEPTION 'FAIL [L2b eine Person mit zwei Konten ohne IBAN = mehrdeutig]: %', v_prep->'iban_ambiguous';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.iban_learn_ambiguous') THEN
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.iban_learn_ambiguous'
+                   AND c->'params'->>'accounts' = '__t_il_n26__, __t_il_tg__') THEN
         RAISE EXCEPTION 'FAIL [L2c Hinweis auf der Karte]: %', v_prep->'card_lines';
     END IF;
     IF (v_prep->>'lump')::numeric <> -200 THEN RAISE EXCEPTION 'FAIL [L2d mehrdeutige Zeile bleibt im Rest]: %', v_prep->>'lump'; END IF;
@@ -139,12 +142,18 @@ DO $$
 DECLARE
     ps DATE := date_trunc('month', CURRENT_DATE - 90)::date;
     pe DATE := (date_trunc('month', CURRENT_DATE - 90) + interval '1 month - 1 day')::date;
-    v_a INT; v_n INT; v_c INT; v_prep JSONB;
+    v_a INT; v_n INT; v_c INT; v_j INT; r_t INT; v_prep JSONB;
 BEGIN
     v_a := pg_temp.acct('__t_il_a__', '__t_il_max__', 'DE93500105174400000001', ps);
     v_n := pg_temp.acct('__t_il_n26__', '__t_il_max__', NULL, ps);
+    -- Haushaltskonto ohne IBAN: fuer Erikas Einzelnamen nie Kandidat (ihr eigenes Konto fehlt im System)
+    v_j := pg_temp.acct('__t_il_joint__', NULL, NULL, ps);
     v_c := pg_temp.acct('__t_il_closed__', '__t_il_max__', 'DE12500105174400000004', ps);
     UPDATE finance.accounts SET status = 'closed' WHERE id = v_c;
+    -- Dauerauftrag an einen Dritten (kein Transfer), dessen Zeile die IBAN als Schluessel lernt -> diese IBAN ist nie
+    -- ein eigenes Konto, auch nicht fuer eine weitere Zeile mit passendem Namen
+    r_t := finance.fn_add_recurring_payment(v_a, -30, 'Taschengeld', 1::smallint, 'month'::finance.schedule_unit, 20::smallint,
+               (ps - interval '2 months')::date, (ps - interval '2 months')::date, NULL, NULL, NULL);
     v_prep := finance.fn_statement_prepare(pg_temp.stmt('__t_il_a__', ps, pe, 1000, jsonb_build_array(
         pg_temp.ln(ps + 1, -10, 'Gustav Fremdling', 'DE66500105174400000002'),
         pg_temp.ln(ps + 2, -11, 'Erika Zweistein', 'DE39500105174400000003'),
@@ -155,8 +164,13 @@ BEGIN
         pg_temp.ln(ps + 7, -16, 'Zweistein Handels GmbH', 'DE82500105174400000005'),
         pg_temp.ln(ps + 8, -17, 'Maximilian Zweistein', 'DE55500105174400000006', '{"kind":"fee"}'),
         pg_temp.ln(ps + 9, 18, 'Maximilian Zweistein', 'DE28500105174400000007', '{"kind":"cash","sub_kind":"deposit"}'),
-        pg_temp.ln(ps + 10, 19, 'Maximilian Zweistein', 'DE98500105174400000008', '{"kind":"interest_line"}'))));
+        pg_temp.ln(ps + 10, 19, 'Maximilian Zweistein', 'DE98500105174400000008', '{"kind":"interest_line"}'),
+        pg_temp.ln(ps + 19, -30, 'Maximilian Zweistein', 'DE71500105174400000009'),
+        pg_temp.ln(ps + 22, -5, 'Maximilian Zweistein', 'DE71500105174400000009'))));
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [L3 prepare]: %', v_prep; END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'learn') k WHERE k->>'key_value' = 'DE71500105174400000009') THEN
+        RAISE EXCEPTION 'FAIL [L3 Kontrolle: Taschengeld lernt die IBAN als Schluessel]: %', v_prep->'learn';
+    END IF;
     IF jsonb_array_length(v_prep->'learned_accounts') <> 0 OR jsonb_array_length(v_prep->'iban_ambiguous') <> 0
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'matched') m WHERE m->>'stage' = 'L') THEN
         RAISE EXCEPTION 'FAIL [L3 nichts lernen]: learned % amb % matched %', v_prep->'learned_accounts',
@@ -220,8 +234,15 @@ BEGIN
         pg_temp.ln(ps + 3, -200, 'Maximilian Zweistein', 'DE66500105174400000002'),
         pg_temp.ln(ps + 4, -20, 'Maximilian Zweistein', 'DE39500105174400000003'))));
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_prep->'learned_accounts') <> 0
-       OR jsonb_array_length(v_prep->'iban_ambiguous') <> 2 THEN
+       OR jsonb_array_length(v_prep->'iban_ambiguous') <> 2
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'iban_ambiguous') x WHERE NOT (x->>'conflict')::boolean) THEN
         RAISE EXCEPTION 'FAIL [L5a zwei IBANs -> ein Konto]: %', v_prep;
+    END IF;
+    -- Konflikt-Hinweis ist ein eigener Text (nicht "passt zu mehreren Konten")
+    IF (SELECT count(*) FROM jsonb_array_elements(v_prep->'card_lines') c
+        WHERE c->>'value' = 'finance.note.iban_learn_conflict' AND c->'params'->>'account' = '__t_il_n26__') <> 2
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.iban_learn_ambiguous') THEN
+        RAISE EXCEPTION 'FAIL [L5a Konflikt-Hinweis]: %', v_prep->'card_lines';
     END IF;
     -- (b) Regel 2 (Dauerauftrag an N26, IBAN 2) gegen Regel 1 (IBAN 3 -> N26)
     r_n := finance.fn_add_recurring_payment(v_a, -100, 'Sparrate N26', 1::smallint, 'month'::finance.schedule_unit, 10::smallint,

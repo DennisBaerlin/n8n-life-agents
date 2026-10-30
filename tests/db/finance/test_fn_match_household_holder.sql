@@ -1,7 +1,7 @@
 -- ============================================================
 -- test_fn_match_household_holder -- Gegenpart-/Inhaber-Name einer Bank gegen die Haushaltsmitglieder ("Import zuerst")
 --   Namen erfunden.
---   Personen: Maximilian Zweistein, Erika Zweistein, Jörg Brückner (Umlaute), Greta Ida Quell + Ida Quell (Teilmenge),
+--   Personen: Maximilian Zweistein, Erika Zweistein, Jörg Brückner (Umlaute), Greta Ida Quell + Ida Quell (Teilmenge = mehrdeutig),
 --   zweimal Paul Doppel (gleiche Namen), Solo (nur ein Token).
 -- ============================================================
 BEGIN;
@@ -39,8 +39,10 @@ BEGIN
        OR jsonb_array_length(v->'person_ids') <> 2 THEN
         RAISE EXCEPTION 'FAIL [H6 zwei Namen = gemeinsam]: %', v;
     END IF;
+    -- Teilmenge: "Greta Ida Quell" (eine Person) und "Greta Ida Quell und Ida Quell" (beide) haben dieselben Tokens
+    -- -> nicht unterscheidbar -> kein Treffer (Code-Review 2026-10-30, nie raten)
     v := finance.fn_match_household_holder('Greta Ida Quell');
-    IF v->>'owner_person_id' IS DISTINCT FROM '__t_hh_al__' THEN RAISE EXCEPTION 'FAIL [H7 Teilmenge faellt weg]: %', v; END IF;
+    IF (v->>'matched')::boolean THEN RAISE EXCEPTION 'FAIL [H7 Teilmenge = mehrdeutig]: %', v; END IF;
     v := finance.fn_match_household_holder('Ida Quell');
     IF v->>'owner_person_id' IS DISTINCT FROM '__t_hh_l__' THEN RAISE EXCEPTION 'FAIL [H8 kurzer Name]: %', v; END IF;
     RAISE NOTICE 'PASS [H1-H8 Treffer]';

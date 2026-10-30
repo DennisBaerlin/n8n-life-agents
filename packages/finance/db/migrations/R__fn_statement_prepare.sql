@@ -75,10 +75,10 @@
 --   IBAN-LERNEN ("Import zuerst", Abschnitt 3a2): eine lernbare Gegen-IBAN (fn_iban_strict, keinem Konto gehoerend, kein
 --   Dauerauftrags-Schluessel, nicht die eigene) wird GENAU einem eigenen cash-Konto ohne Nummer zugeordnet - ueber einen
 --   getroffenen Dauerauftrags-Transfer an dieses Konto (Regel 2) oder ueber den Gegenpart-Namen (fn_match_household_holder,
---   Regel 1: eine Person -> ihre + Haushaltskonten, mehrere -> Haushaltskonten). Offene Zeilen dieser IBAN -> matched kind
+--   Regel 1: eine Person -> nur ihre Konten, mehrere -> nur Haushaltskonten). Offene Zeilen dieser IBAN -> matched kind
 --   transfer stage L. RUECKGABE learned_accounts[{account_id, account_name, account_number}] (Apply speichert per
 --   fn_set_account, Karten-Notiz iban_learned_other) und iban_ambiguous[{account_number, candidates[]}] (2+ Kandidaten oder
---   Konflikt, Karten-Hinweis iban_learn_ambiguous, nichts angenommen). Gedruckter Auszug eines unbekannten Kontos:
+--   Konflikt mit conflict=true, Karten-Hinweis iban_learn_ambiguous bzw. iban_learn_conflict, nichts angenommen). Gedruckter Auszug eines unbekannten Kontos:
 --   Eingabe account_holder -> account_unknown traegt owner_person (Name) bzw. owner_joint (Vorschlag fuer fn_create_account).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_statement_prepare(p jsonb)
@@ -487,11 +487,11 @@ BEGIN
                              WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_pool) x WHERE (x->>'line_idx')::int = (u #>> '{}')::int)), '[]'::jsonb));
 
     -- ---------- 3a2. IBAN-LERNEN ("Import zuerst"): eigenes Konto ohne IBAN aus einer Ueberweisung erkennen ----------
-    --   Lernbar = fn_iban_strict, gehoert keinem Konto (jeder Status), kein Dauerauftrags-Schluessel, nicht die Kopf-IBAN
-    --   bzw. Nummer des Auszugskontos. Kandidat = aktives, buchbares cash-Konto ohne Nummer, gleiche Waehrung, nicht dieses.
+    --   Lernbar = fn_iban_strict, gehoert keinem Konto (jeder Status), kein Dauerauftrags-Schluessel und keine Zeile an einen
+    --   Dauerauftrag an Dritte, nicht die Kopf-IBAN bzw. Nummer des Auszugskontos. Kandidat = aktives, buchbares cash-Konto ohne Nummer, gleiche Waehrung, nicht dieses.
     --   Regel 2 (Vorlauf): Zeile trifft einen Dauerauftrags-TRANSFER an einen Kandidaten und ihr Gegenpart passt zu dessen
     --   Inhaber (Haushaltskonto: beliebige Mitglieder) -> Paar (IBAN, Konto). Regel 1: offene Geldzeilen je IBAN, alle
-    --   Gegenparts = dieselben Mitglieder (fn_match_household_holder); eine Person -> ihre + Haushaltskonten, mehrere ->
+    --   Gegenparts = dieselben Mitglieder (fn_match_household_holder); eine Person -> nur ihre Konten, mehrere ->
     --   nur Haushaltskonten; genau EIN Kandidat -> Paar. Konflikt (eine IBAN -> zwei Konten, ein Konto <- zwei IBANs) ->
     --   kein Paar, Hinweis; 2+ Kandidaten -> Hinweis; 0 / fremder Name -> nichts. Offene Zeilen mit einer Paar-IBAN ->
     --   matched kind transfer, stage L (danach dieselben Pruefungen wie Stufe T; gelernt wird auch, wenn sie blockiert).
@@ -512,6 +512,15 @@ BEGIN
           AND n.iban IS DISTINCT FROM finance.fn_normalize_account_number(p->>'account_number')
           AND NOT EXISTS (SELECT 1 FROM finance.accounts a WHERE a.account_number = n.iban)
           AND NOT EXISTS (SELECT 1 FROM finance.recurring_payment_keys k WHERE k.key_type = 'counterparty_iban' AND k.key_value = n.iban)
+          -- IBAN einer Zeile, die einen Dauerauftrag an einen DRITTEN trifft (lernt sie evtl. gerade als Schluessel): nie
+          -- ein eigenes Konto (sonst beanspruchten spaeter Stufe A und Stufe T dieselbe Zeile, Code-Review 2026-10-30)
+          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_match->'matched') m
+                          JOIN finance.recurring_payments r ON r.id = (m->>'recurring_payment_id')::int AND r.target_account_id IS NULL
+                          WHERE m->>'kind' = 'recurring'
+                            AND finance.fn_normalize_account_number(v_lines->((m->>'line_idx')::int - 1)->>'counterparty_iban') = n.iban)
+    ),
+    hm AS (   -- Namensabgleich je Gegenpart EINMAL
+        SELECT DISTINCT ON (cp) cp, finance.fn_match_household_holder(cp) AS h FROM ll ORDER BY cp
     ),
     cand AS (
         SELECT a.id, a.name, a.owner_person_id FROM finance.accounts a
@@ -524,20 +533,22 @@ BEGIN
         JOIN jsonb_array_elements(v_match->'matched') m ON (m->>'line_idx')::int = ll.idx AND m->>'kind' = 'recurring'
         JOIN finance.recurring_payments r ON r.id = (m->>'recurring_payment_id')::int AND r.target_account_id IS NOT NULL
         JOIN cand c ON c.id = CASE WHEN r.account_id = v_acct.id THEN r.target_account_id ELSE r.account_id END
-        CROSS JOIN LATERAL (SELECT finance.fn_match_household_holder(ll.cp) AS h) x
+        JOIN hm x ON x.cp IS NOT DISTINCT FROM ll.cp
         WHERE (x.h->>'matched')::boolean AND (c.owner_person_id IS NULL OR x.h->'person_ids' ? c.owner_person_id)
     ),
     g1 AS (
         SELECT ll.iban, bool_and((x.h->>'matched')::boolean) AS allm, count(DISTINCT x.h->'person_ids') AS nsets,
                min((x.h->'person_ids')::text)::jsonb AS pids
-        FROM ll CROSS JOIN LATERAL (SELECT finance.fn_match_household_holder(ll.cp) AS h) x
+        FROM ll JOIN hm x ON x.cp IS NOT DISTINCT FROM ll.cp
         WHERE ll.open AND ll.iban NOT IN (SELECT iban FROM r2)
         GROUP BY ll.iban
     ),
     c1 AS (
+        -- eine Person -> nur IHRE Konten (nie ein Haushaltskonto: ihr eigenes, nicht erfasstes Konto bekaeme sonst dessen
+        -- Platz, Code-Review 2026-10-30); mehrere Namen -> nur Haushaltskonten
         SELECT g.iban, jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name) ORDER BY c.id) AS cands
         FROM g1 g JOIN cand c
-          ON (jsonb_array_length(g.pids) = 1 AND (c.owner_person_id IS NULL OR c.owner_person_id = g.pids->>0))
+          ON (jsonb_array_length(g.pids) = 1 AND c.owner_person_id = g.pids->>0)
           OR (jsonb_array_length(g.pids) >= 2 AND c.owner_person_id IS NULL)
         WHERE g.allm AND g.nsets = 1
         GROUP BY g.iban
@@ -555,11 +566,12 @@ BEGIN
                                       ORDER BY j.acct)
                      FROM judged j JOIN finance.accounts a ON a.id = j.acct WHERE j.good), '[]'::jsonb),
            COALESCE((SELECT jsonb_agg(x.e ORDER BY x.e->>'account_number') FROM (
-               SELECT jsonb_build_object('account_number', c1.iban,
+               SELECT jsonb_build_object('account_number', c1.iban, 'conflict', false,
                           'candidates', (SELECT jsonb_agg(e->>'name' ORDER BY e->>'name') FROM jsonb_array_elements(c1.cands) e)) AS e
                FROM c1 WHERE jsonb_array_length(c1.cands) >= 2
                UNION ALL
-               SELECT jsonb_build_object('account_number', j.iban, 'candidates', jsonb_agg(a.name ORDER BY a.name))
+               -- Konflikt: diese IBAN und eine andere wollen dasselbe Konto (bzw. sie wuerde zwei Konten zugeordnet)
+               SELECT jsonb_build_object('account_number', j.iban, 'conflict', true, 'candidates', jsonb_agg(a.name ORDER BY a.name))
                FROM judged j JOIN finance.accounts a ON a.id = j.acct WHERE NOT j.good GROUP BY j.iban) x), '[]'::jsonb),
            COALESCE((SELECT jsonb_agg(jsonb_build_object('line_idx', ll.idx, 'stage', 'L', 'kind', 'transfer',
                                           'other_account_id', j.acct, 'name', a.name, 'line_date', ll.d,
@@ -1155,9 +1167,13 @@ BEGIN
                          'params', jsonb_build_object('iban', x->>'account_number', 'account', x->>'account_name'))
                          ORDER BY (x->>'account_id')::int)
                      FROM jsonb_array_elements(v_learn_accts) x), '[]'::jsonb)
-        || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learn_ambiguous',
-                         'params', jsonb_build_object('iban', x->>'account_number',
-                                       'accounts', (SELECT string_agg(c, ', ' ORDER BY c) FROM jsonb_array_elements_text(x->'candidates') c)))
+        || COALESCE((SELECT jsonb_agg(CASE WHEN (x->>'conflict')::boolean
+                         THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learn_conflict',
+                                  'params', jsonb_build_object('iban', x->>'account_number',
+                                                'account', (SELECT string_agg(c, ', ' ORDER BY c) FROM jsonb_array_elements_text(x->'candidates') c)))
+                         ELSE jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learn_ambiguous',
+                                  'params', jsonb_build_object('iban', x->>'account_number',
+                                                'accounts', (SELECT string_agg(c, ', ' ORDER BY c) FROM jsonb_array_elements_text(x->'candidates') c))) END
                          ORDER BY x->>'account_number')
                      FROM jsonb_array_elements(v_learn_amb) x), '[]'::jsonb);
 

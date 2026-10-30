@@ -14,7 +14,7 @@ RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
                          'ä', CASE WHEN p_variant = 1 THEN 'ae' ELSE 'a' END),
                          'ö', CASE WHEN p_variant = 1 THEN 'oe' ELSE 'o' END),
                          'ü', CASE WHEN p_variant = 1 THEN 'ue' ELSE 'u' END),
-                     'áàâãåéèêëíìîïóòôõúùûçñ', 'aaaaaeeeeiiiiooooouuucn'),
+                     'áàâãåéèêëíìîïóòôõúùûçñ', 'aaaaaeeeeiiiioooouuucn'),   -- gleich lang (22 = 22), sonst verrutscht alles danach
                  '[^a-z]+', ' ', 'g'),
              '\s+') AS t
     WHERE length(t) >= 2 AND t NOT IN ('und', 'and', 'oder', 'or', 'herr', 'frau', 'dr', 'prof');

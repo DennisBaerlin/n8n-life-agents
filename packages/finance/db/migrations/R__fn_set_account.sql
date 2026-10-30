@@ -27,7 +27,8 @@ DECLARE
     v_taken  TEXT;
     v_dates  JSONB;
     v_settle INT;
-    v_remove BOOLEAN := COALESCE(NULLIF(p->>'remove_account_number', '')::boolean, false);
+    -- dieselbe Ja-Liste wie die Karte (tool_set_account): alles andere = nicht entfernen, nie ein Cast-Fehler
+    v_remove BOOLEAN := lower(btrim(COALESCE(p->>'remove_account_number', ''))) IN ('true', 't', 'yes', 'y', 'on', '1');
 BEGIN
     -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['fixed_deposit_maturity_date']);

@@ -50,9 +50,9 @@ Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen *
 - **Konto knapp:** Fällt ein Konto voraussichtlich unter deinen Puffer (Standard 250 €), warnt er dich und nennt die Umbuchung. Den Puffer stellst du mit `lifeagents config set finance coverage_buffer_eur 400` um.
 - **Zahlung fehlt:** Kam ein Dauerauftrag zweimal in Folge nicht vom Konto, fragt er, ob du ihn gekündigt hast.
 
-## CSV-Export statt Kontoauszug (Trade Republic)
+## CSV-Export statt Kontoauszug (Trade Republic, N26)
 
-Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic. Für so ein Konto lautet die Erinnerung anders:
+Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic und N26. Für so ein Konto lautet die Erinnerung anders:
 
 1. In der App den Transaktions-Export für dieses Jahr erstellen und die CSV-Datei an den Bot schicken.
 2. Dazu den Kontostand nennen, den die App **gerade** zeigt, z. B. „laut App 1.234,56 €". Der Export enthält keinen Kontostand. Ohne deine Zahl macht der Bot keine Karte; er rechnet sich nie selbst einen Stand aus. Schickst du die Datei ohne Text, fragt er danach.
@@ -61,12 +61,20 @@ Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei a
 
 Die Datei liest ein fester Leser im Bot, kein Sprachmodell. Sie geht also nicht an einen KI-Anbieter. Der Monats-Check umfasst die Tage nach dem zuletzt bestätigten Stand bis gestern. Umsätze von heute zählen erst beim nächsten Mal.
 
-Zusätzlich zum normalen Ablauf:
+Bei Trade Republic zusätzlich zum normalen Ablauf:
 
 - **Sparpläne mit echter Stückzahl:** Der Export nennt die genaue Stückzahl jeder Ausführung. Der Bot muss sie nicht aus dem Kurs schätzen.
 - **Käufe, Verkäufe und Dividenden,** die noch nicht erfasst sind, bucht er mit den Werten aus dem Export. Was schon erfasst ist, hakt er ab.
 - **Einzelkäufe statt einer Übernahme:** Hast du eine Position beim Einrichten als einen Bestand eingetragen, ersetzt der Bot sie auf Wunsch durch die echten Einzelkäufe aus dem Export. Dafür kommt vorher eine eigene Karte. Er ersetzt nur, wenn die Stückzahlen genau übereinstimmen. Käufe nach dem Tag deines bestätigten Kontostands werden dabei echte Käufe und mindern den Kontostand; die Karte zeigt diese Wirkung.
 - **Unbekannte Zeilen** (eine neue Umsatzart, eine korrigierte Dividende) bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.
+
+Bei N26:
+
+- **Export:** In der N26-App bzw. im Web-Banking die Umsätze als CSV herunterladen, am einfachsten für dieses Jahr. Exportiere das Hauptkonto und jeden Space einzeln; mischt die Datei mehrere Spaces, fragt der Bot nach einer Datei je Konto.
+- **Eigene Konten:** Überweisungen an oder von einem deiner Konten erkennt der Bot an der IBAN und bucht sie als Übertrag. Dafür muss die IBAN beim anderen Konto als Kontonummer hinterlegt sein.
+- **Datum:** Es zählt der Buchungstag, nicht die Wertstellung.
+- **Vorgemerkte Kartenzahlungen** zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Eine solche Zahlung landet diesmal im Rest; beim nächsten Mal zeigt die Karte deshalb eine kleine Abweichung, die der Bot korrigiert. In der Summe stimmt alles.
+- **Unbekannte Umsatzarten** bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.
 
 ## Bondora Go&Grow (Excel-Kontoauszug)
 

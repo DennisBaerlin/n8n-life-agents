@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 438 fn-Dateien.
+Umfang: 439 fn-Dateien.
 
 ## finance.fn_account_everyday_per_day (READ, STABLE) -- geschaetzte Alltagsausgaben je Tag eines Kontos aus seinen Auszuegen
 - `finance.fn_account_everyday_per_day(p_account_id int) -> TABLE(per_day numeric, per_day_net numeric, has_history boolean)`

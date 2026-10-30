@@ -260,20 +260,28 @@
 <li><strong>Konto knapp:</strong> Fällt ein Konto voraussichtlich unter deinen Puffer (Standard 250 €), warnt er dich und nennt die Umbuchung. Den Puffer stellst du mit <code>lifeagents config set finance coverage_buffer_eur 400</code> um.</li>
 <li><strong>Zahlung fehlt:</strong> Kam ein Dauerauftrag zweimal in Folge nicht vom Konto, fragt er, ob du ihn gekündigt hast.</li>
 </ul>
-<h2 id="csv-export-statt-kontoauszug-trade-republic">CSV-Export statt Kontoauszug (Trade Republic)</h2>
-<p>Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic. Für so ein Konto lautet die Erinnerung anders:</p>
+<h2 id="csv-export-statt-kontoauszug-trade-republic-n26">CSV-Export statt Kontoauszug (Trade Republic, N26)</h2>
+<p>Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic und N26. Für so ein Konto lautet die Erinnerung anders:</p>
 <ol>
 <li>In der App den Transaktions-Export für dieses Jahr erstellen und die CSV-Datei an den Bot schicken.</li>
 <li>Dazu den Kontostand nennen, den die App <strong>gerade</strong> zeigt, z. B. „laut App 1.234,56 €&quot;. Der Export enthält keinen Kontostand. Ohne deine Zahl macht der Bot keine Karte; er rechnet sich nie selbst einen Stand aus. Schickst du die Datei ohne Text, fragt er danach.</li>
 </ol>
 <p><strong>Welches Konto?</strong> Nennst du keins, nimmt der Bot das Konto der Bank, von der die Datei stammt. Gibt es davon mehrere, fragt er. Nennst du ein Konto einer anderen Bank, bucht er nichts und fragt nach. Ist bei einem Konto die Bank falsch eingetragen, sag es ihm, dann korrigiert er sie.</p>
 <p>Die Datei liest ein fester Leser im Bot, kein Sprachmodell. Sie geht also nicht an einen KI-Anbieter. Der Monats-Check umfasst die Tage nach dem zuletzt bestätigten Stand bis gestern. Umsätze von heute zählen erst beim nächsten Mal.</p>
-<p>Zusätzlich zum normalen Ablauf:</p>
+<p>Bei Trade Republic zusätzlich zum normalen Ablauf:</p>
 <ul>
 <li><strong>Sparpläne mit echter Stückzahl:</strong> Der Export nennt die genaue Stückzahl jeder Ausführung. Der Bot muss sie nicht aus dem Kurs schätzen.</li>
 <li><strong>Käufe, Verkäufe und Dividenden,</strong> die noch nicht erfasst sind, bucht er mit den Werten aus dem Export. Was schon erfasst ist, hakt er ab.</li>
 <li><strong>Einzelkäufe statt einer Übernahme:</strong> Hast du eine Position beim Einrichten als einen Bestand eingetragen, ersetzt der Bot sie auf Wunsch durch die echten Einzelkäufe aus dem Export. Dafür kommt vorher eine eigene Karte. Er ersetzt nur, wenn die Stückzahlen genau übereinstimmen. Käufe nach dem Tag deines bestätigten Kontostands werden dabei echte Käufe und mindern den Kontostand; die Karte zeigt diese Wirkung.</li>
 <li><strong>Unbekannte Zeilen</strong> (eine neue Umsatzart, eine korrigierte Dividende) bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.</li>
+</ul>
+<p>Bei N26:</p>
+<ul>
+<li><strong>Export:</strong> In der N26-App bzw. im Web-Banking die Umsätze als CSV herunterladen, am einfachsten für dieses Jahr. Exportiere das Hauptkonto und jeden Space einzeln; mischt die Datei mehrere Spaces, fragt der Bot nach einer Datei je Konto.</li>
+<li><strong>Eigene Konten:</strong> Überweisungen an oder von einem deiner Konten erkennt der Bot an der IBAN und bucht sie als Übertrag. Dafür muss die IBAN beim anderen Konto als Kontonummer hinterlegt sein.</li>
+<li><strong>Datum:</strong> Es zählt der Buchungstag, nicht die Wertstellung.</li>
+<li><strong>Vorgemerkte Kartenzahlungen</strong> zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Eine solche Zahlung landet diesmal im Rest; beim nächsten Mal zeigt die Karte deshalb eine kleine Abweichung, die der Bot korrigiert. In der Summe stimmt alles.</li>
+<li><strong>Unbekannte Umsatzarten</strong> bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.</li>
 </ul>
 <h2 id="bondora-gogrow-excel-kontoauszug">Bondora Go&amp;Grow (Excel-Kontoauszug)</h2>
 <p>Den Kontoauszug von Bondora Go&amp;Grow lädst du in der Bondora-App als Excel-Datei herunter und schickst ihn an den Bot. Diese Datei enthält Zeitraum, Anfangs- und Endstand. Du musst also keinen Kontostand nennen. Auch sie liest ein fester Leser, kein Sprachmodell.</p>

@@ -48,7 +48,6 @@ DECLARE
     v_in       NUMERIC;
     v_buffer   NUMERIC;
     v_bsrc     TEXT;
-    v_eur1     NUMERIC;
     v_short    NUMERIC;
     v_sugg     JSONB;
     v_bridge   JSONB;
@@ -109,12 +108,9 @@ BEGIN
         v_bsrc   := 'account';
     ELSE
         v_bsrc   := 'default';
-        v_buffer := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'coverage_buffer_eur'), '')::numeric, 250);
-        IF v_acct.currency <> 'EUR' THEN
-            -- ungerundet: 1 KRW = 0.00069 EUR wurde mit Cent-Rundung 0.00 (Puffer still wirkungslos), 1 JPY 0.01 (37 % daneben)
-            v_eur1 := finance.fn_to_eur_unrounded(1, v_acct.currency);
-            v_buffer := CASE WHEN v_eur1 > 0 THEN round(v_buffer / v_eur1, 2) ELSE v_buffer END;
-        END IF;
+        -- Kontowaehrung zum heutigen Kurs (fn_config_eur_in_currency); ohne Kurs der EUR-Wert (bisherige Rueckfallebene)
+        v_buffer := COALESCE(finance.fn_config_eur_in_currency('coverage_buffer_eur', 250, v_acct.currency, CURRENT_DATE),
+                             finance.fn_config_eur_in_currency('coverage_buffer_eur', 250, 'EUR', CURRENT_DATE));
     END IF;
     v_short := GREATEST(v_buffer - round(COALESCE(v_min, v_base), 2), 0);
 

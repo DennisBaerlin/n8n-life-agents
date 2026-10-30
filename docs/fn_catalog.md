@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 453 fn-Dateien.
+Umfang: 454 fn-Dateien.
 
 ## finance.fn_account_everyday_basis (READ, STABLE) -- Grundlage der geschaetzten Alltagsausgaben eines Kontos, je Kontoauszug
 - `finance.fn_account_everyday_basis(p_account_id int) -> TABLE(period_start date, period_end date, days int, unmatched_out numeric, unmatched_in numeric, per_day numeric, counted boolean, reason text, oneoff_out numeric, oneoff_threshold numeric)`
@@ -444,6 +444,11 @@ Umfang: 453 fn-Dateien.
 - `estate.fn_compute_due_date(p_anchor date, p_count int, p_unit text, p_bundesland text) -> date`
 - jsonb-Keys: unverzueglich
 - estate.fn_compute_due_date (Fristen-Engine, WS-3 — IMMUTABLE, DIE zentrale Frist-Berechnung) Rechnet die Faelligkeit einer Task aus Anker-Datum + Frist. Das LLM rechnet NIE — hier lebt die Korrektheit. p_anchor = event_date ODER knowledge_date (der Aufrufer waehlt nach template. deadline_anchor; § 1944 BGB / § 30 ErbStG laufen ab KENNTNIS). Einheiten: * NULL count -> 'unverzueglich' = am Anker-Tag faellig (RETURN p_anchor). * 'business_day' -> § 28 PStG-Werktage (fn_add_business_days; Sa/So/Feiertage zaehlen nicht). * 'day' -> Kalendertage. * 'week' -> p_count * 7 Kalendertage. * 'month' -> KALENDARISCH (§§ 187/188 BGB): der Tag GLEICHER ZAHL im Zielmonat; fehlt er (31. -> kurzer Monat), der letzte Tag des Monats. Genau das leistet die Postgres-Intervall-Addition (make_interval(months=>n) klemmt auf Monatsende). v1 OHNE § 193-Verschiebung (Frist-Ende an Sa/So/Feiertag wird NICHT auf den naechsten Werktag geschoben) — bewusst konservativ (fruehere Frist), im Plan dokumentiert. p_anchor NULL -> NULL. EINGABE: p_anchor date, p_count int, p_unit text, p_bundesland text. Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_compute_due_date.sql
+
+## finance.fn_config_eur_in_currency (READ, STABLE) -- EUR-Betrag aus core.config (Kategorie finance) in einer Kontowaehrung
+- `finance.fn_config_eur_in_currency(p_key text, p_default numeric, p_currency char(3), p_as_of date) -> numeric`
+- jsonb-Keys: --
+- Die EINE Adresse der Regel „Euro-Einstellung -> Kontowaehrung“ (vorher je Konsument kopiert): Wert = core.fn_config_get('finance', 'finance', p_key), gelesen ohne Cast-RAISE (fn_parse_numeric_or_null); fehlt/unlesbar/negativ -> p_default; 0 bleibt 0 (z. B. Puffer 0). EUR -> unveraendert. Sonst Wert / EUR-Wert einer Einheit zum Stichtag p_as_of (fn_to_eur_unrounded: juengster Kurs <= Stichtag, sonst juengster ueberhaupt), UNGERUNDET geteilt (1 KRW = 0.00069 EUR wurde mit Cent-Rundung 0.00 -> Betrag still wirkungslos), Ergebnis auf Cent. Ohne Kurs NULL — nie den rohen EUR-Wert; der Konsument entscheidet die Rueckfallebene. Konsumenten: fn_account_outlook (coverage_buffer_eur, ohne Kurs EUR-Wert), fn_statement_prepare (everyday_oneoff_eur, ohne Kurs keine Grenze). Tests: tests/db/finance/test_fn_config_eur_in_currency.sql
 
 ## core.fn_config_get (READ-ONLY, SECURITY DEFINER — generisches Config-Lesefenster, D10)
 - `core.fn_config_get(p_package text, p_category text, p_key text) -> text`

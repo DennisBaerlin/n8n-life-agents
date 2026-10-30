@@ -128,7 +128,6 @@ DECLARE
     v_in       NUMERIC;
     v_oneoff   NUMERIC;                -- einmalige Grossausgaben (Teil von v_out), Abschnitt 3d
     v_oo_thr   NUMERIC;                -- deren Grenze in Kontowaehrung (NULL = ohne Kurs)
-    v_oo_eur1  NUMERIC;
     v_s_end    NUMERIC;
     v_book_sum NUMERIC := 0;
     v_redate_sum NUMERIC := 0;
@@ -888,14 +887,10 @@ BEGIN
     --   Zeilen = finale unmatched-Liste (Pool-/Lern-Treffer sind dort schon raus; blocked/pending waren nie drin: erkannt,
     --   nur nicht buchbar -> Rest, aber kein Alltag), ohne Wertpapier-Geldfluesse (Datei) und ohne Zins-/Kleinbetrags-
     --   Zeilen der gedruckten Datei. Je Zeile auf Cent gerundet (wie fn_statement_match) -> oneoff_out >= unmatched_out.
-    --   Grenze (Owner-Entscheid 2026-10-30): core.config finance.everyday_oneoff_eur (<= 0/leer -> 250), in Kontowaehrung
-    --   zum period_end (reproduzierbar im Apply-Lauf); ohne Kurs keine Grenze (nie den rohen EUR-Wert) -> nichts einmalig.
-    v_oo_thr := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'everyday_oneoff_eur'), '')::numeric, 250);
-    IF v_oo_thr <= 0 THEN v_oo_thr := 250; END IF;
-    IF v_acct.currency <> 'EUR' THEN
-        v_oo_eur1 := finance.fn_to_eur_unrounded(1, v_acct.currency, v_pe);
-        v_oo_thr := CASE WHEN v_oo_eur1 > 0 THEN round(v_oo_thr / v_oo_eur1, 2) END;
-    END IF;
+    --   Grenze (Owner-Entscheid 2026-10-30): core.config finance.everyday_oneoff_eur (fehlt/unlesbar/negativ -> 250) in
+    --   Kontowaehrung zum period_end per fn_config_eur_in_currency; ohne Kurs oder 0 keine Grenze -> nichts einmalig.
+    v_oo_thr := finance.fn_config_eur_in_currency('everyday_oneoff_eur', 250, v_acct.currency, v_pe);
+    IF v_oo_thr <= 0 THEN v_oo_thr := NULL; END IF;   -- 0 (bzw. auf 0,00 gerundet) waere "alles einmalig" -> keine Regel
     SELECT COALESCE(sum(u.amt) FILTER (WHERE u.amt < 0), 0),
            COALESCE(sum(u.amt) FILTER (WHERE u.amt > 0), 0),
            COALESCE(sum(u.amt) FILTER (WHERE u.amt < 0 AND v_oo_thr IS NOT NULL AND abs(u.amt) >= v_oo_thr), 0)

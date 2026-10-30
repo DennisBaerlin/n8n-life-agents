@@ -165,23 +165,23 @@ BEGIN
 
         -- Alltagsausgaben (geschaetzt): je Tag x Tage; aufklappbar je Auszug, fruehester markiert; direkt danach je
         -- Auszug mit einmaligen Grossausgaben deren Summe + Grenze (zaehlen nicht zum Tageswert, Owner-Entscheid 2026-10-30)
-        SELECT jsonb_agg(d.e ORDER BY d.pe DESC, d.k)
+        SELECT jsonb_agg(d.row ORDER BY e.period_end DESC, d.k)
           INTO v_det
-          FROM (SELECT e.period_end AS pe, 0 AS k, jsonb_build_object(
-                       'label', core.fn_ui_tpl('finance.app.payments.d_statement', jsonb_build_object(
-                                    'from', core.fn_ui_date(e.period_start), 'to', core.fn_ui_date(e.period_end))),
-                       'value', core.fn_ui_tpl(CASE WHEN e.counted THEN 'finance.app.payments.d_rate'
-                                                    ELSE 'finance.app.payments.d_rate_earliest' END,
-                                    jsonb_build_object('per_day', core.fn_ui_money(abs(e.per_day), v_cur)))) AS e
-                  FROM finance.fn_account_everyday_basis(v_acc.id) e
-                UNION ALL
-                SELECT e.period_end, 1, jsonb_build_object(
-                       'label', core.fn_ui_tpl('finance.app.payments.d_oneoff'),
-                       'value', core.fn_ui_tpl('finance.app.payments.d_oneoff_value', jsonb_build_object(
-                                    'amount', core.fn_ui_money(e.oneoff_out, v_cur),
-                                    'threshold', core.fn_ui_money(e.oneoff_threshold, v_cur))))
-                  FROM finance.fn_account_everyday_basis(v_acc.id) e
-                 WHERE e.oneoff_out < 0) d;
+          FROM finance.fn_account_everyday_basis(v_acc.id) e
+         CROSS JOIN LATERAL (VALUES
+                (0, jsonb_build_object(
+                    'label', core.fn_ui_tpl('finance.app.payments.d_statement', jsonb_build_object(
+                                 'from', core.fn_ui_date(e.period_start), 'to', core.fn_ui_date(e.period_end))),
+                    'value', core.fn_ui_tpl(CASE WHEN e.counted THEN 'finance.app.payments.d_rate'
+                                                 ELSE 'finance.app.payments.d_rate_earliest' END,
+                                 jsonb_build_object('per_day', core.fn_ui_money(abs(e.per_day), v_cur))))),
+                -- Betraege ohne Vorzeichen wie die Raten daneben
+                (1, jsonb_build_object(
+                    'label', core.fn_ui_tpl('finance.app.payments.d_oneoff'),
+                    'value', core.fn_ui_tpl('finance.app.payments.d_oneoff_value', jsonb_build_object(
+                                 'amount', core.fn_ui_money(abs(e.oneoff_out), v_cur),
+                                 'threshold', core.fn_ui_money(e.oneoff_threshold, v_cur)))))) d(k, row)
+         WHERE d.k = 0 OR e.oneoff_out < 0;
         v_items := v_items || jsonb_build_object(
             'label', core.fn_ui_tpl('finance.app.payments.b_everyday'),
             'sub', core.fn_ui_tpl(CASE WHEN (v_o->>'provisional')::boolean THEN 'finance.app.payments.b_everyday_sub_provisional'

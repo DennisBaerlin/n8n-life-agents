@@ -107,8 +107,8 @@ BEGIN
   IF v_b->'details'->1 IS DISTINCT FROM jsonb_build_object(
          'label', core.fn_ui_tpl('finance.app.payments.d_oneoff'),
          'value', core.fn_ui_tpl('finance.app.payments.d_oneoff_value', jsonb_build_object(
-                      'amount', core.fn_ui_money(-300, 'EUR'), 'threshold', core.fn_ui_money(250, 'EUR')))) THEN
-    RAISE EXCEPTION 'FAIL [1h2] Details-Zeile einmalig -300 ab 250: %', v_b->'details'; END IF;
+                      'amount', core.fn_ui_money(300, 'EUR'), 'threshold', core.fn_ui_money(250, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [1h2] Details-Zeile einmalig 300 (ohne Vorzeichen) ab 250: %', v_b->'details'; END IF;
   SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_low';
   IF v_b->'value' <> core.fn_ui_money(25, 'EUR') OR v_b->'pill'->>'state' <> 'alert' OR v_b->'pill'->>'icon' <> 'alert' THEN
     RAISE EXCEPTION 'FAIL [1i] Tief 25 mit alert-Pille: %', v_b; END IF;

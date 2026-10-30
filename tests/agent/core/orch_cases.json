@@ -311,5 +311,13 @@
     "chat_id": "test_orc36",
     "expected_route": "finance",
     "notes": "Live-Befund 2026-10-30: der Dokument-Marker traegt die Datei-Endung (ext); der Orchestrator reicht ihn woertlich an den Buchhalter durch (Bank-Export)."
+  },
+  {
+    "id": "oc38",
+    "name": "Zahlung von ausserhalb fuer einen Sparplan (Oma zahlt ein) -> agent.finance",
+    "task": "Oma Erika ueberweist ab Januar jeden Monat 50 Euro auf das Trade Republic Cash Girokonto, das ist fuer den Sparplan.",
+    "chat_id": "test_orc38",
+    "expected_route": "finance",
+    "notes": "Geldquellen-Frage (savings_funding, 2026-10-30): eine regelmaessige Einzahlung von ausserhalb des Haushalts ist eine Buchhalter-Erfassung, keine Beratung und kein Familien-/Kontext-Eintrag. Erfundene Person."
   }
 ]

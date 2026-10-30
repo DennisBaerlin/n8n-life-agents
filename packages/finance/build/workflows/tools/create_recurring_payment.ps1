@@ -25,7 +25,7 @@ function Build-CreateRecurringPayment {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_recurring_payment' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Create recurring payment (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
         -Params ([ordered]@{
             name                  = '$(''Start'').item.json.name'
             account_id            = '$(''Resolve Account'').item.json.id'
@@ -68,11 +68,12 @@ function Build-CreateRecurringPayment {
         ,@('recurring_payment_id', "={{ `$('Create recurring payment (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('monthly_equivalent', "={{ `$('Create recurring payment (atomic)').item.json.monthly_equivalent }}", 'number')
         ,@('cashflow_coverage', "={{ `$('Create recurring payment (atomic)').item.json.cashflow_coverage }}", 'string')
+        ,@('savings_funding', "={{ `$('Create recurring payment (atomic)').item.json.savings_funding }}", 'string')
     )
 
     $stickyGen = Build-Sticky 'DB-Automatik monthly_equivalent + Cashflow-Fold' @(1980, -240) `
         'GENERATED: monthly_equivalent + Event-Fold cashflow_coverage' `
-        'fn_create_recurring_payment leitet das Vorzeichen aus direction ab (income=+, expense=-) und schreibt die Zeile via gemeinsamen Helper fn_add_recurring_payment. monthly_equivalent ist GENERATED (read-only, normalisiert auf Monat) und erscheint automatisch im Cashflow-View. Phase L WS-3 / Audit Paket 3: nach dem Write liest die fn monthly_cashflow_summary.monthly_free (frei nach Konsum + Kreditraten, Sparraten zählen nicht); frei<0 -> Note in cashflow_coverage (sonst leer, COALESCE -> null-sicher). Der Bookkeeper relayed sie nach dem Erfolg (advisory, kein Block).' 230 470
+        'fn_create_recurring_payment leitet das Vorzeichen aus direction ab (income=+, expense=-) und schreibt die Zeile via gemeinsamen Helper fn_add_recurring_payment. monthly_equivalent ist GENERATED (read-only, normalisiert auf Monat) und erscheint automatisch im Cashflow-View. Phase L WS-3 / Audit Paket 3: nach dem Write liest die fn monthly_cashflow_summary.monthly_free (frei nach Konsum + Kreditraten, Sparraten zählen nicht); frei<0 -> Note in cashflow_coverage (sonst leer, COALESCE -> null-sicher). Der Bookkeeper relayed sie nach dem Erfolg (advisory, kein Block). Zusätzlich liest fn_savings_funding_fold die Spar-Deckung des Kontos, wenn es einen Sparplan bezahlt oder Ziel eines Dauerauftrags ist (z. B. eine Zuwendung der Großeltern auf das Sparplan-Konto): Kartenzeile "Danach ..." schon im Probelauf + Bericht-Note savings_funding (gedeckt / es fehlen noch X), ohne Frage.' 230 600
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2420, -240) `
         'fn-Rückgabe {ok:false, reason}' `

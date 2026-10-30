@@ -34,6 +34,9 @@
 --   bei Reaktivierung einer beendeten rp zusaetzlich reopened=true + previous_rp_id; optional savings_squeeze
 --   (fn_savings_squeeze_fold: Sparraten leeren das Girokonto) - nur wenn sich die laufende Rate aendert (Split/
 --   Reaktivierung mit Stichtag <= heute, Status-Wechsel), nie bei reinen Notiz-/Anlageklasse-/Person-Edits.
+--   An denselben Stellen card_lines + optional savings_funding (fn_savings_funding_fold, Abbuchungskonto der Kette):
+--   ohne Stichtag-Filter (die Projektion kennt kommende Raten); kuenftiger Stichtag -> nur Zustand + Datum
+--   (monthly_in/out gelten heute noch mit der alten Rate); Pausieren fragt nie nach der Geldquelle, es berichtet nur.
 --   NO-CHANGE (Livebefund 2026-10-27): genannter Rhythmus/Betrag gleich den gespeicherten Bedingungen (feste Tage =
 --   Nutzer-Rhythmus week/1 bzw. week/2) -> kein Split; ohne weitere Felder {ok:false, code:'no_change', rhythm,
 --   amount_per_execution, monthly_amount} (geprueft VOR den Split-Vorbedingungen).
@@ -228,7 +231,7 @@ BEGIN
         SET notes = COALESCE(NULLIF(p->>'notes', ''), notes)
         WHERE id = v_plan.id;
 
-        RETURN jsonb_build_object(
+        RETURN finance.fn_merge_fold(jsonb_build_object(
             'ok',                   true,
             'effective',            (v_dates->'resolved') || jsonb_build_object('valid_from', to_char(v_from, 'YYYY-MM-DD')),
             'savings_plan_id',      v_plan.id,
@@ -241,7 +244,8 @@ BEGIN
             'schedule_days',        (SELECT array_to_string(r.schedule_days_of_month, ', ')
                                      FROM finance.recurring_payments r WHERE r.id = v_new_rp_id))
             -- kuenftiger Stichtag: der neue Betrag ist im Post-State noch nicht aktiv -> kein Fold (der Cron faengt es)
-            || CASE WHEN v_from <= CURRENT_DATE THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;
+            || CASE WHEN v_from <= CURRENT_DATE THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END,
+            finance.fn_savings_funding_fold(ARRAY[v_rp.account_id], true, v_from > CURRENT_DATE));
     ELSE
         -- REAKTIVIEREN einer beendeten rp (Soft-Close) -> Folge-rp ab dem Stichtag (Audit Paket 2, Punkt 1).
         IF v_status = 'active' AND v_rp.valid_to IS NOT NULL AND v_rp.valid_to <= v_from THEN
@@ -253,7 +257,7 @@ BEGIN
             SET status = 'active',
                 notes  = COALESCE(NULLIF(p->>'notes', ''), notes)
             WHERE id = v_plan.id;
-            RETURN jsonb_build_object(
+            RETURN finance.fn_merge_fold(jsonb_build_object(
                 'ok',                   true,
                 'effective',            (v_dates->'resolved') || jsonb_build_object('valid_from', to_char(v_from, 'YYYY-MM-DD')),
                 'savings_plan_id',      v_plan.id,
@@ -261,7 +265,8 @@ BEGIN
                 'previous_rp_id',       v_rp.id,
                 'split',                false,
                 'reopened',             true)
-                || CASE WHEN v_from <= CURRENT_DATE THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;
+                || CASE WHEN v_from <= CURRENT_DATE THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END,
+                finance.fn_savings_funding_fold(ARRAY[v_rp.account_id], true, v_from > CURRENT_DATE));
         END IF;
 
         -- IN-PLACE: Status und/oder Notizen
@@ -284,14 +289,17 @@ BEGIN
             WHERE id = v_plan.id;
         END IF;
 
-        RETURN jsonb_build_object(
+        RETURN finance.fn_merge_fold(jsonb_build_object(
             'ok',                   true,
             'effective',            (v_dates->'resolved') || jsonb_build_object('valid_from', to_char(v_from, 'YYYY-MM-DD')),
             'savings_plan_id',      v_plan.id,
             'recurring_payment_id', v_plan.recurring_payment_id,
             'split',                false)
             -- nur ein Status-Wechsel aendert die laufende Sparrate; reine Notiz-/Anlageklasse-/Person-Edits falten nichts
-            || CASE WHEN v_status IS NOT NULL THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;
+            || CASE WHEN v_status IS NOT NULL THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END,
+            -- Spar-Deckung nur bei einem ECHTEN Status-Wechsel (derselbe Status + Notiz ist ein Notiz-Edit)
+            CASE WHEN v_status IS DISTINCT FROM v_plan.status AND v_status IS NOT NULL
+                 THEN finance.fn_savings_funding_fold(ARRAY[v_rp.account_id], v_status = 'active') ELSE '{}'::jsonb END);
     END IF;
 END;
 $$;

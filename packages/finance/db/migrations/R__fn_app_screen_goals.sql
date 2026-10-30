@@ -6,11 +6,12 @@
 --   (fuer Ziele verplant je Konto/Depot), maintenance_reserve_status (Ruecklagen + Herleitung nach II. BV),
 --   savings_plan_overview (Sparplaene), fn_account_funding (Spar-Deckung der Konten), fn_account_flows (Zufluesse),
 --   fn_standing_orders + fn_app_order_line (Dauerauftraege je Konto). Die Seite rechnet nichts.
---   Deckungs-Konten = sichtbare Nicht-Kredit-Konten, die einen aktiven sichtbaren Sparplan bezahlen oder Ziel eines
---   Dauerauftrags sind (ein Gehaltskonto ohne solche Rolle bekommt keine Ampel: seine Alltagsausgaben sind unbekannt).
+--   Deckungs-Konten = finance.fn_funding_accounts (die eine Regel: Abbuchungskonto eines aktiven Sparplans oder Ziel
+--   eines Dauerauftrags, aktive Nicht-Kredit-Konten), gefiltert auf sichtbare Konten und sichtbare Sparplaene.
 --   Pill = fn_account_funding: ok „gedeckt", warn „reicht bis", alert „Luecke ab", neutral „nicht ermittelbar" (ohne Kurs
 --   -> + gap; Alltagsausgaben eines Ausgabenkontos ohne Auszug unbekannt -> Hinweis in der Konto-Zeile, kein gap).
---   Die Dauerauftraege (fn_standing_orders) werden einmal je Aufruf gelesen (v_so).
+--   Die Dauerauftraege (fn_standing_orders) liest die Seite einmal je Aufruf (v_so, Abschnitt 5 + probe-empty);
+--   fn_funding_accounts liest sie fuer die Deckungs-Konten ein zweites Mal (bewusst: die Konten-Regel hat eine Adresse).
 --   Hero = Summe der sichtbaren Ziele mit Zielbetrag (ohne Ruecklagen, = Summe des Abschnitts), gap bei einem Ziel-Anteil
 --   ohne Wechselkurs (savings_goal_progress.has_fx_gap).
 --   Abschnitte (Uebersicht R3, Owner 2026-10-28):
@@ -98,19 +99,12 @@ BEGIN
     FOR v_cov IN
         SELECT a.id, a.name
           FROM finance.accounts a
-         WHERE a.status = 'active' AND a.account_type <> 'loan'
-           AND (v_hh OR a.owner_person_id IS NOT DISTINCT FROM v_pid)
-           AND a.id IN (SELECT c.account_id
-                          FROM finance.savings_plans sp
-                          JOIN finance.accounts d ON d.id = sp.depot_id
-                          JOIN finance.recurring_payments c ON c.id = finance.fn_recurring_current(sp.recurring_payment_id, current_date)
-                         WHERE sp.status = 'active'
-                           AND (v_hh OR (sp.beneficiary_person_id = v_pid AND d.owner_person_id = v_pid))
-                        UNION
-                        SELECT r.target_account_id
-                          FROM jsonb_to_recordset(v_so) AS so(rp_id int, head_id int, kind text)
-                          JOIN finance.recurring_payments r ON r.id = so.rp_id
-                         WHERE so.kind = 'transfer')
+         WHERE (v_hh OR a.owner_person_id IS NOT DISTINCT FROM v_pid)
+           -- die EINE Konten-Regel (auch Karten-Hinweis savings_funding); die Seite filtert nur ihre Sichtbarkeit
+           AND a.id IN (SELECT fa.account_id
+                          FROM finance.fn_funding_accounts() fa
+                         WHERE fa.kind = 'transfer' OR v_hh
+                            OR (fa.beneficiary_person_id = v_pid AND fa.depot_owner_person_id = v_pid))
          ORDER BY a.name, a.id
     LOOP
         v_f := finance.fn_account_funding(v_cov.id, v_probe);

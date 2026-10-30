@@ -471,6 +471,42 @@ BEGIN
   IF v_result->>'code' IS NOT DISTINCT FROM 'no_change' THEN
     RAISE EXCEPTION 'FAIL fn_set_savings_plan [geplante Aenderung]: no_change gegen den kuenftigen Kopf: %', v_result; END IF;
   RAISE NOTICE 'PASS fn_set_savings_plan [geplante Aenderung am Stichtag noch nicht gueltig -> kein no_change]';
+
+  -- Woher kommt das Geld? (fn_savings_funding_fold): Plan 400/Monat auf 1000 -> Luecke, Frage beim Anlegen;
+  --   Pausieren = kein Deckungs-Konto mehr -> nichts; Reaktivieren am selben Tag = dieselbe Lage -> Kartenzeile, keine
+  --   zweite Frage; „active" auf einem laufenden Plan + Notiz = Notiz-Edit -> nichts; kuenftige Ratenaenderung ->
+  --   Kartenzeile nur mit Zustand + Datum (ohne rein/raus) und, weil sich das Datum verschiebt, eine neue Frage.
+  DECLARE v_sf INT; BEGIN
+    DELETE FROM core.notification_state WHERE source = 'finance' AND key LIKE 'savings_funding:%';
+    v_sf := (finance.fn_create_account('{"name":"__test_ssp_fund_settle__","account_type":"cash","opening_balance":1000}'::jsonb)->>'account_id')::int;
+    PERFORM finance.fn_create_account(jsonb_build_object('name','__test_ssp_fund_depot__','account_type','stocks_depot',
+                                                         'settlement_id', v_sf));
+    v_result := finance.fn_create_savings_plan(jsonb_build_object('name','__test_ssp_fund__','depot_name','__test_ssp_fund_depot__',
+      'isin','IE00B3RBWM25','symbol','VWCE','security_name','Beispiel','amount',400,'schedule_unit','month',
+      'first_payment_date', (CURRENT_DATE + 3)::text));
+    IF NOT (v_result->'savings_funding'->'accounts'->0->>'asked')::boolean THEN
+      RAISE EXCEPTION 'FAIL fn_set_savings_plan [Geldquelle Setup]: %', v_result; END IF;
+    v_result := finance.fn_set_savings_plan('{"savings_plan_name":"__test_ssp_fund__","status":"paused"}'::jsonb);
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result ? 'savings_funding' OR v_result ? 'card_lines' THEN
+      RAISE EXCEPTION 'FAIL fn_set_savings_plan [Geldquelle pausiert]: %', v_result; END IF;
+    v_result := finance.fn_set_savings_plan('{"savings_plan_name":"__test_ssp_fund__","status":"active"}'::jsonb);
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result ? 'savings_funding'
+       OR v_result->'card_lines'->0->>'value' NOT IN ('finance.note.funding_gap', 'finance.note.funding_until') THEN
+      RAISE EXCEPTION 'FAIL fn_set_savings_plan [Geldquelle reaktiviert, dieselbe Lage]: %', v_result; END IF;
+    v_result := finance.fn_set_savings_plan('{"savings_plan_name":"__test_ssp_fund__","status":"active","notes":"x"}'::jsonb);
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result ? 'savings_funding' OR v_result ? 'card_lines' THEN
+      RAISE EXCEPTION 'FAIL fn_set_savings_plan [Geldquelle: gleicher Status = Notiz-Edit]: %', v_result; END IF;
+    v_result := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_fund__','new_amount',500,
+      'valid_from', (CURRENT_DATE + 20)::text));
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true
+       OR (v_result->'savings_funding'->'accounts'->0->>'account_id')::int <> v_sf
+       OR NOT (v_result->'savings_funding'->'accounts'->0->>'asked')::boolean
+       OR v_result->'savings_funding'->>'note' LIKE '%EUR a month%'
+       OR v_result->'card_lines'->0->>'value' NOT IN ('finance.note.funding_gap_date', 'finance.note.funding_until_date')
+       OR v_result->'card_lines'->0->'params' ? 'in' THEN
+      RAISE EXCEPTION 'FAIL fn_set_savings_plan [Geldquelle kuenftige Rate]: %', v_result; END IF;
+    RAISE NOTICE 'PASS fn_set_savings_plan [Geldquelle: Pause still, gleiche Lage fragt nicht doppelt, kuenftige Rate nur Datum]';
+  END;
 END $$;
 
 ROLLBACK;

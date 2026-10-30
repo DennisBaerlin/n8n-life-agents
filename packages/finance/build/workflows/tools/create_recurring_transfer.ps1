@@ -34,7 +34,7 @@ function Build-CreateRecurringTransfer {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_recurring_transfer' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create recurring transfer (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
         -Params ([ordered]@{
             name                  = '$(''Start'').item.json.name'
             from_account_id       = '$(''Resolve From'').item.json.id'
@@ -90,11 +90,12 @@ function Build-CreateRecurringTransfer {
         ,@('ok','true','boolean')
         ,@('recurring_payment_id', "={{ `$('Create recurring transfer (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('monthly_equivalent', "={{ `$('Create recurring transfer (atomic)').item.json.monthly_equivalent }}", 'number')
+        ,@('savings_funding', "={{ `$('Create recurring transfer (atomic)').item.json.savings_funding }}", 'string')
     )
 
     $stickyFlow = Build-Sticky 'DB-Automatik + Buchung' @(2420, -260) `
         'fn_create_recurring_transfer + Recurring-Scheduler' `
-        'fn_create_recurring_transfer legt EINE recurring_payments-Zeile an (INSERT via gemeinsamen Helper fn_add_recurring_payment, amount Quell-seitig NEGATIV) und setzt target_account_id per Folge-UPDATE (eine Transaktion, atomar). monthly_equivalent ist GENERATED. target_account_id != NULL markiert den Transfer -> monthly_cashflow_overview filtert ihn raus (cashflow-neutral, kein Doppelzählen). Gebucht wird je Fälligkeit ZWEI-beinig (Soll -/Haben +) über den bestehenden Recurring-Scheduler: fn_book_recurring_occurrence delegiert für Transfer-rps an fn_book_recurring_transfer.' 220 460
+        'fn_create_recurring_transfer legt EINE recurring_payments-Zeile an (INSERT via gemeinsamen Helper fn_add_recurring_payment, amount Quell-seitig NEGATIV) und setzt target_account_id per Folge-UPDATE (eine Transaktion, atomar). monthly_equivalent ist GENERATED. target_account_id != NULL markiert den Transfer -> monthly_cashflow_overview filtert ihn raus (cashflow-neutral, kein Doppelzählen). Gebucht wird je Fälligkeit ZWEI-beinig (Soll -/Haben +) über den bestehenden Recurring-Scheduler: fn_book_recurring_occurrence delegiert für Transfer-rps an fn_book_recurring_transfer. Nach dem Write liest fn_savings_funding_fold die Spar-Deckung von Quelle UND Ziel (fn_account_funding, nur Konten mit Sparplan oder als Dauerauftrags-Ziel): je Konto eine Kartenzeile "Danach ..." schon im Probelauf + Bericht-Note savings_funding (gedeckt / es fehlen noch X), ohne Frage. Bookkeeper relayed.' 220 560
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -260) `
         'fn-Rückgabe {ok:false, reason}' `

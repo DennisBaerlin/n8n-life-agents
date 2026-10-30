@@ -35,7 +35,7 @@
 --   codes: invalid_statement, account_unknown (+candidates), account_ambiguous, not_bookable, currency_mismatch,
 --   period_in_future, already_covered, already_imported, balance_check_failed (+difference).
 --   BANK-EXPORT-DATEI (source:'file', Bank-Import-Modul): Eingabe {source, account_name (optional), closing_balance = Kontostand laut App JETZT
---   (Pflicht), table:{rows} = Raster des Lesers}. fn_bank_export_normalize liest den Export (kein LLM); das Konto waehlt
+--   (Pflicht), table:{rows} = Raster des Lesers}. fn_bank_export_load liest den Export (kein LLM, Leser fn_bank_export_normalize); das Konto waehlt
 --   fn_bank_export_resolve_account (Konto-Waechter: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil;
 --   closing_balance_required/no_starting_point tragen account_name); Zeitraum =
 --   Schnitt+1 bis gestern (Schnitt = last_reconciled_at bzw. opening_balance_date, sonst no_starting_point); Stand am
@@ -180,21 +180,13 @@ BEGIN
     --   = bestaetigter Stand am Schnitt (s. u.), die Saldo-Probe entfaellt (fester Leser, keine Lesefehler).
     --   Spaete Zeilen: Datum im Zeitraum des letzten CSV-Abgleichs, Referenz dort nicht gesehen -> Datum = Schnitt+1.
     IF v_file THEN
-        v_norm := finance.fn_bank_export_normalize(COALESCE(p->'table', '{}'::jsonb));
+        -- die geteilte Lade-Sequenz (fn_bank_export_load): Leser, Konto-Waechter (Live-Befund 2026-10-30: Datei-Profil
+        -- gegen Konto-Profil, ohne Namen Vorauswahl nach Bank), ein Sub-Konto je Datei (multiple_sub_accounts)
+        v_norm := finance.fn_bank_export_load(p);
         IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
             RETURN v_norm;
         END IF;
-        -- Konto-Waechter (Live-Befund 2026-10-30): Datei-Profil gegen Konto-Profil, ohne Namen Vorauswahl nach Bank
-        v_m := finance.fn_bank_export_resolve_account(p->>'account_name', v_norm->>'profile', v_norm->'currencies');
-        IF (v_m->>'ok')::boolean IS DISTINCT FROM true THEN
-            RETURN v_m;
-        END IF;
-        SELECT * INTO v_acct FROM finance.accounts WHERE id = (v_m->>'account_id')::int;
-        IF jsonb_array_length(v_norm->'account_types') > 1 THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'multiple_sub_accounts', 'account_types', v_norm->'account_types',
-                'reason', 'The export mixes several sub-accounts (' || (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(v_norm->'account_types') x)
-                       || ') - ask the user to export each account on its own.');
-        END IF;
+        SELECT * INTO v_acct FROM finance.accounts WHERE id = (v_norm->>'account_id')::int;
         IF (v_norm->>'printed_balance')::boolean THEN
         -- Profil mit gedrucktem Endstand (Bondora): Zeitraum + Anfangs-/Endstand aus der Datei = gedruckter Auszug
         -- (balance_source printed, kein Owner-Saldo). Zinszeilen (interest_line) und Kleinbetraege (legacy_return)

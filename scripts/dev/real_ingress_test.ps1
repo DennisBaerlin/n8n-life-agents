@@ -70,7 +70,10 @@ function Get-MaxExecId([string]$WfId) {
     return 0
 }
 # Auf die NEUE Execution (id > $AfterId) warten und dann auf einen Terminalstatus (success/error).
-# Single-User-sequenziell -> genau eine neue Execution; die kleinste id > AfterId ist die eigene.
+# Nur fuer Faelle mit GENAU EINER neuen Execution des Workflows: die Listen-API blendet laufende Executions aus
+# (n8n executions.public.controller: excludeRunning, solange kein status=running gefiltert wird) -> "kleinste
+# sichtbare id" waere sonst eine spaetere, schon fertige (Ausreisser ri02: die Probe statt des Hauptlaufs).
+# Mehrere neue Executions -> die eigene per id bestimmen und Wait-ExecTerminal nutzen.
 function Wait-NewExecTerminal([string]$WfId, [int]$AfterId, [int]$TimeoutSec) {
     $start = Get-Date; $cand = $null
     while ($true) {
@@ -86,6 +89,29 @@ function Wait-NewExecTerminal([string]$WfId, [int]$AfterId, [int]$TimeoutSec) {
         }
         Start-Sleep -Milliseconds 1200
     }
+}
+# Auf eine BEKANNTE Execution warten (Einzel-GET sieht auch laufende); liefert das Detail (bei Timeout den letzten Stand).
+function Wait-ExecTerminal([string]$ExecId, [int]$TimeoutSec) {
+    $start = Get-Date
+    while ($true) {
+        $e = $null; try { $e = Invoke-N8nGet "executions/$ExecId" } catch { }
+        $done = $e -and $e.status -notin @('running', 'new', 'waiting', 'unknown')
+        if ($done -or ((Get-Date) - $start).TotalSeconds -ge $TimeoutSec) { return $(try { Get-ExecDetail $ExecId } catch { $null }) }
+        Start-Sleep -Milliseconds 1200
+    }
+}
+# Wurzel-Execution einer Sub-Execution: der parentExecution-Kette nach oben folgen (Gate -> Tool -> Agent -> Vermittler
+# -> Orchestrator). Liefert @{ Id; WorkflowId } der obersten Execution.
+function Get-ExecRoot([string]$ExecId) {
+    $id = $ExecId; $wf = $null
+    for ($hop = 0; $hop -lt 10; $hop++) {
+        $d = Get-ExecDetail $id
+        $wf = $d.workflowId
+        $parent = $null; try { $parent = $d.data.parentExecution.executionId } catch { }
+        if (-not $parent) { break }
+        $id = "$parent"
+    }
+    return @{ Id = [int]$id; WorkflowId = $wf }
 }
 # Tool-/Knoten-Namen, die im Orchestrator-runData ausgefuehrt wurden (Top-Level-Knoten).
 function Get-RunNodes([object]$Exec) {
@@ -464,6 +490,15 @@ foreach ($tc in $cases) {
             Write-Host "    [FAIL] Gate-Execution-id ($gateExecId) nicht > orchBase ($orchBase) -> abgefangene Nachricht nicht diesem Fall zuordenbar." -ForegroundColor Red
             $failed++; continue
         }
+        # Hauptlauf ueber die Eltern-Kette des Gates bestimmen, nicht als "kleinste neue id": die Probe unten ist eine
+        # zweite neue Orchestrator-Execution, und die Listen-API blendet den nach dem Tipp laufenden Hauptlauf aus ->
+        # unter Last wurde die fertige Probe als Hauptlauf gewertet und die Sperre vor 'Finish card lock' geprueft.
+        $root = try { Get-ExecRoot "$gateExecId" } catch { $null }
+        if (-not $root -or $root.WorkflowId -ne $OrchWfId -or $root.Id -le $orchBase) {
+            Write-Host "    [FAIL] Gate-Execution $gateExecId haengt an keinem neuen Orchestrator-Lauf (Wurzel: $($root.Id) in $($root.WorkflowId))." -ForegroundColor Red
+            $failed++; continue
+        }
+        $mainId = $root.Id
 
         # Fix C (Karte-offen-Sperre): solange die Karte offen ist, traegt agent.hitl_pending eine Zeile fuer den
         # Ursprungs-Chat; probe_card_open schickt dann eine ZWEITE Nachricht in denselben Chat -> fester Hinweis
@@ -473,7 +508,7 @@ foreach ($tc in $cases) {
         $pendChat = ($pr.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)
         if ("$pendChat" -ne "$chatId") { $extraOk = $false; $extraInfo += "Sperr-Zeile chat_id='$pendChat' statt $chatId" }
         if ($tc.probe_card_open) {
-            $probeBase = Get-MaxExecId $OrchWfId
+            $probeBase = [Math]::Max((Get-MaxExecId $OrchWfId), $mainId)   # Hauptlauf evtl. noch unsichtbar (laeuft)
             Send-TelegramUpdate $chatId $fromUid "$($tc.probe_card_open)" | Out-Null
             $probe = Wait-NewExecTerminal $OrchWfId $probeBase $Timeout
             $pNodes = if ($probe) { Get-RunNodes $probe } else { @() }
@@ -485,8 +520,8 @@ foreach ($tc in $cases) {
         try { Invoke-HitlResume -Url $resumeUrl | Out-Null }
         catch { Write-Host "    [FAIL] HITL-Resume-GET fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue }
 
-        # Nach dem Resume muss die Orchestrator-Execution sauber durchlaufen (success).
-        $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
+        # Nach dem Resume muss DER Hauptlauf (nicht irgendeine neue Execution, s. o.) sauber durchlaufen (success).
+        $orch = Wait-ExecTerminal "$mainId" $Timeout
 
         # Fix C (woertlicher task): der Vermittler agent.sub_dispatch_agent muss die Nutzernachricht UNVERAENDERT
         # bekommen (kein LLM-formulierter task mehr); danach keine Sperr-Zeile mehr fuer die Gate-Execution.
@@ -496,7 +531,24 @@ foreach ($tc in $cases) {
             if ($task -ne "$($tc.text)") { $extraOk = $false; $extraInfo += "task an den Vermittler='$task' statt woertlich '$($tc.text)'" }
         }
         $pr = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT count(*) FROM agent.hitl_pending WHERE execution_id = '$gateExecId';")
-        if ((($pr.Output -join '').Trim()) -ne '0') { $extraOk = $false; $extraInfo += 'Sperr-Zeile nach dem Tipp nicht geloescht' }
+        if ((($pr.Output -join '').Trim()) -ne '0') {
+            # Diagnose (Ausreisser ri02 2026-10-29): Zeilen-Zustand + wann Gate-Freigabe und Orchestrator-Loeschen liefen.
+            $extraOk = $false
+            $row = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT opened_at, released_at, expires_at, clock_timestamp() FROM agent.hitl_pending WHERE execution_id = '$gateExecId';")
+            $gateExec = try { Get-ExecDetail $gateExecId } catch { $null }
+            $info = foreach ($pair in @(@($orch, 'Finish card lock'), @($gateExec, 'Close pending*'))) {
+                $ex = $pair[0]; $pat = $pair[1]
+                $names = if ($ex) { @(Get-RunNodes $ex | Where-Object { $_ -like $pat }) } else { @() }
+                if (-not $names) { "$pat (exec $($ex.id)): nicht gelaufen"; continue }
+                foreach ($nm in $names) {
+                    $r0 = @($ex.data.resultData.runData.$nm)[0]
+                    $t = [DateTimeOffset]::FromUnixTimeMilliseconds([long]$r0.startTime).ToString('HH:mm:ss.fff')
+                    $err = if ($r0.error) { " FEHLER=$($r0.error.message)" } else { '' }
+                    "$nm (exec $($ex.id)) start=$t$err out=$(Get-NodeOutputText $ex $nm)"
+                }
+            }
+            $extraInfo += "Sperr-Zeile nach dem Tipp nicht geloescht [Zeile: $(($row.Output -join ' ').Trim()); $($info -join '; ')]"
+        }
 
         Write-Host "    Gate abgefangen + aufgeloest (decision=$($tc.gate_decision)); Orchestrator status=$($orch.status)"
         if ($orch -and $orch.status -eq 'success' -and $extraOk) {

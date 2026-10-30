@@ -40,7 +40,7 @@
 --   Ruecklage hat -> {ok:false, code:'reserve_exists'} (Partial-UNIQUE als Backstop).
 --   NOTRESERVE (kind emergency_reserve, 2026-10-30): wie die Instandhaltungsruecklage kein Datum, kein Sparplan, Hebel
 --   monthly_savings_rate; Ziel = target_amount ODER target_months (eines setzt das andere zurueck, Form-CHECK). Topf und
---   neue Rate nur auf Geld-Konten (fn_emergency_reserve_account_types). UMWIDMEN: kind=emergency_reserve an einem Sparziel
+--   neue Rate nur auf Geld-Konten (fn_emergency_reserve_account_ok: aktives Geld-Konto, kein Kinderkonto). UMWIDMEN: kind=emergency_reserve an einem Sparziel
 --   (goal) macht es zur Notreserve (Datum entfaellt, Betrag bleibt, sofern nicht target_months genannt; Rate laeuft weiter);
 --   nur ohne andere aktive Notreserve (code reserve_exists), ohne verknuepften Sparplan und ohne Geld ausserhalb von
 --   Geld-Konten. Andere Art-Wechsel -> {ok:false} (Trigger trg_savings_goal_kind_fixed = Backstop).
@@ -138,14 +138,14 @@ BEGIN
                 'reason', 'This goal is funded by a savings plan into a depot - an emergency reserve lies on cash accounts only. Unlink the savings plan first.');
         END IF;
         IF EXISTS (SELECT 1 FROM finance.savings_goal_account_share s WHERE s.goal_id = v_id AND s.share_eur <> 0
-                      AND NOT s.account_type = ANY (finance.fn_emergency_reserve_account_types())) THEN
+                      AND NOT finance.fn_emergency_reserve_account_ok(s.account_id)) THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'Part of this goal''s money lies on a depot, fixed-deposit or P2P account - an emergency reserve may only lie on cash/Tagesgeld accounts. Move or release that part first.');
         END IF;
         -- auch die laufende Rate: fliesst sie in einen Nicht-Geld-Topf, waere das Geld fuer die Notreserve unsichtbar
         IF EXISTS (SELECT 1 FROM finance.recurring_payments r JOIN finance.accounts ta ON ta.id = r.target_account_id
                     WHERE r.id IN (SELECT finance.fn_recurring_lineage(v_row.recurring_payment_id))
-                      AND NOT ta.account_type = ANY (finance.fn_emergency_reserve_account_types())) THEN
+                      AND NOT finance.fn_emergency_reserve_account_ok(ta.id)) THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'The monthly rate of this goal goes into a fixed-deposit or P2P account - an emergency reserve lies on cash/Tagesgeld accounts only. Move the savings account first (reserve_account_name), then turn it into the emergency reserve.');
         END IF;
@@ -163,9 +163,9 @@ BEGIN
             'reason', 'The emergency reserve target is either a fixed amount (target_amount) or months of expenses (target_months) - not both.');
     END IF;
     IF v_kind = 'emergency_reserve' AND v_reserve IS NOT NULL
-       AND NOT (SELECT account_type FROM finance.accounts WHERE id = v_reserve) = ANY (finance.fn_emergency_reserve_account_types()) THEN
+       AND NOT finance.fn_emergency_reserve_account_ok(v_reserve) THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'Emergency reserve money lies on a cash/Tagesgeld account (available at once, deposit-insured) - not on a fixed deposit, P2P or depot.');
+            'reason', 'Emergency reserve money lies on an active cash/Tagesgeld account of the parents (available at once, deposit-insured) - not on a fixed deposit, P2P, depot or a child''s account.');
     END IF;
 
     -- Ruecklagen (Instandhaltung, Notreserve): Form-Regeln + der Raten-Hebel (vor jeder Neuberechnung, write-frei)
@@ -280,7 +280,7 @@ BEGIN
                 END IF;
                 v_funding_reason := finance.fn_goal_reserve_account_reason(v_new_pot, v_new_acct);
                 IF v_funding_reason IS NULL AND v_kind = 'emergency_reserve'
-                   AND NOT (SELECT account_type FROM finance.accounts WHERE id = v_new_pot) = ANY (finance.fn_emergency_reserve_account_types()) THEN
+                   AND NOT finance.fn_emergency_reserve_account_ok(v_new_pot) THEN
                     v_funding_reason := 'Emergency reserve money lies on a cash/Tagesgeld account - name such an account as reserve_account_name.';
                 END IF;
                 IF v_funding_reason IS NULL AND NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_new_acct AND status = 'active') THEN
@@ -461,7 +461,7 @@ BEGIN
         'paused_cash_rate',  COALESCE((v_stop_res->>'paused_cash_rate')::boolean, false),
         'paused_plan_count', COALESCE((v_stop_res->>'paused_plan_count')::int, 0))
         || CASE WHEN v_convert THEN jsonb_build_object('converted_to', 'emergency_reserve') ELSE '{}'::jsonb END
-        || CASE WHEN v_kind = 'emergency_reserve' THEN jsonb_build_object('emergency_reserve', finance.fn_emergency_reserve_status())
+        || CASE WHEN v_kind = 'emergency_reserve' THEN jsonb_build_object('emergency_reserve', finance.fn_emergency_reserve_status() - 'month_options')
                 ELSE '{}'::jsonb END
         || CASE WHEN v_covered THEN jsonb_build_object('covered', true) ELSE '{}'::jsonb END
         || CASE WHEN v_need IS NOT NULL AND (v_rate IS NULL OR (v_old IS NOT NULL AND v_need <> v_rate))

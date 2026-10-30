@@ -1,11 +1,10 @@
 -- ============================================================
 -- fn_emergency_reserve_covered (READ, STABLE) -- gedecktes Notreserve-Geld je Konto in EUR (2026-10-30)
---   Die EINE Adresse fuer „wie viel der Notreserve ist wirklich da“: je aktivem Geld-Konto
---   (fn_emergency_reserve_account_types) der Anteil der aktiven Notreserve (savings_goal_account_share), hoechstens der
---   positive Saldo NACH den Anteilen der anderen aktiven Ziele auf demselben Konto. Die Notreserve steht im Rang nach den
---   normalen Zielen (konservativ, kein Saldo zaehlt doppelt); Kinderkonten zaehlen nie (Eltern-Blick wie
---   fn_liquidity_snapshot); fliesst Geld ab, schrumpft die Deckung von selbst (Monarch
---   „Allocated vs. Available“, arch-challenge 2026-10-30).
+--   Die EINE Adresse fuer „wie viel der Notreserve ist wirklich da“: je zulaessigem Konto
+--   (fn_emergency_reserve_account_ok: aktiv, Geld-Konto, kein Kinderkonto) der Anteil der aktiven Notreserve
+--   (savings_goal_account_share), hoechstens der positive Saldo NACH den Anteilen der anderen aktiven Ziele auf demselben
+--   Konto. Die Notreserve steht im Rang nach den normalen Zielen (konservativ, kein Saldo zaehlt doppelt); fliesst Geld
+--   ab, schrumpft die Deckung von selbst (Monarch „Allocated vs. Available“, arch-challenge 2026-10-30).
 --   Konsumenten: fn_emergency_reserve_status (Deckung, Konten), fn_liquidity_snapshot (emergency_eur; Runway zaehlt sie
 --   als verfuegbar).
 --   RUECKGABE: (account_id, account_name, share_eur, covered_eur, fx_gap) je Konto mit Notreserve-Anteil > 0
@@ -19,7 +18,7 @@ LANGUAGE sql STABLE AS $$
           FROM finance.savings_goal_account_share sh
           JOIN finance.savings_goals g ON g.id = sh.goal_id
          WHERE sh.goal_status = 'active'
-           AND sh.account_type = ANY (finance.fn_emergency_reserve_account_types())
+           AND finance.fn_emergency_reserve_account_ok(sh.account_id)
     ), a AS (
         SELECT s.account_id, max(s.account_name) AS account_name,
                COALESCE(sum(s.share_eur) FILTER (WHERE s.kind = 'emergency_reserve'), 0) AS em,
@@ -31,7 +30,5 @@ LANGUAGE sql STABLE AS $$
            (o.balance_eur IS NULL AND COALESCE(o.balance, 0) <> 0)
       FROM a
       JOIN finance.account_overview o ON o.id = a.account_id
-      -- Haushalts-Notreserve: ein Kinderkonto zaehlt nie (derselbe Eltern-Blick wie fn_liquidity_snapshot)
-      LEFT JOIN core.fn_household_persons() hp ON hp.person_id = o.owner_person_id
-     WHERE a.em > 0 AND o.status = 'active' AND hp.role IS DISTINCT FROM 'child';
+     WHERE a.em > 0;
 $$;

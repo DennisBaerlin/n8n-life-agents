@@ -25,7 +25,7 @@
 --     + savings_goal_reached {current_amount, target_amount, note}, wenn eine Erhoehung das Ziel deckt (Event-Fold).
 --   Korrigierbar (kein RAISE -> kein Owner-Alert): amount NULL/<0 / Ziel nicht gefunden oder nicht aktiv / Konto nicht gefunden ODER
 --     nicht zuordenbar (Kredit) / Depot fuer eine Instandhaltungsruecklage / kein Geld-Konto fuer die Notreserve
---     (fn_emergency_reserve_account_types) / delta=0 (no-op) / insufficient_free_balance
+--     (fn_emergency_reserve_account_ok: aktives Geld-Konto, kein Kinderkonto) / delta=0 (no-op) / insufficient_free_balance
 --     -> {ok:false, reason}.
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_book_savings_reservation.sql
 -- ============================================================
@@ -85,11 +85,11 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Money of a maintenance reserve can only be earmarked on a cash/Tagesgeld, fixed-deposit or P2P account, not in a depot.');
     END IF;
-    -- Notreserve (2026-10-30): nur Geld-Konten (sofort verfuegbar, einlagengesichert; fn_emergency_reserve_account_types).
-    IF NOT v_atype = ANY (finance.fn_emergency_reserve_account_types())
+    -- Notreserve (2026-10-30): nur Geld-Konten (sofort verfuegbar, einlagengesichert, kein Kinderkonto; fn_emergency_reserve_account_ok).
+    IF NOT finance.fn_emergency_reserve_account_ok(v_acct)
        AND EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_goal AND kind = 'emergency_reserve') THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'Emergency reserve money can only be earmarked on a cash/Tagesgeld account (available at once, deposit-insured) - not on a fixed deposit, P2P or depot.');
+            'reason', 'Emergency reserve money can only be earmarked on an active cash/Tagesgeld account of the parents (available at once, deposit-insured) - not on a fixed deposit, P2P, depot or a child''s account.');
     END IF;
 
     -- Absolut-rein -> delta-append. Aktueller Anteil (Ziel, Konto) inkl. getaggter Transfers: saldo-basiert nativ,

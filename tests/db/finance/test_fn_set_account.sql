@@ -139,6 +139,32 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_account [Verrechnungskonto nur Depot/P2P]';
   END;
 
+  -- "Import zuerst": falsch zugeordnete IBAN entfernen und beim richtigen Konto eintragen (sonst Dublette)
+  DECLARE v_x INT; v_y INT; v_r JSONB; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status, account_number)
+    VALUES ('__sa_rm_x__', 'cash', 'EUR', 'active', 'DE66500105174400000002') RETURNING id INTO v_x;
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_rm_y__', 'cash', 'EUR', 'active') RETURNING id INTO v_y;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_y, 'account_number', 'DE66500105174400000002'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL fn_set_account [Dublette vor dem Entfernen]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_x, 'account_number', 'DE39500105174400000003',
+               'remove_account_number', true));
+    IF v_r->>'code' IS DISTINCT FROM 'conflicting_input'
+       OR (SELECT account_number FROM finance.accounts WHERE id = v_x) <> 'DE66500105174400000002' THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [setzen + entfernen zugleich]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_x, 'remove_account_number', 'true'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'account_id')::int <> v_x
+       OR (SELECT account_number FROM finance.accounts WHERE id = v_x) IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [IBAN entfernen]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_y, 'account_number', 'DE66500105174400000002'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+       OR (SELECT account_number FROM finance.accounts WHERE id = v_y) <> 'DE66500105174400000002' THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [IBAN beim richtigen Konto]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_y, 'notes', 'n', 'remove_account_number', ''));
+    IF (SELECT account_number FROM finance.accounts WHERE id = v_y) IS DISTINCT FROM 'DE66500105174400000002' THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [leeres remove = unveraendert]'; END IF;
+    RAISE NOTICE 'PASS fn_set_account [IBAN entfernen + verschieben]';
+  END;
+
 END $$;
 
 ROLLBACK;

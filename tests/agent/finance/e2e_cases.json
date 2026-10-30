@@ -123,6 +123,18 @@
         "notes":  "Sparziel-Zweckbindung 2026-10-27 (Umschicht-Hilfe): Schema-Fidelity savings_goal_name am Verkauf. Ziel mit 1000 EUR Depot-Zuordnung; Verkauf 5 x 120 = 600 -> derisk: 600 liegen danach als Ziel-Geld auf dem Verrechnungskonto, Fortschritt bleibt 1000."
     },
     {
+        "id":  "e2e45",
+        "name":  "set_account: falsch zugeordnete IBAN entfernen (remove_account_number)",
+        "task":  "Beim Konto '__E2E__ IB Konto' ist die falsche IBAN eingetragen, die gehoert zu einem anderen Konto. Bitte entferne sie dort.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ IB Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ IB Konto','account_type','cash','currency','EUR','account_number','DE28500105174400000007','opening_balance',100)));",
+        "chat_id":  "test_e2e_e2e45",
+        "sentinel_accounts":  1,
+        "verify_sql":  "SELECT count(*) FROM finance.accounts WHERE name = '__E2E__ IB Konto' AND account_number IS NULL AND status = 'active';",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Import zuerst 2026-10-30: Schema-Fidelity des neuen Parameters remove_account_number (Trigger + Agent-Binding + fn_set_account). Erwartet: Nummer entfernt, Konto sonst unveraendert. IBAN erfunden (gueltige Pruefziffer)."
+    },
+    {
         "id":  "e2e07",
         "name":  "reconcile_account: Korrekturbuchung bei Drift",
         "task":  "Lege ein Cash-Konto \u0027__E2E__ Recon Konto\u0027 an (Inhaber Erika, ohne Zinsen). Buche eine Einzahlung von 500 Euro auf dieses Konto (Datum heute, Verwendungszweck \u0027Einlage\u0027). Gleiche das Konto dann ab: tatsaechlicher Saldo laut Banking-App ist 520 Euro (20 Euro Zinsen noch nicht gebucht), Datum heute.",

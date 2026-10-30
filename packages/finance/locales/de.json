@@ -850,6 +850,7 @@
   "finance.note.statement_export_gap_settled": "Im Export stehen {amount} mehr Ausgaben, als der App-Stand zeigt – meist Kartenzahlungen, die beim letzten Mal noch vorgemerkt waren und schon im letzten Rest stecken. Der Kontostand stimmt trotzdem.",
   "finance.note.statement_export_starts_late": "Der Export reicht nicht sicher bis zum bestätigten Stand vom {date} zurück. Fehlen Umsätze dazwischen, stecken {amount} davon im Rest – dann lieber abbrechen und einen längeren Zeitraum exportieren (z. B. dieses und letztes Jahr).",
   "finance.note.iban_learned_other": "Die IBAN {iban} wird beim Konto „{account}“ gespeichert (aus einer Überweisung erkannt). Solche Überweisungen bucht der Monats-Check künftig als Übertrag. Stimmt das nicht, bitte abbrechen.",
+  "finance.note.iban_removed": "Die gespeicherte Kontonummer (IBAN) dieses Kontos wird entfernt.",
   "finance.note.iban_learn_ambiguous": "Eine Überweisung mit der IBAN {iban} passt zu mehreren deiner Konten ({accounts}). Sie steht deshalb im Rest. Sag mir, zu welchem Konto die IBAN gehört, dann trage ich sie ein.",
   "finance.label.statement_trades": "Wertpapiere (werden gebucht)",
   "finance.tpl.statement_trade_row": "{what} {name}: {shares} Stück, {amount} am {date}",

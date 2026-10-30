@@ -67,4 +67,41 @@ BEGIN
     RAISE EXCEPTION 'FAIL [4f] View account_everyday_spending.provisional'; END IF;
   RAISE NOTICE 'PASS fn_account_everyday_per_day: fruehester Auszug zaehlt nicht, Fenster 3, Details je Auszug';
 END $$;
+
+-- Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out (Summe der ungematchten Abgaenge ab der Grenze,
+-- Stempel oneoff_threshold) zaehlt nicht in per_day (Kontovorschau); per_day_net (Spar-Deckung) bleibt vorsichtig.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_a INT; r record;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_ed_c__', 'cash', 'EUR', 'active') RETURNING id INTO v_a;
+  -- 30 Tage: -1000 raus, davon -700 einmalig (Grenze 250), +60 rein -> per_day -10, netto (-1000+60)/30 = -31.33
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at,
+                                       oneoff_out, oneoff_threshold)
+  VALUES (v_a, t - 34, t - 5, 2000, 1060, 'EUR', 5, 0, -1000, 60, NULL, -700, 250);
+  SELECT * INTO r FROM finance.fn_account_everyday_per_day(v_a);
+  IF r.per_day IS DISTINCT FROM -10.00::numeric OR r.per_day_net IS DISTINCT FROM -31.33::numeric THEN
+    RAISE EXCEPTION 'FAIL [5a] per_day ohne Einmaliges -10, netto -31.33, got %', r; END IF;
+  SELECT * INTO r FROM finance.fn_account_everyday_basis(v_a);
+  IF r.per_day IS DISTINCT FROM -10.00::numeric OR r.oneoff_out IS DISTINCT FROM -700.00::numeric
+     OR r.oneoff_threshold IS DISTINCT FROM 250.00::numeric THEN
+    RAISE EXCEPTION 'FAIL [5b] basis: per_day -10, oneoff_out -700, Grenze 250, got %', r; END IF;
+
+  -- Backstops: Einmaliges nie mehr als der ungematchte Abgang; ohne Grenze (alter Auszug) kein Einmaliges
+  BEGIN
+    UPDATE finance.bank_statements SET oneoff_out = -1000.01 WHERE account_id = v_a;
+    RAISE EXCEPTION 'FAIL [5c] oneoff_out < unmatched_out angenommen';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN
+    UPDATE finance.bank_statements SET oneoff_threshold = NULL WHERE account_id = v_a;
+    RAISE EXCEPTION 'FAIL [5d] oneoff_out ohne Grenze angenommen';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN
+    UPDATE finance.bank_statements SET oneoff_out = 5 WHERE account_id = v_a;
+    RAISE EXCEPTION 'FAIL [5e] positives oneoff_out angenommen';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  RAISE NOTICE 'PASS fn_account_everyday_per_day: einmalige Grossausgaben zaehlen nicht in per_day, Backstops';
+END $$;
 ROLLBACK;

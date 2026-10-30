@@ -1251,6 +1251,19 @@ DO $$ BEGIN
     ALTER TABLE finance.bank_statements ADD CONSTRAINT finance_bank_statements_export_gap_chk
         CHECK (export_gap IS NULL OR balance_source = 'owner');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out = der Teil von unmatched_out aus einzelnen
+-- ungematchten Abgaengen mit |Betrag| >= oneoff_threshold (Grenze core.config finance.everyday_oneoff_eur, in
+-- Kontowaehrung zum period_end). Zaehlt nicht in die Alltags-Schaetzung der Kontovorschau (fn_account_everyday_basis).
+-- Provenienz-Snapshot mit Stempel (Ausnahme (c), .claude/rules/sql.md): Einzelumsaetze werden nicht gespeichert, also
+-- nicht nachrechenbar; eine geaenderte Grenze gilt ab dem naechsten Auszug. oneoff_threshold NULL = Auszug von vor
+-- dieser Regel bzw. ohne Wechselkurs (dann nichts einmalig).
+ALTER TABLE finance.bank_statements ADD COLUMN IF NOT EXISTS oneoff_out numeric(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE finance.bank_statements ADD COLUMN IF NOT EXISTS oneoff_threshold numeric(12,2);
+DO $$ BEGIN
+    ALTER TABLE finance.bank_statements ADD CONSTRAINT finance_bank_statements_oneoff_chk
+        CHECK (oneoff_out <= 0 AND oneoff_out >= unmatched_out AND (oneoff_threshold IS NOT NULL OR oneoff_out = 0)
+               AND (oneoff_threshold IS NULL OR oneoff_threshold > 0));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Broker-CSV: gesehene Bank-Referenzen je Konto, NUR als Hash (md5 der transaction_id; Owner-Vorgabe: Einzelumsaetze
 -- werden nicht gespeichert). Zweck: eine spaet nachgebuchte Zeile mit Datum <= Schnitt erkennen (Dedup primaer per

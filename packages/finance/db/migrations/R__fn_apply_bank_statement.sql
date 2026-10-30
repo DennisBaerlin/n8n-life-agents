@@ -332,12 +332,13 @@ BEGIN
         INSERT INTO finance.bank_statements
             (account_id, period_start, period_end, opening_balance, closing_balance, currency, line_count, matched_count,
              unmatched_out, unmatched_in, prev_last_reconciled_balance, prev_last_reconciled_at, skipped, learned_key_ids,
-             balance_source, export_gap)
+             balance_source, export_gap, oneoff_out, oneoff_threshold)
         VALUES (v_acct, (v_prep->>'period_start')::date, (v_prep->>'period_end')::date,
                 (v_prep->>'opening_balance')::numeric, (v_prep->>'closing_balance')::numeric, v_prep->>'currency',
                 (v_prep->>'line_count')::int, (v_prep->>'matched_count')::int,
                 (v_prep->>'unmatched_out')::numeric, (v_prep->>'unmatched_in')::numeric, v_prev_bal, v_prev_at,
-                v_skipped, v_keys, v_prep->>'balance_source', (v_prep->>'export_gap')::numeric)
+                v_skipped, v_keys, v_prep->>'balance_source', (v_prep->>'export_gap')::numeric,
+                (v_prep->>'oneoff_out')::numeric, (v_prep->>'oneoff_threshold')::numeric)
         RETURNING id INTO v_stmt;
 
         -- Broker-CSV: gesehene Bank-Referenzen nur als Hash (spaete Zeilen beim naechsten Export erkennen)

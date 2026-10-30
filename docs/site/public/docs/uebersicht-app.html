@@ -277,12 +277,12 @@
 <ul>
 <li><strong>Stand am …:</strong> der bestätigte Stand aus dem letzten Kontoauszug oder Abgleich (und, falls seitdem gebucht wurde, „Gebucht seit …“).</li>
 <li><strong>Feste Abgänge / feste Eingänge bis …:</strong> die Daueraufträge bis zum Tief. Antippen zeigt jede einzelne Zahlung mit Datum und Betrag.</li>
-<li><strong>Alltagsausgaben (geschätzt):</strong> Einkauf, Karte und Bargeld, geschätzt aus deinen Kontoauszügen, etwa „≈ 62 € pro Tag × 29 Tage“. Antippen zeigt den Wert je Auszug. Dein <strong>erster</strong> Kontoauszug zählt nicht mehr, sobald ein zweiter da ist: Er stammt meist aus der Zeit, bevor deine Daueraufträge erfasst waren, und würde Gehalt oder Überweisungen als „Alltag“ mitzählen. Gibt es erst einen Auszug, steht „vorläufig“ dabei.</li>
+<li><strong>Alltagsausgaben (geschätzt):</strong> Einkauf, Karte und Bargeld, geschätzt aus deinen Kontoauszügen, etwa „≈ 62 € pro Tag × 29 Tage“. Antippen zeigt den Wert je Auszug. Dein <strong>erster</strong> Kontoauszug zählt nicht mehr, sobald ein zweiter da ist: Er stammt meist aus der Zeit, bevor deine Daueraufträge erfasst waren, und würde Gehalt oder Überweisungen als „Alltag“ mitzählen. Gibt es erst einen Auszug, steht „vorläufig“ dabei. Einzelne Ausgaben ab 250 € (etwa ein größerer Online-Einkauf) gelten als <strong>einmalig</strong> und zählen nicht zum Tageswert; aufgeklappt steht je Auszug „davon einmalig, zählt nicht“ mit der Summe. Überweisungen auf deine eigenen Konten zählen nie als Alltag, auch wenn sie sich nicht als Umbuchung verbuchen ließen.</li>
 <li><strong>Tiefster Stand</strong> mit Datum und Ampel: <strong>rot „unter Puffer“</strong>, <strong>gelb „knapp“</strong> (über dem Puffer, aber unter dem Doppelten), <strong>grün „reicht“</strong>. Fehlt für ein Konto in Fremdwährung der Wechselkurs, steht dort grau „Kurs fehlt“.</li>
-<li><strong>Puffer:</strong> wie viel mindestens auf dem Konto bleiben soll, mit dem Hinweis „Standard“ (250 €) oder „für dieses Konto festgelegt“. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“</li>
+<li><strong>Puffer:</strong> wie viel mindestens auf dem Konto bleiben soll, mit dem Hinweis „Standardwert (nicht selbst festgelegt)“ (250 €) oder „für dieses Konto festgelegt“ und ab welchem Stand das Konto gelb wird. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“</li>
 <li><strong>Nächster Geldeingang</strong>, bei rotem Konto ein <strong>Umbuchungs-Vorschlag</strong>, und darunter <strong>weitere Zahlungen</strong> bis zum Ende der 30 Tage.</li>
 </ul>
-<p>Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem Hinweis „Keine Vorschau – für dieses Konto gibt es noch keinen Kontoauszug“.</p>
+<p>Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem Hinweis „Keine Vorschau – für dieses Konto gibt es noch keinen Kontoauszug“. P2P-Konten, Festgeld und Depots haben nie eine Vorschau („die gibt es nur für Giro- und Tagesgeldkonten“), ihre Zahlungen stehen trotzdem da.</p>
 <h3 id="kredite">Kredite</h3>
 <ul>
 <li>Jeder laufende oder pausierte Kredit mit Restschuld, Bank, Zinssatz und Monatsrate. Kennst du den ursprünglichen Kreditbetrag, zeigt ein Balken, wie viel schon getilgt ist. Oben steht die Restschuld aller Haushalts-Kredite zusammen und darunter, wie viel du monatlich an Raten zahlst und wie viel davon Zinsen sind. Kredite der Kinder stehen in einem eigenen Abschnitt und zählen nicht mit.</li>
@@ -371,6 +371,10 @@
 			<tr>
 					<td><code>lifeagents config set finance coverage_warn_factor 2</code></td>
 					<td>Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (<code>coverage_buffer_eur</code>).</td>
+			</tr>
+			<tr>
+					<td><code>lifeagents config set finance everyday_oneoff_eur 250</code></td>
+					<td>Ab diesem Einzelbetrag gilt eine Ausgabe im Kontoauszug als einmalig und zählt nicht zu den geschätzten Alltagsausgaben (gilt ab dem nächsten Auszug).</td>
 			</tr>
 			<tr>
 					<td><code>lifeagents config set finance fixed_rate_warn_months 12</code></td>

@@ -58,12 +58,12 @@ Für jedes Konto, zu dem du schon einen Kontoauszug eingespielt hast (siehe [Mon
 
 - **Stand am …:** der bestätigte Stand aus dem letzten Kontoauszug oder Abgleich (und, falls seitdem gebucht wurde, „Gebucht seit …“).
 - **Feste Abgänge / feste Eingänge bis …:** die Daueraufträge bis zum Tief. Antippen zeigt jede einzelne Zahlung mit Datum und Betrag.
-- **Alltagsausgaben (geschätzt):** Einkauf, Karte und Bargeld, geschätzt aus deinen Kontoauszügen, etwa „≈ 62 € pro Tag × 29 Tage“. Antippen zeigt den Wert je Auszug. Dein **erster** Kontoauszug zählt nicht mehr, sobald ein zweiter da ist: Er stammt meist aus der Zeit, bevor deine Daueraufträge erfasst waren, und würde Gehalt oder Überweisungen als „Alltag“ mitzählen. Gibt es erst einen Auszug, steht „vorläufig“ dabei.
+- **Alltagsausgaben (geschätzt):** Einkauf, Karte und Bargeld, geschätzt aus deinen Kontoauszügen, etwa „≈ 62 € pro Tag × 29 Tage“. Antippen zeigt den Wert je Auszug. Dein **erster** Kontoauszug zählt nicht mehr, sobald ein zweiter da ist: Er stammt meist aus der Zeit, bevor deine Daueraufträge erfasst waren, und würde Gehalt oder Überweisungen als „Alltag“ mitzählen. Gibt es erst einen Auszug, steht „vorläufig“ dabei. Einzelne Ausgaben ab 250 € (etwa ein größerer Online-Einkauf) gelten als **einmalig** und zählen nicht zum Tageswert; aufgeklappt steht je Auszug „davon einmalig, zählt nicht“ mit der Summe. Überweisungen auf deine eigenen Konten zählen nie als Alltag, auch wenn sie sich nicht als Umbuchung verbuchen ließen.
 - **Tiefster Stand** mit Datum und Ampel: **rot „unter Puffer“**, **gelb „knapp“** (über dem Puffer, aber unter dem Doppelten), **grün „reicht“**. Fehlt für ein Konto in Fremdwährung der Wechselkurs, steht dort grau „Kurs fehlt“.
-- **Puffer:** wie viel mindestens auf dem Konto bleiben soll, mit dem Hinweis „Standard“ (250 €) oder „für dieses Konto festgelegt“. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“
+- **Puffer:** wie viel mindestens auf dem Konto bleiben soll, mit dem Hinweis „Standardwert (nicht selbst festgelegt)“ (250 €) oder „für dieses Konto festgelegt“ und ab welchem Stand das Konto gelb wird. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“
 - **Nächster Geldeingang**, bei rotem Konto ein **Umbuchungs-Vorschlag**, und darunter **weitere Zahlungen** bis zum Ende der 30 Tage.
 
-Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem Hinweis „Keine Vorschau – für dieses Konto gibt es noch keinen Kontoauszug“.
+Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem Hinweis „Keine Vorschau – für dieses Konto gibt es noch keinen Kontoauszug“. P2P-Konten, Festgeld und Depots haben nie eine Vorschau („die gibt es nur für Giro- und Tagesgeldkonten“), ihre Zahlungen stehen trotzdem da.
 
 ### Kredite
 
@@ -139,6 +139,7 @@ Wie weit die Liste der kommenden Zahlungen reicht, ab wann ein Konto als knapp g
 |---|---|
 | `lifeagents config set finance app_payments_days 30` | Kommende Zahlungen für so viele Tage im Voraus. |
 | `lifeagents config set finance coverage_warn_factor 2` | Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (`coverage_buffer_eur`). |
+| `lifeagents config set finance everyday_oneoff_eur 250` | Ab diesem Einzelbetrag gilt eine Ausgabe im Kontoauszug als einmalig und zählt nicht zu den geschätzten Alltagsausgaben (gilt ab dem nächsten Auszug). |
 | `lifeagents config set finance fixed_rate_warn_months 12` | Hinweis, wenn die Zinsbindung eines Kredits in weniger als so vielen Monaten endet. |
 | `lifeagents config set finance funding_horizon_months 24` | So viele Monate voraus prüft die Seite Ziele, ob das Geld für Sparpläne und Daueraufträge reicht (sonst „reicht bis …“). |
 | `lifeagents config set finance funding_alert_months 3` | Rot „Lücke ab …“ und ein Hinweis auf der Startseite, wenn das Geld schon innerhalb so vieler Monate fehlt. |

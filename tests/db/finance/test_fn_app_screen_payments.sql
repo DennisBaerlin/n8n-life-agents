@@ -14,7 +14,7 @@ BEGIN;
 DO $$
 DECLARE
   t DATE := CURRENT_DATE;
-  v_giro INT; v_tg INT; v_warn INT; v_ok INT; v_chf INT; v_kid INT; v_p INT;
+  v_giro INT; v_tg INT; v_warn INT; v_ok INT; v_chf INT; v_kid INT; v_p INT; v_p2p INT;
   v jsonb; v_txt text; v_sec jsonb; v_b jsonb; v_t0 timestamptz;
 BEGIN
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2) ON CONFLICT (code) DO NOTHING;
@@ -36,19 +36,26 @@ BEGIN
     ('__apy_p_cash__', 'cash', 'EUR', 'active', 'apy_partner') RETURNING id INTO v_p;
   INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id) VALUES
     ('__apy_kid_cash__', 'cash', 'EUR', 'active', 'apy_kid') RETURNING id INTO v_kid;
+  -- P2P mit eigenem Auszug: keine Vorschau (nur Giro/Tagesgeld), der Grund ist die Kontoart, nicht "kein Auszug"
+  INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id) VALUES
+    ('__apy_hh_p2p__', 'p2p', 'EUR', 'active', NULL) RETURNING id INTO v_p2p;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
     (v_giro, 1000, t - 40, 'other'), (v_tg, 5000, t - 40, 'other'), (v_warn, 400, t - 40, 'other'),
     (v_ok, 3000, t - 40, 'other'), (v_chf, 700, t - 40, 'other'), (v_p, 900, t - 40, 'other'), (v_kid, 100, t - 40, 'other');
   UPDATE finance.accounts SET last_reconciled_at = t - 5 WHERE id IN (v_giro, v_warn, v_ok, v_chf, v_kid);
   -- Kontoauszuege: Giro mit 10 Alltag je Tag (wie test_fn_account_outlook), die anderen ohne Alltagsausgaben
+  -- Giro juengster: -500 ungematcht, davon -300 einmalig (Grenze 250) -> zaehlt -200 / 20 Tage = 10/Tag
   INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
-                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
-  VALUES (v_giro, t - 64, t - 35, 1600, 1300, 'EUR', 5, 0, -300, 0, NULL),
-         (v_giro, t - 34, t - 5, 1300, 1000, 'EUR', 5, 0, -200, 0, t - 25),
-         (v_warn, t - 34, t - 5, 400, 400, 'EUR', 1, 0, 0, 0, NULL),
-         (v_ok,   t - 34, t - 5, 3000, 3000, 'EUR', 1, 0, 0, 0, NULL),
-         (v_chf,  t - 34, t - 5, 700, 700, 'CHF', 1, 0, 0, 0, NULL),
-         (v_kid,  t - 34, t - 5, 100, 100, 'EUR', 1, 0, 0, 0, NULL);
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at,
+                                       oneoff_out, oneoff_threshold)
+  VALUES (v_giro, t - 64, t - 35, 1600, 1300, 'EUR', 5, 0, -300, 0, NULL, 0, NULL),
+         (v_giro, t - 34, t - 5, 1300, 1000, 'EUR', 5, 0, -500, 0, t - 25, -300, 250),
+         (v_warn, t - 34, t - 5, 400, 400, 'EUR', 1, 0, 0, 0, NULL, 0, NULL),
+         (v_ok,   t - 34, t - 5, 3000, 3000, 'EUR', 1, 0, 0, 0, NULL, 0, NULL),
+         (v_chf,  t - 34, t - 5, 700, 700, 'CHF', 1, 0, 0, 0, NULL, 0, NULL),
+         (v_kid,  t - 34, t - 5, 100, 100, 'EUR', 1, 0, 0, 0, NULL, 0, NULL),
+         (v_p2p,  t - 34, t - 5, 900, 900, 'EUR', 1, 0, 0, 0, NULL, 0, NULL);
+  PERFORM finance.fn_add_recurring_payment(v_p2p, -30, '__apy_p2p_gebuehr__', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 7, t + 7, NULL, NULL, NULL);
   PERFORM finance.fn_add_recurring_payment(v_giro, -800, '__apy_miete__', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 3, t + 3, NULL, NULL, NULL);
   PERFORM finance.fn_add_recurring_payment(v_giro, 2000, '__apy_gehalt__', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 10, t + 10, NULL, NULL, NULL);
   PERFORM finance.fn_add_recurring_payment(v_giro, -15, '<img src=x onerror=alert(1)>', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 1, t + 1, NULL, NULL, NULL);
@@ -67,13 +74,13 @@ BEGIN
   IF (v->>'ok')::boolean IS NOT TRUE OR NOT (v ? 'title' AND v ? 'hero' AND v ? 'banners' AND v ? 'sections') THEN
     RAISE EXCEPTION 'FAIL [1a] View-Modell v1: %', v; END IF;
   IF v->'title' <> core.fn_ui_tpl('finance.app.payments.title') OR jsonb_array_length(v->'banners') <> 0
-     OR jsonb_array_length(v->'sections') <> 6 THEN
-    RAISE EXCEPTION 'FAIL [1b] Titel / volle View ohne Banner / 6 Abschnitte (5 Vorschau + Partnerkonto): %', v; END IF;
-  -- Hero: Abgaenge ohne Uebertraege in 30 Tagen: Miete -800, XSS -15, Partner-Abo -40, Kind-Abo -5 (spaet t+31 draussen)
-  IF v->'hero'->'value' <> core.fn_ui_money(-860, 'EUR') OR (v->'hero'->>'gap')::boolean THEN
-    RAISE EXCEPTION 'FAIL [1c] Hero -860 EUR ohne gap erwartet: %', v->'hero'; END IF;
+     OR jsonb_array_length(v->'sections') <> 7 THEN
+    RAISE EXCEPTION 'FAIL [1b] Titel / volle View ohne Banner / 7 Abschnitte (5 Vorschau + P2P + Partnerkonto): %', v; END IF;
+  -- Hero: Abgaenge ohne Uebertraege in 30 Tagen: Miete -800, XSS -15, Partner-Abo -40, Kind-Abo -5, P2P -30 (spaet t+31 draussen)
+  IF v->'hero'->'value' <> core.fn_ui_money(-890, 'EUR') OR (v->'hero'->>'gap')::boolean THEN
+    RAISE EXCEPTION 'FAIL [1c] Hero -890 EUR ohne gap erwartet: %', v->'hero'; END IF;
   IF ARRAY(SELECT s->'title'->'params'->>'account' FROM jsonb_array_elements(v->'sections') s)
-     <> ARRAY['__apy_hh_giro__', '__apy_kid_cash__', '__apy_hh_warn__', '__apy_hh_ok__', '__apy_hh_chf__', '__apy_p_cash__'] THEN
+     <> ARRAY['__apy_hh_giro__', '__apy_kid_cash__', '__apy_hh_warn__', '__apy_hh_ok__', '__apy_hh_chf__', '__apy_hh_p2p__', '__apy_p_cash__'] THEN
     RAISE EXCEPTION 'FAIL [1d] Reihenfolge alert (Name) -> warn -> ok -> neutral -> ohne Auszug: %', v->'sections'; END IF;
 
   -- Giro: Stand 1000 (bestaetigt t-5), feste Abgaenge bis zum Tief t+9: XSS -15, Taschengeld -20, Miete -800;
@@ -92,10 +99,16 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1g] feste Abgaenge -835 mit 3 Einzelzahlungen (Rohname, Datum, Betrag): %', v_b; END IF;
   SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_everyday';
   IF v_b->'value' <> core.fn_ui_money(-140, 'EUR') OR v_b->'sub'->>'value' <> 'finance.app.payments.b_everyday_sub'
-     OR jsonb_array_length(v_b->'details') <> 2
+     OR jsonb_array_length(v_b->'details') <> 3
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_b->'details') d
                      WHERE d->'value'->>'value' = 'finance.app.payments.d_rate_earliest') THEN
     RAISE EXCEPTION 'FAIL [1h] Alltag -140, je Auszug aufklappbar, fruehester markiert: %', v_b; END IF;
+  -- einmalige Grossausgaben des Auszugs: eigene Details-Zeile direkt nach seiner Rate (Summe + Grenze)
+  IF v_b->'details'->1 IS DISTINCT FROM jsonb_build_object(
+         'label', core.fn_ui_tpl('finance.app.payments.d_oneoff'),
+         'value', core.fn_ui_tpl('finance.app.payments.d_oneoff_value', jsonb_build_object(
+                      'amount', core.fn_ui_money(300, 'EUR'), 'threshold', core.fn_ui_money(250, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [1h2] Details-Zeile einmalig 300 (ohne Vorzeichen) ab 250: %', v_b->'details'; END IF;
   SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_low';
   IF v_b->'value' <> core.fn_ui_money(25, 'EUR') OR v_b->'pill'->>'state' <> 'alert' OR v_b->'pill'->>'icon' <> 'alert' THEN
     RAISE EXCEPTION 'FAIL [1i] Tief 25 mit alert-Pille: %', v_b; END IF;
@@ -115,6 +128,10 @@ BEGIN
      OR v->'sections'->3->'items' @? '$[*] ? (@.label.value == "finance.app.payments.b_low" && @.pill.state != "ok")' THEN
     RAISE EXCEPTION 'FAIL [1m] Ampel warn/ok/neutral+gap: %', v->'sections'; END IF;
   v_sec := v->'sections'->5;
+  IF v_sec->'items'->0->'label' <> core.fn_ui_tpl('finance.app.payments.no_outlook_type')
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_p2p_gebuehr__') THEN
+    RAISE EXCEPTION 'FAIL [1n0] P2P mit Auszug: Grund Kontoart statt "kein Auszug": %', v_sec; END IF;
+  v_sec := v->'sections'->6;
   IF v_sec->'items'->0->'label' <> core.fn_ui_tpl('finance.app.payments.no_outlook') OR v_sec->'value' <> core.fn_ui_money(-40, 'EUR')
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_p_abo__'
                       AND i->'sub' = core.fn_ui_tpl('finance.app.payments.due_on', jsonb_build_object('date', core.fn_ui_date(t + 5)))) THEN

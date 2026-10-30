@@ -7,15 +7,19 @@
 --   er (Konsument markiert provisional). Gezaehlt werden die juengsten 3 uebrigen Auszuege; aeltere entfallen.
 --   days = Tage NACH dem damaligen Schnitt (period_end - GREATEST(period_start - 1, prev_last_reconciled_at,
 --   opening_balance_date)); unmatched_* zaehlt nur Zeilen danach (Schnitt wie fn_statement_prepare).
---   per_day = round(unmatched_out / days, 2) (nur Abgaenge) — Anzeige je Auszug (Mini-App-Details).
+--   Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out (<= 0, Teil von unmatched_out, Grenze
+--   oneoff_threshold in Kontowaehrung, NULL = Auszug von vor der Regel bzw. ohne Kurs) zaehlen nicht zum Tageswert.
+--   per_day = round((unmatched_out - oneoff_out) / days, 2) (nur Abgaenge) — Anzeige je Auszug (Mini-App-Details).
 --   Konsumenten: fn_account_everyday_per_day (Summe der gezaehlten), fn_app_screen_payments (Details-Zeilen).
---   RUECKGABE: (period_start, period_end, days, unmatched_out, unmatched_in, per_day, counted, reason), juengster zuerst,
---   hoechstens die 3 gezaehlten + der fruehste (nur solange er ohne die Regel im Fenster laege); ohne Auszug leer.
+--   RUECKGABE: (period_start, period_end, days, unmatched_out, unmatched_in, per_day, counted, reason, oneoff_out,
+--   oneoff_threshold), juengster zuerst, hoechstens die 3 gezaehlten + der fruehste (nur solange er ohne die Regel im
+--   Fenster laege); ohne Auszug leer.
+--   Rueckgabetyp geaendert 2026-10-30: das einmalige DROP der alten Signatur macht finance:V035 (nie hier).
 --   Tests: tests/db/finance/test_fn_account_everyday_per_day.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_everyday_basis(p_account_id int)
 RETURNS TABLE(period_start date, period_end date, days int, unmatched_out numeric, unmatched_in numeric,
-              per_day numeric, counted boolean, reason text)
+              per_day numeric, counted boolean, reason text, oneoff_out numeric, oneoff_threshold numeric)
 LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_open DATE;
@@ -25,7 +29,7 @@ BEGIN
     WITH s AS (
         SELECT b.period_start AS ps, b.period_end AS pe,
                (b.period_end - GREATEST(b.period_start - 1, b.prev_last_reconciled_at, v_open))::int AS d,
-               b.unmatched_out AS uo, b.unmatched_in AS ui,
+               b.unmatched_out AS uo, b.unmatched_in AS ui, b.oneoff_out AS oo, b.oneoff_threshold AS ot,
                (row_number() OVER (ORDER BY b.period_end, b.id) = 1 AND count(*) OVER () > 1) AS earliest
         FROM finance.bank_statements b
         WHERE b.account_id = p_account_id
@@ -34,9 +38,10 @@ BEGIN
         FROM s
     )
     SELECT c.ps, c.pe, c.d, c.uo, c.ui,
-           round(COALESCE(c.uo / NULLIF(c.d, 0), 0), 2),
+           round(COALESCE((c.uo - c.oo) / NULLIF(c.d, 0), 0), 2),
            NOT c.earliest,
-           CASE WHEN c.earliest THEN 'earliest' END
+           CASE WHEN c.earliest THEN 'earliest' END,
+           c.oo, c.ot
     FROM c
     -- der fruehste erscheint nur, solange er ohne die Regel im Fenster laege (sonst waere er ohnehin zu alt)
     WHERE (NOT c.earliest AND c.rk <= 3)

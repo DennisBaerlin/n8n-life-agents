@@ -160,7 +160,14 @@ BEGIN
     IF (SELECT b->>'reason' FROM jsonb_array_elements(v_res->'blocked') b WHERE (b->>'amount')::numeric = -10) IS DISTINCT FROM 'partner_reconciled' THEN
         RAISE EXCEPTION 'FAIL [T5e alt + abgeglichen -> partner_reconciled]: %', v_res->'blocked';
     END IF;
-    v_app := finance.fn_apply_bank_statement(v_sa || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
+    -- erkannte, nicht buchbare Umbuchung ist kein Alltag (Live-Befund 2026-10-30: -700 an ein spaeter angelegtes Konto
+    -- blaehte die Alltags-Schaetzung auf) -> unmatched_out wie ohne die Zeile; der Rest deckt sie weiter ab
+    IF (v_res->>'unmatched_out')::numeric IS DISTINCT FROM (v_prep->>'unmatched_out')::numeric
+       OR (v_res->>'lump')::numeric IS DISTINCT FROM (v_prep->>'lump')::numeric - 10 THEN
+        RAISE EXCEPTION 'FAIL [T5f blocked nicht in unmatched_out, aber im Rest]: out % vs %, lump % vs %',
+            v_res->>'unmatched_out', v_prep->>'unmatched_out', v_res->>'lump', v_prep->>'lump';
+    END IF;
+    v_app :=finance.fn_apply_bank_statement(v_sa || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
     IF (v_app->>'ok')::boolean IS DISTINCT FROM true
        OR (SELECT count(*) FROM finance.transactions WHERE account_id = v_b AND category = 'transfer' AND amount = 200) <> 1
        OR (SELECT transaction_date FROM finance.transactions WHERE account_id = v_b AND amount = 120) <> pe + 1

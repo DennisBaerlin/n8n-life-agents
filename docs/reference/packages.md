@@ -160,7 +160,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_book_transfer` | Transfer zwischen zwei eigenen Konten buchen |
 | `tool_book_transaction` | Externe Einnahme/Ausgabe (Dritte) buchen |
 | `tool_book_loan_payment` | Kreditrate buchen (Zins/Tilgungs-Split automatisch) |
-| `tool_create_savings_goal` | Sparziel anlegen: Topf, Startbestand, Rate auf dem Rest oder Sparplan(e) als Quelle; ein bestehender Dauerauftrag in den Topf wird auf Wunsch fortgeführt (`replace_transfer`); mit `real_estate_name` die dauerhafte Instandhaltungsrücklage der Immobilie (ohne Zielbetrag/-datum, Rate genannt oder Empfehlung nach II. BV) |
+| `tool_create_savings_goal` | Sparziel anlegen: Topf, Startbestand, Rate auf dem Rest oder Sparplan(e) als Quelle; ein bestehender Dauerauftrag in den Topf wird auf Wunsch fortgeführt (`replace_transfer`); mit `real_estate_name` die dauerhafte Instandhaltungsrücklage der Immobilie (ohne Zielbetrag/-datum, Rate genannt oder Empfehlung nach II. BV); mit `kind=emergency_reserve` die Notreserve (Ziel `target_amount` oder `target_months`, nur Geld-Konten, höchstens eine) |
 | `tool_book_savings_goal_transfer` | Sparziel-Reserve bewegen: einzahlen/entnehmen/umschichten (getaggter Transfer) |
 | `tool_book_savings_reservation` | vorhandenes Geld eines Kontos (Giro/Tagesgeld, Festgeld, P2P, Depot) einem Sparziel zuordnen, ohne Überweisung (absoluter Betrag → append-only Journal) |
 | `tool_reconcile_account` | Ein Konto-Saldo abgleichen (Korrekturbuchung) |
@@ -170,14 +170,14 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_create_recurring_transfer` | Wiederkehrender interner Transfer zwischen zwei eigenen Konten (cashflow-neutral) |
 | `tool_get_recurring_suggestions` | Lese-Tool ohne Karte: wiederkehrende Zahlungen aus einem mehrmonatigen Bank-Export erkennen, die noch kein Dauerauftrag abdeckt (Rhythmus/Betrag/Startdatum aus der DB); der Agent fragt je Vorschlag, angelegt wird über die beiden Tools oben |
 | `tool_create_pension` | Altersvorsorge (+ optional Beitrag) anlegen |
-| `tool_set_account` | Konto-Stammdaten ändern |
+| `tool_set_account` | Konto-Stammdaten ändern; Puffer je Konto (`min_balance`, `min_balance_default`) |
 | `tool_set_account_interest` | Kontozins setzen/ändern |
 | `tool_set_real_estate` | Immobilie neubewerten/ändern (auch Wohnfläche + Baujahr) |
 | `tool_set_pension` | Altersvorsorge ändern |
 | `tool_set_insurance` | Versicherung ändern |
 | `tool_set_loan` | Kredit-Konditionen/Status ändern |
 | `tool_set_recurring_payment` | Standalone Dauerauftrag ändern (Betrag/Pause/Resume/Ende) |
-| `tool_set_savings_goal` | Sparziel ändern (Sparrate wird neu berechnet; bei einer Instandhaltungsrücklage nur die Rate über `monthly_savings_rate`) |
+| `tool_set_savings_goal` | Sparziel ändern (Sparrate wird neu berechnet; bei einer Instandhaltungsrücklage nur die Rate über `monthly_savings_rate`; Notreserve: `target_amount`/`target_months`, Umwidmung eines Sparziels per `kind=emergency_reserve`) |
 | `tool_set_holding` | Depot-Position-Metadaten ändern |
 | `tool_set_asset_classes` | Anlageklassen mehrerer Depot-Positionen mit EINER Karte zuordnen (Plan-Block-Key oder `outside_plan`); auch beim Finanzberater gebunden |
 | `tool_verify_price_symbol` | Lese-Tool ohne Karte: Börsen-Notierungen einer ISIN nachschlagen, damit der Nutzer die Kursquelle wählt (Wahl dann per `tool_set_holding`) |

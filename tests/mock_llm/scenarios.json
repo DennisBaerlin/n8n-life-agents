@@ -1235,7 +1235,7 @@
   },
   {
     "_comment": "tc98 Import zuerst: Frage ohne Datei -> kein Tool, um einen Export bitten.",
-    "match": "Welche Abos und Dauerauftraege fehlen mir eigentlich noch?",
+    "match": "Welche Abos und Daueraufträge fehlen mir eigentlich noch?",
     "calls": [],
     "final": "Schick mir am einfachsten einen Bank-Export (CSV oder Excel) der letzten 3 bis 6 Monate - ich schlage dir daraus die regelmaessigen Zahlungen einzeln vor. Du kannst sie mir auch einzeln nennen."
   },

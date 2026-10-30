@@ -1134,7 +1134,7 @@
     {
         "id":  "tc98",
         "name":  "Import zuerst: Frage nach fehlenden Dauerauftraegen ohne Datei -> um einen Export bitten",
-        "task":  "Welche Abos und Dauerauftraege fehlen mir eigentlich noch?",
+        "task":  "Welche Abos und Daueraufträge fehlen mir eigentlich noch?",
         "chat_id":  "test_tc98",
         "expected_tool":  null,
         "expected_behavior":  "Ruft KEIN Write-Tool auf und erfindet keine Zahlungen. Bittet um einen Bank-Export (CSV oder Excel) der letzten 3 bis 6 Monate, aus dem er die regelmaessigen Zahlungen vorschlaegt; darf erwaehnen, dass man sie auch einzeln nennen kann. Darf die schon erfassten Dauerauftraege per Datenbank-Abfrage nennen.",

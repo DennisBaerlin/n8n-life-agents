@@ -43,9 +43,10 @@ Sparziele mit Zielbetrag/-datum und automatisch berechneter Sparrate; dauerhafte
 - "Lege ein neues Sparziel 'Notfallfonds' an: Zielbetrag 10000 Euro, bis Ende 2027, vom DKB Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.07.2026."
 
 ## Daueraufträge
-Wiederkehrende Zahlungen (Gehalt, Miete, Abos, Rente) verwalten.
+Wiederkehrende Zahlungen (Gehalt, Miete, Abos, Rente) verwalten; aus einem Bank-Export schlägt der Bot fehlende Daueraufträge vor.
 - "Lege eine wiederkehrende Ausgabe an: Netflix-Abo, 13,99 Euro monatlich vom DKB Giro, Abbuchungstag 5, erste Zahlung am 05.07.2026."
 - "Richte einen monatlichen Dauerauftrag ein: 200 Euro vom DKB Giro auf das Trade Republic Cash Girokonto, ab dem 01.07.2026, am 1. des Monats."
+- "Welche Abos und Daueraufträge fehlen mir eigentlich noch?"
 
 ## Import
 Kontoauszüge/Policen/Renteninformation als Foto oder Bulk-Daten importieren.

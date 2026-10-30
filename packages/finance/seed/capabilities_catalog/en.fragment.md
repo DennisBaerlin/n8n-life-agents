@@ -43,9 +43,10 @@ Savings goals with a target amount/date and an automatically calculated savings 
 - "Create a new savings goal 'Emergency fund': target 10,000 euros by the end of 2027, from the DKB Giro into Tagesgeld Plus, debit day 1, first booking on 1 Jul 2026."
 
 ## Standing orders
-Manage recurring payments (salary, rent, subscriptions, pension).
+Manage recurring payments (salary, rent, subscriptions, pension); from a bank export the bot suggests missing standing orders.
 - "Add a recurring expense: Netflix subscription, 13.99 euros monthly from the DKB Giro, debit day 5, first payment on 5 Jul 2026."
 - "Set up a monthly standing order: 200 euros from the DKB Giro to the Trade Republic Cash current account, from 1 Jul 2026, on the 1st of the month."
+- "Which subscriptions and standing orders am I still missing?"
 
 ## Import
 Import bank statements/policies/pension statements as a photo or as bulk data.

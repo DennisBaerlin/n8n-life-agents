@@ -5,7 +5,8 @@
 --   "All Goals", Kopfzeile Date|Payment type|In|Out|Balance). Werte frei erfunden. Deckt: Profil per Kopfzeile hinter
 --   dem Vorspann, gedruckter Auszug (statement), Vorzeichen aus In/Out, Float-Artefakte, Zins, Kleinbetrag (legacy_return),
 --   Einzahlung, Auszahlung mit Gebuehr, Info-Zeile saldo-neutral (nicht in rows), unbekannter Typ, ISO-Datum,
---   Bruch im laufenden Saldo / Kopf-Summe / fehlender Kopfblock -> export_invalid ohne Vorspann-Inhalt im Text.
+--   Bruch im laufenden Saldo / Kopf-Summe / fehlender Kopfblock -> export_invalid ohne Vorspann-Inhalt im Text;
+--   deutsche Export-Variante (Kopfzeilen-Aliase, deutscher Kopfblock, TT.MM.JJJJ, deutsche Zahlungsarten).
 -- ============================================================
 BEGIN;
 DO $$
@@ -102,5 +103,43 @@ BEGIN
         RAISE EXCEPTION 'FAIL [B12 Registry]: %', finance.fn_bank_export_profiles();
     END IF;
     RAISE NOTICE 'PASS [B12 Registry]';
+
+    -- Deutsche Export-Variante (Bondora-Sprache Deutsch, Livebefund 2026-10-30, gleicher Aufbau): Kopfzeile Datum|
+    -- Zahlungsart|Eingaenge|Ausgaenge|Guthaben, Kopfblock Zu Beginn/Einzahlungen/Auszahlungen/Ergebnis, Daten TT.MM.JJJJ
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows', jsonb_build_array(
+        '["Test Person","","","Zusammenfassung",""]'::jsonb,
+        '["01.09.2026-30.09.2026","","","Zu Beginn",100]'::jsonb,
+        '["","","","Einzahlungen",509.88]'::jsonb,
+        '["","","","Auszahlungen",201]'::jsonb,
+        '["","","","Ergebnis",408.88]'::jsonb,
+        '["","","","",""]'::jsonb,
+        '["Alle Ziele","","","",""]'::jsonb,
+        '["Datum","Zahlungsart","Eingänge","Ausgänge","Guthaben"]'::jsonb,
+        '["01.09.2026","Go & Grow Zinsen","0.02","","100.02"]'::jsonb,
+        '["02.09.2026","SEPA-Banküberweisung","0.15","","100.17"]'::jsonb,
+        '["03.09.2026","SEPA-Banküberweisung","500","","600.17"]'::jsonb,
+        '["04.09.2026","Go & Grow Zinsen","8.7100000000000009","","608.88"]'::jsonb,
+        '["10.09.2026","Abheben auf Bankkonto","","201","407.88"]'::jsonb,
+        '["11.09.2026","Automatische Überweisung","1","","408.88"]'::jsonb)));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->>'profile' IS DISTINCT FROM 'bondora_go_grow_v1' THEN
+        RAISE EXCEPTION 'FAIL [B13 deutscher Export erkannt]: %', v_res;
+    END IF;
+    IF v_res->'statement' IS DISTINCT FROM jsonb_build_object('period_start', '2026-09-01', 'period_end', '2026-09-30',
+           'opening_balance', 100.00, 'closing_balance', 408.88) THEN
+        RAISE EXCEPTION 'FAIL [B14 deutscher Kopfblock + Zeitraum TT.MM.JJJJ]: %', v_res->'statement';
+    END IF;
+    SELECT string_agg(r->>'kind' || ':' || COALESCE(r->>'sub_kind', '-') || ':' || (r->>'cash_amount'), ',' ORDER BY (r->>'row_no')::int)
+    INTO v_s FROM jsonb_array_elements(v_res->'rows') r;
+    IF v_s IS DISTINCT FROM 'interest:-:0.02,cash:legacy_return:0.15,cash:deposit:500.00,interest:-:8.71,cash:withdrawal:-201.00,unknown:-:1.00' THEN
+        RAISE EXCEPTION 'FAIL [B15 deutsche Zahlungsarten]: %', v_s;
+    END IF;
+    SELECT r INTO v_r FROM jsonb_array_elements(v_res->'rows') r WHERE r->>'sub_kind' = 'withdrawal';
+    IF (v_r->>'transfer_fee')::numeric <> 1.00 OR (v_r->>'row_no')::int <> 13 OR (v_r->>'date')::date <> DATE '2026-09-10' THEN
+        RAISE EXCEPTION 'FAIL [B16 Auszahlung deutsch: Gebuehr, Datei-Zeile, Datum TT.MM.]: %', v_r;
+    END IF;
+    IF (SELECT (r->>'date')::date FROM jsonb_array_elements(v_res->'rows') r WHERE (r->>'row_no')::int = 10) <> DATE '2026-09-02' THEN
+        RAISE EXCEPTION 'FAIL [B17 02.09. ist der 2. September, nicht der 9. Februar]: %', v_res->'rows';
+    END IF;
+    RAISE NOTICE 'PASS [B13-B17 deutscher Export]';
 END $$;
 ROLLBACK;

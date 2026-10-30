@@ -79,7 +79,7 @@ Bei N26:
 
 ## Bondora Go&Grow (Excel-Kontoauszug)
 
-Den Kontoauszug von Bondora Go&Grow lädst du in der Bondora-App als Excel-Datei herunter und schickst ihn an den Bot. Diese Datei enthält Zeitraum, Anfangs- und Endstand. Du musst also keinen Kontostand nennen. Auch sie liest ein fester Leser, kein Sprachmodell.
+Den Kontoauszug von Bondora Go&Grow lädst du in der Bondora-App als Excel-Datei herunter und schickst ihn an den Bot. Diese Datei enthält Zeitraum, Anfangs- und Endstand. Du musst also keinen Kontostand nennen. Auch sie liest ein fester Leser, kein Sprachmodell. Ob die Datei deutsch oder englisch ist (je nach Spracheinstellung deines Bondora-Kontos), spielt keine Rolle.
 
 - **Verrechnungskonto:** Bondora zahlt nur auf dein verifiziertes Bankkonto aus. Sag dem Bot einmal, welches das ist, z. B. „Mein Go&Grow zahlt auf mein Trade-Republic-Konto aus". Dann bucht er Ein- und Auszahlungen als Übertrag mit diesem Konto. Ohne Verrechnungskonto bleiben sie im Rest, und die Karte weist darauf hin.
 - **Gebühr:** Bondora behält bei jeder Auszahlung 1 € ein. Der Bot bucht sie als Gebühr beim Go&Grow-Konto, die Karte zeigt sie getrennt vom Übertrag.

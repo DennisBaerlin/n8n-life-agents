@@ -212,6 +212,30 @@
                       "reason":  "data:buchungstext (Profil-Label = gespeicherte Beschreibung der Sammelbuchung, Originalsprache; Bank-Import-Modul)"
                   },
                   {
+                      "where":  "packages/finance/db/migrations/R__fn_bank_export_profiles.sql",
+                      "literal":  "eingänge",
+                      "count":  1,
+                      "reason":  "data:dateiformat (Kopfzeilen-Alias der deutschen Bondora-Exportdatei, wird nur gegen die Datei verglichen, nie ausgegeben)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_bank_export_profiles.sql",
+                      "literal":  "ausgänge",
+                      "count":  1,
+                      "reason":  "data:dateiformat (Kopfzeilen-Alias der deutschen Bondora-Exportdatei, wird nur gegen die Datei verglichen, nie ausgegeben)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_bank_export_normalize_bondora.sql",
+                      "literal":  "sepa-banküberweisung",
+                      "count":  1,
+                      "reason":  "data:dateiformat (Zahlungsart-Text der deutschen Bondora-Exportdatei, wird nur gegen die Datei verglichen, nie ausgegeben)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_bank_export_normalize_bondora.sql",
+                      "literal":  "abheben auf bankkonto",
+                      "count":  1,
+                      "reason":  "data:dateiformat (Zahlungsart-Text der deutschen Bondora-Exportdatei, wird nur gegen die Datei verglichen, nie ausgegeben)"
+                  },
+                  {
                       "where":  "packages/finance/db/migrations/R__fn_book_stock_buy.sql",
                       "literal":  " (Gebühr ",
                       "count":  1,

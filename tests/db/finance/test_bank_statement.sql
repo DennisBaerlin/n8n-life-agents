@@ -109,7 +109,9 @@ BEGIN
     RAISE EXCEPTION 'FAIL Salden: giro=% tg=%', finance.fn_get_balance(v_giro), finance.fn_get_balance(v_tg); END IF;
   IF (v_res->>'lump_amount')::numeric IS DISTINCT FROM -130.09 OR (v_res->>'balance_after')::numeric IS DISTINCT FROM v_closing
      OR (v_res->>'booked_count')::int IS DISTINCT FROM 5 OR (v_res->>'skipped_occurrences')::int < 1
-     OR (v_res->>'learned_keys')::int IS DISTINCT FROM 2 OR jsonb_array_length(v_res->'plan_adjusted') <> 1 THEN
+     OR (v_res->>'learned_keys')::int IS DISTINCT FROM 2 OR jsonb_array_length(v_res->'plan_adjusted') <> 1
+     -- Rest getrennt nach Richtung (Live-Befund 2026-10-30): -130.09 = Ausgang, kein Eingang
+     OR (v_res->>'rest_outflow')::numeric IS DISTINCT FROM 130.09 OR (v_res->>'rest_inflow')::numeric IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL apply Rueckgabe: %', v_res; END IF;
   IF NOT EXISTS (SELECT 1 FROM finance.transactions WHERE recurring_payment_id = r_miete AND recurring_due_date = ps
                  AND transaction_date = ps + 2 AND bank_statement_id IS NOT NULL) THEN

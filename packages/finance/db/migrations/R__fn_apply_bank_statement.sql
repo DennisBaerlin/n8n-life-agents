@@ -32,7 +32,8 @@
 --   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) nach Richtung,
 --   Netto-Differenz (eines ist 0) - ein positiver Rest ist ein ungeklaerter Eingang, nie Ausgaben.
 --   RUECKGABE: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
---   learned_keys, plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
+--   learned_keys, learned_accounts[{account_id, account_name, account_number}] (IBAN-Lernen der Prepare, per fn_set_account
+--   gespeichert; gesperrt wie die Transfer-Gegenkonten), plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_apply_bank_statement(p jsonb)
@@ -79,6 +80,7 @@ BEGIN
                            WHERE r.id IN (SELECT (m->>'recurring_payment_id')::int
                                           FROM jsonb_array_elements(v_prep->'matched') m))
        OR b.account_id IN (SELECT (m->>'other_account_id')::int FROM jsonb_array_elements((v_prep->'matched') || (v_prep->'blocked')) m)
+       OR b.account_id IN (SELECT (m->>'account_id')::int FROM jsonb_array_elements(v_prep->'learned_accounts') m)
        OR b.account_id IN (SELECT t.account_id FROM finance.transactions t
                            WHERE t.group_id IN (SELECT (m->>'group_id')::uuid FROM jsonb_array_elements(v_prep->'already_booked') m))
     ORDER BY b.account_id
@@ -102,6 +104,14 @@ BEGIN
                 RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = v_r->>'reason';
             END IF;
         END IF;
+        -- IBAN-Lernen: die auf der Karte gezeigten IBANs eigener Konten (Prepare 3a2) speichern
+        FOR v_m IN SELECT e FROM jsonb_array_elements(v_prep->'learned_accounts') e LOOP
+            v_r := finance.fn_set_account(jsonb_build_object('account_id', (v_m->>'account_id')::int,
+                       'account_number', v_m->>'account_number'));
+            IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = v_r->>'reason';
+            END IF;
+        END LOOP;
 
         v_drift := (v_prep->>'drift')::numeric;
         IF v_drift <> 0 THEN
@@ -384,6 +394,7 @@ BEGIN
         'skipped_occurrences', jsonb_array_length(v_skipped),
         'redated_count', v_redated,
         'learned_keys', cardinality(v_keys),
+        'learned_accounts', COALESCE(v_prep->'learned_accounts', '[]'::jsonb),
         'plan_adjusted', v_adjusted,
         'savings_plan_estimated', v_spe,
         'unknown_mandates', v_prep->'unknown_mandates',

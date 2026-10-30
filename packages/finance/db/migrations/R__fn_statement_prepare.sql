@@ -69,6 +69,14 @@
 --   keins); fehlt sie oder passt sie zu keinem -> {ok:false, code:'transfer_choice_required', candidates[2] (Namen, nach
 --   id), amount, date} ohne Karte (der Agent fragt, Muster account_ambiguous; die Karte zeigt danach die Zuordnung).
 --   Sonst (mehrere solche Zeilen, 0 oder 3+ Kandidaten, 'none') Rest + Hinweis (pool_unassigned = Anzahl).
+--   IBAN-LERNEN ("Import zuerst", Abschnitt 3a2): eine lernbare Gegen-IBAN (fn_iban_strict, keinem Konto gehoerend, kein
+--   Dauerauftrags-Schluessel, nicht die eigene) wird GENAU einem eigenen cash-Konto ohne Nummer zugeordnet - ueber einen
+--   getroffenen Dauerauftrags-Transfer an dieses Konto (Regel 2) oder ueber den Gegenpart-Namen (fn_match_household_holder,
+--   Regel 1: eine Person -> ihre + Haushaltskonten, mehrere -> Haushaltskonten). Offene Zeilen dieser IBAN -> matched kind
+--   transfer stage L. RUECKGABE learned_accounts[{account_id, account_name, account_number}] (Apply speichert per
+--   fn_set_account, Karten-Notiz iban_learned_other) und iban_ambiguous[{account_number, candidates[]}] (2+ Kandidaten oder
+--   Konflikt, Karten-Hinweis iban_learn_ambiguous, nichts angenommen). Gedruckter Auszug eines unbekannten Kontos:
+--   Eingabe account_holder -> account_unknown traegt owner_person (Name) bzw. owner_joint (Vorschlag fuer fn_create_account).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_statement_prepare(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -154,6 +162,10 @@ DECLARE
     v_pool_pick JSONB;                 -- gewaehlte Kandidaten einer Zeile
     v_pool     JSONB := '[]'::jsonb;   -- Pool-Treffer (kind transfer, Stufe P)
     v_pool_amb JSONB := '[]'::jsonb;   -- Pool-Zeilen ohne Zuordnung (bleiben im Rest)
+    v_learn_accts JSONB := '[]'::jsonb; -- IBAN-Lernen: [{account_id, account_name, account_number}] (Apply speichert)
+    v_learn_amb JSONB := '[]'::jsonb;   -- IBAN-Lernen ohne Annahme: [{account_number, candidates[Namen]}] (Karten-Hinweis)
+    v_learn_hits JSONB := '[]'::jsonb;  -- Zeilen, die ueber eine gelernte IBAN als Transfer gebucht werden (Stufe L)
+    v_holder   JSONB;                   -- Kontoinhaber des Auszugs (account_unknown) laut fn_match_household_holder
 BEGIN
     -- ---------- 1a. Broker-CSV: Export normieren, Zeitraum = nach dem bestaetigten Tag bis gestern ----------
     --   Kein gedruckter Saldo: der Owner nennt den Kontostand aus der App (Pflicht, nie ein errechneter Saldo als
@@ -304,6 +316,9 @@ BEGIN
             -- EINEM Schritt mit Saldo angelegt wird - aber nur, wenn die Saldo-Probe stimmt und der Zeitraum
             -- abgeschlossen ist (nie einen verlesenen oder vorlaeufigen Saldo als Startsaldo anbieten).
             v_balance_ok := v_balance_ok AND v_pe <= core.fn_today();   -- gleiche Grenze wie fn_create_account
+            -- "Import zuerst": gedruckter Kontoinhaber -> Vorschlag fuer den Inhaber des neuen Kontos (die Karte von
+            -- tool_create_account zeigt ihn zur Bestaetigung; Banken drucken bei Gemeinschaftskonten oft nur einen Namen)
+            v_holder := finance.fn_match_household_holder(p->>'account_holder');
             RETURN jsonb_build_object('ok', false,
                 'code', CASE WHEN v_res.hit_count > 1 THEN 'account_ambiguous' ELSE 'account_unknown' END,
                 'reason', 'No account with the printed account number is known yet - ask the user which account this statement belongs to.',
@@ -314,7 +329,12 @@ BEGIN
                        'closing_balance', v_close,
                        'balance_date', v_pe,
                        'currency', COALESCE(finance.fn_normalize_currency(NULLIF(p->>'currency', '')), 'EUR'))
-                   ELSE '{}'::jsonb END;
+                   ELSE '{}'::jsonb END
+                || CASE WHEN NOT (v_holder->>'matched')::boolean THEN '{}'::jsonb
+                        WHEN (v_holder->>'joint')::boolean THEN jsonb_build_object('owner_joint', true)
+                        ELSE jsonb_build_object('owner_joint', false, 'owner_person',
+                                 (SELECT hp.full_name FROM core.fn_household_persons() hp
+                                  WHERE hp.person_id = v_holder->>'owner_person_id')) END;
         END IF;
         SELECT * INTO v_acct FROM finance.accounts WHERE id = v_res.id;
     END IF;
@@ -459,7 +479,96 @@ BEGIN
                    COALESCE((SELECT jsonb_agg(u) FROM jsonb_array_elements(v_match->'unmatched') u
                              WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_pool) x WHERE (x->>'line_idx')::int = (u #>> '{}')::int)), '[]'::jsonb));
 
+    -- ---------- 3a2. IBAN-LERNEN ("Import zuerst"): eigenes Konto ohne IBAN aus einer Ueberweisung erkennen ----------
+    --   Lernbar = fn_iban_strict, gehoert keinem Konto (jeder Status), kein Dauerauftrags-Schluessel, nicht die Kopf-IBAN
+    --   bzw. Nummer des Auszugskontos. Kandidat = aktives, buchbares cash-Konto ohne Nummer, gleiche Waehrung, nicht dieses.
+    --   Regel 2 (Vorlauf): Zeile trifft einen Dauerauftrags-TRANSFER an einen Kandidaten und ihr Gegenpart passt zu dessen
+    --   Inhaber (Haushaltskonto: beliebige Mitglieder) -> Paar (IBAN, Konto). Regel 1: offene Geldzeilen je IBAN, alle
+    --   Gegenparts = dieselben Mitglieder (fn_match_household_holder); eine Person -> ihre + Haushaltskonten, mehrere ->
+    --   nur Haushaltskonten; genau EIN Kandidat -> Paar. Konflikt (eine IBAN -> zwei Konten, ein Konto <- zwei IBANs) ->
+    --   kein Paar, Hinweis; 2+ Kandidaten -> Hinweis; 0 / fremder Name -> nichts. Offene Zeilen mit einer Paar-IBAN ->
+    --   matched kind transfer, stage L (danach dieselben Pruefungen wie Stufe T; gelernt wird auch, wenn sie blockiert).
+    --   Gelernt wird nur im Apply (fn_set_account), der fingerprint deckt die Paare ab.
+    --   arch-challenge 2026-10-30: der Name waehlt nur den VORSCHLAG, die IBAN bleibt der Schluessel (Stufe T); kein
+    --   Gegenbuchungs-Beleg (Actual/YNAB), weil Einzelumsaetze nicht gespeichert werden; Bestaetigung = die Karte.
+    WITH ll AS (
+        SELECT (o.ord)::int AS idx, n.iban, o.l->>'counterparty' AS cp, (o.l->>'amount')::numeric AS amt,
+               (o.l->>'date')::date AS d,
+               (o.ord)::int IN (SELECT (u)::int FROM jsonb_array_elements_text(v_match->'unmatched') u)
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_pool_amb) a WHERE (a->>'line_idx')::int = (o.ord)::int)
+               AND (o.l->>'kind' IS NULL OR o.l->>'kind' = 'cash') AND (o.l->>'amount')::numeric <> 0
+               AND COALESCE(o.l->>'sub_kind', '') NOT IN ('deposit', 'withdrawal') AS open
+        FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS o(l, ord)
+        CROSS JOIN LATERAL (SELECT finance.fn_normalize_account_number(o.l->>'counterparty_iban') AS iban) n
+        WHERE (o.l->>'date')::date > v_cut AND finance.fn_iban_strict(n.iban)
+          AND n.iban IS DISTINCT FROM v_acct.account_number
+          AND n.iban IS DISTINCT FROM finance.fn_normalize_account_number(p->>'account_number')
+          AND NOT EXISTS (SELECT 1 FROM finance.accounts a WHERE a.account_number = n.iban)
+          AND NOT EXISTS (SELECT 1 FROM finance.recurring_payment_keys k WHERE k.key_type = 'counterparty_iban' AND k.key_value = n.iban)
+    ),
+    cand AS (
+        SELECT a.id, a.name, a.owner_person_id FROM finance.accounts a
+        WHERE a.status = 'active' AND a.account_type::text = 'cash' AND a.id <> v_acct.id AND a.account_number IS NULL
+          AND a.currency = v_acct.currency AND finance.fn_bookable_account_reason(a.id) IS NULL
+    ),
+    r2 AS (
+        SELECT DISTINCT ll.iban, c.id AS acct
+        FROM ll
+        JOIN jsonb_array_elements(v_match->'matched') m ON (m->>'line_idx')::int = ll.idx AND m->>'kind' = 'recurring'
+        JOIN finance.recurring_payments r ON r.id = (m->>'recurring_payment_id')::int AND r.target_account_id IS NOT NULL
+        JOIN cand c ON c.id = CASE WHEN r.account_id = v_acct.id THEN r.target_account_id ELSE r.account_id END
+        CROSS JOIN LATERAL (SELECT finance.fn_match_household_holder(ll.cp) AS h) x
+        WHERE (x.h->>'matched')::boolean AND (c.owner_person_id IS NULL OR x.h->'person_ids' ? c.owner_person_id)
+    ),
+    g1 AS (
+        SELECT ll.iban, bool_and((x.h->>'matched')::boolean) AS allm, count(DISTINCT x.h->'person_ids') AS nsets,
+               min((x.h->'person_ids')::text)::jsonb AS pids
+        FROM ll CROSS JOIN LATERAL (SELECT finance.fn_match_household_holder(ll.cp) AS h) x
+        WHERE ll.open AND ll.iban NOT IN (SELECT iban FROM r2)
+        GROUP BY ll.iban
+    ),
+    c1 AS (
+        SELECT g.iban, jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name) ORDER BY c.id) AS cands
+        FROM g1 g JOIN cand c
+          ON (jsonb_array_length(g.pids) = 1 AND (c.owner_person_id IS NULL OR c.owner_person_id = g.pids->>0))
+          OR (jsonb_array_length(g.pids) >= 2 AND c.owner_person_id IS NULL)
+        WHERE g.allm AND g.nsets = 1
+        GROUP BY g.iban
+    ),
+    pairs AS (
+        SELECT iban, acct FROM r2
+        UNION SELECT iban, (cands->0->>'id')::int FROM c1 WHERE jsonb_array_length(cands) = 1
+    ),
+    judged AS (
+        SELECT p.iban, p.acct,
+               count(*) OVER (PARTITION BY p.iban) = 1 AND count(*) OVER (PARTITION BY p.acct) = 1 AS good
+        FROM pairs p
+    )
+    SELECT COALESCE((SELECT jsonb_agg(jsonb_build_object('account_id', j.acct, 'account_name', a.name, 'account_number', j.iban)
+                                      ORDER BY j.acct)
+                     FROM judged j JOIN finance.accounts a ON a.id = j.acct WHERE j.good), '[]'::jsonb),
+           COALESCE((SELECT jsonb_agg(x.e ORDER BY x.e->>'account_number') FROM (
+               SELECT jsonb_build_object('account_number', c1.iban,
+                          'candidates', (SELECT jsonb_agg(e->>'name' ORDER BY e->>'name') FROM jsonb_array_elements(c1.cands) e)) AS e
+               FROM c1 WHERE jsonb_array_length(c1.cands) >= 2
+               UNION ALL
+               SELECT jsonb_build_object('account_number', j.iban, 'candidates', jsonb_agg(a.name ORDER BY a.name))
+               FROM judged j JOIN finance.accounts a ON a.id = j.acct WHERE NOT j.good GROUP BY j.iban) x), '[]'::jsonb),
+           COALESCE((SELECT jsonb_agg(jsonb_build_object('line_idx', ll.idx, 'stage', 'L', 'kind', 'transfer',
+                                          'other_account_id', j.acct, 'name', a.name, 'line_date', ll.d,
+                                          'amount', round(ll.amt, 2), 'expected', round(ll.amt, 2),
+                                          'side', CASE WHEN ll.amt < 0 THEN 'source' ELSE 'target' END) ORDER BY ll.idx)
+                     FROM ll JOIN judged j ON j.iban = ll.iban AND j.good JOIN finance.accounts a ON a.id = j.acct
+                     WHERE ll.open), '[]'::jsonb)
+    INTO v_learn_accts, v_learn_amb, v_learn_hits;
+    SELECT v_out - COALESCE(sum(LEAST((h->>'amount')::numeric, 0)), 0), v_in - COALESCE(sum(GREATEST((h->>'amount')::numeric, 0)), 0)
+    INTO v_out, v_in FROM jsonb_array_elements(v_learn_hits) h;
+    v_match := jsonb_set(jsonb_set(v_match, '{matched}', (v_match->'matched') || v_learn_hits), '{unmatched}',
+                   COALESCE((SELECT jsonb_agg(u) FROM jsonb_array_elements(v_match->'unmatched') u
+                             WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_learn_hits) x WHERE (x->>'line_idx')::int = (u #>> '{}')::int)), '[]'::jsonb));
+
     FOR v_m IN SELECT e FROM jsonb_array_elements(v_match->'matched') e LOOP
+        v_other := NULL;   -- je Runde neu (der Sparplan-Zweig setzt es nicht; nie den Wert der Vorrunde weitertragen)
         IF v_m->>'kind' = 'booked' THEN
             -- Transfer-Gruppe ohne Gebuehr-Bein, die Zeile traegt die Gebuehr (Auszahlung, Partnerkonto zuerst importiert):
             -- apply bucht die Gebuehr als eigene Buchung dieses Auszugs nach (nie in die Gruppe des Partner-Auszugs)
@@ -1014,6 +1123,17 @@ BEGIN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learned',
                       'params', jsonb_build_object('iban', v_learn_no)));
     END IF;
+    -- IBAN-Lernen: je gelerntem Konto eine Notiz (Kontrolle durch den Nutzer), je unklarer IBAN ein Hinweis
+    v_card := v_card
+        || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learned_other',
+                         'params', jsonb_build_object('iban', x->>'account_number', 'account', x->>'account_name'))
+                         ORDER BY (x->>'account_id')::int)
+                     FROM jsonb_array_elements(v_learn_accts) x), '[]'::jsonb)
+        || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learn_ambiguous',
+                         'params', jsonb_build_object('iban', x->>'account_number',
+                                       'accounts', (SELECT string_agg(c, ', ' ORDER BY c) FROM jsonb_array_elements_text(x->'candidates') c)))
+                         ORDER BY x->>'account_number')
+                     FROM jsonb_array_elements(v_learn_amb) x), '[]'::jsonb);
 
     v_fp := md5(jsonb_build_object('a', v_acct.id, 'c', v_cut, 'd', v_drift, 's', v_s_end, 'l', v_lump,
                   'b', (SELECT jsonb_agg(jsonb_build_array(m->>'kind', m->>'recurring_payment_id', m->>'due_date',
@@ -1023,7 +1143,8 @@ BEGIN
                   'f', (SELECT jsonb_agg(COALESCE(m->'fee', m->'fee_add', m->'partner_fee')) FROM jsonb_array_elements(v_to_book || v_booked) m
                         WHERE m ? 'fee' OR m ? 'fee_add' OR m ? 'partner_fee'),
                   'q', v_pool_amb,
-                  'p', v_adjust, 'k', v_learn, 'n', v_learn_no, 'm', v_missing, 't', v_trades, 'x', v_tblocked,
+                  'p', v_adjust, 'k', v_learn, 'n', v_learn_no, 'n2', v_learn_accts, 'n3', v_learn_amb,
+                  'm', v_missing, 't', v_trades, 'x', v_tblocked,
                   'r', (SELECT jsonb_agg(jsonb_build_array(b->>'transaction_id', b->>'line_date')) FROM jsonb_array_elements(v_booked) b
                         WHERE (b->>'tx_date')::date > v_pe))::text);
 
@@ -1035,6 +1156,7 @@ BEGIN
         'moved_legs', v_moved,
         'missing', v_missing, 'unknown_mandates', v_unknown, 'plan_adjustments', v_adjust, 'learn', v_learn,
         'learned_account_number', v_learn_no,
+        'learned_accounts', v_learn_accts, 'iban_ambiguous', v_learn_amb,
         'line_count', jsonb_array_length(v_lines),
         'matched_count', jsonb_array_length(v_to_book) + jsonb_array_length(v_booked),
         'unmatched_out', v_out, 'unmatched_in', v_in,

@@ -849,6 +849,8 @@
   "finance.note.statement_export_gap": "{amount} of it is not in the export yet – usually pending card payments that the app already deducts. They count towards the rest this time and even out with the next export.",
   "finance.note.statement_export_gap_settled": "The export shows {amount} more spending than the app balance – usually card payments that were still pending last time and are already in the last rest. The balance is still correct.",
   "finance.note.statement_export_starts_late": "The export may not reach back to the confirmed balance of {date}. If transactions in between are missing, {amount} of it ends up in the rest – better cancel and export a longer period (e.g. this year and last year).",
+  "finance.note.iban_learned_other": "The IBAN {iban} will be saved for the account “{account}” (recognised from a transfer). The monthly check will then book such transfers as transfers. If that is wrong, please cancel.",
+  "finance.note.iban_learn_ambiguous": "A transfer with the IBAN {iban} fits several of your accounts ({accounts}), so it stays in the rest. Tell me which account the IBAN belongs to and I will add it.",
   "finance.label.statement_trades": "Securities (will be booked)",
   "finance.tpl.statement_trade_row": "{what} {name}: {shares} units, {amount} on {date}",
   "finance.tpl.statement_trade_buy": "Buy",

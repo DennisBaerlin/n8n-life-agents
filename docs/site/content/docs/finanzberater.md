@@ -36,13 +36,19 @@ Der Berater rechnet deinen Monat in klar getrennten Teilen:
 
 Ein ETF-Sparplan ist damit keine Ausgabe mehr.
 
+Diese Rechnung kennt nur deine regelmäßigen Zahlungen. Einkäufe, Kartenzahlungen und Bargeld stecken nicht darin. „Frei" heißt also nicht „bleibt am Monatsende übrig". Bei Fragen wie „Kann ich mir das Auto leisten?" sagt der Berater das dazu. Hast du Kontoauszüge eingespielt, nennt er die daraus geschätzten Alltagsausgaben je Konto; ohne Auszug sagt er, dass diese Zahl fehlt.
+
 Er meldet sich auf zwei Arten:
 - **Warnung vor einem Defizit:** nur dann, wenn Konsum und Kreditraten deine Einnahmen übersteigen.
 - **Eigener Hinweis:** wenn deine Sparraten höher sind als das, was frei bleibt. Dann leert sich dein Girokonto wirklich.
 
 Auch die Notgroschen-Prüfung rechnet ehrlich:
-- Sie geht von den Pflichtausgaben aus (Konsum und Kreditraten), Sparraten zählen nicht.
+- Sie geht von den Pflichtausgaben aus (Konsum und Kreditraten), Sparraten zählen nicht. Auch hier fehlen die Alltagsausgaben; legst du fest, wie viele Monate der Notgroschen reichen soll, weist der Berater darauf hin.
 - Als Notgroschen zählt nur freies Geld. Geld auf Kinderkonten und für Sparziele zurückgelegtes Geld zählen nicht mit.
+
+## Reicht das Geld für deine Sparpläne?
+
+Fragst du, ob du einen Sparplan erhöhen kannst oder ob das Geld auf einem Konto reicht, liest der Berater dieselbe Vorausschau, die auch die [Übersicht](uebersicht-app.html) auf der Seite Ziele zeigt. Für jedes Konto, von dem ein Sparplan abgeht oder auf das ein Dauerauftrag läuft, rechnet die Datenbank voraus (standardmäßig zwei Jahre): gedeckt, reicht bis zu einem bestimmten Tag, oder wird in den nächsten Monaten knapp. Der Berater rechnet das nie selbst nach. Wo die Datenbank es nicht weiß (etwa ohne Kontoauszug), sagt er, was fehlt. Ob ein Sparziel hinter Plan liegt, entscheidet ebenfalls dieselbe Regel wie in der Übersicht, damit Bot und App nie Verschiedenes sagen.
 
 ## Abweichung vom Zielmix
 
@@ -85,7 +91,7 @@ Bei „Lohnt sich das?"-Fragen sucht der Finanzberater aktuelle Informationen im
 
 Der Finanzberater spammt dich nicht. Er meldet sich proaktiv nur, wenn sich etwas **neu** von deinem Plan entfernt hat (Abweichungs-Check), und fasst dir in regelmäßigem Abstand einen kompakten Überblick zusammen (Quartals-Digest). Konkrete Schwellenwerte aus dem Plan — etwa „bei Kurs X nachkaufen" oder „in sechs Monaten die koreanische Rente neu prüfen" — kann er als Mess-Punkt an den [Monitor](monitor-guide.html) übergeben, der sie dauerhaft im Hintergrund beobachtet. Ändern oder löschen kannst du einen solchen Mess-Punkt danach nur noch über den Monitor selbst.
 
-Aus dem [Monats-Check](monats-check.html) kommen zwei Warnungen dazu: **Konto knapp**, wenn ein Konto bis zum nächsten Geldeingang voraussichtlich unter deinen Puffer (Standard 250 €) fällt, mit einem Umbuchungs-Vorschlag (Betrag, bis wann, von welchem Konto), und **Zahlung fehlt**, wenn ein Dauerauftrag zweimal in Folge nicht vom Konto ging.
+Aus dem [Monats-Check](monats-check.html) kommen zwei Warnungen dazu: **Konto knapp**, wenn ein Konto bis zum nächsten Geldeingang voraussichtlich unter deinen Puffer (Standard 250 €) fällt, mit einem Umbuchungs-Vorschlag (Betrag, bis wann, von welchem Konto; nie von einem Kinderkonto), und **Zahlung fehlt**, wenn ein Dauerauftrag zweimal in Folge nicht vom Konto ging.
 
 Für Immobilien meldet er sich, wenn die **Instandhaltungsrücklage** unter der Empfehlung nach II. BV liegt (zum Beispiel, weil das Haus in eine ältere Altersstufe gerutscht ist oder die Sätze angepasst wurden) oder wenn eine Immobilie noch gar keine Rücklage hat. Jeder dieser Hinweise kommt nur einmal, bis sich etwas ändert.
 

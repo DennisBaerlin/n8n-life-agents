@@ -13,7 +13,8 @@
 --     sonst heute + 31. Tiefster Stand ueber [heute, Horizont].
 --   Puffer = core.config finance.coverage_buffer_eur (Default 250), in die Kontowaehrung umgerechnet.
 --   Vorschlag bei Unterschreitung: Umbuchung (auf 50 aufgerundet) bis 2 Tage vor dem Tief von dem cash-Konto gleicher
---   Waehrung mit dem groessten freien Saldo (account_reserve_status: Saldo - Ruecklage), wenn es den Betrag hat.
+--   Waehrung mit dem groessten freien Saldo (account_reserve_status: Saldo - Ruecklage), wenn es den Betrag hat; nie von
+--   einem Kinderkonto (Eigentuemer role child, core.fn_household_persons): der Vorschlag geht ohne LLM in Karte/Alert.
 --   RUECKGABE: {ok, account_id, account_name, currency, confirmed_balance, confirmed_as_of, estimated_today,
 --   next_income_date, next_income_name, horizon_end, planned_out, planned_in, everyday_per_day, has_history,
 --   min_projected, min_date, buffer, shortfall, suggestion:{amount, by_date, from_account} | null} | {ok:false}
@@ -84,6 +85,8 @@ BEGIN
         JOIN finance.accounts a ON a.id = s.account_id
         WHERE s.account_id <> p_account_id AND a.account_type = 'cash' AND a.status = 'active'
           AND a.currency = v_acct.currency
+          AND NOT EXISTS (SELECT 1 FROM core.fn_household_persons() hp
+                          WHERE hp.person_id = a.owner_person_id AND hp.role = 'child')
           AND s.balance - GREATEST(s.reserved, 0) >= ceil(v_short / 50) * 50
         ORDER BY s.balance - GREATEST(s.reserved, 0) DESC, s.account_id LIMIT 1;
     END IF;

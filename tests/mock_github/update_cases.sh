@@ -94,7 +94,15 @@ curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null || { echo "FAIL setup
 RUNENV=(LIFEAGENTS_RELEASE_KEYRING="$W/kr.gpg"
         PROVISION_GH_API="$API" PROVISION_REPO_SLUG="$SLUG" LIFEAGENTS_TELEGRAM_API="http://127.0.0.1:${TGPORT}"
         TELEGRAM_BOT_TOKEN=mock-token OWNER_CHAT_ID=4242 N8N_DB_NAME="$DB")
-cli() { OUT="$(env "${RUNENV[@]}" ${EXTRA_ENV:+$EXTRA_ENV} lifeagents update "$@" 2>&1 </dev/null)"; RC=$?; }
+# Der minuetliche Runner des Substrats haelt die Update-Sperre zur vollen Minute kurz; trifft ein Fall genau diesen
+# Moment, meldet der Runner "Update-Sperre belegt" und der Fall scheitert zufaellig (Flake run_interrupted 2026-10-30,
+# zuvor run_lock_busy 2026-10-26). Deshalb: auf die freie Sperre warten und genau einmal wiederholen - ausser im Fall,
+# der die belegte Sperre selbst prueft (cli_raw).
+cli_raw() { OUT="$(env "${RUNENV[@]}" ${EXTRA_ENV:+$EXTRA_ENV} lifeagents update "$@" 2>&1 </dev/null)"; RC=$?; }
+cli() {
+  cli_raw "$@"
+  case "$OUT" in *"Update-Sperre belegt"*) flock -w 15 /run/lifeagents-update.lock true; cli_raw "$@" ;; esac
+}
 installed() { printf '%s\n' "$1" > "$VER"; }
 scenario() { printf '%s' "$1" > "$W/scenario"; }
 reset_db() { sql "DELETE FROM core.update_requests;" >/dev/null; }
@@ -184,7 +192,7 @@ installed v9.9.8; reset_db; tg_clear; id="$(request v9.9.10)"
 LKMARK="/tmp/upd_lock_held.$$"; rm -f "$LKMARK"
 flock /run/lifeagents-update.lock sh -c "touch '$LKMARK'; sleep 6" & LOCKER=$!
 for _ in $(seq 1 100); do [ -e "$LKMARK" ] && break; sleep 0.1; done
-cli --run-requested
+cli_raw --run-requested
 rm -f "$LKMARK"
 claimed="$(sql "SELECT claimed_at IS NOT NULL FROM core.update_requests WHERE id = $id")"
 wait "$LOCKER" 2>/dev/null

@@ -5,7 +5,8 @@
 # den echten Test-Cases FRUEH (commit-time), bevor ein vergessenes/umbenanntes Szenario den
 # Gratis-Tier still loechrig macht (Step-8-Charter-A-Hinweis aus Phase 6).
 #
-# Geprueft wird (alle drei = hartes Gate):
+# Geprueft wird (alle = hartes Gate):
+#   C0 (eindeutige Case-ids): in jeder *_cases.json (auch E2E/NULL-Suiten) kommt jede id nur einmal vor.
 #   C1 (Coverage): jeder NICHT-NULL-Case (expected_route/expected_tool gesetzt) hat ein Szenario, das
 #      der Mock fuer seinen Task waehlen wuerde (laengster `match`-Substring, wie pickScenario in
 #      server.js) UND dessen calls den erwarteten Call enthalten. NULL-Cases (expected=null) sind
@@ -108,6 +109,18 @@ Write-Host ""
 Write-Host "Mock-Szenario-Lint -- $($cases.Count) Case(s), $($scenarios.Count) Szenario(en)"
 Write-Host ("-" * 64)
 $failed = 0
+
+# --- C0: Case-IDs je Datei eindeutig (alle *_cases.json, auch E2E/NULL-Suiten) ------------------
+# Anlass 2026-10-30: parallele Sessions vergaben tc80/tc81 und e2e42/e2e43 doppelt; die Tiers melden
+# Ergebnisse je id, das Judge-Bundle ueberschrieb dann still einen Case. Hier faellt es commit-time auf.
+foreach ($cf in (Get-AgentCaseFile $RepoRoot)) {
+    $dups = @($cf.Cases | Where-Object { $_.PSObject.Properties['id'] -and $_.id } | Group-Object { [string]$_.id } |
+              Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    foreach ($d in $dups) {
+        Write-Host "  [FAIL] C0 $($cf.Rel): Case-id '$d' kommt mehrfach vor (naechste freie id vergeben)." -ForegroundColor Red
+        $failed++
+    }
+}
 
 # --- C1: Coverage (jeder Nicht-NULL-Case hat ein passendes Szenario) -----------------------------
 # Kein Namespace-Filter noetig (anders als server.js eligible = offered ∩ calls): der erwartete Call

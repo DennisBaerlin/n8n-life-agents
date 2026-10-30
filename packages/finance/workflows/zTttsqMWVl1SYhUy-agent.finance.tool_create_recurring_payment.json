@@ -40,6 +40,9 @@
                                                                                    "name":  "notes"
                                                                                },
                                                                                {
+                                                                                   "name":  "counterparty_iban"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -147,7 +150,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_create_recurring_payment(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, account_id: $(\u0027Resolve Account\u0027).item.json.id, direction: $(\u0027Start\u0027).item.json.direction, amount: $(\u0027Start\u0027).item.json.amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, valid_from: $(\u0027Start\u0027).item.json.valid_from, valid_to: $(\u0027Start\u0027).item.json.valid_to, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, account_id: $(\u0027Resolve Account\u0027).item.json.id, direction: $(\u0027Start\u0027).item.json.direction, amount: $(\u0027Start\u0027).item.json.amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, valid_from: $(\u0027Start\u0027).item.json.valid_from, valid_to: $(\u0027Start\u0027).item.json.valid_to, notes: $(\u0027Start\u0027).item.json.notes, counterparty_iban: $(\u0027Start\u0027).item.json.counterparty_iban }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -253,7 +256,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_equivalent\u0027)::numeric AS monthly_equivalent, COALESCE(r-\u003e\u0027cashflow_coverage\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS cashflow_coverage, COALESCE(r-\u003e\u0027savings_funding\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_funding FROM finance.fn_create_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, account_id: $(\u0027Resolve Account\u0027).item.json.id, direction: $(\u0027Start\u0027).item.json.direction, amount: $(\u0027Start\u0027).item.json.amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, valid_from: $(\u0027Start\u0027).item.json.valid_from, valid_to: $(\u0027Start\u0027).item.json.valid_to, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, account_id: $(\u0027Resolve Account\u0027).item.json.id, direction: $(\u0027Start\u0027).item.json.direction, amount: $(\u0027Start\u0027).item.json.amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, valid_from: $(\u0027Start\u0027).item.json.valid_from, valid_to: $(\u0027Start\u0027).item.json.valid_to, notes: $(\u0027Start\u0027).item.json.notes, counterparty_iban: $(\u0027Start\u0027).item.json.counterparty_iban, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

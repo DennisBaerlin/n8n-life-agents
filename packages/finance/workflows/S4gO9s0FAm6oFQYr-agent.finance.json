@@ -2755,7 +2755,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_create_recurring_payment",
-                                         "description":  "Create a standalone recurring income or expense: salary, rent, subscription, pension payout, membership, utilities - also a regular payment INTO the account a savings plan debits by someone outside the household (e.g. grandparents paying for a child): direction income on that account, no source account. NOT for insurance premiums / loan rates / savings rates - those have their own create tools (create_insurance/create_loan/create_savings_goal) which book their own recurring payment. This records the MONEY FLOW for the cash flow; the contract itself (what happens to it on death, cancellation) is an estate provider contract, recorded by the estate advisor. direction = income (money in) or expense (money out); amount is always positive and the tool applies the sign. schedule_unit day|week|month|year with schedule_interval (e.g. 3 + month = quarterly). For a LATER amount change (e.g. Gehalt -\u003e Elterngeld -\u003e Gehalt) add a NEW entry with a new valid_from and set valid_to on the previous one. The tool rejects a second running payment with the same name (ok:false with candidates - ask whether to change the existing one with tool_set_recurring_payment); a same-named payment that belongs to an insurance/loan only shows a hint on the card. Required: name, account_name, direction, amount, schedule_unit, first_payment_date. Optional: schedule_interval (default 1), schedule_day_of_month (1-28, -1 for last day or -2 for second-to-last day), valid_from (default first_payment_date), valid_to, notes.",
+                                         "description":  "Create a standalone recurring income or expense: salary, rent, subscription, pension payout, membership, utilities - also a regular payment INTO the account a savings plan debits by someone outside the household (e.g. grandparents paying for a child): direction income on that account, no source account. NOT for insurance premiums / loan rates / savings rates - those have their own create tools (create_insurance/create_loan/create_savings_goal) which book their own recurring payment. This records the MONEY FLOW for the cash flow; the contract itself (what happens to it on death, cancellation) is an estate provider contract, recorded by the estate advisor. direction = income (money in) or expense (money out); amount is always positive and the tool applies the sign. schedule_unit day|week|month|year with schedule_interval (e.g. 3 + month = quarterly). For a LATER amount change (e.g. Gehalt -\u003e Elterngeld -\u003e Gehalt) add a NEW entry with a new valid_from and set valid_to on the previous one. The tool rejects a second running payment with the same name (ok:false with candidates - ask whether to change the existing one with tool_set_recurring_payment); a same-named payment that belongs to an insurance/loan only shows a hint on the card. Required: name, account_name, direction, amount, schedule_unit, first_payment_date. Optional: schedule_interval (default 1), schedule_day_of_month (1-28, -1 for last day or -2 for second-to-last day), valid_from (default first_payment_date), valid_to, notes, counterparty_iban (ONLY copied verbatim from a tool_get_recurring_suggestions suggestion: stored so the monthly check recognises the payment even when its amount changes; shown on the card; never typed in or guessed).",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "zTttsqMWVl1SYhUy",
@@ -2777,6 +2777,7 @@
                                                                               "valid_from":  "={{ $fromAI(\u0027valid_from\u0027, \u0027Start of validity (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself). Empty = first_payment_date.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "valid_to":  "={{ $fromAI(\u0027valid_to\u0027, \u0027Last day the payment is still valid (inclusive), (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself). Empty = indefinite.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "notes":  "={{ $fromAI(\u0027notes\u0027, \u0027Free-text notes (optional)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "counterparty_iban":  "={{ $fromAI(\u0027counterparty_iban\u0027, \u0027ONLY from a tool_get_recurring_suggestions suggestion: its counterparty_iban, verbatim. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -2886,6 +2887,16 @@
                                                                                {
                                                                                    "id":  "notes",
                                                                                    "displayName":  "notes",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "counterparty_iban",
+                                                                                   "displayName":  "counterparty_iban",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,
@@ -3081,6 +3092,72 @@
                                    ],
                       "id":  "8701406d-329e-55fc-a7e4-1b2537a372b0",
                       "name":  "tool_create_recurring_transfer"
+                  },
+                  {
+                      "parameters":  {
+                                         "name":  "tool_get_recurring_suggestions",
+                                         "description":  "FIND MISSING STANDING ORDERS IN A BANK EXPORT — read-only, no card, writes nothing. Reads a bank export FILE (CSV or Excel, the banks of tool_import_bank_export) covering several months and returns the regular payments it shows that no recurring payment covers yet: rent, subscriptions, salary, child benefit, pension, membership fees, standing transfers to own accounts. The database finds rhythm, amount, booking day and the start date; nothing is computed by you. WHEN: (a) in the onboarding area liabilities after the user sent such an export, (b) when the user asks which standing orders or subscriptions are missing. If the user sends the file for the monthly check (or the onboarding asks for it), call tool_import_bank_export FIRST and this tool afterwards with the same file_id (whatever the check answered, except a file or bank error); if the user sends it only to find missing standing orders, call this tool directly. No file yet -\u003e ask for an export of the last 3-6 months (online banking or app). file_id verbatim; account_name ONLY if the user named the account. Result suggestions[] (largest first): ask about them ONE BY ONE in plain words (name, direction, amount, rhythm, day; amount_varies = the amount changes, name average_amount too), never as one list to tick. Yes -\u003e kind payment: tool_create_recurring_payment with direction, amount, schedule_unit, schedule_interval, schedule_day_of_month, first_payment_date and counterparty_iban exactly as given, and a name that keeps the counterparty word (e.g. \"Gehalt (ACME)\", \"Miete (Vermieter X)\") so the monthly check finds it; kind transfer: tool_create_recurring_transfer with from_account/to_account and the same values; kind household = a payment to or from a household member: ask which own account it goes to or comes from - if it is an own account, tool_create_recurring_transfer, otherwise a payment. A name that is an insurer, a loan bank or a savings goal: do not offer a standing order - say it belongs to insurances/loans/goals and offer that tool instead (tool_create_insurance, tool_create_loan, tool_create_savings_goal). No -\u003e next suggestion, nothing is stored. known_elsewhere = already recorded on another account: mention it once. hint export_too_short -\u003e the export is too short: ask for one covering at least 3 months (better 6); hint export_stale -\u003e the export ends long ago: ask for a current one. No suggestions -\u003e say that all regular payments of this export are already recorded. Errors (ok:false) as in tool_import_bank_export: export_account_mismatch / account_unknown / account_ambiguous -\u003e ask which account (candidates); multiple_sub_accounts -\u003e export each account on its own; export_profile_unknown -\u003e this bank is not supported yet; not_an_export -\u003e a photo or PDF is no export.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "I6mjxvBCqg8gxFWB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/I6mjxvBCqg8gxFWB",
+                                                            "cachedResultName":  "agent.finance.tool_get_recurring_suggestions"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $fromAI(\u0027file_id\u0027, \u0027The file_id from the attachment marker, verbatim\u0027, \u0027string\u0027) }}",
+                                                                              "account_name":  "={{ $fromAI(\u0027account_name\u0027, \u0027ONLY if the user named the account: its exact name; empty = the database picks the account of the bank that made the file\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "file_id",
+                                                                                   "displayName":  "file_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "account_name",
+                                                                                   "displayName":  "account_name",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       3280,
+                                       520
+                                   ],
+                      "id":  "3388d451-da5d-58c5-aebb-06071f8e3c8e",
+                      "name":  "tool_get_recurring_suggestions"
                   },
                   {
                       "parameters":  {
@@ -7799,6 +7876,17 @@
                                                                           ]
                                                           },
                         "tool_create_recurring_transfer":  {
+                                                               "ai_tool":  [
+                                                                               [
+                                                                                   {
+                                                                                       "index":  0,
+                                                                                       "node":  "Finance Agent",
+                                                                                       "type":  "ai_tool"
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                           },
+                        "tool_get_recurring_suggestions":  {
                                                                "ai_tool":  [
                                                                                [
                                                                                    {

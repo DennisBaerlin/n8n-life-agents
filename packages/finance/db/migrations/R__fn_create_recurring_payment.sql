@@ -7,7 +7,10 @@
 --   ('income'|'expense'), amount (positiv), schedule_interval (opt, default 1), schedule_unit,
 --   schedule_day_of_month (opt), first_payment_date, valid_from (opt, default first_payment_date),
 --   valid_to (opt; LETZTER gueltiger Tag, inklusiv wie vom Nutzer genannt -> gespeichert wird der Folgetag,
---   Speicher-Konvention [valid_from, valid_to) exklusiv), notes (opt).
+--   Speicher-Konvention [valid_from, valid_to) exklusiv), notes (opt), counterparty_iban (opt; "Import zuerst": die
+--   Gegen-IBAN aus fn_get_recurring_suggestions -> recurring_payment_keys counterparty_iban, source user, damit der
+--   Monats-Check die Zahlung per Schluessel trifft (Stufe A, auch bei schwankendem Betrag); Kartenzeile
+--   finance.note.recurring_iban_key; keine echte IBAN (fn_iban_strict) -> {ok:false} ohne Write).
 --   valid_from der Zahlung = fn_recurring_valid_from (fruehestens der Eroeffnungssaldo-Stichtag des Kontos).
 --   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional cashflow_coverage
 --   + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage: Spar-Deckung des Kontos nach dem Write,
@@ -36,6 +39,8 @@ DECLARE
     v_nc       JSONB;
     v_dates    JSONB;
     v_fold     JSONB;
+    v_iban     TEXT     := finance.fn_normalize_account_number(p->>'counterparty_iban');
+    v_card     JSONB;
 BEGIN
     -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from', 'valid_to']);
@@ -46,6 +51,10 @@ BEGIN
     v_to    := NULLIF(p->>'valid_to','')::date + 1;   -- inklusiver letzter Tag -> exklusives Ende
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
+    END IF;
+    IF v_iban IS NOT NULL AND NOT finance.fn_iban_strict(v_iban) THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'counterparty_iban is not a valid IBAN - pass it exactly as the suggestion gives it, or leave it empty.');
     END IF;
     -- DB-ist-das-Gesetz S6: laufende freistehende Zahlung gleichen Namens -> ok:false; Entitaets-Zahlung -> Karten-Hinweis
     v_nc := finance.fn_recurring_name_check(p->>'name');
@@ -75,6 +84,15 @@ BEGIN
 
     SELECT monthly_equivalent INTO v_me FROM finance.recurring_payments WHERE id = v_rp_id;
 
+    -- Schluessel fuer den Monats-Check (fn_statement_match Stufe A), sichtbar auf der Karte
+    v_card := COALESCE(v_nc->'card_lines', '[]'::jsonb);
+    IF v_iban IS NOT NULL THEN
+        INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+        VALUES (v_rp_id, 'counterparty_iban', v_iban, 'user');
+        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.recurring_iban_key',
+                      'params', jsonb_build_object('iban', v_iban)));
+    END IF;
+
     -- Phase L WS-3: Cashflow-Sofort-Hinweis (Event-Fold). Post-State NACH dem INSERT: die soeben angelegte Zahlung
     -- ist (sofern aktiv + heute gueltig) in der Live-View. Audit Paket 3: der eine Fold-Helfer (Pflichtausgaben >
     -- Einnahmen, gelatcht, Re-Arm bei Erholung) — geteilt mit fn_set_recurring_payment.
@@ -86,7 +104,7 @@ BEGIN
 
     RETURN finance.fn_merge_fold(
         jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                           'card_lines', v_nc->'card_lines', 'effective', v_dates->'resolved') || v_cf,
+                           'card_lines', v_card, 'effective', v_dates->'resolved') || v_cf,
         v_fold);
 END;
 $$;

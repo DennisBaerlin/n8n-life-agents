@@ -952,10 +952,10 @@
         "notes":  "Live-Befund 2026-10-26 (Werte hier erfunden): eine eingefuegte Betriebsrenten-Uebersicht landete per tool_create_pension als guaranteed_monthly_pension + Notiz statt als datierte Standmitteilung -> Berater-Fenster fn_pension_outlook sah never=true, keine Jahres-Erinnerung. Fix: Tool-Descriptions create_/set_pension. Judge: die Staging-Zeilen enthalten pension_statement mit statement_date 2025-12-31 und reached_claim 74; kein guaranteed_monthly_pension."
     },
     {
-        "id":  "tc80",
+        "id":  "tc100",
         "name":  "Immobilie: Wohnflaeche + Baujahr nachtragen (set_real_estate, Instandhaltungsruecklage)",
         "task":  "Unsere Musterimmobilie hat 120 m² Wohnfläche und wurde 1995 gebaut.",
-        "chat_id":  "test_tc80",
+        "chat_id":  "test_tc100",
         "expected_tool":  "tool_set_real_estate",
         "expected_tool_args":  {
                                    "real_estate_name":  "Musterimmobilie",
@@ -966,10 +966,10 @@
         "notes":  "Instandhaltungsruecklage 2026-10-27. Musterimmobilie ist Fixture-Entitaet (dauerhaft). Judge: actual_tool_input enthaelt living_area_m2=120 und year_built=1995; keine vom LLM gerechnete Monatsrate im Text."
     },
     {
-        "id":  "tc81",
+        "id":  "tc101",
         "name":  "Instandhaltungsruecklage fuer eine Immobilie anlegen (create_savings_goal mit real_estate_name)",
         "task":  "Richte für die Musterimmobilie eine Instandhaltungsrücklage ein, vom DKB Giro auf das Tagesgeld Plus.",
-        "chat_id":  "test_tc81",
+        "chat_id":  "test_tc101",
         "expected_tool":  "tool_create_savings_goal",
         "expected_tool_args":  {
                                    "real_estate_name":  "Musterimmobilie",
@@ -1118,5 +1118,26 @@
                                },
         "expected_behavior":  "Ruft tool_set_account mit account_name='DKB Giro' und remove_account_number=true auf, OHNE eine neue account_number und ohne weitere Felder. Die Karte zeigt, dass die gespeicherte IBAN entfernt wird.",
         "notes":  "Import zuerst (2026-10-30): Korrekturweg fuer eine falsch gelernte IBAN (arch-challenge ADOPT). DKB Giro ist ein dauerhaftes Fixture-Konto; die Routing-Tier lehnt die Karte ab (nichts wird entfernt)."
+    },
+    {
+        "id":  "tc97",
+        "name":  "Import zuerst: Bank-Export nur fuer die fehlenden Dauerauftraege -> Vorschlags-Tool",
+        "task":  "Bei den regelmaessigen Zahlungen: hier ist mein Trade Republic Export der letzten Monate, schlag mir daraus vor, welche Dauerauftraege noch fehlen [attachment file_id=mock_photo_083 type=document]",
+        "chat_id":  "test_tc97",
+        "expected_tool":  "tool_get_recurring_suggestions",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_photo_083"
+                               },
+        "expected_behavior":  "Ruft tool_get_recurring_suggestions mit der file_id auf (kein Write-Tool, keine Karte, kein Rechnen). Meldet das Ergebnis in Alltagssprache: Vorschlaege einzeln (Name, Betrag, Rhythmus), nie als Liste zum Abhaken; bei hint export_stale oder export_too_short bittet er um einen aktuellen Export ueber mindestens 3 Monate. Legt NICHTS an, solange der Nutzer nicht zugestimmt hat.",
+        "notes":  "Import zuerst (Session 3d, 2026-10-30). Fixture mock_photo_083.csv (Trade Republic, Jahr 2000) -> die Datei ist alt, die DB antwortet export_stale ohne Vorschlaege; geprueft sind Routing + Argumente und dass der Agent nichts erfindet. Echte Erkennung: tests/db/finance/test_fn_get_recurring_suggestions.sql."
+    },
+    {
+        "id":  "tc98",
+        "name":  "Import zuerst: Frage nach fehlenden Dauerauftraegen ohne Datei -> um einen Export bitten",
+        "task":  "Welche Abos und Dauerauftraege fehlen mir eigentlich noch?",
+        "chat_id":  "test_tc98",
+        "expected_tool":  null,
+        "expected_behavior":  "Ruft KEIN Write-Tool auf und erfindet keine Zahlungen. Bittet um einen Bank-Export (CSV oder Excel) der letzten 3 bis 6 Monate, aus dem er die regelmaessigen Zahlungen vorschlaegt; darf erwaehnen, dass man sie auch einzeln nennen kann. Darf die schon erfassten Dauerauftraege per Datenbank-Abfrage nennen.",
+        "notes":  "Import zuerst (Session 3d, 2026-10-30): ohne Datei kein Vorschlags-Tool-Aufruf (file_id fehlt), der einfachste Weg wird zuerst angeboten."
     }
 ]

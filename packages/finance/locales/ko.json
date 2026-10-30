@@ -903,5 +903,6 @@
   "finance.note.funding_timing": "이후 {account}에 돈이 늦게 들어와요: {date}부터 부족, 최저 잔액 {min} ({min_date}). 입금과 출금은 같지만 입금이 출금보다 늦어요.",
   "finance.note.funding_ok_plain": "이후 {account} 잔액 충분.",
   "finance.note.funding_until_date": "이후 {account} 잔액은 {date}까지 충분.",
-  "finance.note.funding_gap_date": "이후 {account} 잔액이 {date}부터 부족."
+  "finance.note.funding_gap_date": "이후 {account} 잔액이 {date}부터 부족.",
+  "finance.note.recurring_iban_key": "앞으로 이 결제는 금액이 달라져도 IBAN {iban}으로 알아봐요. 틀렸다면 취소해 주세요."
 }

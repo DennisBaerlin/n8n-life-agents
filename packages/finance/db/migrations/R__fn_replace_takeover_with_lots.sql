@@ -2,8 +2,8 @@
 -- fn_replace_takeover_with_lots (ATOMIC WRITE) -- Bestandsuebernahme durch die echten Einzelkaeufe ersetzen (Paket B)
 --   Live-Befund 2026-10-28: eine Position wurde als EINE Uebernahme erfasst, der Broker-Export kennt die Einzelkaeufe.
 --   Eingabe jsonb: account_name (opt; Verrechnungskonto = das Cashkonto des Exports), table:{rows} (Raster des Lesers),
---   fingerprint (opt, aus dem Probelauf). Konto ueber fn_bank_export_resolve_account (derselbe Konto-Waechter wie der
---   Monats-Check: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil).
+--   fingerprint (opt, aus dem Probelauf). Datei + Konto ueber fn_bank_export_load (Leser, derselbe Konto-Waechter wie der
+--   Monats-Check: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil; mehrere Sub-Konten -> multiple_sub_accounts).
 --   Je Position eines Depots mit diesem Verrechnungskonto, die GENAU EIN Uebernahme-Paar hat (eine group_id mit einem
 --   Kauf + einer position_takeover-Gegenbuchung) und im Export Kaeufe bis zum Uebernahme-Datum:
 --     Lots = Export-Kaeufe minus -Verkaeufe (FIFO) seit dem letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
@@ -27,13 +27,12 @@
 --   cash_lots_count}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
 --   settlement_balance, settlement_change (Saldo nachher - vorher, DB-Delta), card_lines, fingerprint}
 --   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|
---   export_account_mismatch|stale_preview), reason}.
+--   export_account_mismatch|multiple_sub_accounts|stale_preview), reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_replace_takeover_with_lots(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_norm     JSONB;
-    v_res      JSONB;
     v_acct     finance.accounts%ROWTYPE;
     v_reason   TEXT;
     v_cut      DATE;
@@ -60,16 +59,12 @@ DECLARE
     v_pl       JSONB;
     v_fp       TEXT;
 BEGIN
-    v_norm := finance.fn_bank_export_normalize(COALESCE(p->'table', '{}'::jsonb));
+    -- die geteilte Lade-Sequenz (Leser + derselbe Konto-Waechter wie der Monats-Check, buchbar prueft er mit)
+    v_norm := finance.fn_bank_export_load(p);
     IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_norm;
     END IF;
-    -- derselbe Konto-Waechter wie der Monats-Check (eine Adresse; buchbar prueft er mit)
-    v_res := finance.fn_bank_export_resolve_account(p->>'account_name', v_norm->>'profile', v_norm->'currencies');
-    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
-        RETURN v_res;
-    END IF;
-    SELECT * INTO v_acct FROM finance.accounts WHERE id = (v_res->>'account_id')::int;
+    SELECT * INTO v_acct FROM finance.accounts WHERE id = (v_norm->>'account_id')::int;
     v_cut := GREATEST(v_acct.last_reconciled_at, v_acct.opening_balance_date);
     PERFORM 1 FROM finance.account_balances WHERE account_id = v_acct.id FOR UPDATE;
     v_before := finance.fn_get_balance(v_acct.id);

@@ -319,5 +319,13 @@
     "chat_id": "test_orc38",
     "expected_route": "finance",
     "notes": "Geldquellen-Frage (savings_funding, 2026-10-30): eine regelmaessige Einzahlung von ausserhalb des Haushalts ist eine Buchhalter-Erfassung, keine Beratung und kein Familien-/Kontext-Eintrag. Erfundene Person."
+  },
+  {
+    "id": "oc40",
+    "name": "Fehlende Dauerauftraege aus einem Export finden -> agent.finance",
+    "task": "Welche Dauerauftraege und Abos fehlen mir noch? Ich schick dir dafuer meinen N26-Export.",
+    "chat_id": "test_orc40",
+    "expected_route": "finance",
+    "notes": "Import zuerst (Session 3d, 2026-10-30): Dauerauftraege aus einem Bank-Export vorschlagen ist Buchhalter-Erfassung (tool_get_recurring_suggestions), keine Beratung."
   }
 ]

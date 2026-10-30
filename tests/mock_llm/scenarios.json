@@ -1224,5 +1224,27 @@
       { "tool": "tool_set_account", "args": { "account_name": "DKB Giro", "remove_account_number": "true" } }
     ],
     "final": "Die Karte zum Entfernen der IBAN beim DKB Giro ist unterwegs."
+  },
+  {
+    "_comment": "tc97 Import zuerst: Bank-Export nur fuer fehlende Dauerauftraege -> tool_get_recurring_suggestions (fester Leser, kein Write).",
+    "match": "schlag mir daraus vor, welche Dauerauftraege noch fehlen",
+    "calls": [
+      { "tool": "tool_get_recurring_suggestions", "args": { "file_id": "mock_photo_083" } }
+    ],
+    "final": "Der Export endet schon lange - schick mir bitte einen aktuellen Export der letzten 3 bis 6 Monate, dann schlage ich dir die fehlenden Dauerauftraege einzeln vor."
+  },
+  {
+    "_comment": "tc98 Import zuerst: Frage ohne Datei -> kein Tool, um einen Export bitten.",
+    "match": "Welche Abos und Dauerauftraege fehlen mir eigentlich noch?",
+    "calls": [],
+    "final": "Schick mir am einfachsten einen Bank-Export (CSV oder Excel) der letzten 3 bis 6 Monate - ich schlage dir daraus die regelmaessigen Zahlungen einzeln vor. Du kannst sie mir auch einzeln nennen."
+  },
+  {
+    "_comment": "oc40 Import zuerst: fehlende Dauerauftraege aus einem Export -> Router ruft den Buchhalter.",
+    "match": "Welche Dauerauftraege und Abos fehlen mir noch? Ich schick dir dafuer meinen N26-Export.",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Welche Dauerauftraege und Abos fehlen mir noch? Ich schick dir dafuer meinen N26-Export." } }
+    ],
+    "final": "Der Buchhalter schaut sich den Export an."
   }
 ]

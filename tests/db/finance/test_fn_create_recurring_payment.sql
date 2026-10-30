@@ -160,6 +160,36 @@ BEGIN
       RAISE EXCEPTION 'FAIL [7c Ausgabe -> neutral, nichts]: %', v_r; END IF;
     RAISE NOTICE 'PASS [7 Spar-Deckung: Zuwendung -> gedeckt; Ausgabe macht das Konto unbestimmbar -> still; anderes Konto -> nichts]';
   END;
+
+  -- TEST 8 ("Import zuerst"): optionale Gegen-IBAN aus dem Vorschlag -> Schluessel fuer den Monats-Check (Stufe A),
+  --   sichtbar auf der Karte; keine echte IBAN -> ok:false ohne Write; leer -> wie bisher ohne Schluessel.
+  DECLARE
+    v_r  JSONB;
+  BEGIN
+    v_r := finance.fn_create_recurring_payment(jsonb_build_object('name','__RPI Miete__','account_id',v_acct,
+             'direction','expense','amount',850,'schedule_unit','month','schedule_day_of_month',1,
+             'first_payment_date',(CURRENT_DATE + 3)::text,'counterparty_iban','de89 3704 0044 0532 0130 00'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT EXISTS (SELECT 1 FROM finance.recurring_payment_keys k
+                      WHERE k.recurring_payment_id = (v_r->>'recurring_payment_id')::int AND k.key_type = 'counterparty_iban'
+                        AND k.key_value = 'DE89370400440532013000' AND k.source = 'user')
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_r->'card_lines') l
+                      WHERE l->>'value' = 'finance.note.recurring_iban_key' AND l->'params'->>'iban' = 'DE89370400440532013000') THEN
+      RAISE EXCEPTION 'FAIL [8a IBAN -> Schluessel + Kartenzeile]: %', v_r; END IF;
+    v_r := finance.fn_create_recurring_payment(jsonb_build_object('name','__RPI Falsch__','account_id',v_acct,
+             'direction','expense','amount',5,'schedule_unit','month','first_payment_date',(CURRENT_DATE + 3)::text,
+             'counterparty_iban','DE00370400440532013000'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' IS NULL
+       OR EXISTS (SELECT 1 FROM finance.recurring_payments WHERE name = '__RPI Falsch__') THEN
+      RAISE EXCEPTION 'FAIL [8b falsche IBAN -> ok:false ohne Write]: %', v_r; END IF;
+    v_r := finance.fn_create_recurring_payment(jsonb_build_object('name','__RPI Leer__','account_id',v_acct,
+             'direction','expense','amount',5,'schedule_unit','month','first_payment_date',(CURRENT_DATE + 3)::text,
+             'counterparty_iban',''));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+       OR EXISTS (SELECT 1 FROM finance.recurring_payment_keys k WHERE k.recurring_payment_id = (v_r->>'recurring_payment_id')::int) THEN
+      RAISE EXCEPTION 'FAIL [8c leere IBAN -> ohne Schluessel]: %', v_r; END IF;
+    RAISE NOTICE 'PASS [8 Gegen-IBAN -> Schluessel + Kartenzeile; falsche IBAN abgelehnt]';
+  END;
 END $$;
 
 ROLLBACK;

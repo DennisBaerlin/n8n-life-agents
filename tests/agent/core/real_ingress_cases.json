@@ -425,7 +425,7 @@
     "notes": "Leeres Transkript = {ok:false, voice_empty}: der Absender bekommt die Wiederholungs-Bitte, 'Voice outage?' laesst das Owner-Gate aus (sonst verbraucht eine stille Aufnahme die 1x/Tag-Ausfallmeldung). Braucht Gemini-Credential wie ri22b. Deterministisch, kein LLM."
   },
   {
-    "id": "ri13e",
+    "id": "ri13g",
     "name": "Manipulierte Knopf-Daten (onboarding:career:<Freitext>) -> der Freitext erreicht den Agent-Auftrag NICHT",
     "kind": "node_ran",
     "update": "callback",
@@ -438,7 +438,7 @@
     "notes": "callback_data ist client-seitig frei waehlbar (Bot-API CallbackQuery.data). Der Paket-Arm uebernimmt split[2] nur, wenn es wie ein section_key aussieht (^[a-z][a-z0-9_]{0,39}$); sonst neutraler Task (erster offener Abschnitt). Asserted am task-Feld von 'Build Agent Input' im career-SUB: der Freitext fehlt."
   },
   {
-    "id": "ri13f",
+    "id": "ri13h",
     "name": "Unbekanntes Onboarding-Paket-Glied (onboarding:zzz:x) -> wird quittiert statt ins Leere zu laufen",
     "kind": "node_ran",
     "update": "callback",

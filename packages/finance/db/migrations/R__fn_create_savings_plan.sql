@@ -19,7 +19,8 @@
 --   positiv, aus der GENERATED-Spalte), schedule_unit/schedule_interval/schedule_day_of_month (gespeichert),
 --   schedule_days ("2, 9, 16, 23" oder null), calendar_learned (nur wenn der Depot-Kalender neu gesetzt wurde),
 --   effective {beneficiary_person_id}} + optional savings_squeeze (fn_savings_squeeze_fold; erster Abbuchungstag in
---   der Zukunft -> erst der Cron).
+--   der Zukunft -> erst der Cron) + optional savings_funding (fn_savings_funding_fold: Deckung des Abbuchungskontos
+--   NACH dem Write, Frage nach der Geldquelle bei einer Luecke); card_lines um die Zeile „Danach ..." ergaenzt.
 --   Korrigierbar (Depot nicht gefunden, Typ-Mismatch, Duplikat, amount<=0, asset_class-Format, Rhythmus passt nicht
 --   zum Depot-Kalender (+ next_possible_date), Kalender unbekannt (needs_calendar)) -> {ok:false, reason} OHNE Write
 --   (kein RAISE -> kein Owner-Alert).
@@ -39,6 +40,7 @@ DECLARE
     v_asset_cls   TEXT              := NULLIF(p->>'asset_class', '');  -- Phase L WS-6: Allokations-Block-key (vererbt)
     v_depot_id    INT;
     v_settle_id   INT;
+    v_fold        JSONB;
     v_depot_type  finance.account_type;
     v_plan_id     INT;
     v_rp_id       INT;
@@ -177,7 +179,10 @@ BEGIN
     )
     RETURNING id INTO v_plan_id;
 
-    RETURN jsonb_build_object(
+    -- Woher kommt das Geld? Deckung des Abbuchungskontos NACH dem Write (Kartenzeile + gelatchte Frage)
+    v_fold := finance.fn_savings_funding_fold(ARRAY[v_settle_id], true);
+
+    RETURN finance.fn_merge_fold(jsonb_build_object(
         'ok',                    true,
         'savings_plan_id',       v_plan_id,
         'recurring_payment_id',  v_rp_id,
@@ -195,6 +200,7 @@ BEGIN
             THEN jsonb_build_object('calendar_learned',
                      (SELECT string_agg(e, ', ') FROM jsonb_array_elements_text(v_sched->'calendar') e))
             ELSE '{}'::jsonb END
-    || finance.fn_savings_squeeze_fold();   -- neuer Sparplan kann das Girokonto leeren (gelatchter Sofort-Hinweis)
+    || finance.fn_savings_squeeze_fold(),  -- neuer Sparplan kann das Girokonto leeren (gelatchter Sofort-Hinweis)
+    v_fold);                               -- savings_funding; Kartenzeilen hinter die eigenen (fn_merge_fold)
 END;
 $$;

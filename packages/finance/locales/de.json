@@ -886,5 +886,13 @@
   "finance.cron.remind_interest.on_toast": "Zins-Erinnerung an",
   "finance.cron.remind_interest.off_toast": "Zins-Erinnerung aus",
   "finance.cron.remind_interest.on_message": "Zins-Erinnerung an: Wird eine Zinsgutschrift fällig, frage ich dich, ob ich sie buchen soll.",
-  "finance.cron.remind_interest.off_message": "Zins-Erinnerung aus: Zinsgutschriften buchst du jetzt selbst, oder sie kommen über den Kontoauszug."
+  "finance.cron.remind_interest.off_message": "Zins-Erinnerung aus: Zinsgutschriften buchst du jetzt selbst, oder sie kommen über den Kontoauszug.",
+  "finance.note.funding_ok": "Danach ist {account} gedeckt – rein {in}, raus {out} im Monat.",
+  "finance.note.funding_ok_drain": "Danach ist {account} gedeckt – es baut {drain} im Monat ab, tiefster Stand {min} am {date}.",
+  "finance.note.funding_until": "Danach reicht das Geld auf {account} bis {date} – rein {in}, raus {out} im Monat.",
+  "finance.note.funding_gap": "Danach fehlt Geld auf {account} ab {date} – rein {in}, raus {out} im Monat.",
+  "finance.note.funding_timing": "Danach kommt das Geld auf {account} zu spät: Es fehlt ab {date}, tiefster Stand {min} am {min_date}. Rein und raus sind gleich, der Eingang kommt aber erst nach der Abbuchung.",
+  "finance.note.funding_ok_plain": "Danach ist {account} gedeckt.",
+  "finance.note.funding_until_date": "Danach reicht das Geld auf {account} bis {date}.",
+  "finance.note.funding_gap_date": "Danach fehlt Geld auf {account} ab {date}."
 }

@@ -782,6 +782,36 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw -> fn_create_savings_plan (Inhaber + Name ueber core.fn_household_persons)]';
 
+  -- (4c4) Woher kommt das Geld? Die ganze Kette unter finance_rw: fn_create_savings_plan -> fn_savings_funding_fold ->
+  --       fn_funding_accounts / fn_account_funding (Alltagsausgaben aus dem Auszug) / core.fn_config_get /
+  --       core.fn_should_notify (Latch). Konto mit Miete + Auszug (Alltagsausgaben geschaetzt) und Luecke -> Frage.
+  DECLARE v_res JSONB; v_set INT; BEGIN
+    SET LOCAL ROLE finance_rw;
+    INSERT INTO finance.accounts (name, account_type, currency, status)
+    VALUES ('__rp_sf_settle__', 'cash', 'EUR', 'active') RETURNING id INTO v_set;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_set, 500, CURRENT_DATE - 40, 'other');
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__rp_sf_miete__', v_set, -100, 'month', CURRENT_DATE + 4, CURRENT_DATE + 4);
+    INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                         line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+    VALUES (v_set, CURRENT_DATE - 64, CURRENT_DATE - 35, 800, 500, 'EUR', 5, 0, -300, 0, NULL);
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__rp_sf_depot__', 'stocks_depot', 'EUR', 'active', v_set);
+    v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__rp_sf_plan__','depot_name','__rp_sf_depot__',
+      'isin','IE00B5BMR087','symbol','CSPX','security_name','Beispiel','amount',100,'schedule_unit','month',
+      'first_payment_date', (CURRENT_DATE + 5)::text));
+    RESET ROLE;
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT (v_res->'savings_funding'->'accounts'->0->>'asked')::boolean
+       OR v_res->'savings_funding'->>'note' NOT LIKE '%everyday%' THEN
+      RAISE EXCEPTION 'FAIL [finance_rw -> savings_funding-Kette]: %', v_res; END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+    RAISE EXCEPTION 'FAIL [finance_rw -> savings_funding-Kette]: %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [finance_rw -> fn_create_savings_plan mit Geldquellen-Frage (Alltagsausgaben + Latch)]';
+
   -- ===== (4d) WS-3a: finance_ro erreicht die Personen-Rolle NUR ueber das Core-DEFINER-Fenster =====
   -- core.fn_household_persons() ist das publizierte Lesefenster (Rollen-Aufloesung fuer den FIRE-Pool-
   -- Ausschluss + Eltern-Scope-Cashflow). finance_ro hat EXECUTE (fn_provision_package_roles), aber KEIN

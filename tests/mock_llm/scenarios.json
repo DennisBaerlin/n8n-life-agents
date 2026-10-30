@@ -1146,5 +1146,37 @@
       { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.5,\"price_per_share\":540.2,\"transaction_date\":\"2026-06-03\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.4,\"price_per_share\":552.8,\"transaction_date\":\"2026-06-10\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Trade Republic Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.45,\"price_per_share\":548.1,\"transaction_date\":\"2026-06-17\"}]" } }
     ],
     "final": "Drei Kaeufe zum Import vorbereitet."
+  },
+  {
+    "_comment": "tc90 Geldquelle Sparplan (savings_funding, 2026-10-30), Antwort 1: eigene Ueberweisung -> tool_create_recurring_transfer auf das Sparplan-Konto. tc93 (bewusster Abbau) ist ein NULL-Case -> kein Szenario.",
+    "match": "Ich ueberweise ab dem 2027-01-01 jeden Monat 150 Euro vom DKB Giro dorthin",
+    "calls": [
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag VWCE", "from_account_name": "DKB Giro", "to_account_name": "Trade Republic Cash Girokonto", "amount": 150, "schedule_unit": "month", "first_payment_date": "2027-01-01" } }
+    ],
+    "final": "Der Dauerauftrag wurde nicht angelegt."
+  },
+  {
+    "_comment": "tc91 Geldquelle Sparplan, Antwort 2: Zahlung von ausserhalb (Oma) -> tool_create_recurring_payment income auf dem Sparplan-Konto.",
+    "match": "Oma Erika zahlt ab dem 2027-01-01 jeden Monat 50 Euro",
+    "calls": [
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Zuwendung Oma Erika", "account_name": "Trade Republic Cash Girokonto", "direction": "income", "amount": 50, "schedule_unit": "month", "first_payment_date": "2027-01-01" } }
+    ],
+    "final": "Die Einzahlung wurde nicht angelegt."
+  },
+  {
+    "_comment": "tc92 Geldquelle Sparplan, zwei Quellen: zuerst NUR der Dauerauftrag (nacheinander, nie parallel).",
+    "match": "gehen jeden Monat 100 Euro per Dauerauftrag vom DKB Giro",
+    "calls": [
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag VWCE", "from_account_name": "DKB Giro", "to_account_name": "Trade Republic Cash Girokonto", "amount": 100, "schedule_unit": "month", "first_payment_date": "2027-01-01" } }
+    ],
+    "final": "Der Dauerauftrag wurde nicht angelegt; die Einzahlung von Oma Erika habe ich deshalb noch nicht eingetragen."
+  },
+  {
+    "_comment": "oc38 Geldquelle Sparplan: regelmaessige Einzahlung von ausserhalb des Haushalts -> Router ruft den Buchhalter.",
+    "match": "Oma Erika ueberweist ab Januar jeden Monat 50 Euro",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Oma Erika ueberweist ab Januar jeden Monat 50 Euro auf das Trade Republic Cash Girokonto, das ist fuer den Sparplan." } }
+    ],
+    "final": "Der Buchhalter traegt die Einzahlung ein."
   }
 ]

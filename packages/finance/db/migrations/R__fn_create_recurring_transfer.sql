@@ -14,8 +14,9 @@
 --   valid_from (opt, default first_payment_date), valid_to (opt; LETZTER gueltiger Tag, inklusiv -> gespeichert
 --   wird der Folgetag, Konvention [valid_from, valid_to) exklusiv), notes (opt).
 --   valid_from der Zahlung = spaetester Eroeffnungssaldo-Stichtag beider Konten (fn_recurring_valid_from).
---   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent}. Korrigierbar
---   (amount<=0 / Quelle==Ziel) -> {ok:false, reason} OHNE Write.
+--   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional savings_funding
+--   (fn_savings_funding_fold, Bericht ohne Frage: Spar-Deckung von Quelle UND Ziel nach dem Write, je Deckungs-Konto
+--   eine Kartenzeile „Danach ..."). Korrigierbar (amount<=0 / Quelle==Ziel) -> {ok:false, reason} OHNE Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_recurring_transfer(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -33,6 +34,7 @@ DECLARE
     v_me       NUMERIC;
     v_nc       JSONB;
     v_dates    JSONB;
+    v_fold     JSONB;
 BEGIN
     -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from', 'valid_to']);
@@ -71,7 +73,13 @@ BEGIN
 
     SELECT monthly_equivalent INTO v_me FROM finance.recurring_payments WHERE id = v_rp_id;
 
-    RETURN jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                              'card_lines', v_nc->'card_lines', 'effective', v_dates->'resolved');
+    -- Spar-Deckung beider Konten nach dem Write (Zubringer fuellt das Ziel, ein Abzug kann die Quelle leeren);
+    -- „gedeckt" berichtet nur das Ziel (Geldeingang), die Quelle nur bei einer Luecke
+    v_fold := finance.fn_savings_funding_fold(ARRAY[v_from, v_to], false, false, ARRAY[v_to]);
+
+    RETURN finance.fn_merge_fold(
+        jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
+                           'card_lines', v_nc->'card_lines', 'effective', v_dates->'resolved'),
+        v_fold);
 END;
 $$;

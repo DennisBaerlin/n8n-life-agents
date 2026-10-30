@@ -34,7 +34,7 @@ function Build-SetSavingsPlan {
     # - nur notes: IN-PLACE notes-Update
     $wg = New-FnWriteGate -Fn 'finance.fn_set_savings_plan' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Set plan (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
         -Params ([ordered]@{
             savings_plan_name = '$(''Start'').item.json.savings_plan_name'
             new_amount        = '$(''Start'').item.json.new_amount'
@@ -96,6 +96,7 @@ function Build-SetSavingsPlan {
         ,@('recurring_payment_id', "={{ `$('Set plan (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('split', "={{ `$('Set plan (atomic)').item.json.split }}", 'boolean')
         ,@('savings_squeeze', "={{ `$('Set plan (atomic)').item.json.savings_squeeze }}", 'string')
+        ,@('savings_funding', "={{ `$('Set plan (atomic)').item.json.savings_funding }}", 'string')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
@@ -104,7 +105,7 @@ function Build-SetSavingsPlan {
 
     $stickyFn = Build-Sticky 'fn_set_savings_plan: Split vs. In-Place + Anlageklasse' @(1760, -240) `
         'Betrag/Kadenz = Validity-Split; Status/Notiz/Anlageklasse = In-Place' `
-        'new_amount ODER schedule_unit/schedule_interval (WS-B Stufe 2: Kadenz editierbar) -> Validity-Split: altes RP beendet (valid_to=Stichtag), neues RP ab Stichtag (nicht-genannte Betrags-/Kadenz-Felder aus der alten Zeile übernommen -> reine Kadenz-Änderung erhält den Betrag), plan.recurring_payment_id aktualisiert. Kadenzwechsel über den Depot-Kalender (fn_resolve_plan_schedule, wie beim Anlegen): Bank mit festen Monatstagen -> Tage statt 7-Tage-Abstand, Stichtag muss ein Kalendertag sein (sonst ok:false + nächster Tag); depot_execution_days korrigiert den Kalender am Depot; ein reiner Betrags-Split erbt die Tage. status paused/active -> IN-PLACE auf plan + kaskadierend auf RP. Nur notes -> IN-PLACE notes. Phase L WS-6: asset_class ($fromAI, Format-Verstoss -> {ok:false}) = IN-PLACE-Korrektur, orthogonal (kein Split); vererbt sich ab der nächsten Ausführung. fn lehnt new_amount<=0 und Stichtag<=valid_from ab ({ok:false}). Ändert der Write die laufende Rate (Split/Reaktivierung ab heute, Status-Wechsel), liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen < 0 -> Note in savings_squeeze (gelatcht 24 h, sonst leer; Split mit künftigem Stichtag oder reine Notiz-/Anlageklasse-Edits -> keine Note). Bookkeeper relayed.' 250 640
+        'new_amount ODER schedule_unit/schedule_interval (WS-B Stufe 2: Kadenz editierbar) -> Validity-Split: altes RP beendet (valid_to=Stichtag), neues RP ab Stichtag (nicht-genannte Betrags-/Kadenz-Felder aus der alten Zeile übernommen -> reine Kadenz-Änderung erhält den Betrag), plan.recurring_payment_id aktualisiert. Kadenzwechsel über den Depot-Kalender (fn_resolve_plan_schedule, wie beim Anlegen): Bank mit festen Monatstagen -> Tage statt 7-Tage-Abstand, Stichtag muss ein Kalendertag sein (sonst ok:false + nächster Tag); depot_execution_days korrigiert den Kalender am Depot; ein reiner Betrags-Split erbt die Tage. status paused/active -> IN-PLACE auf plan + kaskadierend auf RP. Nur notes -> IN-PLACE notes. Phase L WS-6: asset_class ($fromAI, Format-Verstoss -> {ok:false}) = IN-PLACE-Korrektur, orthogonal (kein Split); vererbt sich ab der nächsten Ausführung. fn lehnt new_amount<=0 und Stichtag<=valid_from ab ({ok:false}). Ändert der Write die laufende Rate (Split/Reaktivierung ab heute, Status-Wechsel), liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen < 0 -> Note in savings_squeeze (gelatcht 24 h, sonst leer; Split mit künftigem Stichtag oder reine Notiz-/Anlageklasse-Edits -> keine Note). An denselben Stellen liest fn_savings_funding_fold die Spar-Deckung des Abbuchungskontos (fn_account_funding, auch für künftige Stichtage): Kartenzeile "Danach ..." schon im Probelauf (künftiger Stichtag: nur Zustand + Datum) + bei einer Lücke die gelatchte Frage-Note savings_funding (Reaktivieren fragt, Pausieren berichtet nur). Bookkeeper relayed.' 250 720
 
     $nodes = @($trig, $readCur, $found.If, $found.Err, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn)

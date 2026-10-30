@@ -886,5 +886,13 @@
   "finance.cron.remind_interest.on_toast": "이자 알림 켜짐",
   "finance.cron.remind_interest.off_toast": "이자 알림 꺼짐",
   "finance.cron.remind_interest.on_message": "이자 알림 켜짐: 이자 입금 시기가 되면 기록할지 여쭤볼게요.",
-  "finance.cron.remind_interest.off_message": "이자 알림 꺼짐: 이제 이자 입금은 직접 기록하시거나 계좌 명세서로 반영돼요."
+  "finance.cron.remind_interest.off_message": "이자 알림 꺼짐: 이제 이자 입금은 직접 기록하시거나 계좌 명세서로 반영돼요.",
+  "finance.note.funding_ok": "이후 {account} 잔액 충분 – 월 입금 {in}, 출금 {out}.",
+  "finance.note.funding_ok_drain": "이후 {account} 잔액 충분 – 월 {drain} 감소, 최저 잔액 {min} ({date}).",
+  "finance.note.funding_until": "이후 {account} 잔액은 {date}까지 충분 – 월 입금 {in}, 출금 {out}.",
+  "finance.note.funding_gap": "이후 {account} 잔액이 {date}부터 부족 – 월 입금 {in}, 출금 {out}.",
+  "finance.note.funding_timing": "이후 {account}에 돈이 늦게 들어와요: {date}부터 부족, 최저 잔액 {min} ({min_date}). 입금과 출금은 같지만 입금이 출금보다 늦어요.",
+  "finance.note.funding_ok_plain": "이후 {account} 잔액 충분.",
+  "finance.note.funding_until_date": "이후 {account} 잔액은 {date}까지 충분.",
+  "finance.note.funding_gap_date": "이후 {account} 잔액이 {date}부터 부족."
 }

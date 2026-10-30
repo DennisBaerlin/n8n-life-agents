@@ -303,5 +303,13 @@
     "followup_agent": "agent.finance_advisor",
     "expected_route": "finance_advisor",
     "notes": "Router-Regel 2a: die Antwort auf die Wunsch-Frage des Beraters (ohne Bindung koennte sie als Buchungs-/Sparziel-Auftrag beim Buchhalter landen)."
+  },
+  {
+    "id": "oc38",
+    "name": "Zahlung von ausserhalb fuer einen Sparplan (Oma zahlt ein) -> agent.finance",
+    "task": "Oma Erika ueberweist ab Januar jeden Monat 50 Euro auf das Trade Republic Cash Girokonto, das ist fuer den Sparplan.",
+    "chat_id": "test_orc38",
+    "expected_route": "finance",
+    "notes": "Geldquellen-Frage (savings_funding, 2026-10-30): eine regelmaessige Einzahlung von ausserhalb des Haushalts ist eine Buchhalter-Erfassung, keine Beratung und kein Familien-/Kontext-Eintrag. Erfundene Person."
   }
 ]

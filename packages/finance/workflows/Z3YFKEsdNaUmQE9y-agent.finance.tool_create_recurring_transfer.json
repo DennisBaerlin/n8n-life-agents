@@ -339,7 +339,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_equivalent\u0027)::numeric AS monthly_equivalent FROM finance.fn_create_recurring_transfer(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_equivalent\u0027)::numeric AS monthly_equivalent, COALESCE(r-\u003e\u0027savings_funding\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_funding FROM finance.fn_create_recurring_transfer(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, from_account_id: $(\u0027Resolve From\u0027).item.json.id, to_account_id: $(\u0027Resolve To\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, valid_from: $(\u0027Start\u0027).item.json.valid_from, valid_to: $(\u0027Start\u0027).item.json.valid_to, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -579,6 +579,12 @@
                                                                                      "name":  "monthly_equivalent",
                                                                                      "value":  "={{ $(\u0027Create recurring transfer (atomic)\u0027).item.json.monthly_equivalent }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "687e1d20-7f86-5d77-9be8-6597881c766a",
+                                                                                     "name":  "savings_funding",
+                                                                                     "value":  "={{ $(\u0027Create recurring transfer (atomic)\u0027).item.json.savings_funding }}",
+                                                                                     "type":  "string"
                                                                                  }
                                                                              ]
                                                          },
@@ -597,9 +603,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_create_recurring_transfer + Recurring-Scheduler**\n\nfn_create_recurring_transfer legt EINE recurring_payments-Zeile an (INSERT via gemeinsamen Helper fn_add_recurring_payment, amount Quell-seitig NEGATIV) und setzt target_account_id per Folge-UPDATE (eine Transaktion, atomar). monthly_equivalent ist GENERATED. target_account_id != NULL markiert den Transfer -\u003e monthly_cashflow_overview filtert ihn raus (cashflow-neutral, kein Doppelzählen). Gebucht wird je Fälligkeit ZWEI-beinig (Soll -/Haben +) über den bestehenden Recurring-Scheduler: fn_book_recurring_occurrence delegiert für Transfer-rps an fn_book_recurring_transfer.",
+                                         "content":  "## DB-Automatik\n**fn_create_recurring_transfer + Recurring-Scheduler**\n\nfn_create_recurring_transfer legt EINE recurring_payments-Zeile an (INSERT via gemeinsamen Helper fn_add_recurring_payment, amount Quell-seitig NEGATIV) und setzt target_account_id per Folge-UPDATE (eine Transaktion, atomar). monthly_equivalent ist GENERATED. target_account_id != NULL markiert den Transfer -\u003e monthly_cashflow_overview filtert ihn raus (cashflow-neutral, kein Doppelzählen). Gebucht wird je Fälligkeit ZWEI-beinig (Soll -/Haben +) über den bestehenden Recurring-Scheduler: fn_book_recurring_occurrence delegiert für Transfer-rps an fn_book_recurring_transfer. Nach dem Write liest fn_savings_funding_fold die Spar-Deckung von Quelle UND Ziel (fn_account_funding, nur Konten mit Sparplan oder als Dauerauftrags-Ziel): je Konto eine Kartenzeile \"Danach ...\" schon im Probelauf + Bericht-Note savings_funding (gedeckt / es fehlen noch X), ohne Frage. Bookkeeper relayed.",
                                          "height":  220,
-                                         "width":  460,
+                                         "width":  560,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",

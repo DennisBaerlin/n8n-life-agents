@@ -251,7 +251,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_equivalent\u0027)::numeric AS monthly_equivalent, COALESCE(r-\u003e\u0027cashflow_coverage\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS cashflow_coverage FROM finance.fn_create_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_equivalent\u0027)::numeric AS monthly_equivalent, COALESCE(r-\u003e\u0027cashflow_coverage\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS cashflow_coverage, COALESCE(r-\u003e\u0027savings_funding\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_funding FROM finance.fn_create_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, account_id: $(\u0027Resolve Account\u0027).item.json.id, direction: $(\u0027Start\u0027).item.json.direction, amount: $(\u0027Start\u0027).item.json.amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, valid_from: $(\u0027Start\u0027).item.json.valid_from, valid_to: $(\u0027Start\u0027).item.json.valid_to, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -497,6 +497,12 @@
                                                                                      "name":  "cashflow_coverage",
                                                                                      "value":  "={{ $(\u0027Create recurring payment (atomic)\u0027).item.json.cashflow_coverage }}",
                                                                                      "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f3969bad-93a9-55ad-9bca-ef9659e4446c",
+                                                                                     "name":  "savings_funding",
+                                                                                     "value":  "={{ $(\u0027Create recurring payment (atomic)\u0027).item.json.savings_funding }}",
+                                                                                     "type":  "string"
                                                                                  }
                                                                              ]
                                                          },
@@ -515,9 +521,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**GENERATED: monthly_equivalent + Event-Fold cashflow_coverage**\n\nfn_create_recurring_payment leitet das Vorzeichen aus direction ab (income=+, expense=-) und schreibt die Zeile via gemeinsamen Helper fn_add_recurring_payment. monthly_equivalent ist GENERATED (read-only, normalisiert auf Monat) und erscheint automatisch im Cashflow-View. Phase L WS-3 / Audit Paket 3: nach dem Write liest die fn monthly_cashflow_summary.monthly_free (frei nach Konsum + Kreditraten, Sparraten zählen nicht); frei\u003c0 -\u003e Note in cashflow_coverage (sonst leer, COALESCE -\u003e null-sicher). Der Bookkeeper relayed sie nach dem Erfolg (advisory, kein Block).",
+                                         "content":  "## DB-Automatik\n**GENERATED: monthly_equivalent + Event-Fold cashflow_coverage**\n\nfn_create_recurring_payment leitet das Vorzeichen aus direction ab (income=+, expense=-) und schreibt die Zeile via gemeinsamen Helper fn_add_recurring_payment. monthly_equivalent ist GENERATED (read-only, normalisiert auf Monat) und erscheint automatisch im Cashflow-View. Phase L WS-3 / Audit Paket 3: nach dem Write liest die fn monthly_cashflow_summary.monthly_free (frei nach Konsum + Kreditraten, Sparraten zählen nicht); frei\u003c0 -\u003e Note in cashflow_coverage (sonst leer, COALESCE -\u003e null-sicher). Der Bookkeeper relayed sie nach dem Erfolg (advisory, kein Block). Zusätzlich liest fn_savings_funding_fold die Spar-Deckung des Kontos, wenn es einen Sparplan bezahlt oder Ziel eines Dauerauftrags ist (z. B. eine Zuwendung der Großeltern auf das Sparplan-Konto): Kartenzeile \"Danach ...\" schon im Probelauf + Bericht-Note savings_funding (gedeckt / es fehlen noch X), ohne Frage.",
                                          "height":  230,
-                                         "width":  470,
+                                         "width":  600,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",

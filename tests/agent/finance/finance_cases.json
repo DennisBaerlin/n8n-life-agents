@@ -1013,5 +1013,58 @@
                                },
         "expected_behavior":  "Ruft tool_import_bank_export mit der file_id und dem Kontonamen auf, OHNE nach einem Kontostand zu fragen (der Bondora-Auszug druckt seinen Endstand) - nicht tool_reconcile_bank_statement oder tool_extract_finance_document. Meldet das Tool account_unknown, fragt der Agent, ob das Konto angelegt werden soll, und erfindet keine Buchung.",
         "notes":  "Bank-Import-Modul Paket 2. Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_084.xlsx (erfundene Werte, Bondora-Form). Das Tool liest die Datei ueber Extract From File (xlsx-Zweig von tool_fetch_telegram_file) und fn_bank_export_normalize; ohne Fixture-Konto antwortet fn_statement_prepare account_unknown (kein Write). Ein Fehler im Excel-Zweig waere ein Tool-Fehler -> FAIL."
+    },
+    {
+        "id":  "tc90",
+        "name":  "Geldquelle Sparplan: eigene Ueberweisung -> Dauerauftrag auf das Sparplan-Konto (create_recurring_transfer)",
+        "task":  "Fuer meinen VWCE Bestandsplan reicht das Geld auf dem Trade Republic Cash Girokonto nicht. Ich ueberweise ab dem 2027-01-01 jeden Monat 150 Euro vom DKB Giro dorthin.",
+        "chat_id":  "test_tc90",
+        "expected_tool":  "tool_create_recurring_transfer",
+        "expected_tool_args":  {
+                                   "from_account_name":  "DKB Giro",
+                                   "to_account_name":  "Trade Republic Cash Girokonto",
+                                   "amount":  150,
+                                   "schedule_unit":  "month"
+                               },
+        "expected_behavior":  "Ruft tool_create_recurring_transfer vom DKB Giro auf das Trade Republic Cash Girokonto mit amount=150, schedule_unit='month' und first_payment_date='2027-01-01' auf - nicht tool_create_recurring_payment (beide Konten gehoeren dem Haushalt) und keinen Sparplan-Write. Rechnet keinen Fehlbetrag selbst aus.",
+        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 1. Der Routing-Tier lehnt die Karte ab, die Frage selbst (Fold nach ok:true) ist hier nicht pruefbar; DB-Test test_fn_savings_funding_fold + E2E decken sie. Datum fest in der Zukunft; sobald 2027-01-01 naeher als ~1 Monat rueckt, nachziehen."
+    },
+    {
+        "id":  "tc91",
+        "name":  "Geldquelle Sparplan: Zahlung von ausserhalb (Oma) -> Einnahme auf dem Sparplan-Konto (create_recurring_payment)",
+        "task":  "Oma Erika zahlt ab dem 2027-01-01 jeden Monat 50 Euro fuer den VWCE Bestandsplan auf das Trade Republic Cash Girokonto ein.",
+        "chat_id":  "test_tc91",
+        "expected_tool":  "tool_create_recurring_payment",
+        "expected_tool_args":  {
+                                   "account_name":  "Trade Republic Cash Girokonto",
+                                   "direction":  "income",
+                                   "amount":  50,
+                                   "schedule_unit":  "month"
+                               },
+        "expected_behavior":  "Ruft tool_create_recurring_payment mit account_name='Trade Republic Cash Girokonto', direction='income', amount=50, schedule_unit='month', first_payment_date='2027-01-01' auf (Name z. B. Zuwendung Oma Erika). Kein Dauerauftrag zwischen eigenen Konten (Oma gehoert nicht zum Haushalt), kein Sparziel und kein Familien-Eintrag.",
+        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 2: externer Zahler = Eingangs-rp ohne Quellkonto (fn_account_flows zaehlt sie als Zufluss). Erfundene Person ausserhalb des Haushalts. Datum fest; nachziehen wie tc90."
+    },
+    {
+        "id":  "tc92",
+        "name":  "Geldquelle Sparplan: zwei Quellen -> nacheinander, zuerst der Dauerauftrag",
+        "task":  "Fuer den VWCE Bestandsplan: Ab dem 2027-01-01 gehen jeden Monat 100 Euro per Dauerauftrag vom DKB Giro aufs Trade Republic Cash Girokonto, und Oma Erika zahlt dort ab demselben Tag jeden Monat 50 Euro ein.",
+        "chat_id":  "test_tc92",
+        "expected_tool":  "tool_create_recurring_transfer",
+        "expected_tool_args":  {
+                                   "from_account_name":  "DKB Giro",
+                                   "to_account_name":  "Trade Republic Cash Girokonto",
+                                   "amount":  100
+                               },
+        "expected_behavior":  "Fuehrt die beiden Eintraege NACHEINANDER aus, nie zwei Write-Tools im selben Schritt: zuerst tool_create_recurring_transfer (DKB Giro -> Trade Republic Cash Girokonto, 100, monatlich). Wird diese Karte abgelehnt (cancelled), meldet der Agent den Abbruch; ruft er danach noch tool_create_recurring_payment (income, 50, Trade Republic Cash Girokonto) in einem eigenen Schritt auf, ist das ebenfalls korrekt. FAIL bei zwei parallelen Tool-Aufrufen oder einer zusammengelegten Zahlung ueber 150.",
+        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Kombination: nacheinander, damit die zweite Karte die Deckung nach dem ersten Write zeigt (Plan-Review Befund 8). Erfundene Person. Datum fest; nachziehen wie tc90."
+    },
+    {
+        "id":  "tc93",
+        "name":  "Geldquelle Sparplan: bewusster Abbau aus dem Guthaben -> kein Write",
+        "task":  "Der VWCE Bestandsplan darf ruhig aus dem Guthaben auf dem Trade Republic Cash Girokonto laufen, bis es aufgebraucht ist. Da kommt nichts mehr dazu.",
+        "chat_id":  "test_tc93",
+        "expected_tool":  null,
+        "expected_behavior":  "Ruft KEIN Write-Tool auf (kein Dauerauftrag, keine Einnahme, keine Sparplan-Aenderung). Bestaetigt kurz in Alltagssprache, dass nichts angelegt wird; darf sagen, dass die Uebersicht (Seite Ziele) zeigt, bis wann das Geld reicht, und darf das Datum per Datenbank-Abfrage nennen, rechnet es aber nicht selbst aus.",
+        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 3: gewollter Abbau ist keine Luecke und wird nicht markiert (arch-challenge 2026-10-29)."
     }
 ]

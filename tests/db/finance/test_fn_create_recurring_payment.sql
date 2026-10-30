@@ -128,6 +128,38 @@ BEGIN
                     WHERE l->>'kind' = 'note' AND l->>'value' = 'finance.note.similar_recurring_payment') THEN
     RAISE EXCEPTION 'FAIL [6b Entitaets-Zahlung gleichen Namens -> nur Hinweis]: %', v_r; END IF;
   RAISE NOTICE 'PASS [6 Namenssperre: laufend frei -> ok:false, Entitaets-Zahlung -> Karten-Hinweis]';
+
+  -- [7] Spar-Deckung (fn_savings_funding_fold, Bericht): Zuwendung von aussen (Einnahme ohne Quellkonto) auf das Konto
+  --     eines Sparplans -> Kartenzeile „gedeckt" + Bericht ohne Frage; eine Zahlung auf ein Konto ohne Sparplan -> nichts
+  DECLARE v_s7 INT; BEGIN
+    v_s7 := (finance.fn_create_account('{"name":"__test_rpf_settle__","account_type":"cash","opening_balance":100}'::jsonb)->>'account_id')::int;
+    PERFORM finance.fn_create_account(jsonb_build_object('name','__test_rpf_depot__','account_type','stocks_depot','settlement_id', v_s7));
+    v_r := finance.fn_create_savings_plan(jsonb_build_object('name','__test_rpf_plan__','depot_name','__test_rpf_depot__',
+      'isin','IE00B3RBWM25','symbol','VWCE','security_name','Beispiel','amount',200,'schedule_unit','month',
+      'first_payment_date', (CURRENT_DATE + 5)::text));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [7 Setup]: %', v_r; END IF;
+    v_r := finance.fn_create_recurring_payment(jsonb_build_object('name','__RPF Zuwendung Oma__','account_id',v_s7,
+             'direction','income','amount',200,'schedule_unit','month','first_payment_date',(CURRENT_DATE + 1)::text));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_r->'card_lines') l WHERE l->>'value' = 'finance.note.funding_ok')
+       OR v_r->'savings_funding'->'accounts'->0->>'state' <> 'ok'
+       OR (v_r->'savings_funding'->'accounts'->0->>'monthly_in')::numeric <> 200
+       OR (v_r->'savings_funding'->'accounts'->0->>'asked')::boolean
+       OR v_r->'savings_funding'->>'note' LIKE '%ASK%' THEN
+      RAISE EXCEPTION 'FAIL [7a Zuwendung -> gedeckt]: %', v_r; END IF;
+    v_r := finance.fn_create_recurring_payment(jsonb_build_object('name','__RPF Abo__','account_id',v_acct,
+             'direction','expense','amount',5,'schedule_unit','month','first_payment_date',(CURRENT_DATE + 1)::text));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r ? 'savings_funding' THEN
+      RAISE EXCEPTION 'FAIL [7b Konto ohne Sparplan -> kein Bericht]: %', v_r; END IF;
+    -- [7c] Ausgabe (keine Sparrate) auf dem Sparplan-Konto: das Konto wird Ausgabenkonto, ohne Auszug sind seine
+    --      Alltagsausgaben unbekannt -> neutral -> weder Kartenzeile noch Bericht (die App zeigt „nicht ermittelbar")
+    v_r := finance.fn_create_recurring_payment(jsonb_build_object('name','__RPF Gebuehr__','account_id',v_s7,
+             'direction','expense','amount',1,'schedule_unit','year','first_payment_date',(CURRENT_DATE + 30)::text));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r ? 'savings_funding'
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_r->'card_lines') l WHERE l->>'value' LIKE 'finance.note.funding_%') THEN
+      RAISE EXCEPTION 'FAIL [7c Ausgabe -> neutral, nichts]: %', v_r; END IF;
+    RAISE NOTICE 'PASS [7 Spar-Deckung: Zuwendung -> gedeckt; Ausgabe macht das Konto unbestimmbar -> still; anderes Konto -> nichts]';
+  END;
 END $$;
 
 ROLLBACK;

@@ -886,5 +886,13 @@
   "finance.cron.remind_interest.on_toast": "Interest reminder on",
   "finance.cron.remind_interest.off_toast": "Interest reminder off",
   "finance.cron.remind_interest.on_message": "Interest reminder on: when an interest credit is due, I ask whether to book it.",
-  "finance.cron.remind_interest.off_message": "Interest reminder off: you now book interest credits yourself, or they come in with the bank statement."
+  "finance.cron.remind_interest.off_message": "Interest reminder off: you now book interest credits yourself, or they come in with the bank statement.",
+  "finance.note.funding_ok": "Afterwards {account} is covered – {in} in, {out} out per month.",
+  "finance.note.funding_ok_drain": "Afterwards {account} is covered – it draws down {drain} per month, lowest balance {min} on {date}.",
+  "finance.note.funding_until": "Afterwards the money on {account} lasts until {date} – {in} in, {out} out per month.",
+  "finance.note.funding_gap": "Afterwards {account} runs short from {date} – {in} in, {out} out per month.",
+  "finance.note.funding_timing": "Afterwards the money reaches {account} too late: it runs short from {date}, lowest balance {min} on {min_date}. In and out are equal, but the incoming money arrives after the debit.",
+  "finance.note.funding_ok_plain": "Afterwards {account} is covered.",
+  "finance.note.funding_until_date": "Afterwards the money on {account} lasts until {date}.",
+  "finance.note.funding_gap_date": "Afterwards {account} runs short from {date}."
 }

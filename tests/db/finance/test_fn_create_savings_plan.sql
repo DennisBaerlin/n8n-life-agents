@@ -280,6 +280,42 @@ BEGIN
     RAISE NOTICE 'PASS fn_create_savings_plan [11 unbekannte Bank: fragt, dann echte Woche + Kalender {}]';
   END;
 
+  -- TEST 12: Woher kommt das Geld? (fn_savings_funding_fold) -- Konto mit 100, Plan 50/Monat ohne Zufluss -> Luecke:
+  --   Probelauf zeigt Kartenzeile + Frage und verbraucht den Latch nicht; der echte Write fragt (Fehlbetrag 50);
+  --   ein zweiter Plan aufs selbe Wertpapier behaelt den Aehnlich-Hinweis UND bekommt die Kartenzeile; er verschiebt das
+  --   „reicht bis"-Datum (neue Lage) und fragt deshalb erneut.
+  DECLARE v_s12 INT; v_p12 JSONB; BEGIN
+    DELETE FROM core.notification_state WHERE source = 'finance' AND key LIKE 'savings_funding:%';
+    v_s12 := (finance.fn_create_account('{"name":"__test_sp_fund_settle__","account_type":"cash","opening_balance":100}'::jsonb)->>'account_id')::int;
+    PERFORM finance.fn_create_account(jsonb_build_object('name','__test_sp_fund_depot__','account_type','stocks_depot',
+                                                         'settlement_id', v_s12));
+    v_p12 := jsonb_build_object('name','__test_sparplan_fund__','depot_name','__test_sp_fund_depot__',
+      'isin','IE00B3RBWM25','symbol','VWCE','security_name','Beispiel','amount',50,'schedule_unit','month',
+      'first_payment_date', (CURRENT_DATE + 5)::text);
+    v_result := core.fn_dry_run('finance.fn_create_savings_plan(jsonb)'::regprocedure, v_p12);
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_result->'card_lines') l
+                      WHERE l->>'value' IN ('finance.note.funding_gap', 'finance.note.funding_until'))
+       OR NOT (v_result->'savings_funding'->'accounts'->0->>'asked')::boolean THEN
+      RAISE EXCEPTION 'FAIL fn_create_savings_plan [12 Probelauf]: %', v_result; END IF;
+    v_result := finance.fn_create_savings_plan(v_p12);
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true
+       OR (v_result->'savings_funding'->'accounts'->0->>'account_id')::int <> v_s12
+       OR (v_result->'savings_funding'->'accounts'->0->>'monthly_gap')::numeric <> 50
+       OR NOT (v_result->'savings_funding'->'accounts'->0->>'asked')::boolean
+       OR v_result->'savings_funding'->>'note' NOT LIKE '%ASK the user%' THEN
+      RAISE EXCEPTION 'FAIL fn_create_savings_plan [12 Frage nach dem Write]: %', v_result; END IF;
+    v_result := finance.fn_create_savings_plan(v_p12 || '{"name":"__test_sparplan_fund_2__","amount":10}'::jsonb);
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT (v_result->'savings_funding'->'accounts'->0->>'asked')::boolean
+       OR (v_result->'savings_funding'->'accounts'->0->>'monthly_gap')::numeric <> 60
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_result->'card_lines') l WHERE l->>'value' = 'finance.note.similar_entry')
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_result->'card_lines') l
+                      WHERE l->>'value' IN ('finance.note.funding_gap', 'finance.note.funding_until')) THEN
+      RAISE EXCEPTION 'FAIL fn_create_savings_plan [12 zweiter Plan: beide Kartenzeilen, neue Lage fragt]: %', v_result; END IF;
+    RAISE NOTICE 'PASS fn_create_savings_plan [12 Geldquelle: Probelauf ohne Latch, Frage je Lage, Kartenzeilen zusammengefuegt]';
+  END;
+
 END $$;
 
 ROLLBACK;

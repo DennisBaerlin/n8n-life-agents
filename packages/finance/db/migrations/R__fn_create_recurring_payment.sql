@@ -9,7 +9,9 @@
 --   valid_to (opt; LETZTER gueltiger Tag, inklusiv wie vom Nutzer genannt -> gespeichert wird der Folgetag,
 --   Speicher-Konvention [valid_from, valid_to) exklusiv), notes (opt).
 --   valid_from der Zahlung = fn_recurring_valid_from (fruehestens der Eroeffnungssaldo-Stichtag des Kontos).
---   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent}. Korrigierbar
+--   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional cashflow_coverage
+--   + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage: Spar-Deckung des Kontos nach dem Write,
+--   Einnahme wie Ausgabe, z. B. eine Zuwendung von aussen auf das Konto eines Sparplans). Korrigierbar
 --   (direction/amount, schedule_unit unbekannt, Konto nicht buchbar [Depot/Kredit: die Faelligkeit bliebe
 --   sonst ewig offen]) -> {ok:false, reason} OHNE Write.
 -- ============================================================
@@ -33,6 +35,7 @@ DECLARE
     v_cf       JSONB := '{}'::jsonb;   -- Phase Notify: gefaltete cashflow_coverage-Note (nur bei Latch-Flanke)
     v_nc       JSONB;
     v_dates    JSONB;
+    v_fold     JSONB;
 BEGIN
     -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from', 'valid_to']);
@@ -76,8 +79,14 @@ BEGIN
     -- ist (sofern aktiv + heute gueltig) in der Live-View. Audit Paket 3: der eine Fold-Helfer (Pflichtausgaben >
     -- Einnahmen, gelatcht, Re-Arm bei Erholung) — geteilt mit fn_set_recurring_payment.
     v_cf := finance.fn_cashflow_coverage_fold();
+    -- Spar-Deckung des Kontos nach dem Write (nur ein Deckungs-Konto rechnet; sonst nur der Index-Check);
+    -- „gedeckt" berichtet nur eine Einnahme (Geldeingang), eine Ausgabe nur bei einer Luecke
+    v_fold := finance.fn_savings_funding_fold(ARRAY[v_account], false, false,
+                                              CASE WHEN v_dir = 'income' THEN ARRAY[v_account] ELSE '{}'::int[] END);
 
-    RETURN jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                              'card_lines', v_nc->'card_lines', 'effective', v_dates->'resolved') || v_cf;
+    RETURN finance.fn_merge_fold(
+        jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
+                           'card_lines', v_nc->'card_lines', 'effective', v_dates->'resolved') || v_cf,
+        v_fold);
 END;
 $$;

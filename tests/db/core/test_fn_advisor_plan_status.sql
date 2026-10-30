@@ -66,9 +66,11 @@ BEGIN
       "debts_loans":{},"retirement_pension":{},"risk_profile":{},"wealth_building":{},"korea_crossborder":{},"goals_triggers":{}}'
    WHERE domain = 'finance';
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('managed_by','agent','facts', jsonb_build_object(
-      'emergency_reserve', jsonb_build_object('target_months', 6), 'risk_profile', '{}'::jsonb,
+      'risk_profile', '{}'::jsonb,
       'target_allocation', '{}'::jsonb, 'glidepath', '{}'::jsonb, 'goal', '{}'::jsonb))
    WHERE name = 'financial_planning';
+  -- Notreserve = Ruecklage (finance, 2026-10-30), kein Plan-Block mehr
+  INSERT INTO finance.savings_goals (name, kind, target_months, status) VALUES ('__aps_er__', 'emergency_reserve', 6, 'active');
   SELECT e INTO f FROM jsonb_array_elements(core.fn_advisor_plan_status('111')) e WHERE e->>'domain' = 'finance';
   IF f->>'state' <> 'complete' OR (f->>'open')::int <> 0 THEN RAISE EXCEPTION 'FAIL [4 complete]: %', f; END IF;
 

@@ -12,8 +12,9 @@
 --   Bestaetigungen nach dem naechsten Publish. Der E2E-Sentinel '__e2e_finance__' zaehlt nicht. Eine Sektion, die den
 --   Haushalt nicht betrifft, bestaetigt der Berater mit einem kurzen "trifft nicht zu"-Save (Prompt).
 --   VERWERTBAR (Pflicht-Block in p_facts = Sidecar financial_planning.metadata.facts, vom Renderer uebergeben):
---   emergency_reserve erst mit numerischem target_months/target_eur (sonst verwerfen Renderer und Review ihn still);
---   die uebrigen Bloecke = Objekt vorhanden. interview_state ohne Objekt-Form (Altlast) zaehlt als leer (RAISE-frei:
+--   die Bloecke = Objekt vorhanden. NOTRESERVE (2026-10-30): kein Plan-Block mehr — sie ist eine Ruecklage (Sparziel
+--   kind emergency_reserve, fn_emergency_reserve_status); ist die Sektion bestaetigt und keine aktive Notreserve angelegt,
+--   steht {section:'emergency_reserve', block:'emergency_reserve'} in missing_blocks (der Buchhalter legt sie an). interview_state ohne Objekt-Form (Altlast) zaehlt als leer (RAISE-frei:
 --   die fn laeuft im Render-Pfad von core.fn_fetch_context, ein Fehler kostete den ganzen Plan).
 --
 --   RUECKGABE jsonb: { has_active_plan,
@@ -31,7 +32,7 @@ DECLARE
     v_catalog CONSTANT jsonb := '[
         {"key":"household_basics",   "blocks":[]},
         {"key":"risk_protection",    "blocks":[]},
-        {"key":"emergency_reserve",  "blocks":["emergency_reserve"]},
+        {"key":"emergency_reserve",  "blocks":[]},
         {"key":"debts_loans",        "blocks":[]},
         {"key":"retirement_pension", "blocks":[]},
         {"key":"risk_profile",       "blocks":["risk_profile"]},
@@ -73,12 +74,13 @@ BEGIN
     FROM jsonb_array_elements(v_catalog) WITH ORDINALITY s(e, ord),
          jsonb_array_elements_text(s.e->'blocks') WITH ORDINALITY b(blk, bord)
     WHERE s.e->>'key' = ANY (v_confirmed)
-      AND NOT CASE
-            WHEN jsonb_typeof(v_facts->b.blk) IS DISTINCT FROM 'object' THEN false
-            WHEN b.blk = 'emergency_reserve' THEN jsonb_typeof(v_facts->b.blk->'target_months') IS NOT DISTINCT FROM 'number'
-                                               OR jsonb_typeof(v_facts->b.blk->'target_eur') IS NOT DISTINCT FROM 'number'
-            ELSE true
-          END;
+      AND jsonb_typeof(v_facts->b.blk) IS DISTINCT FROM 'object';
+    -- Notreserve: bestaetigte Sektion ohne angelegte Ruecklage
+    IF 'emergency_reserve' = ANY (v_confirmed)
+       AND NOT COALESCE((finance.fn_emergency_reserve_status()->>'exists')::boolean, false) THEN
+        -- vorn: die Sektion steht im Katalog vor allen Sektionen mit Bloecken (Katalog-Reihenfolge bleibt)
+        v_missing := jsonb_build_array(jsonb_build_object('section', 'emergency_reserve', 'block', 'emergency_reserve')) || v_missing;
+    END IF;
 
     RETURN jsonb_build_object('has_active_plan', true, 'open_sections', v_open,
                               'draft_only_sections', v_draft_only, 'missing_blocks', v_missing);

@@ -167,9 +167,13 @@ BEGIN
       SELECT count(*) INTO v_cnt FROM (SELECT state, runs_out_on, monthly_in FROM finance.account_funding_overview
                                        WHERE account_name = '__rp_adv_dst__' AND state IS NOT NULL) q;
       PERFORM name, from_account, to_account, rhythm, monthly_amount FROM finance.standing_order_overview;
-      PERFORM account_name, everyday_per_day, everyday_per_month FROM finance.account_everyday_spending;
+      PERFORM account_name, everyday_per_day, everyday_per_month, provisional FROM finance.account_everyday_spending;
       PERFORM finance.fn_savings_goal_pace(id) FROM finance.savings_goal_progress WHERE status = 'active';
       v_res := finance.fn_account_outlook(v_short);
+      -- Transparenz 2026-10-30: Notreserve-Status, Haushalts-Alltag, Liquiditaet (Berater + Buchhalter lesen sie per Frei-SQL)
+      PERFORM finance.fn_emergency_reserve_status();
+      PERFORM * FROM finance.fn_household_everyday_month();
+      PERFORM finance.fn_liquidity_snapshot();
       RESET ROLE;
     EXCEPTION WHEN OTHERS THEN
       RESET ROLE;

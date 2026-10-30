@@ -3,6 +3,7 @@
   { "key": "investments", "ord": 2 },
   { "key": "liabilities", "ord": 3 },
   { "key": "protection",  "ord": 4 },
-  { "key": "goals",       "ord": 5 },
-  { "key": "monthly_check", "ord": 6, "gates_advisor": false }
+  { "key": "emergency_reserve", "ord": 5, "gates_advisor": false },
+  { "key": "goals",       "ord": 6 },
+  { "key": "monthly_check", "ord": 7, "gates_advisor": false }
 ]

@@ -6,7 +6,7 @@ function Build-CreateSavingsGoal {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer','real_estate_name')
+    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer','real_estate_name','kind','target_months')
 
     # Duplicate-name guard (Backstop wie bei den anderen create_*-Tools): ein create_* darf kein
     # zweites Sparziel gleichen Namens still anlegen (name hat keine UNIQUE-Constraint). Existiert ein
@@ -86,6 +86,8 @@ function Build-CreateSavingsGoal {
             savings_plan          = '$(''Start'').item.json.savings_plan_name'
             replace_transfer      = '$(''Start'').item.json.replace_transfer'
             real_estate_name      = '$(''Start'').item.json.real_estate_name'
+            kind                  = '$(''Start'').item.json.kind'              # Notreserve (2026-10-30)
+            target_months         = '$(''Start'').item.json.target_months'
         })
 
     # --- HITL approval gate (Rate, Zieldatum, erste Rate aus dem Probelauf, nicht aus dem Prompt) ---
@@ -146,6 +148,10 @@ function Build-CreateSavingsGoal {
         'fn_create_savings_goal -> fn_savings_goal_funding -> fn_maintenance_reserve_rate' `
         'Mit real_estate_name wird das Ziel die dauerhafte Rücklage dieser Immobilie: die fn löst den Namen auf (not_found/ambiguous -> Dry run rejected mit candidates), ohne Zielbetrag/-datum (Form-CHECK), ohne Sparplan, Topf kein Depot, höchstens eine aktive je Immobilie (reserve_exists; Partial-UNIQUE als Backstop). Rate = genannt, sonst fortgeführter Dauerauftrag (existing_transfer), sonst Empfehlung nach II. BV (Fläche × Satz nach Alter ÷ 12, Sätze aus core.config). Name leer -> Instandhaltungsrücklage <Immobilie>. r.effective pinnt Name + Rate in den Write; die Karte zeigt Immobilie + Rate, die fn hängt Empfehlung und ggf. "Rate darunter" an.' 260 520
 
+    $stickyEmerg = Build-Sticky 'Notreserve (kind emergency_reserve)' @(1760, -800) `
+        'fn_create_savings_goal -> fn_emergency_reserve_status' `
+        'Mit kind=emergency_reserve wird das Ziel die Notreserve des Haushalts (2026-10-30): höchstens eine aktive (reserve_exists; Partial-UNIQUE als Backstop), Ziel GENAU EINES von target_amount / target_months (Monatsausgaben = feste Zahlungen + Kreditraten + geschätzter Alltag, abgeleitet, nie gespeichert), kein Datum, kein Sparplan, keine Immobilie, Topf nur ein Geld-Konto (fn_emergency_reserve_account_types; P2P/Festgeld/Depot -> Dry run rejected). Rate nur, wenn genannt. Name leer -> Notreserve. Die Karte zeigt Art + Ziel; die fn hängt Ziel-Herleitung und bisher gedeckt an (fn_emergency_reserve_card_lines). Weitere Konten ordnet tool_book_savings_reservation zu.' 260 560
+
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `
         'Weder Datum noch Rate / nicht-positiver Betrag / Rest ohne Abbuchungskonto / Startbestand größer als frei liefert die fn als {ok:false, reason} -> Goal rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true legt wirklich an.' 200 400
@@ -165,7 +171,7 @@ function Build-CreateSavingsGoal {
     $nodes = @($trig, $checkDup, $ifExists, $errExists, $resAcct, $ifAcct, $errAcct,
                $resPerson, $ifPersonBad, $errPerson,
                $resReserve, $ifReserveBad, $errReserve) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret,
-               $stickyDup, $stickyCompute, $stickyFn, $stickyOk, $stickyReserve, $stickyReserve2,
+               $stickyDup, $stickyCompute, $stickyFn, $stickyOk, $stickyReserve, $stickyReserve2, $stickyEmerg,
                $stickyDry)
 
     $conns = [ordered]@{

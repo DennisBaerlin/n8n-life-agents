@@ -280,17 +280,22 @@ function Get-FinanceHitlLines {
             # Instandhaltungsruecklage (2026-10-27, nur Einzel-Tool): Unterart ohne Zielbetrag/-datum, mit Immobilie; die
             # Rate ist genannt / Dauerauftrag / Empfehlung (Empfehlung + Unterschreitung als Hinweis-Zeilen der fn)
             $isRes = "(!!$S.real_estate_name)"
+            # Notreserve (2026-10-30, nur Einzel-Tool): kein Datum, Ziel als Betrag ODER Monate; Ziel-Herleitung und Deckung
+            # kommen als Hinweis-Zeilen der fn (fn_emergency_reserve_card_lines)
+            $isEm = "($S.kind === 'emergency_reserve')"
             @(
                 (New-HitlLine 'core.label.name'                    "$S.goal_name")
+                (New-HitlLine 'finance.label.reserve_kind'         "'finance.value.emergency_reserve'" -Kind key -If $isEm)
                 (New-HitlLine 'finance.label.goal_type'            "$S.goal_type" -OmitEmpty)
                 (New-HitlLine 'finance.label.real_estate'          "$S.real_estate_name" -If $isRes)
-                (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel -If "!$isRes")
-                (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date -If "!$isRes")
+                (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel -If "!$isRes && !($isEm && !Number($S.target_amount))")
+                (New-HitlLine 'finance.label.target_months'        "$S.target_months" -Kind number -Digits 1 -If "$isEm && !!$S.target_months")
+                (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date -If "!$isRes && !$isEm")
                 (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -Currency "($S.reserve_currency || 'EUR')" -OmitEmpty)
-                (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If "$hasRate && !$isRes" -Params @{
+                (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If "$hasRate && !$isRes && !$isEm" -Params @{
                     value  = (New-HitlValue -Kind money -Value $rate -EurByModel)
                     months = (& $need 'Months') })
-                (New-HitlLine 'finance.label.monthly_savings_rate' $rate -Kind money -EurByModel -If "$hasRate && $isRes")
+                (New-HitlLine 'finance.label.monthly_savings_rate' $rate -Kind money -EurByModel -If "$hasRate && ($isRes || $isEm)")
                 (New-HitlLine 'finance.label.monthly_savings_rate' "0" -Kind money -EurByModel -If "!($hasRate) && !$S.savings_plan_name")
                 (New-HitlLine 'finance.label.link_savings_plan'    "$S.savings_plan_name" -OmitEmpty)
                 # 2026-10-27: Antwort auf existing_transfer (fortfuehren oder zusaetzlich); Konto/Tag kommen dann aus r.effective

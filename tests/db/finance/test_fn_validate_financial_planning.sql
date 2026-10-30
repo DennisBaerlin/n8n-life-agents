@@ -23,13 +23,18 @@ DECLARE
          jsonb_build_object('name','accumulation','age_to',54,'equity_pct',97),
          jsonb_build_object('name','derisking','age_from',55,'age_to',60),
          jsonb_build_object('name','withdrawal','age_from',61,'equity_pct',72))),
-    'emergency_reserve', jsonb_build_object('target_months',6),
     '_meta', jsonb_build_object('last_confirmed_at','2026-06-01'));
 BEGIN
   -- TEST 1: vollstaendiges, gueltiges facts -> NULL
   v_err := finance.fn_validate_financial_planning(v_full);
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [valid full]: erwartet NULL, got %', v_err; END IF;
   RAISE NOTICE 'PASS [vollstaendiges Plan-facts akzeptiert]';
+
+  -- TEST 1b (2026-10-30): emergency_reserve ist kein Plan-Block mehr (Notreserve = Ruecklage kind emergency_reserve)
+  v_err := finance.fn_validate_financial_planning(v_full || jsonb_build_object('emergency_reserve', jsonb_build_object('target_months', 6)));
+  IF v_err IS NULL OR v_err NOT LIKE '%emergency_reserve is no longer a plan block%' THEN
+    RAISE EXCEPTION 'FAIL [emergency_reserve-Block]: erwartet Ablehnung, got %', v_err; END IF;
+  RAISE NOTICE 'PASS [emergency_reserve-Block abgewiesen]';
 
   -- TEST 2: PARTIAL — nur goal (target_allocation/glidepath fehlen) -> NULL (partial-tolerant)
   v_err := finance.fn_validate_financial_planning(jsonb_build_object('goal',

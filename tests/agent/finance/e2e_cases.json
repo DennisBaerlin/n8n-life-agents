@@ -147,6 +147,18 @@
         "notes":  "Transparenz 2026-10-30: Schema-Fidelity des neuen Parameters min_balance (Trigger + Agent-Binding + fn_set_account + Karten-Zeile in Kontowaehrung)."
     },
     {
+        "id":  "e2e50",
+        "name":  "create_savings_goal: Notreserve (kind emergency_reserve, target_months)",
+        "task":  "Lege meine Notreserve an: Ziel sind 3 Monatsausgaben, das Geld liegt auf dem Konto '__E2E__ NR Konto', dort sind schon 2000 Euro dafuer.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ NR Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ NR Konto','account_type','cash','currency','EUR','opening_balance',5000)));",
+        "chat_id":  "test_e2e_e2e50",
+        "sentinel_accounts":  1,
+        "verify_sql":  "SELECT count(*) FROM finance.savings_goals g WHERE g.kind = 'emergency_reserve' AND g.status = 'active' AND g.target_months = 3 AND g.target_date IS NULL AND (SELECT s.share_native FROM finance.savings_goal_account_share s JOIN finance.accounts a ON a.id = s.account_id WHERE s.goal_id = g.id AND a.name = '__E2E__ NR Konto') = 2000;",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Transparenz 2026-10-30: Schema-Fidelity der neuen Parameter kind + target_months (Trigger + Agent-Binding + fn_create_savings_goal + Startbestand-Zuordnung). Eine bestehende aktive Notreserve im Substrat liesse den Fall mit reserve_exists scheitern."
+    },
+    {
         "id":  "e2e07",
         "name":  "reconcile_account: Korrekturbuchung bei Drift",
         "task":  "Lege ein Cash-Konto \u0027__E2E__ Recon Konto\u0027 an (Inhaber Erika, ohne Zinsen). Buche eine Einzahlung von 500 Euro auf dieses Konto (Datum heute, Verwendungszweck \u0027Einlage\u0027). Gleiche das Konto dann ab: tatsaechlicher Saldo laut Banking-App ist 520 Euro (20 Euro Zinsen noch nicht gebucht), Datum heute.",

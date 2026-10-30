@@ -1,7 +1,8 @@
 -- ============================================================
 -- finance.fn_validate_financial_planning (WS1a — Core-Advisor-Engine)
 --   Strukturvalidierung des paket-besessenen 'financial_planning'-Plan-Fakten-Sidecars
---   (metadata.facts: goal / risk_profile / target_allocation / glidepath / emergency_reserve / _meta).
+--   (metadata.facts: goal / risk_profile / target_allocation / glidepath / _meta). emergency_reserve wird seit
+--   2026-10-30 abgewiesen (Notreserve = Ruecklage kind emergency_reserve, fn_emergency_reserve_status).
 --   Phase A: risk_profile = {risk_tolerance, risk_capacity (low|medium|high), as_of (DATE, nicht Zukunft)}.
 --   WS2b: jeder target_allocation.blocks[]-Eintrag traegt einen stabilen Maschinen-`key`
 --   (lowercase snake, == depot_holdings.asset_class-Format) NEBEN dem Anzeige-`name` — Pflicht je Block,
@@ -47,6 +48,14 @@ DECLARE
 BEGIN
     IF p_facts IS NULL OR jsonb_typeof(p_facts) IS DISTINCT FROM 'object' THEN
         RETURN NULL;  -- facts optional / nicht-Objekt: nichts zu pruefen (Compose schreibt immer ein Objekt)
+    END IF;
+
+    -- Notreserve (2026-10-30): kein Plan-Fakt mehr, sondern eine Ruecklage (Sparziel kind emergency_reserve) — ein
+    -- Fakt, eine Adresse. Alt-Bloecke raeumt finance:V033 aus den gespeicherten Plaenen.
+    IF p_facts ? 'emergency_reserve' THEN
+        RETURN 'emergency_reserve is no longer a plan block - the emergency reserve is kept as a reserve goal (the '
+            || 'bookkeeper creates it with tool_create_savings_goal kind emergency_reserve); describe the strategy in the '
+            || 'section prose only';
     END IF;
 
     -- HINWEIS (WS1b): die rekursive DERIVED-Key-Denylist (calendar years / ages / years_to_* / nominal /

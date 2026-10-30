@@ -1234,6 +1234,14 @@
     "final": "Die Karte fuer den Puffer von 400 Euro beim DKB Giro ist unterwegs."
   },
   {
+    "_comment": "tc103 Notreserve als Ruecklage: tool_create_savings_goal mit kind emergency_reserve + target_months.",
+    "match": "Leg bitte meine Notreserve an: drei Monatsausgaben",
+    "calls": [
+      { "tool": "tool_create_savings_goal", "args": { "kind": "emergency_reserve", "target_months": "3", "reserve_account_name": "DKB Giro", "already_saved": "6000" } }
+    ],
+    "final": "Die Karte fuer deine Notreserve (drei Monatsausgaben, 6000 Euro auf dem DKB Giro) ist unterwegs."
+  },
+  {
     "_comment": "tc97 Import zuerst: Bank-Export nur fuer fehlende Dauerauftraege -> tool_get_recurring_suggestions (fester Leser, kein Write).",
     "match": "schlag mir daraus vor, welche Dauerauftraege noch fehlen",
     "calls": [

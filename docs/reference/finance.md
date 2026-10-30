@@ -111,6 +111,18 @@ Der Berater-Datenqualitäts-Alarm nennt Kurs-Lücken nur im Text, ohne eigenen L
 - **Umschicht-Hilfe (Glide Path):** `fn_savings_goal_derisk_status()` rechnet je aktivem Ziel mit Depot-Anteil, wie viel bei `months_left` Restmonaten noch im Depot liegen darf (`Ziel × min(months_left / derisk_window_months, 1)`, Owner-Wahl 60 Monate); über erlaubt + `derisk_tolerance_pp` → Advisor-Alert `savings_goal_derisk:<goal_id>` mit Vorschlagsbetrag (`drift`), `latch_keys` je Restjahr, Sparplan-Satz bei aktivem Plan. Bewusst eine fn statt View (`core.fn_config_get` ist für `finance_ro` nicht freigegeben). Die Anlege-Karte warnt bei Depot-Topf/Sparplan im Fenster.
 - Retired: `savings_goal_holdings` + `savings_goal_allocations` (`finance:V008`). FIRE-Topf-Netting und Depot-Kurs-Buchwert-Fallback → `BACKLOG.md`.
 
+## Notreserve (Rücklage `kind = emergency_reserve`, 2026-10-30)
+
+- **Warum Rücklage statt Plan-Fakt:** vorher prüfte der Berater einen Plan-Fakt `emergency_reserve` gegen alles freie Geld; ein als Sparziel geführter Notgroschen zählte dort als verplant, und wo das Geld liegt, stand nirgends. Jetzt ist sie ein Sparziel der Art `emergency_reserve` mit Zuordnungen (Earmark-Journal) über mehrere Geld-Konten (YNAB/Monarch-Muster, arch-challenge 2026-10-30). `fn_validate_financial_planning` weist den alten Block ab, `finance:V033` räumte gespeicherte Pläne.
+- **Ziel:** `target_amount` ODER `target_months`; der Betrag bei Monaten = Monate × `fn_liquidity_snapshot.monthly_expenses_eur` (feste Zahlungen + Kreditraten ohne Sparraten + geschätzter Alltag aus `fn_household_everyday_month`), zur Laufzeit abgeleitet.
+- **Deckung:** `fn_emergency_reserve_covered` je Geld-Konto: Anteil der Notreserve, höchstens der positive Saldo nach den Anteilen der anderen aktiven Ziele (Rang danach, kein Saldo doppelt; Abfluss schrumpft die Deckung). Nur `fn_emergency_reserve_account_types` (Giro/Tagesgeld; nicht P2P/Festgeld/Depot).
+- **Wer liest was:** Berater-Alert `emergency_reserve` + Digest-Zeile, Plan-Fakten-Zeile (englisch), Plan-Lücke `{section:'emergency_reserve', block:'emergency_reserve'}` ohne angelegte Rücklage, Mini-App-Abschnitt „Notreserve" (nur Haushalt) + Banner, Karten-Hinweise (`fn_emergency_reserve_card_lines`). `fn_liquidity_snapshot` zählt die gedeckte Notreserve wieder zum freien Cash (Runway) und weist sie als `emergency_eur` aus; `account_reserve_status` zählt sie weiter als reserviert (keine Umbuchungs-Vorschläge daraus).
+
+## Kontovorschau: Brücke und Alltags-Schätzung (2026-10-30)
+
+- `fn_account_outlook.bridge` = Teilsummen derselben Projektion von d0 bis zum Tief (`base + booked + out + in + everyday = min_projected`); Einzelvorkommen aus `fn_account_planned_flows` (dieselbe Quelle wie `fn_account_projection`). Puffer je Konto `accounts.min_balance` vor dem Standard `coverage_buffer_eur` (`buffer_source`).
+- Alltags-Schätzung: `fn_account_everyday_basis` zählt den **frühesten** Auszug eines Kontos nicht, sobald ein späterer existiert (er entsteht meist vor den Daueraufträgen — „Import zuerst" — und enthält ungematchtes Gehalt/Überweisungen); nur er allein → `provisional`. Fenster = 3 gezählte Auszüge.
+
 ## Write-Tools-Katalog
 
 Der paket-übergreifende Katalog aller Write-Tools (finance, career, estate, paperless) steht an einer Adresse: `docs/reference/packages.md` *Write-Tools-Katalog*.

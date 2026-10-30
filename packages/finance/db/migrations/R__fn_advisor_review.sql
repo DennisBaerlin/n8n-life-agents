@@ -65,16 +65,13 @@ CREATE OR REPLACE FUNCTION finance.fn_advisor_review(p_domain text, p_person_id 
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_facts        jsonb;
-    v_er           jsonb;
+    v_es           jsonb;     -- finance.fn_emergency_reserve_status() (Notreserve, 2026-10-30)
     v_goal         jsonb;
     v_alloc        jsonb;
     v_alerts       jsonb := '[]'::jsonb;
     v_digest       jsonb;
     v_stale_days   numeric;
     v_drift_tol    numeric;
-    v_cash_eur     numeric;
-    v_er_target    numeric;
-    v_mon_exp      numeric;
     v_last_conf    text;
     v_stale_age    numeric;
     r              record;
@@ -221,6 +218,8 @@ BEGIN
         FROM finance.savings_goal_progress p
         WHERE p.status = 'active' AND p.target_amount > 0 AND COALESCE(p.current_amount, 0) >= p.target_amount
           AND COALESCE(p.current_amount, 0) > COALESCE(p.earmarked_amount, 0)
+          -- die Notreserve ist kein Ziel, das man erreicht und ausgibt (eigener Check oben)
+          AND NOT EXISTS (SELECT 1 FROM finance.savings_goals g WHERE g.id = p.id AND g.kind = 'emergency_reserve')
     LOOP
         v_alerts := v_alerts || jsonb_build_object(
             'metric_key', 'savings_goal_reached:' || r.name,
@@ -235,30 +234,27 @@ BEGIN
                                                  'target', core.fn_ui_money(r.target)))));
     END LOOP;
 
-    -- ---------- (2) Notreserve-Drift (buchwert-immun: Cash zu Nennwert) ----------
-    -- Audit Paket 3: freies Cash (ohne Kinderkonten + Sparziel-Ruecklagen) und Pflicht-Basis (Konsum + Kreditrate,
-    -- ohne Sparraten) aus fn_liquidity_snapshot -> dieselben Zahlen wie die career-Runway.
-    IF v_facts IS NOT NULL AND jsonb_typeof(v_facts->'emergency_reserve') = 'object' THEN
-        v_er := v_facts->'emergency_reserve';
-        v_cash_eur := COALESCE((v_snap->>'cash_eur')::numeric, 0);
-        IF (v_er ? 'target_eur') AND jsonb_typeof(v_er->'target_eur') = 'number' THEN
-            v_er_target := (v_er->>'target_eur')::numeric;
-        ELSIF (v_er ? 'target_months') AND jsonb_typeof(v_er->'target_months') = 'number' THEN
-            v_mon_exp := COALESCE((v_snap->>'monthly_expenses_eur')::numeric, 0);
-            v_er_target := (v_er->>'target_months')::numeric * v_mon_exp;
-        END IF;
-        IF v_er_target IS NOT NULL AND v_er_target > 0 AND v_cash_eur < v_er_target THEN
-            v_alerts := v_alerts || jsonb_build_object(
-                'metric_key', 'emergency_reserve',
-                'kind',       'emergency_reserve',
-                'label',      'emergency_reserve',
-                'value',      round(v_cash_eur, 2),
-                'target',     round(v_er_target, 2),
-                'drift',      round(v_er_target - v_cash_eur, 2),
-                'msg',        jsonb_build_array(core.fn_ui_tpl('finance.advisor.emergency_reserve', jsonb_build_object(
-                                  'cash', core.fn_ui_money(v_cash_eur), 'target', core.fn_ui_money(v_er_target),
-                                  'gap', core.fn_ui_money(v_er_target - v_cash_eur)))));
-        END IF;
+    -- ---------- (2) Notreserve (Ruecklage kind emergency_reserve, 2026-10-30) ----------
+    -- Ziel, Basis und Deckung rechnet allein finance.fn_emergency_reserve_status (Ziel = fester Betrag oder Monate x
+    -- Monatsausgaben inkl. geschaetztem Alltag; Deckung = zugeordnetes Geld auf Geld-Konten, nach den anderen Zielen).
+    -- Vorher: Plan-Fakt emergency_reserve gegen alles freie Cash (ein Notgroschen als Sparziel zaehlte dort als
+    -- verplant). Keine Notreserve angelegt -> kein Alert (die Plan-Luecke meldet fn_plan_gaps).
+    v_es := finance.fn_emergency_reserve_status();
+    IF (v_es->>'exists')::boolean AND v_es->>'state' = 'warn' THEN
+        v_alerts := v_alerts || jsonb_build_object(
+            'metric_key', 'emergency_reserve',
+            'kind',       'emergency_reserve',
+            'label',      'emergency_reserve',
+            'value',      (v_es->>'covered_eur')::numeric,
+            'target',     (v_es->>'target_eur')::numeric,
+            'drift',      (v_es->>'gap_eur')::numeric,
+            'msg',        jsonb_build_array(core.fn_ui_tpl('finance.advisor.emergency_reserve', jsonb_build_object(
+                              'cash', core.fn_ui_money((v_es->>'covered_eur')::numeric),
+                              'target', core.fn_ui_money((v_es->>'target_eur')::numeric),
+                              'gap', core.fn_ui_money((v_es->>'gap_eur')::numeric))),
+                          CASE WHEN v_es->>'target_kind' = 'months' THEN core.fn_ui_tpl('finance.advisor.emergency_reserve_basis',
+                              jsonb_build_object('months', core.fn_ui_num((v_es->>'months')::numeric, 1),
+                                                 'monthly', core.fn_ui_money((v_es->'basis'->>'monthly_eur')::numeric))) END));
     END IF;
 
     -- ---------- WS-C3: Reserve-Coverage (Engpass-Beratung) ----------
@@ -918,6 +914,11 @@ BEGIN
         || COALESCE((SELECT jsonb_agg(CASE
                          -- Instandhaltungsruecklage: kein Ziel -> Stand + eingestellte Rate statt "x % von —"
                          -- (Rate aus maintenance_reserve_status, EIN Join; ohne Kurs NULL -> "—", nie still 0)
+                         -- Notreserve (2026-10-30): gedeckt von Ziel aus fn_emergency_reserve_status (Ziel ggf. Monate x Ausgaben)
+                         WHEN sgp.id = (v_es->>'goal_id')::int
+                         THEN core.fn_ui_tpl('finance.advisor.digest_emergency_line', jsonb_build_object(
+                                  'name', sgp.name, 'covered', core.fn_ui_money((v_es->>'covered_eur')::numeric),
+                                  'target', core.fn_ui_money((v_es->>'target_eur')::numeric)))
                          WHEN sgp.real_estate_id IS NOT NULL
                          THEN core.fn_ui_tpl('finance.advisor.digest_maintenance_line', jsonb_build_object(
                                   'name', sgp.name, 'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),

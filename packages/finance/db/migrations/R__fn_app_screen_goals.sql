@@ -500,6 +500,12 @@ BEGIN
                        'balance', core.fn_ui_money((v_fund -> m.account_id::text ->> 'balance')::numeric, m.src_cur),
                        'in', core.fn_ui_money((v_fund -> m.account_id::text ->> 'monthly_in')::numeric, m.src_cur),
                        'out', core.fn_ui_money(-(v_fund -> m.account_id::text ->> 'monthly_out')::numeric, m.src_cur))) END))
+                   ELSE '[]'::jsonb END
+                   -- Transparenz 2026-10-30: die Deckung rechnet mit der Netto-Alltags-Schaetzung aus den Kontoauszuegen
+                   || CASE WHEN v_fund -> m.account_id::text ->> 'everyday' = 'estimated' THEN jsonb_build_array(jsonb_build_object(
+                   'label', core.fn_ui_tpl('finance.app.goals.d_fund_everyday'),
+                   'value', core.fn_ui_tpl('finance.app.goals.d_fund_everyday_value', jsonb_build_object('per_day',
+                       core.fn_ui_money(abs((v_fund -> m.account_id::text ->> 'everyday_per_day')::numeric), m.src_cur)))))
                    ELSE '[]'::jsonb END)
              ORDER BY finance.fn_to_eur(m.monthly, m.src_cur) DESC NULLS LAST, m.src_name), '[]'::jsonb)
       INTO v_orders

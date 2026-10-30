@@ -13,6 +13,7 @@
 --   Grenze: ein Sparplan-Split mit kuenftigem valid_from ist im Post-State noch nicht sichtbar (wie cashflow_coverage);
 --   der periodische Advisor-Cron bleibt der Backstop.
 --   Nicht-blockierend: der Aufrufer faltet das Ergebnis in seinen {ok:true}-Return, der Bookkeeper relayed die note.
+--   Seit 2026-10-30 (Transparenz) rechnen frei und Kontoveraenderung den geschaetzten Alltag ein (fn_household_everyday_month).
 --   RUECKGABE jsonb: '{}' oder {savings_squeeze: {account_change, note}}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_savings_squeeze_fold()
@@ -21,10 +22,14 @@ DECLARE
     v_income NUMERIC;
     v_change NUMERIC;
     v_free   NUMERIC;
+    v_ev     RECORD;
 BEGIN
     SELECT monthly_income, monthly_account_change, monthly_free
       INTO v_income, v_change, v_free
     FROM finance.monthly_cashflow_summary;
+    SELECT * INTO v_ev FROM finance.fn_household_everyday_month();
+    v_free   := v_free + v_ev.monthly_everyday;
+    v_change := v_change + v_ev.monthly_everyday;
 
     IF v_income > 0 AND v_change < 0 THEN
         IF core.fn_should_notify('finance', 'savings_squeeze', interval '24 hours') THEN
@@ -34,7 +39,8 @@ BEGIN
                              THEN 'Warning: spending and loan instalments already exceed income; with the current savings '
                                   || 'rates the current account shrinks by about ' || round(abs(v_change), 2)
                                   || ' EUR/month. Levers: lower a savings rate, cut expenses or raise income.'
-                             ELSE 'Warning: the savings rates exceed what remains free after spending and loan instalments - '
+                             ELSE 'Warning: the savings rates exceed what remains free after spending, loan instalments and '
+                                  || 'estimated everyday spending - '
                                   || 'the current account shrinks by about ' || round(abs(v_change), 2)
                                   || ' EUR/month. Levers: lower a savings rate or cut expenses.' END));
         END IF;

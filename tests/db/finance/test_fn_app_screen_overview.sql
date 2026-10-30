@@ -75,7 +75,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1e] Hero erwartet 12550 EUR (ohne Kind), got %', v->'hero'; END IF;
   IF (v->'hero'->>'gap')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [5a] Hero-gap (CHF ohne Kurs) fehlt'; END IF;
   IF v->'hero'->'label' <> core.fn_ui_tpl('finance.app.overview.hero') THEN RAISE EXCEPTION 'FAIL [1f] hero.label'; END IF;
-  IF v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note', jsonb_build_object(
+  -- Transparenz 2026-10-30: das HH-Depot hat keinen Kurs (Kaufwert) -> die Note sagt es
+  IF v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note_bookval', jsonb_build_object(
        'assets', core.fn_ui_money(14550, 'EUR'), 'debts', core.fn_ui_money(2000, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [1f2] Note Besitz 14550 · Schulden 2000 (Besitz - Schulden = Hero), got %', v->'hero'->'note'; END IF;
   -- Besitz (hier nur liquide): Enum-Verweis je bucket, Summe im Titel, Anteile am Besitz aus der DB, kein Kredit
@@ -187,7 +188,7 @@ BEGIN
      OR v->'sections'->0->'value' <> core.fn_ui_money(15550, 'EUR')
      OR v->'sections'->1->'title' <> core.fn_ui_tpl('finance.app.overview.section_bound')
      OR v->'sections'->1->'value' <> core.fn_ui_money(100000, 'EUR')
-     OR v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note', jsonb_build_object(
+     OR v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note_bookval', jsonb_build_object(
           'assets', core.fn_ui_money(115550, 'EUR'), 'debts', core.fn_ui_money(2000, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [7a] Liquide 15550 / Gebunden 100000, Note Besitz 115550, got %', v; END IF;
   SELECT array_agg(i->'label'->>'value' ORDER BY o) INTO v_txt FROM jsonb_array_elements(v->'sections'->0->'items') WITH ORDINALITY AS t(i, o);
@@ -209,6 +210,16 @@ BEGIN
   IF v_txt IS DISTINCT FROM '{finance.app.overview.section_bound,finance.app.overview.section_accounts}' THEN
     RAISE EXCEPTION 'FAIL [7d] nur Gebundenes -> Gebunden + Konten, got %', v_txt; END IF;
   RAISE NOTICE 'PASS [7] Liquide vs. Gebunden mit Summen, Wertverhalten im Untertitel, kein leeres Liquide';
+
+  -- Transparenz 2026-10-30: mit Kurs fuer das HH-Depot verschwindet der Kaufwert-Hinweis; ohne Schulden steht er allein
+  INSERT INTO finance.market_prices (symbol, isin, price, currency, as_of) VALUES ('APOHH', 'APO00000001', 120, 'EUR', CURRENT_DATE);
+  v := finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_owner'));
+  IF v->'hero'->'note'->>'value' <> 'finance.app.overview.hero_note' THEN
+    RAISE EXCEPTION 'FAIL [7e] mit Kurs kein Kaufwert-Hinweis, got %', v->'hero'->'note'; END IF;
+  v := finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_solo'));
+  IF v->'hero'->'note' IS NOT NULL AND jsonb_typeof(v->'hero'->'note') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [7f] ohne Schulden und ohne Depot keine Note, got %', v->'hero'->'note'; END IF;
+  RAISE NOTICE 'PASS [7e] Kaufwert-Hinweis nur ohne Kurs';
 END $$;
 
 -- ===== 6) Frei-SQL-Rollen: kein EXECUTE; selbst MIT Test-Grant -> forbidden =====

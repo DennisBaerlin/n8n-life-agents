@@ -23,14 +23,18 @@
 --   earmarked_eur = Summe des Abgezogenen. Ein als Sparziel gefuehrter Notgroschen zaehlt damit bewusst NICHT
 --   als freie Reserve (goal_type ist Freitext; der Notgroschen gehoert in den Planfakt emergency_reserve).
 --
---   PFLICHT-BASIS: monthly_expenses_eur (Key consumer-stabil fuer career.fn_runway) = |monthly_obligations| aus
---   parent_cashflow_summary = Konsum + Kreditrate (inkl. Tilgung; laeuft im Notfall weiter), OHNE Sparraten
---   (ruhend stellbar). Eltern-Blick = derselbe Scope wie das freie Cash ohne Kinderkonten.
+--   PFLICHT-BASIS: monthly_expenses_eur (Key consumer-stabil fuer career.fn_runway) = fixed_expenses_eur +
+--   everyday_eur. fixed = |monthly_obligations| aus parent_cashflow_summary = Konsum + Kreditrate (inkl. Tilgung;
+--   laeuft im Notfall weiter), OHNE Sparraten (ruhend stellbar). everyday = geschaetzte Alltagsausgaben je Monat aus
+--   den Kontoauszuegen (finance.fn_household_everyday_month; seit 2026-10-30 eingerechnet, Owner-Entscheid — vorher
+--   fehlten Einkauf/Karte und Notreserve-Ziel/Runway wirkten zu rosig; 0 ohne Kontoauszug). Eltern-Blick = derselbe
+--   Scope wie das freie Cash ohne Kinderkonten.
 --
---   RUECKGABE jsonb: { cash_eur, earmarked_eur, monthly_expenses_eur (>=0, ABS), monthly_income_eur, has_data,
---   has_fx_gap }. has_fx_gap = true, wenn ein AKTIVES Cash-Konto mit Guthaben in einer Fremdwaehrung OHNE FX-Kurs
---   liegt (balance_eur IS NULL -> still 0) ODER ein laufender Dauerauftrag ohne Kurs in der Pflicht-Basis fehlt
---   (parent_cashflow_summary.has_fx_gap). career.fn_runway reicht das Flag durch, der Renderer warnt.
+--   RUECKGABE jsonb: { cash_eur, earmarked_eur, monthly_expenses_eur (>=0, ABS), fixed_expenses_eur, everyday_eur,
+--   everyday_accounts, everyday_provisional, monthly_income_eur, has_data, has_fx_gap }. has_fx_gap = true, wenn ein
+--   AKTIVES Cash-Konto mit Guthaben in einer Fremdwaehrung OHNE FX-Kurs liegt (balance_eur IS NULL -> still 0) ODER ein
+--   laufender Dauerauftrag bzw. eine Alltags-Schaetzung ohne Kurs in der Pflicht-Basis fehlt. career.fn_runway reicht
+--   das Flag durch, der Renderer warnt.
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_liquidity_snapshot.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_liquidity_snapshot()
@@ -38,10 +42,14 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
     SELECT jsonb_build_object(
         'cash_eur',             c.cash_eur,
         'earmarked_eur',        c.earmarked_eur,
-        'monthly_expenses_eur', m.monthly_expenses_eur,
+        'monthly_expenses_eur', m.monthly_expenses_eur + abs(e.monthly_everyday),
+        'fixed_expenses_eur',   m.monthly_expenses_eur,
+        'everyday_eur',         abs(e.monthly_everyday),
+        'everyday_accounts',    e.accounts,
+        'everyday_provisional', e.provisional,
         'monthly_income_eur',   m.monthly_income_eur,
         'has_data',             (c.cash_eur > 0 OR m.monthly_income_eur > 0 OR m.monthly_expenses_eur > 0),
-        'has_fx_gap',           (c.has_fx_gap OR m.has_fx_gap)
+        'has_fx_gap',           (c.has_fx_gap OR m.has_fx_gap OR e.has_fx_gap)
     )
     FROM (
         SELECT COALESCE(sum(finance.fn_to_eur(x.balance - x.held, x.currency)), 0) AS cash_eur,
@@ -65,5 +73,6 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
                monthly_income           AS monthly_income_eur,
                has_fx_gap
         FROM finance.parent_cashflow_summary
-    ) m;
+    ) m
+    CROSS JOIN finance.fn_household_everyday_month() e;
 $$;

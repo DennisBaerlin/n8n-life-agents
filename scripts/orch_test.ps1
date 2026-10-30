@@ -15,7 +15,8 @@
 # Case-Felder (Bot-Persona, alle optional): persona = Owner-Persona nur fuer diesen Fall (danach neutral);
 #   verbatim_relay = true -> die Spezialisten-Antwort muss woertlich im Endtext stehen, plus hoechstens ein Satz;
 #   expected_behavior = Rubric -> Eintrag im Judge-Bundle (inkl. specialist_output), Auswertung judge_eval.ps1;
-#   followup_agent = 'agent.<x>' -> vor dem Fall die Knopf-Folge-Bindung dieses Chats setzen (Router-Regel 2a).
+#   followup_agent = 'agent.<x>' -> vor dem Fall die Knopf-Folge-Bindung dieses Chats setzen (Router-Regel 2a);
+#   expected_signal = FRAME|NOFRAME -> Router-Signal nach dem Spezialisten (Relay compose.signal, Regel 6 fuer alle).
 #
 # Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-Timeout 90] [-Verbose]
 # Exit-Code = Anzahl Fehler. KOSTET LLM-Credits (owner-gegatet).
@@ -181,6 +182,14 @@ foreach ($tc in $cases) {
         $vr = Test-VerbatimRelay $specialistOut (Get-AgentOutput $runData)
         Write-Host "    verbatim_relay: $($vr.ok) ($($vr.reason))"
         if (-not $vr.ok) { $pass = $false }
+    }
+    # expected_signal (Bot mit Gesicht): FRAME|NOFRAME, das der Router nach dem Spezialisten liefert (Relay compose.signal;
+    # Regel 6 gilt fuer ALLE Personen, NOFRAME = ernst -> kein Sticker).
+    if ($tc.expected_signal) {
+        $sig = ''
+        if ($runData.PSObject.Properties.Name.Contains('Relay compose')) { try { $sig = [string]$runData.'Relay compose'[0].data.main[0][0].json.signal } catch { } }
+        Write-Host "    signal: '$sig' (erwartet $($tc.expected_signal))"
+        if ($sig -ne "$($tc.expected_signal)") { $pass = $false }
     }
     if ($tc.expected_behavior) {
         $judgeBundle += [ordered]@{

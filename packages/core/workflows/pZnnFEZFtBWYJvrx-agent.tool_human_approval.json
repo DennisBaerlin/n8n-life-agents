@@ -225,7 +225,7 @@
                                                                                  {
                                                                                      "id":  "faac84e7-52e6-5d6c-aa84-3406626f56be",
                                                                                      "name":  "approved",
-                                                                                     "value":  "={{ ($(\u0027Owner approval\u0027).first().json.data || {}).approved === true }}",
+                                                                                     "value":  "={{ (($(\u0027Owner approval\u0027).first().json.data || {}).approved === true) }}",
                                                                                      "type":  "boolean"
                                                                                  }
                                                                              ]
@@ -447,7 +447,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "dff82972-c668-570c-91e6-65012c79ea69",
-                                                                                   "leftValue":  "={{ ($(\u0027Member approval\u0027).first().json.data || {}).approved === true }}",
+                                                                                   "leftValue":  "={{ (($(\u0027Member approval\u0027).first().json.data || {}).approved === true) }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -524,7 +524,7 @@
                                                                                  {
                                                                                      "id":  "e98fa281-674e-573e-92b6-ead76aa36145",
                                                                                      "name":  "approved",
-                                                                                     "value":  "={{ ($(\u0027Owner co-approval\u0027).first().json.data || {}).approved === true }}",
+                                                                                     "value":  "={{ (($(\u0027Owner co-approval\u0027).first().json.data || {}).approved === true) }}",
                                                                                      "type":  "boolean"
                                                                                  }
                                                                              ]
@@ -600,7 +600,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "cc475071-61c0-5101-babe-9180a86ec7e0",
-                                                                                   "leftValue":  "={{ ($(\u0027Member info\u0027).first().json.data || {}).approved === true }}",
+                                                                                   "leftValue":  "={{ (($(\u0027Member info\u0027).first().json.data || {}).approved === true) }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -753,7 +753,7 @@
                                                                                  {
                                                                                      "id":  "c496c4d7-a68c-5d7d-bf2b-644c58546d72",
                                                                                      "name":  "approved",
-                                                                                     "value":  "={{ ($(\u0027Member self\u0027).first().json.data || {}).approved === true }}",
+                                                                                     "value":  "={{ (($(\u0027Member self\u0027).first().json.data || {}).approved === true) }}",
                                                                                      "type":  "boolean"
                                                                                  }
                                                                              ]
@@ -770,6 +770,102 @@
                                    ],
                       "id":  "38dfb70f-73d1-5416-b48c-9db1e7155b57",
                       "name":  "Return self"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT CASE WHEN ($1::jsonb)-\u003e\u003e\u0027approved\u0027 = \u0027true\u0027 THEN agent.fn_set_hitl_pending_approved($1::jsonb) END AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, approved: (($(\u0027Owner approval\u0027).first().json.data || {}).approved === true) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       900,
+                                       -300
+                                   ],
+                      "id":  "d92b1282-c142-5d4b-84dc-c022373a5546",
+                      "name":  "Mark approved (Return owner)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT CASE WHEN ($1::jsonb)-\u003e\u003e\u0027approved\u0027 = \u0027true\u0027 THEN agent.fn_set_hitl_pending_approved($1::jsonb) END AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, approved: (($(\u0027Owner co-approval\u0027).first().json.data || {}).approved === true) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1800,
+                                       -20
+                                   ],
+                      "id":  "87df08c4-cc77-5ba4-b6e3-47cd561c8a01",
+                      "name":  "Mark approved (Return co-approval)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT CASE WHEN ($1::jsonb)-\u003e\u003e\u0027approved\u0027 = \u0027true\u0027 THEN agent.fn_set_hitl_pending_approved($1::jsonb) END AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, approved: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1800,
+                                       500
+                                   ],
+                      "id":  "8edd6617-db77-5406-bfa9-2a179fbb30fc",
+                      "name":  "Mark approved (Return info)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT CASE WHEN ($1::jsonb)-\u003e\u003e\u0027approved\u0027 = \u0027true\u0027 THEN agent.fn_set_hitl_pending_approved($1::jsonb) END AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: $execution.id, approved: (($(\u0027Member self\u0027).first().json.data || {}).approved === true) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1360,
+                                       740
+                                   ],
+                      "id":  "699b823e-806f-5e63-8605-43f267536a5d",
+                      "name":  "Mark approved (Return self)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -805,7 +901,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Karte-offen-Sperre (agent.hitl_pending, Fix C)**\n\nProblem: solange eine Karte offen ist, parkt n8n die ganze Kette Orchestrator -\u003e Agent -\u003e Tool -\u003e dieses Gate; das Chat-Gedächtnis entsteht erst am Lauf-Ende. Eine Text-/Sprachnachricht startete einen zweiten Lauf ohne die Kartenrunde (\"vergessene\" Werte, 2026-10-22). Lösung: vor JEDEM sendAndWait legt \"Open pending (\u003cSend\u003e)\" eine Zeile für den URSPRUNGS-Chat der Anfrage an (agent.fn_create_hitl_pending; Start.chat_id, nicht der Karten-Empfänger: im Vier-Augen-Pfad ist der Mitglieds-Chat gesperrt, nicht der Owner; own_card=false bei der Owner-Stufe -\u003e das Mitglied bekommt \"wartet auf Freigabe\" statt \"tippe dort\"). \"Close pending (\u003cSend\u003e)\" löscht NICHT, sondern gibt nach Tipp/Timeout frei (fn_set_hitl_pending_released: Gnadenfrist 2 Min) - die Kette dahinter antwortet erst noch und schreibt ihr Gedächtnis; der Orchestrator löscht die Zeile nach seiner Antwort (Finish card lock). Der Orchestrator-Pre-Router (Card open check, fn_get_hitl_pending_state) antwortet bei offener Zeile mit festem Hinweis statt einen Agenten zu starten. Ablauf (expires_at = jetzt + WAIT_MIN + 6) ist die Wahrheit: gestoppte/gescheiterte Läufe räumt die TTL bzw. core.sub_error_notify (Freigabe mit Gnadenfrist 0 per execution.id). Beide Knoten onError=continue = fail-open (Effizienz-Sperre, schützt keinen Write). Test-Sentinel (nicht-numerische chat_id) -\u003e keine Zeile. Bekannt: die Sperre greift schon, bevor die Karte sichtbar ist (Telegram-Send-Hänger), und Text in der Sekunde vor dem Insert läuft normal durch. Bewusst OHNE Sperre: sendAndWait-Karten der Finanz-Crons (remind_interest) - hinter ihnen ist keine Unterhaltung geparkt. Nach dem Send liest jeder Nachfolger das Ergebnis per Name ($(\u0027\u003cSend\u003e\u0027).first()), weil $json dann die Close-Ausgabe ist.",
+                                         "content":  "## Ablauf\n**Karte-offen-Sperre (agent.hitl_pending, Fix C)**\n\nProblem: solange eine Karte offen ist, parkt n8n die ganze Kette Orchestrator -\u003e Agent -\u003e Tool -\u003e dieses Gate; das Chat-Gedächtnis entsteht erst am Lauf-Ende. Eine Text-/Sprachnachricht startete einen zweiten Lauf ohne die Kartenrunde (\"vergessene\" Werte, 2026-10-22). Lösung: vor JEDEM sendAndWait legt \"Open pending (\u003cSend\u003e)\" eine Zeile für den URSPRUNGS-Chat der Anfrage an (agent.fn_create_hitl_pending; Start.chat_id, nicht der Karten-Empfänger: im Vier-Augen-Pfad ist der Mitglieds-Chat gesperrt, nicht der Owner; own_card=false bei der Owner-Stufe -\u003e das Mitglied bekommt \"wartet auf Freigabe\" statt \"tippe dort\"). \"Close pending (\u003cSend\u003e)\" löscht NICHT, sondern gibt nach Tipp/Timeout frei (fn_set_hitl_pending_released: Gnadenfrist 2 Min) - die Kette dahinter antwortet erst noch und schreibt ihr Gedächtnis; der Orchestrator löscht die Zeile nach seiner Antwort (Finish card lock). Der Orchestrator-Pre-Router (Card open check, fn_get_hitl_pending_state) antwortet bei offener Zeile mit festem Hinweis statt einen Agenten zu starten. Ablauf (expires_at = jetzt + WAIT_MIN + 6) ist die Wahrheit: gestoppte/gescheiterte Läufe räumt die TTL bzw. core.sub_error_notify (Freigabe mit Gnadenfrist 0 per execution.id). Beide Knoten onError=continue = fail-open (Effizienz-Sperre, schützt keinen Write). Test-Sentinel (nicht-numerische chat_id) -\u003e keine Zeile. Bekannt: die Sperre greift schon, bevor die Karte sichtbar ist (Telegram-Send-Hänger), und Text in der Sekunde vor dem Insert läuft normal durch. Bewusst OHNE Sperre: sendAndWait-Karten der Finanz-Crons (remind_interest) - hinter ihnen ist keine Unterhaltung geparkt. ENDGÜLTIG BESTÄTIGT (Bot mit Gesicht): vor jedem Erfolgs-Return (owner/co-approval/info/self) setzt Mark approved (\u003cReturn\u003e) per agent.fn_set_hitl_pending_approved approved=true für alle Zeilen dieser Execution — nur wenn das Ergebnis approved ist; ein Mitglieds-Tipp mit späterer Owner-Ablehnung, Ablehnung oder Timeout lassen approved leer. Der Orchestrator wählt damit den Daumen-hoch-Sticker (agent.fn_claim_persona_sticker), onError continue. Nach dem Send liest jeder Nachfolger das Ergebnis per Name ($(\u0027\u003cSend\u003e\u0027).first()), weil $json dann die Close-Ausgabe ist.",
                                          "height":  420,
                                          "width":  520,
                                          "color":  4
@@ -1695,12 +1791,23 @@
                                                                             [
                                                                                 {
                                                                                     "index":  0,
-                                                                                    "node":  "Return owner",
+                                                                                    "node":  "Mark approved (Return owner)",
                                                                                     "type":  "main"
                                                                                 }
                                                                             ]
                                                                         ]
                                                            },
+                        "Mark approved (Return owner)":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "index":  0,
+                                                                                  "node":  "Return owner",
+                                                                                  "type":  "main"
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
                         "Tier switch":  {
                                             "main":  [
                                                          [
@@ -1752,6 +1859,17 @@
                                                      ]
                                         },
                         "Close pending (Member self)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Mark approved (Return self)",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Mark approved (Return self)":  {
                                                             "main":  [
                                                                          [
                                                                              {
@@ -1818,12 +1936,23 @@
                                                                                [
                                                                                    {
                                                                                        "index":  0,
-                                                                                       "node":  "Return co-approval",
+                                                                                       "node":  "Mark approved (Return co-approval)",
                                                                                        "type":  "main"
                                                                                    }
                                                                                ]
                                                                            ]
                                                               },
+                        "Mark approved (Return co-approval)":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "index":  0,
+                                                                                        "node":  "Return co-approval",
+                                                                                        "type":  "main"
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               },
                         "Member info":  {
                                             "main":  [
                                                          [
@@ -1869,12 +1998,23 @@
                                                         [
                                                             {
                                                                 "index":  0,
-                                                                "node":  "Return info",
+                                                                "node":  "Mark approved (Return info)",
                                                                 "type":  "main"
                                                             }
                                                         ]
                                                     ]
                                        },
+                        "Mark approved (Return info)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Return info",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
                         "Open pending (Owner approval)":  {
                                                               "main":  [
                                                                            [

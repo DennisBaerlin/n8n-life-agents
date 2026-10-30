@@ -62,11 +62,25 @@ install_llm_gateway() {
 
   local changed=1
   if write_if_changed "$LLM_GATEWAY_DIR/server.js" 0644 < "$src"; then changed=0; fi
+  # Persona-Sticker fuer den Telegram-Relay (Kopf von server.js): wie der Code SELBST kopiert (REPO_ROOT ist beim
+  # Update ein Entpack-Ordner, der install_cli-Spiegel entsteht erst am Lauf-Ende). Binaer -> cmp + install statt
+  # write_if_changed (das liest per $(cat) als Text). Geaenderte Datei -> Neustart (file_id-Cache im RAM leeren).
+  local sticker_src="${LLM_GATEWAY_STICKER_SRC:-$SCRIPT_DIR/../packages/core/build/stickers}" sticker_dir="$LLM_GATEWAY_DIR/stickers" f
+  install -d -m 0755 "$sticker_dir"
+  if [ -d "$sticker_src" ]; then
+    for f in "$sticker_src"/*.webp; do
+      [ -f "$f" ] || continue
+      if ! cmp -s "$f" "$sticker_dir/$(basename "$f")"; then install -m 0644 "$f" "$sticker_dir/$(basename "$f")"; changed=0; fi
+    done
+  else
+    warn "Sticker-Ordner fehlt ($sticker_src) — der Bot schickt keine Sticker (Antworten laufen normal)."
+  fi
   if render_template "$TEMPLATE_DIR/lifeagents-llm-gateway.service.tpl" \
         GATEWAY_PORT="$LLM_GATEWAY_PORT" \
         KEEPALIVE_HOURS="$ka_hours" \
         NODE_BIN="$node_bin" \
         GATEWAY_JS="$LLM_GATEWAY_DIR/server.js" \
+        STICKER_DIR="$sticker_dir" \
       | write_if_changed "$LLM_GATEWAY_UNIT" 0644; then
     changed=0
   fi

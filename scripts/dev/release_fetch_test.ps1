@@ -10,7 +10,7 @@
 #   - Release-Signatur: die Fake-Releases sind mit einem kurzlebigen Test-Schluessel signiert (LIFEAGENTS_RELEASE_KEYRING);
 #     ohne Bund gilt das SHA256-Sidecar; der echte Projekt-Schluessel lehnt die Test-Unterschrift ab.
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur den laufenden Container (bash, curl, jq, node, script).
-# Usage:  .\scripts\dev\release_fetch_test.ps1 [-Port 8093] [-Verbose]   (belegt Port und Port+1; 8095-8099 = llm_gateway_test)
+# Usage:  .\scripts\dev\release_fetch_test.ps1 [-Port 8093] [-Verbose]   (belegt Port und Port+1; 8095-8099 + 8102/8103 = llm_gateway_test)
 # Exit-Code = Anzahl Fehler.
 param([int]$Port = 8093, [switch]$Verbose)
 

@@ -82,6 +82,18 @@ function buildResult(method, body) {
           : (/^mock_photo_\w+$/.test(fid) ? 'photos/' + fid + '.png' : 'mock/path');
         return { file_id: fid, file_unique_id: 'mock', file_size: 1, file_path: fp };
       }
+    case 'sendSticker':
+      // Persona-Sticker ueber den Telegram-Relay des LLM-Gateways: Erst-Versand als Upload (multipart -> body.sticker_file =
+      // Dateiname, z. B. 'butler_top.webp'), danach per file_id. Die file_id traegt den Dateinamen (mock_fid_<datei>) ->
+      // Tests sehen den Sticker in beiden Faellen ('butler_top' im Log).
+      {
+        const src = (body && (body.sticker_file || body.sticker)) || '';
+        return { message_id: ++messageId, from: BOT_USER, chat: { id: body && body.chat_id, type: 'private' },
+          date: Math.floor(Date.now() / 1000),
+          sticker: { file_id: /^mock_fid_/.test(src) ? src : 'mock_fid_' + src, file_unique_id: 'mock', type: 'regular', width: 512, height: 512 } };
+      }
+    case 'setMessageReaction':
+      return true;
     case 'setMyCommands':
       menus.set(menuKey(body), Array.isArray(body && body.commands) ? body.commands : []);
       return true;
@@ -149,6 +161,13 @@ const server = http.createServer((req, res) => {
     let body = raw;
     const ct = req.headers['content-type'] || '';
     if (raw && ct.indexOf('application/json') !== -1) { try { body = JSON.parse(raw); } catch (e) { /* roh lassen */ } }
+    // multipart (Sticker-Upload des Gateway-Relays): nie die Bytes loggen, nur Felder + Dateiname.
+    if (raw && ct.indexOf('multipart/form-data') !== -1) {
+      const latin = Buffer.concat(chunks).toString('latin1');
+      const fileM = latin.match(/name="(\w+)"; filename="([^"]+)"/);
+      const chatM = latin.match(/name="chat_id"\r\n\r\n(-?\d+)\r\n/);
+      body = { chat_id: chatM ? chatM[1] : null, multipart_field: fileM ? fileM[1] : null, sticker_file: fileM ? fileM[2] : null };
+    }
 
     const result = buildResult(method, typeof body === 'object' ? body : {});
     // Aufzeichnung anhaengen (eine JSON-Zeile je Call; der Harness liest sie via `docker exec cat`). result_message_id =

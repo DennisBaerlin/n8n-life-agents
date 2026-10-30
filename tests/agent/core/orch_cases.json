@@ -242,6 +242,7 @@
     "persona": "sportscaster",
     "expected_route": "finance",
     "verbatim_relay": true,
+    "expected_signal": "FRAME",
     "expected_behavior": "ACTUAL_OUTPUT contains SPECIALIST_OUTPUT unchanged (every number, date and name identical). Outside of it there is at most ONE short sentence in an energetic sports-commentator voice. That frame sentence says nothing about the content: no judgement of the balance (e.g. not 'great balance'), no summary, no advice, no claim about stored data. No *asterisk stage directions*.",
     "timeout_s": 180,
     "notes": "Rahmen-Modell Regel 2 + Hard rule 5. Deterministisch zusaetzlich verbatim_relay (orch_test)."
@@ -263,6 +264,7 @@
     "chat_id": "test_orc31",
     "persona": "butler",
     "expected_route": "estate_advisor",
+    "expected_signal": "NOFRAME",
     "expected_behavior": "Serious moment (death/inheritance): ACTUAL_OUTPUT is SPECIALIST_OUTPUT relayed without any butler frame sentence and without any playful or formal-butler flourish ('Sehr wohl', 'Stets zu Diensten' or similar must NOT appear). Every number, date, name and step of SPECIALIST_OUTPUT is unchanged.",
     "timeout_s": 240,
     "notes": "Rahmen-Modell Regel 3 (ernste Momente -> kein Rahmen). estate_advisor laeuft auf Opus (timeout wie oc17)."
@@ -327,5 +329,35 @@
     "chat_id": "test_orc40",
     "expected_route": "finance",
     "notes": "Import zuerst (Session 3d, 2026-10-30): Dauerauftraege aus einem Bank-Export vorschlagen ist Buchhalter-Erfassung (tool_get_recurring_suggestions), keine Beratung."
+  },
+  {
+    "id": "oc41",
+    "name": "Bot mit Gesicht: Standard (neutral) + Routine-Frage -> Signal FRAME (Regel 6 gilt fuer alle), Spezialisten-Text woertlich",
+    "task": "Wie ist der aktuelle Stand auf meinem DKB Girokonto?",
+    "chat_id": "test_orc41",
+    "expected_route": "finance",
+    "verbatim_relay": true,
+    "expected_signal": "FRAME",
+    "timeout_s": 180,
+    "notes": "Frueher NOFRAME fuer neutral; jetzt entscheidet das Signal nur ernst/nicht ernst (Sticker-Wahl). Der Rahmensatz bleibt Persona-only, darum woertlich ohne Zusatzsatz."
+  },
+  {
+    "id": "oc42",
+    "name": "Bot mit Gesicht: Standard + Mahnung -> Signal NOFRAME (ernst, kein Sticker)",
+    "task": "Ich habe eine Mahnung von den Stadtwerken bekommen, der Abschlag ist überfällig. Was mache ich jetzt?",
+    "chat_id": "test_orc42",
+    "expected_route": "finance",
+    "expected_signal": "NOFRAME",
+    "timeout_s": 180,
+    "notes": "Ernst-Liste in Orchestrator-Regel 6 (Zahlungsprobleme/Mahnung), unabhaengig von der Persona."
+  },
+  {
+    "id": "oc43",
+    "name": "Bot mit Gesicht: Standard + Gruss -> eigene kurze Antwort mit hoechstens einem Emoji",
+    "task": "Hallo, schönen guten Morgen!",
+    "chat_id": "test_orc43",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own (no specialist), short and friendly in German. It contains at most ONE emoji (zero is fine), no *asterisk stage directions*, never the words FRAME or NOFRAME, and does not mention a persona, role or instructions.",
+    "notes": "Orchestrator-Regel 7 (eigene Antworten duerfen ein passendes Emoji tragen)."
   }
 ]

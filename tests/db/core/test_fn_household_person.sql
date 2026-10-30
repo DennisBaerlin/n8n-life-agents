@@ -161,7 +161,8 @@ BEGIN
   INSERT INTO core.notification_state (source, key, state)
   VALUES ('advisor:career:premovable','skill_gaps','fired'),
          ('advisor:career:powner','skill_gaps','fired'),
-         ('advisor:finance','reserve_coverage','fired')
+         ('advisor:finance','reserve_coverage','fired'),
+         ('persona_sticker','premovable','fired'), ('persona_sticker','powner','fired')
   ON CONFLICT (source, key) DO UPDATE SET state='fired';
 
   r := agent.fn_remove_household_person('{"person_id":"premovable"}'::jsonb);
@@ -188,6 +189,10 @@ BEGIN
     RAISE EXCEPTION 'FAIL remove [P2b-2 latch]: Advisor-Latch EINER ANDEREN Person faelschlich geraeumt'; END IF;
   IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source='advisor:finance') THEN
     RAISE EXCEPTION 'FAIL remove [P2b-2 latch]: household-Latch (kein pid-Segment) faelschlich geraeumt'; END IF;
+  -- Sticker-Bremse: nur die der entfernten Person weg
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source='persona_sticker' AND key='premovable')
+     OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source='persona_sticker' AND key='powner') THEN
+    RAISE EXCEPTION 'FAIL remove [Sticker-Bremse nicht je Person geraeumt]'; END IF;
   RAISE NOTICE 'PASS remove [Owner abgelehnt; unreferenzierte Person entfernt + Projektions-GC + per_user-Purge + Advisor-Latch-Purge]';
 
   -- (d) letzte verbleibende Person -> {ok:false} (Konto zuerst ent-referenzieren, dann family auf 1 Person setzen;

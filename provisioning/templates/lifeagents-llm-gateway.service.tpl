@@ -20,6 +20,8 @@ Environment=LLM_GATEWAY_KEEPALIVE_HOURS=@@KEEPALIVE_HOURS@@
 # Ausgehend IPv4 bevorzugen (api.anthropic.com hat AAAA): ein haengender IPv6-Pfad im Heimnetz kostete sonst
 # den vollen TCP-Timeout je Claude-Aufruf — dieselbe Massnahme wie in n8n.service.tpl.
 Environment=NODE_OPTIONS=--dns-result-order=ipv4first
+# Telegram-Relay (Kopf von server.js): Persona-Sticker kommen nur aus diesem Ordner (install_llm_gateway kopiert sie).
+Environment=LLM_GATEWAY_STICKER_DIR=@@STICKER_DIR@@
 ExecStart=@@NODE_BIN@@ @@GATEWAY_JS@@
 Restart=on-failure
 RestartSec=2

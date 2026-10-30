@@ -1595,6 +1595,29 @@ function New-TelegramDraftNode {
     }
 }
 
+# Telegram-Relay des lokalen LLM-Gateways (Bot mit Gesicht 2026-10-30, Kopf von provisioning/llm_gateway/server.js):
+# POST http://127.0.0.1:8090/__telegram/<Method> mit dem Bot-Token als Header (Credential 'Telegram relay (gateway)',
+# httpHeaderAuth). Fuer genau die Bot-API-Aufrufe, die der Telegram-Node nicht (setMessageReaction) bzw. nicht mit
+# Zeitlimit (sendSticker VOR der Antwort) kann. Rein kosmetisch -> kein Retry, onError=continue, Timeout 4 s (Gateway
+# selbst 3 s): ein Fehlschlag kostet nur Herz/Sticker, nie die Antwort. $BodyExpr = n8n-Ausdruck, der das JSON-Objekt
+# liefert ({chat_id, message_id[, emoji]} bzw. {chat_id, sticker:'<set>_<ausdruck>'}).
+function New-TelegramRelayNode {
+    param([string]$Name, [int[]]$Pos, [ValidateSet('setMessageReaction', 'sendSticker')][string]$Method,
+          [Parameter(Mandatory)][string]$BodyExpr)
+    [ordered]@{
+        parameters = [ordered]@{
+            method = 'POST'
+            url = "http://127.0.0.1:8090/__telegram/$Method"   # lokaler Gateway (provisioning/llm_gateway), nur 127.0.0.1
+            authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'
+            sendBody = $true; specifyBody = 'json'; jsonBody = "={{ JSON.stringify($BodyExpr) }}"
+            options = [ordered]@{ timeout = 4000 }
+        }
+        type = 'n8n-nodes-base.httpRequest'; typeVersion = 4.2; position = $Pos
+        id = (New-Id); name = $Name; onError = 'continueRegularOutput'; alwaysOutputData = $true
+        credentials = @{ httpHeaderAuth = $CRED_TELEGRAM_RELAY }
+    }
+}
+
 # Fire-and-forget-Aufruf von core.sub_show_thinking (Build-CallWorkflow + wartet NICHT + Fehler werden geschluckt) —
 # die "Bot denkt nach ..."-Anzeige darf die eigentliche Antwort nie aufhalten. $ChatIdExpr = Ziel-Chat (Ausdruck).
 # Davor gehoert ein 'nur private Chats'-IF des Aufrufers (sendMessageDraft gibt es nur dort).

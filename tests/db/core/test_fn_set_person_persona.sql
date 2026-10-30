@@ -32,7 +32,8 @@ BEGIN
     ('core.persona.name.butler', 'de', 'Butler-de', 'core'),
     ('core.persona.name.butler', 'ko', 'Butler-ko', 'core'),
     ('core.persona.name.sage',   'ko', 'Sage-ko', 'core'),
-    ('core.persona.name.neutral','de', 'Neutral-de', 'core')
+    ('core.persona.name.neutral','de', 'Neutral-de', 'core'),
+    ('core.persona.reset', 'de', 'DE reset {name}', 'core')
   ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
 
   INSERT INTO core.callback_handlers (prefix, handler_fn, package, member_permeable)
@@ -55,15 +56,26 @@ BEGIN
     RAISE EXCEPTION 'FAIL set_person_persona [Toast nicht in Owner-Sprache: %]', r; END IF;
   IF agent.fn_resolve_sender(111)->>'persona' IS DISTINCT FROM 'butler' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [butler nicht gespeichert/aufgeloest]'; END IF;
+  -- eigene Wahl -> Hallo-Sticker des neuen Sets (der Orchestrator ruft dann fn_claim_persona_sticker)
+  IF r->>'sticker_event' IS DISTINCT FROM 'persona_chosen' THEN
+    RAISE EXCEPTION 'FAIL set_person_persona [eigene Wahl ohne sticker_event: %]', r; END IF;
 
-  -- ---------- Owner setzt Mina (Toast in Owner-Sprache, NICHT Minas) ----------
+  -- erneuter Tipp auf dieselbe Persona (z. B. alte Picker-Karte) -> kein Sticker (sonst keine Bremse)
+  r := core.fn_dispatch_callback(jsonb_build_object('data', 'persona:powner:butler', 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR r ? 'sticker_event' THEN
+    RAISE EXCEPTION 'FAIL set_person_persona [gleiche Persona erneut mit sticker_event: %]', r; END IF;
+
+  -- ---------- Owner setzt Mina (Toast in Owner-Sprache, NICHT Minas; kein Sticker im Owner-Chat) ----------
   r := core.fn_dispatch_callback(jsonb_build_object('data', 'persona:mina:butler', 'chat_id', '111'));
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'DE Mina=Butler-de' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [Owner setzt Mina: %]', r; END IF;
+  IF r ? 'sticker_event' THEN
+    RAISE EXCEPTION 'FAIL set_person_persona [sticker_event bei fremder Person: %]', r; END IF;
 
   -- ---------- Mitglied setzt sich selbst (Toast in eigener Sprache ko) ----------
   r := core.fn_dispatch_callback(jsonb_build_object('data', 'persona:mina:sage', 'chat_id', '222'));
-  IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'KO Mina=Sage-ko' THEN
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'KO Mina=Sage-ko'
+     OR r->>'sticker_event' IS DISTINCT FROM 'persona_chosen' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [Mitglied selbst: %]', r; END IF;
   IF agent.fn_resolve_sender(222)->>'persona' IS DISTINCT FROM 'sage' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [sage nicht gespeichert]'; END IF;
@@ -75,9 +87,9 @@ BEGIN
   IF agent.fn_resolve_sender(111)->>'persona' IS DISTINCT FROM 'butler' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [Owner-Persona durch Mitglied geaendert]'; END IF;
 
-  -- ---------- neutral = Key entfernt ----------
+  -- ---------- neutral = Key entfernt, eigener Zurueck-Toast ----------
   r := core.fn_dispatch_callback(jsonb_build_object('data', 'persona:powner:neutral', 'chat_id', '111'));
-  IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'DE Owner=Neutral-de' THEN
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'DE reset Owner' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [neutral: %]', r; END IF;
   IF (SELECT pp ? 'persona' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp
        WHERE c.name = 'family' AND pp->>'person_id' = 'powner') THEN

@@ -18,7 +18,9 @@
 # (Kosten-Report): Kennzeile `<<la-wf:NAME>>` (String-/Block-System, Kette nur mit Kennzeile, 400-Wiederholung) und Header
 # x-lifeagents-workflow erreichen upstream nie, wf steht in der usage-Zeile + usage.jsonl, GET /__usage blaettert,
 # Keep-Alive-Schluessel mit/ohne Kennzeile gleich · (h) echter Upstream: POST /v1/messages/count_tokens (kostenlos)
-# mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP).
+# mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP). (m) Telegram-Relay (Bot mit Gesicht; eigene Units: Mock-Telegram 8103, Gateway 8102):
+# Reaktion durchgereicht, Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
+# Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
 #
 # Kein LLM-Credit (count_tokens ist laut Anthropic kostenlos). Exit = Anzahl FAIL.
 param([switch]$Verbose)
@@ -40,7 +42,7 @@ $GwJs     = '/usr/local/lib/lifeagents-llm-gateway/server.js'
 $MockDir  = '/opt/gwtest'
 $MockLog  = '/tmp/gwtest_mock.jsonl'
 $UsageDir = '/tmp/gwtest_usage'
-$Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka' }
+$Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka'; tgmock = 'n8ntest-gwt-tgmock'; tg = 'n8ntest-gwt-tg' }
 $Canary   = 'CANARY_7f3a9c_PROMPT'
 $FakeKey  = 'sk-ant-test-CANARYKEY-0000'
 
@@ -306,6 +308,70 @@ try {
         if ($res.Status -eq '200' -and $res.Body -match '"input_tokens"\s*:\s*[1-9]' -and $keyLeak.Count -eq 0) { Pass 'TLS/Host/Auth/Kompression ok (count_tokens 200)' }
         else { Fail "Status=$($res.Status) body=$($res.Body.Substring(0, [Math]::Min(200, $res.Body.Length)))" }
     }
+
+    # (m) Telegram-Relay
+    Write-Host '  (m) Telegram-Relay: Allowlist, Token-Form, Reaktion, Sticker Upload -> file_id, kein Leck'
+    $TgLog = '/tmp/gwtest_tg.jsonl'
+    $TgToken = '123456789:AAFAKEtokenFAKEtokenFAKEtoken_0000'
+    Invoke-InC @('mkdir', '-p', '/opt/gwtest_tg') | Out-Null
+    Invoke-Native docker @('cp', (Join-Path $RepoRoot 'tests\mock_telegram\server.js'), "${Container}:/opt/gwtest_tg/server.js") | Out-Null
+    Invoke-InC @('sh', '-c', ": > $TgLog") | Out-Null
+    Start-TestUnit $Units.tgmock @('N8NTEST_MOCK_TG_PORT=8103', "N8NTEST_MOCK_TG_LOG=$TgLog") '/opt/gwtest_tg/server.js' 8103
+    Start-TestUnit $Units.tg @('LLM_GATEWAY_PORT=8102', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0',
+        'LLM_GATEWAY_TELEGRAM_API=http://127.0.0.1:8103', 'LLM_GATEWAY_STICKER_DIR=/usr/local/lib/lifeagents-llm-gateway/stickers') $GwJs 8102
+    function Send-Tg([string]$Path, [string]$RawBody, [string]$Token = $TgToken) {
+        $script:reqN++
+        $hostFile = Join-Path $env:TEMP "gwtest_tg_$($script:reqN).json"
+        [System.IO.File]::WriteAllText($hostFile, $RawBody, $Utf8NoBom)
+        $inC = "/tmp/gwtest_tg_$($script:reqN).json"
+        Invoke-Native docker @('cp', $hostFile, "${Container}:$inC") | Out-Null
+        Remove-Item $hostFile -ErrorAction SilentlyContinue
+        $cfg = "header = `"x-telegram-bot-token: $Token`"`nheader = `"content-type: application/json`"`n"
+        $r = Invoke-Native docker @('exec', '-i', $Container, 'curl', '-s', '-K', '-', '-o', '/tmp/gwtest_tg_resp', '-w', '%{http_code}',
+            '-X', 'POST', "http://127.0.0.1:8102$Path", '--data-binary', "@$inC") -StdIn $cfg
+        $body = ((Invoke-InC @('cat', '/tmp/gwtest_tg_resp')).Output -join "`n")
+        Invoke-InC @('rm', '-f', $inC, '/tmp/gwtest_tg_resp') | Out-Null
+        return [pscustomobject]@{ Status = (($r.Output -join '').Trim()); Body = $body }
+    }
+    function Get-TgEntries { @((Invoke-InC @('cat', $TgLog)).Output | Where-Object { $_ -match '"method"' } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.method -ne '__start' }) }
+
+    $res = Send-Tg '/__telegram/setMessageReaction' '{"chat_id":"4242","message_id":77}'
+    $e = @(Get-TgEntries)
+    if ($res.Status -eq '200' -and $res.Body -match '"ok":true' -and $e.Count -eq 1 -and $e[0].method -eq 'setMessageReaction' -and
+        $e[0].body.message_id -eq 77 -and $e[0].body.reaction[0].emoji -eq [string][char]0x2764) { Pass 'Reaktion ❤ (ohne VS16) an Telegram durchgereicht' }
+    else { Fail "Reaktion: Status=$($res.Status) body=$($res.Body) log=$($e | ConvertTo-Json -Compress -Depth 6)" }
+
+    Clear-MockLog
+    $res = Send-Tg '/__telegram/sendMessage' '{"chat_id":"4242","text":"x"}'
+    $res2 = Send-Tg '/__telegram/setMessageReaction?x=1' '{"chat_id":"4242","message_id":1}'
+    $res3 = Send-Tg '/__telegram/setMessageReaction/x' '{"chat_id":"4242","message_id":1}'
+    if ($res.Status -eq '404' -and $res2.Status -eq '404' -and $res3.Status -eq '404' -and @(Get-MockEntries).Count -eq 0 -and @(Get-TgEntries).Count -eq 1) { Pass 'nicht erlaubte Methode/Query/Pfad -> abgelehnt, nichts an Anthropic oder Telegram' }
+    else { Fail "Allowlist: $($res.Status)/$($res2.Status)/$($res3.Status) anthropic=$(@(Get-MockEntries).Count) tg=$(@(Get-TgEntries).Count)" }
+
+    $res = Send-Tg '/__telegram/setMessageReaction' '{"chat_id":"4242","message_id":1}' 'kaputt/../x'
+    $res2 = Send-Tg '/__telegram/setMessageReaction' '{"chat_id":"4242","message_id":1,"emoji":"💩"}'
+    if ($res.Status -eq '400' -and $res2.Status -eq '400' -and @(Get-TgEntries).Count -eq 1) { Pass 'kaputtes Token / nicht erlaubtes Emoji -> 400, kein Aufruf' }
+    else { Fail "Token/Emoji: $($res.Status)/$($res2.Status)" }
+
+    $res = Send-Tg '/__telegram/sendSticker' '{"chat_id":"4242","sticker":"butler_top"}'
+    $res2 = Send-Tg '/__telegram/sendSticker' '{"chat_id":"4242","sticker":"butler_top"}'
+    $st = @(Get-TgEntries | Where-Object { $_.method -eq 'sendSticker' })
+    if ($res.Status -eq '200' -and $res2.Status -eq '200' -and $st.Count -eq 2 -and $st[0].body.sticker_file -eq 'butler_top.webp' -and
+        [string]$st[0].body.chat_id -eq '4242' -and $st[1].body.sticker -eq 'mock_fid_butler_top.webp') { Pass 'Sticker: erst Upload (Datei aus dem Ordner), dann file_id' }
+    else { Fail "Sticker: $($res.Status)/$($res2.Status) log=$($st | ConvertTo-Json -Compress -Depth 6)" }
+
+    $res = Send-Tg '/__telegram/sendSticker' '{"chat_id":"4242","sticker":"../../etc/passwd"}'
+    $res2 = Send-Tg '/__telegram/sendSticker' '{"chat_id":"4242","sticker":"pirate_hallo"}'
+    if ($res.Status -eq '400' -and $res2.Status -eq '404') { Pass 'Sticker-Name ausserhalb des Musters -> 400, fehlende Datei -> 404' }
+    else { Fail "Sticker-Name: $($res.Status)/$($res2.Status)" }
+
+    $jr = @(Get-UnitJournal $Units.tg)
+    if (@($jr | Where-Object { $_.Contains('AAFAKEtoken') }).Count -eq 0) { Pass 'Bot-Token nie im Journal' } else { Fail 'Bot-Token im Journal' }
+    $h = $null
+    $hr = Invoke-InC @('curl', '-fsS', 'http://127.0.0.1:8102/__health')
+    try { $h = ($hr.Output -join '') | ConvertFrom-Json } catch { }
+    if ($h -and $h.telegram.upstream -eq 'http://127.0.0.1:8103' -and $h.telegram.sticker_dir -eq $true) { Pass '/__health meldet Telegram-Upstream + Sticker-Ordner' }
+    else { Fail "health: $($hr.Output -join '')" }
 
     # Produktiver Gateway gesund?
     $h = Get-LlmGatewayHealth -Container $Container

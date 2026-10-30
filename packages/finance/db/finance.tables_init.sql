@@ -1225,6 +1225,9 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- Vormerkungen (2026-10-30): Luecke App-Stand - (Anfang + Exportzeilen) dieses Abgleichs (< 0 = noch vorgemerkt, steckt
 -- im Rest). Der naechste Export gleicht hoechstens -export_gap als "Ausgleich vorgemerkter Zahlungen" aus
 -- (fn_statement_prepare pending_settled). NULL = gedruckter Auszug bzw. Abgleich von vor dieser Spalte.
+-- Provenienz-Snapshot zum Abgleich (Ausnahme (c) der Regel "keine ableitbaren Spalten", .claude/rules/sql.md; Stempel =
+-- diese Auszugszeile): nicht ableitbar, weil App-Stand und Exportzeilen nie gespeichert werden (Einzelumsaetze nur als
+-- Hash in statement_seen_refs, closing_balance = App-Stand minus Zeilen nach period_end).
 ALTER TABLE finance.bank_statements ADD COLUMN IF NOT EXISTS export_gap numeric(12,2);
 DO $$ BEGIN
     ALTER TABLE finance.bank_statements ADD CONSTRAINT finance_bank_statements_export_gap_chk

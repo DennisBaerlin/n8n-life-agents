@@ -391,7 +391,13 @@ BEGIN
                                   'account', r.o->>'account_name',
                                   'min',     core.fn_ui_money((r.o->>'min_projected')::numeric, r.o->>'currency'),
                                   'date',    core.fn_ui_date((r.o->>'min_date')::date),
-                                  'buffer',  core.fn_ui_money((r.o->>'buffer')::numeric, r.o->>'currency'))),
+                                  'buffer',  core.fn_ui_money((r.o->>'buffer')::numeric, r.o->>'currency'),
+                                  'per_day', core.fn_ui_money(abs((r.o->>'everyday_per_day')::numeric), r.o->>'currency'))),
+                              -- Transparenz 2026-10-30: Schaetzung aus nur einem Auszug + Standard-Puffer benennen
+                              CASE WHEN (r.o->>'provisional')::boolean
+                                   THEN core.fn_ui_tpl('finance.advisor.account_coverage_provisional') END,
+                              CASE WHEN r.o->>'buffer_source' = 'default'
+                                   THEN core.fn_ui_tpl('finance.advisor.account_coverage_default_buffer') END,
                               CASE WHEN jsonb_typeof(r.o->'suggestion') = 'object' THEN
                                   core.fn_ui_tpl('finance.advisor.account_coverage_suggest', jsonb_build_object(
                                       'amount', core.fn_ui_money((r.o->'suggestion'->>'amount')::numeric, r.o->>'currency'),

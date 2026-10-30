@@ -135,6 +135,18 @@
         "notes":  "Import zuerst 2026-10-30: Schema-Fidelity des neuen Parameters remove_account_number (Trigger + Agent-Binding + fn_set_account). Erwartet: Nummer entfernt, Konto sonst unveraendert. IBAN erfunden (gueltige Pruefziffer)."
     },
     {
+        "id":  "e2e49",
+        "name":  "set_account: Puffer je Konto (min_balance)",
+        "task":  "Auf dem Konto '__E2E__ Puffer Konto' sollen immer mindestens 400 Euro bleiben. Stell das bitte als Puffer ein.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ Puffer Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ Puffer Konto','account_type','cash','currency','EUR','opening_balance',100)));",
+        "chat_id":  "test_e2e_e2e49",
+        "sentinel_accounts":  1,
+        "verify_sql":  "SELECT count(*) FROM finance.accounts WHERE name = '__E2E__ Puffer Konto' AND min_balance = 400;",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Transparenz 2026-10-30: Schema-Fidelity des neuen Parameters min_balance (Trigger + Agent-Binding + fn_set_account + Karten-Zeile in Kontowaehrung)."
+    },
+    {
         "id":  "e2e07",
         "name":  "reconcile_account: Korrekturbuchung bei Drift",
         "task":  "Lege ein Cash-Konto \u0027__E2E__ Recon Konto\u0027 an (Inhaber Erika, ohne Zinsen). Buche eine Einzahlung von 500 Euro auf dieses Konto (Datum heute, Verwendungszweck \u0027Einlage\u0027). Gleiche das Konto dann ab: tatsaechlicher Saldo laut Banking-App ist 520 Euro (20 Euro Zinsen noch nicht gebucht), Datum heute.",

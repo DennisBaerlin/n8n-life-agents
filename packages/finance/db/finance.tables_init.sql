@@ -809,6 +809,17 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Puffer je Konto (Transparenz 2026-10-30): Mindeststand in KONTOwaehrung, unter den die Kontovorschau
+-- (fn_account_outlook) nicht fallen soll; NULL = Standard core.config finance.coverage_buffer_eur (umgerechnet).
+-- Nur Geld-Konten (die Vorschau rechnet nur fuer sie). Nutzer-Praeferenz, nicht ableitbar. Gesetzt nur ueber
+-- fn_set_account (HITL-Karte tool_set_account), die denselben Wert-Guard als {ok:false} spiegelt.
+ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS min_balance numeric(15,2);
+DO $$ BEGIN
+    ALTER TABLE finance.accounts DROP CONSTRAINT IF EXISTS finance_accounts_min_balance_chk;
+    ALTER TABLE finance.accounts ADD CONSTRAINT finance_accounts_min_balance_chk
+        CHECK (min_balance IS NULL OR (min_balance >= 0 AND account_type = 'cash'));
+END $$;
+
 -- Migration: enforce depot-needs-settlement on already-installed databases
 DO $$ BEGIN
     ALTER TABLE finance.accounts

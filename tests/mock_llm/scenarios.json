@@ -1226,6 +1226,14 @@
     "final": "Die Karte zum Entfernen der IBAN beim DKB Giro ist unterwegs."
   },
   {
+    "_comment": "tc102 Puffer je Konto: tool_set_account mit min_balance.",
+    "match": "Auf dem DKB Giro sollen immer mindestens 400 Euro bleiben",
+    "calls": [
+      { "tool": "tool_set_account", "args": { "account_name": "DKB Giro", "min_balance": "400" } }
+    ],
+    "final": "Die Karte fuer den Puffer von 400 Euro beim DKB Giro ist unterwegs."
+  },
+  {
     "_comment": "tc97 Import zuerst: Bank-Export nur fuer fehlende Dauerauftraege -> tool_get_recurring_suggestions (fester Leser, kein Write).",
     "match": "schlag mir daraus vor, welche Dauerauftraege noch fehlen",
     "calls": [

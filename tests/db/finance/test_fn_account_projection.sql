@@ -51,5 +51,23 @@ BEGIN
   IF r.inflow IS DISTINCT FROM 100::numeric OR r.bal IS DISTINCT FROM 100::numeric OR NOT r.fx_gap THEN
     RAISE EXCEPTION 'FAIL [2b] CHF-Ziel ohne Kurs -> Rohbetrag 100 + fx_gap, got %', r; END IF;
   RAISE NOTICE 'PASS [2] Ziel-Seite in Zielwaehrung, ohne Kurs Rohbetrag + fx_gap';
+
+  -- 3) Bruecke (Transparenz 2026-10-30): je Tag Buchungen (booked) getrennt von Dauerauftrags-Vorkommen
+  --    (planned_in / planned_out); inflow + outflow = booked + planned_in + planned_out
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_a, -7, t + 2, 'other');
+  SELECT * INTO r FROM finance.fn_account_projection(v_a, t, t + 10, 0) p WHERE p.day = t + 2;
+  IF r.booked IS DISTINCT FROM -7::numeric OR r.planned_in IS DISTINCT FROM 20::numeric
+     OR r.planned_out IS DISTINCT FROM -30::numeric OR r.inflow + r.outflow <> r.booked + r.planned_in + r.planned_out THEN
+    RAISE EXCEPTION 'FAIL [3a] t+2 booked/planned getrennt, got %', r; END IF;
+  SELECT * INTO r FROM finance.fn_account_projection(v_usd, t, t + 10, 0) p WHERE p.day = t + 7;
+  IF r.planned_in IS DISTINCT FROM 110.00::numeric OR r.booked <> 0 THEN
+    RAISE EXCEPTION 'FAIL [3b] Ziel-Seite in planned_in (Zielwaehrung), got %', r; END IF;
+  -- dieselben Vorkommen einzeln: fn_account_planned_flows (die eine Quelle fuer Reihe und Bruecken-Details)
+  -- -30 + 20 + 50 (b->a) - 100 (a->usd) - 100 (a->chf) = -160
+  IF (SELECT sum(f.amount) FROM finance.fn_account_planned_flows(v_a, t, t + 10) f) IS DISTINCT FROM -160::numeric
+     OR (SELECT count(*) FROM finance.fn_account_planned_flows(v_a, t, t + 10) f) <> 5
+     OR NOT (SELECT bool_or(f.fx_gap) FROM finance.fn_account_planned_flows(v_chf, t, t + 10) f) THEN
+    RAISE EXCEPTION 'FAIL [3c] fn_account_planned_flows Summe -160 / 5 Vorkommen / CHF-Luecke'; END IF;
+  RAISE NOTICE 'PASS [3] booked / planned_in / planned_out je Tag + Einzel-Vorkommen';
 END $$;
 ROLLBACK;

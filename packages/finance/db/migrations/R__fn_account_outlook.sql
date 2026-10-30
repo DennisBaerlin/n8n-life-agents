@@ -1,23 +1,30 @@
 -- ============================================================
 -- fn_account_outlook (READ, STABLE, RAISE-frei) -- Deckungs-Vorschau eines Kontos (Monats-Check WP-E)
 --   "Reicht das Geld bis zum naechsten Geldeingang?" — die EINE Rechen-Adresse fuer die Antwort nach dem Monats-Check
---   (fn_apply_bank_statement) und die Berater-Warnung account_coverage (fn_advisor_review). Muster Quicken Simplifi
---   "projected balance + low-balance alert"; die DB rechnet, das LLM formuliert nur.
+--   (fn_apply_bank_statement), die Berater-Warnung account_coverage (fn_advisor_review) und die Bruecke des
+--   Mini-App-Bildschirms „Zahlungen“. Muster Quicken Simplifi "projected balance + low-balance alert"; die DB rechnet,
+--   das LLM formuliert nur.
 --   Modell (Einzelumsaetze werden nicht gespeichert -> Alltagsausgaben sind eine Schaetzung):
 --     d0 = Tag nach dem bestaetigten Stand (last_reconciled_at, sonst heute).
 --     Stand(d) = Tagesreihe des EINEN Rechenkerns finance.fn_account_projection(konto, d0, Horizont, Alltag je Tag)
 --     (Basis = Saldo zum Vortag von d0 + Buchungen + offene Dauerauftrags-Vorkommen; Transfer-Ziel in Zielwaehrung);
 --     derselbe Kern rechnet die Spar-Deckung fn_account_funding. Alltagsausgaben je Tag =
---     finance.fn_account_everyday_per_day (letzte 3 Auszuege, 0 ohne Historie).
+--     finance.fn_account_everyday_per_day (gezaehlte Auszuege, 0 ohne Historie; provisional = nur ein Auszug).
 --     Horizont = naechstes Vorkommen der groessten Einnahme AUF DIESES Konto (Einnahme oder Transfer-Ziel) nach heute,
 --     sonst heute + 31. Tiefster Stand ueber [heute, Horizont].
---   Puffer = core.config finance.coverage_buffer_eur (Default 250), in die Kontowaehrung umgerechnet.
+--   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'), sonst core.config
+--   finance.coverage_buffer_eur (Default 250) in die Kontowaehrung umgerechnet (buffer_source 'default').
+--   Bruecke (Transparenz 2026-10-30) = Teilsummen derselben Reihe von d0 bis min_date: base (Saldo zum Vortag von d0;
+--   weicht er vom bestaetigten Stand ab, steht eine rueckdatierte Buchung dazwischen) + booked + out + in + everyday
+--   = min_projected exakt. confirmed = bestaetigter Stand (NULL ohne Abgleich).
 --   Vorschlag bei Unterschreitung: Umbuchung (auf 50 aufgerundet) bis 2 Tage vor dem Tief von dem cash-Konto gleicher
 --   Waehrung mit dem groessten freien Saldo (account_reserve_status: Saldo - Ruecklage), wenn es den Betrag hat; nie von
 --   einem Kinderkonto (Eigentuemer role child, core.fn_household_persons): der Vorschlag geht ohne LLM in Karte/Alert.
 --   RUECKGABE: {ok, account_id, account_name, currency, confirmed_balance, confirmed_as_of, estimated_today,
---   next_income_date, next_income_name, horizon_end, planned_out, planned_in, everyday_per_day, has_history,
---   min_projected, min_date, buffer, shortfall, suggestion:{amount, by_date, from_account} | null} | {ok:false}
+--   next_income_date, next_income_name, next_income_amount, next_income_rp_id, horizon_end, planned_out, planned_in, everyday_per_day,
+--   has_history, provisional, min_projected, min_date, buffer, buffer_source, shortfall,
+--   bridge:{from, base, confirmed, booked, out, in, everyday, days},
+--   suggestion:{amount, by_date, from_account} | null} | {ok:false}
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_outlook(p_account_id int)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -28,7 +35,10 @@ DECLARE
     v_base     NUMERIC;
     v_per_day  NUMERIC := 0;
     v_hist     BOOLEAN;
+    v_prov     BOOLEAN;
     v_inc_name TEXT;
+    v_inc_amt  NUMERIC;
+    v_inc_rp   INT;
     v_horizon  DATE;
     v_inc_date DATE;
     v_min      NUMERIC;
@@ -37,9 +47,11 @@ DECLARE
     v_out      NUMERIC;
     v_in       NUMERIC;
     v_buffer   NUMERIC;
+    v_bsrc     TEXT;
     v_eur1     NUMERIC;
     v_short    NUMERIC;
     v_sugg     JSONB;
+    v_bridge   JSONB;
 BEGIN
     SELECT * INTO v_acct FROM finance.accounts WHERE id = p_account_id;
     IF NOT FOUND OR v_acct.account_type <> 'cash' THEN
@@ -48,11 +60,12 @@ BEGIN
     v_d0   := COALESCE(v_acct.last_reconciled_at + 1, v_today);
     v_base := COALESCE(finance.fn_get_balance_as_of(p_account_id, v_d0 - 1), 0);
 
-    SELECT e.per_day, e.has_history INTO v_per_day, v_hist FROM finance.fn_account_everyday_per_day(p_account_id) e;
+    SELECT e.per_day, e.has_history, e.provisional INTO v_per_day, v_hist, v_prov
+    FROM finance.fn_account_everyday_per_day(p_account_id) e;
 
     -- groesste Einnahme auf dieses Konto (Einnahme-rp oder Transfer-Ziel), naechstes offenes Vorkommen nach heute.
     -- Quelle = fn_recurring_due_open (kennt Status/Gueltigkeit; ein erst kuenftig startendes Gehalt zaehlt mit).
-    SELECT o.due_date, r.name INTO v_inc_date, v_inc_name
+    SELECT o.due_date, r.name, r.id INTO v_inc_date, v_inc_name, v_inc_rp
     FROM finance.fn_recurring_due_open(v_today + 1, v_today + 400) o
     JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
     WHERE (r.account_id = p_account_id AND r.amount > 0 AND r.target_account_id IS NULL) OR r.target_account_id = p_account_id
@@ -69,11 +82,36 @@ BEGIN
            (SELECT COALESCE(sum(s.inflow), 0) FROM s)
     INTO v_est, v_min, v_min_date, v_out, v_in;
 
-    v_buffer := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'coverage_buffer_eur'), '')::numeric, 250);
-    IF v_acct.currency <> 'EUR' THEN
-        -- ungerundet: 1 KRW = 0.00069 EUR wurde mit Cent-Rundung 0.00 (Puffer still wirkungslos), 1 JPY 0.01 (37 % daneben)
-        v_eur1 := finance.fn_to_eur_unrounded(1, v_acct.currency);
-        v_buffer := CASE WHEN v_eur1 > 0 THEN round(v_buffer / v_eur1, 2) ELSE v_buffer END;
+    -- Bruecke bis zum Tief: dieselbe Reihe, Teilsummen d0..min_date (Alltag = per_day x Tage, wie im Kern)
+    WITH s AS (
+        SELECT * FROM finance.fn_account_projection(p_account_id, v_d0, COALESCE(v_min_date, v_d0), v_per_day)
+    )
+    SELECT jsonb_build_object(
+               'from', v_d0, 'base', round(v_base, 2), 'confirmed', v_acct.last_reconciled_balance,
+               'booked', round(COALESCE(sum(s.booked), 0), 2),
+               'out', round(COALESCE(sum(s.planned_out), 0), 2),
+               'in', round(COALESCE(sum(s.planned_in), 0), 2),
+               'everyday', round(COALESCE(v_per_day, 0) * count(*), 2),
+               'days', count(*))
+    INTO v_bridge
+    FROM s WHERE v_min_date IS NOT NULL;
+
+    -- Betrag des naechsten Geldeingangs (dieselbe Quelle wie die Reihe: Zielwaehrung, Kredit-Schlussrate)
+    SELECT sum(pf.amount) INTO v_inc_amt
+    FROM finance.fn_account_planned_flows(p_account_id, v_inc_date, v_inc_date) pf
+    WHERE v_inc_date IS NOT NULL AND pf.recurring_payment_id = v_inc_rp;
+
+    IF v_acct.min_balance IS NOT NULL THEN
+        v_buffer := v_acct.min_balance;
+        v_bsrc   := 'account';
+    ELSE
+        v_bsrc   := 'default';
+        v_buffer := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'coverage_buffer_eur'), '')::numeric, 250);
+        IF v_acct.currency <> 'EUR' THEN
+            -- ungerundet: 1 KRW = 0.00069 EUR wurde mit Cent-Rundung 0.00 (Puffer still wirkungslos), 1 JPY 0.01 (37 % daneben)
+            v_eur1 := finance.fn_to_eur_unrounded(1, v_acct.currency);
+            v_buffer := CASE WHEN v_eur1 > 0 THEN round(v_buffer / v_eur1, 2) ELSE v_buffer END;
+        END IF;
     END IF;
     v_short := GREATEST(v_buffer - round(COALESCE(v_min, v_base), 2), 0);
 
@@ -95,10 +133,13 @@ BEGIN
         'account_id', p_account_id, 'account_name', v_acct.name, 'currency', v_acct.currency,
         'confirmed_balance', v_acct.last_reconciled_balance, 'confirmed_as_of', v_acct.last_reconciled_at,
         'estimated_today', round(v_est, 2),
-        'next_income_date', v_inc_date, 'next_income_name', v_inc_name, 'horizon_end', v_horizon,
+        'next_income_date', v_inc_date, 'next_income_name', v_inc_name, 'next_income_amount', v_inc_amt,
+        'next_income_rp_id', v_inc_rp,
+        'horizon_end', v_horizon,
         'planned_out', round(v_out, 2), 'planned_in', round(v_in, 2),
-        'everyday_per_day', v_per_day, 'has_history', COALESCE(v_hist, false),
+        'everyday_per_day', v_per_day, 'has_history', COALESCE(v_hist, false), 'provisional', COALESCE(v_prov, false),
         'min_projected', round(v_min, 2), 'min_date', v_min_date,
-        'buffer', v_buffer, 'shortfall', v_short, 'suggestion', v_sugg);
+        'buffer', v_buffer, 'buffer_source', v_bsrc, 'shortfall', v_short,
+        'bridge', v_bridge, 'suggestion', v_sugg);
 END;
 $$;

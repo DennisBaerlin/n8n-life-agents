@@ -60,74 +60,100 @@ BEGIN
   VALUES ('__apy_geheim_taschengeld__', v_giro, v_kid, -20, 30, 'day', t + 2, t + 2),
          ('__apy_kid_spart__', v_kid, v_tg, -10, 30, 'day', t + 6, t + 6);
 
-  -- ===== 1) Haushalt =====
+  -- ===== 1) Haushalt: ein Abschnitt je Konto (Transparenz 2026-10-30) =====
+  -- Vorschau-Konten (mit Auszug) als Bruecke Stand -> feste Ab-/Eingaenge -> Alltag -> Tief -> Puffer -> Geldeingang,
+  -- Reihenfolge alert -> warn -> ok -> neutral, dann Name; danach Konten ohne Auszug mit Zahlungen im Fenster.
   v := finance.fn_app_screen_payments(jsonb_build_object('person_id', 'apy_owner', 'params', '{}'::jsonb));
   IF (v->>'ok')::boolean IS NOT TRUE OR NOT (v ? 'title' AND v ? 'hero' AND v ? 'banners' AND v ? 'sections') THEN
     RAISE EXCEPTION 'FAIL [1a] View-Modell v1: %', v; END IF;
   IF v->'title' <> core.fn_ui_tpl('finance.app.payments.title') OR jsonb_array_length(v->'banners') <> 0
-     OR jsonb_array_length(v->'sections') <> 2 THEN
-    RAISE EXCEPTION 'FAIL [1b] Titel / volle View ohne Banner / 2 Abschnitte: %', v; END IF;
+     OR jsonb_array_length(v->'sections') <> 6 THEN
+    RAISE EXCEPTION 'FAIL [1b] Titel / volle View ohne Banner / 6 Abschnitte (5 Vorschau + Partnerkonto): %', v; END IF;
   -- Hero: Abgaenge ohne Uebertraege in 30 Tagen: Miete -800, XSS -15, Partner-Abo -40, Kind-Abo -5 (spaet t+31 draussen)
   IF v->'hero'->'value' <> core.fn_ui_money(-860, 'EUR') OR (v->'hero'->>'gap')::boolean THEN
     RAISE EXCEPTION 'FAIL [1c] Hero -860 EUR ohne gap erwartet: %', v->'hero'; END IF;
-  v_sec := v->'sections'->0;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.payments.section_upcoming') THEN RAISE EXCEPTION 'FAIL [1d] Abschnitt 1'; END IF;
-  IF jsonb_array_length(v_sec->'items') <> 7 THEN RAISE EXCEPTION 'FAIL [1e] 7 Zahlungen erwartet, got %', v_sec; END IF;
-  IF v_sec->'items'->0->'label' <> to_jsonb('<img src=x onerror=alert(1)>'::text)
-     OR v_sec->'items'->0->'sub' <> core.fn_ui_tpl('finance.app.payments.due',
-          jsonb_build_object('date', core.fn_ui_date(t + 1), 'account', '__apy_hh_giro__'))
-     OR v_sec->'items'->0->'value' <> core.fn_ui_money(-15, 'EUR') THEN
-    RAISE EXCEPTION 'FAIL [1f] erste Zahlung (t+1, Rohname, Konto, Betrag): %', v_sec->'items'->0; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
-                  WHERE i->>'label' = '__apy_geheim_taschengeld__' AND i->'value' = core.fn_ui_money(-20, 'EUR')
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.payments.due_to', jsonb_build_object(
-                          'date', core.fn_ui_date(t + 2), 'account', '__apy_hh_giro__', 'to', '__apy_kid_cash__'))) THEN
-    RAISE EXCEPTION 'FAIL [1g] Haushalt sieht den Uebertrag mit Namen und Ziel: %', v_sec; END IF;
-  -- Kontovorschau: Giro alert, Kind alert, warn, ok, CHF neutral + gap (Partner-/Tagesgeldkonto ohne Auszug fehlen)
-  v_sec := v->'sections'->1;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.payments.section_outlook') OR jsonb_array_length(v_sec->'items') <> 5 THEN
-    RAISE EXCEPTION 'FAIL [1h] Kontovorschau 5 Konten mit Auszug erwartet: %', v_sec; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_hh_giro__'
-                   AND i->'pill'->>'state' = 'alert' AND i->'pill'->>'icon' = 'alert'
-                   AND i->'sub'->>'value' = 'finance.app.payments.low_point')
-     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_hh_warn__'
-                   AND i->'pill'->>'state' = 'warn' AND i->'value' = core.fn_ui_money(400, 'EUR'))
-     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_hh_ok__'
-                   AND i->'pill'->>'state' = 'ok' AND i->'pill'->>'icon' = 'check')
-     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_hh_chf__'
-                   AND i->'pill'->>'state' = 'neutral' AND (i->>'gap')::boolean AND i->'value' = core.fn_ui_money(700, 'CHF')) THEN
-    RAISE EXCEPTION 'FAIL [1i] Ampel alert/warn/ok/neutral+gap: %', v_sec; END IF;
-  IF v::text ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [1j] Antwort traegt ein *id-Feld'; END IF;
-  IF finance.fn_app_screen_payments(jsonb_build_object('person_id', 'apy_partner', 'params', '{}'::jsonb)) <> v THEN
-    RAISE EXCEPTION 'FAIL [1k] Partner muss dieselbe Haushalts-Sicht bekommen'; END IF;
-  RAISE NOTICE 'PASS [1] Haushalt: Zahlungen, Hero, Kontovorschau mit Ampel; Partner = Owner';
+  IF ARRAY(SELECT s->'title'->'params'->>'account' FROM jsonb_array_elements(v->'sections') s)
+     <> ARRAY['__apy_hh_giro__', '__apy_kid_cash__', '__apy_hh_warn__', '__apy_hh_ok__', '__apy_hh_chf__', '__apy_p_cash__'] THEN
+    RAISE EXCEPTION 'FAIL [1d] Reihenfolge alert (Name) -> warn -> ok -> neutral -> ohne Auszug: %', v->'sections'; END IF;
 
-  -- ===== 2) Kind =====
+  -- Giro: Stand 1000 (bestaetigt t-5), feste Abgaenge bis zum Tief t+9: XSS -15, Taschengeld -20, Miete -800;
+  -- Alltag 10/Tag x 14 Tage = -140 (fruehester Auszug zaehlt nicht); Tief 25; Geldeingang Gehalt +2000 am t+10
+  v_sec := v->'sections'->0;
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.payments.section_account', jsonb_build_object('account', '__apy_hh_giro__'))
+     OR v_sec->'value' <> core.fn_ui_money(25, 'EUR') THEN
+    RAISE EXCEPTION 'FAIL [1e] Giro-Abschnitt: Titel + Tief als Abschnittswert: %', v_sec; END IF;
+  SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_start';
+  IF v_b->'value' <> core.fn_ui_money(1000, 'EUR') THEN RAISE EXCEPTION 'FAIL [1f] Startstand 1000: %', v_b; END IF;
+  SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_out';
+  IF v_b->'value' <> core.fn_ui_money(-835, 'EUR') OR jsonb_array_length(v_b->'details') <> 3
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_b->'details') d WHERE d->'label' = to_jsonb('<img src=x onerror=alert(1)>'::text)
+                      AND d->'value' = core.fn_ui_tpl('finance.app.payments.d_payment',
+                            jsonb_build_object('date', core.fn_ui_date(t + 1), 'amount', core.fn_ui_money(-15, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [1g] feste Abgaenge -835 mit 3 Einzelzahlungen (Rohname, Datum, Betrag): %', v_b; END IF;
+  SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_everyday';
+  IF v_b->'value' <> core.fn_ui_money(-140, 'EUR') OR v_b->'sub'->>'value' <> 'finance.app.payments.b_everyday_sub'
+     OR jsonb_array_length(v_b->'details') <> 2
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_b->'details') d
+                     WHERE d->'value'->>'value' = 'finance.app.payments.d_rate_earliest') THEN
+    RAISE EXCEPTION 'FAIL [1h] Alltag -140, je Auszug aufklappbar, fruehester markiert: %', v_b; END IF;
+  SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_low';
+  IF v_b->'value' <> core.fn_ui_money(25, 'EUR') OR v_b->'pill'->>'state' <> 'alert' OR v_b->'pill'->>'icon' <> 'alert' THEN
+    RAISE EXCEPTION 'FAIL [1i] Tief 25 mit alert-Pille: %', v_b; END IF;
+  SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_buffer';
+  IF v_b->'value' <> core.fn_ui_money(250, 'EUR') OR v_b->'sub'->>'value' <> 'finance.app.payments.b_buffer_default' THEN
+    RAISE EXCEPTION 'FAIL [1j] Puffer 250 (Standard): %', v_b; END IF;
+  SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_income';
+  IF v_b->'label'->'params'->>'name' <> '__apy_gehalt__' OR v_b->'value' <> core.fn_ui_money(2000, 'EUR') THEN
+    RAISE EXCEPTION 'FAIL [1k] Geldeingang mit Name (Haushalt) und Betrag: %', v_b; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
+                  WHERE i->'label'->>'value' = 'finance.app.payments.b_suggest' AND i->'label'->'params'->>'from' = '__apy_hh_tg__') THEN
+    RAISE EXCEPTION 'FAIL [1l] Umbuchungs-Vorschlag im Giro-Abschnitt: %', v_sec; END IF;
+  -- Konto mit Fremdwaehrung ohne Kurs: neutral + gap am Tief; Konto ohne Auszug: Zahlungen + Hinweis, keine Bruecke
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->4->'items') i
+                  WHERE i->'label'->>'value' = 'finance.app.payments.b_low' AND i->'pill'->>'state' = 'neutral' AND (i->>'gap')::boolean)
+     OR v->'sections'->2->'items' @? '$[*] ? (@.label.value == "finance.app.payments.b_low" && @.pill.state != "warn")'
+     OR v->'sections'->3->'items' @? '$[*] ? (@.label.value == "finance.app.payments.b_low" && @.pill.state != "ok")' THEN
+    RAISE EXCEPTION 'FAIL [1m] Ampel warn/ok/neutral+gap: %', v->'sections'; END IF;
+  v_sec := v->'sections'->5;
+  IF v_sec->'items'->0->'label' <> core.fn_ui_tpl('finance.app.payments.no_outlook') OR v_sec->'value' <> core.fn_ui_money(-40, 'EUR')
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_p_abo__'
+                      AND i->'sub' = core.fn_ui_tpl('finance.app.payments.due_on', jsonb_build_object('date', core.fn_ui_date(t + 5)))) THEN
+    RAISE EXCEPTION 'FAIL [1n] Konto ohne Auszug: Hinweis + Zahlungen + Summe: %', v_sec; END IF;
+  IF v::text ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [1o] Antwort traegt ein *id-Feld'; END IF;
+  IF finance.fn_app_screen_payments(jsonb_build_object('person_id', 'apy_partner', 'params', '{}'::jsonb)) <> v THEN
+    RAISE EXCEPTION 'FAIL [1p] Partner muss dieselbe Haushalts-Sicht bekommen'; END IF;
+  RAISE NOTICE 'PASS [1] Haushalt: Abschnitt je Konto, Bruecke mit Details, Ampel, Konten ohne Auszug; Partner = Owner';
+
+  -- ===== 2) Kind: nur das eigene Konto; Herkunft verborgener Konten neutral, kein Name (auch nicht in details) =====
   v := finance.fn_app_screen_payments(jsonb_build_object('person_id', 'apy_kid', 'params', '{}'::jsonb));
   v_txt := v::text;
   IF strpos(v_txt, '__apy_hh_') > 0 OR strpos(v_txt, '__apy_p_') > 0 OR strpos(v_txt, '__apy_geheim') > 0
-     OR strpos(v_txt, '__apy_miete__') > 0 OR strpos(v_txt, 'onerror') > 0 OR strpos(v_txt, 'suggest') > 0 THEN
+     OR strpos(v_txt, '__apy_miete__') > 0 OR strpos(v_txt, 'onerror') > 0 OR strpos(v_txt, 'suggest') > 0
+     OR strpos(v_txt, '__apy_gehalt__') > 0 THEN
     RAISE EXCEPTION 'FAIL [2a] Kind-Antwort leckt Haushalt/Partner/Vorschlag: %', v_txt; END IF;
   IF v_txt ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [2a2] Kind-Antwort traegt ein *id-Feld: %', v_txt; END IF;
   IF v->'hero'->'value' <> core.fn_ui_money(-5, 'EUR') THEN RAISE EXCEPTION 'FAIL [2b] Kind-Hero -5: %', v->'hero'; END IF;
-  v_sec := v->'sections'->0;
-  IF jsonb_array_length(v_sec->'items') <> 3 THEN RAISE EXCEPTION 'FAIL [2c] Kind: 3 Zahlungen erwartet: %', v_sec; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
-                  WHERE i->'label' = core.fn_ui_tpl('finance.app.payments.from_household')
-                    AND i->'value' = core.fn_ui_money(20, 'EUR')
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.payments.due', jsonb_build_object(
-                          'date', core.fn_ui_date(t + 2), 'account', '__apy_kid_cash__'))) THEN
-    RAISE EXCEPTION 'FAIL [2d] Taschengeld muss neutral „vom Haushalt“ +20 aufs eigene Konto erscheinen: %', v_sec; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
-                  WHERE i->>'label' = '__apy_kid_spart__'
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.payments.due_to', jsonb_build_object(
-                          'date', core.fn_ui_date(t + 6), 'account', '__apy_kid_cash__',
-                          'to', core.fn_ui_tpl('finance.app.payments.household')))) THEN
-    RAISE EXCEPTION 'FAIL [2e] Uebertrag des Kindes an ein Haushaltskonto: Ziel neutral: %', v_sec; END IF;
-  IF jsonb_array_length(v->'sections'->1->'items') <> 1
-     OR v->'sections'->1->'items'->0->>'label' <> '__apy_kid_cash__' OR v->'sections'->1->'items'->0->'pill'->>'state' <> 'alert' THEN
-    RAISE EXCEPTION 'FAIL [2f] Kind-Vorschau nur eigenes Konto, alert: %', v->'sections'->1; END IF;
-  RAISE NOTICE 'PASS [2] Kind sieht nur Eigenes, Taschengeld neutral, kein Leck';
+  IF jsonb_array_length(v->'sections') <> 1 OR v->'sections'->0->'title'->'params'->>'account' <> '__apy_kid_cash__' THEN
+    RAISE EXCEPTION 'FAIL [2c] Kind: nur der eigene Konto-Abschnitt: %', v->'sections'; END IF;
+  -- alle Zeilen + aufgeklappten Details des Abschnitts
+  SELECT jsonb_agg(x) INTO v_sec FROM (
+    SELECT i AS x FROM jsonb_array_elements(v->'sections'->0->'items') i
+    UNION ALL SELECT d FROM jsonb_array_elements(v->'sections'->0->'items') i,
+                            jsonb_array_elements(COALESCE(i->'details', '[]'::jsonb)) d) q;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec) e
+                  WHERE e->'label' = core.fn_ui_tpl('finance.app.payments.from_household')
+                    AND e->'value' = core.fn_ui_tpl('finance.app.payments.d_payment',
+                          jsonb_build_object('date', core.fn_ui_date(t + 2), 'amount', core.fn_ui_money(20, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [2d] Taschengeld muss neutral „vom Haushalt“ +20 erscheinen: %', v_sec; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec) e WHERE e->>'label' = '__apy_kid_spart__') THEN
+    RAISE EXCEPTION 'FAIL [2e] eigener Uebertrag des Kindes erscheint: %', v_sec; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec) e
+                  WHERE e->'label' = core.fn_ui_tpl('finance.app.payments.b_income_anon')) THEN
+    RAISE EXCEPTION 'FAIL [2f] Geldeingang aus verborgenem Konto ohne Namen: %', v_sec; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec) e
+                  WHERE e->'label'->>'value' = 'finance.app.payments.b_low' AND e->'pill'->>'state' = 'alert') THEN
+    RAISE EXCEPTION 'FAIL [2g] Kind-Tief alert: %', v_sec; END IF;
+  RAISE NOTICE 'PASS [2] Kind sieht nur Eigenes, Taschengeld + Geldeingang neutral, kein Leck (auch nicht in details)';
 
   -- ===== 3) probe + Banner =====
   v_t0 := clock_timestamp();

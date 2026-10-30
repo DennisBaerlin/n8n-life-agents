@@ -110,4 +110,93 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [B9 naechster Export]';
 END $$;
+
+-- ============================================================
+-- Vormerkungen (Live-Befund 2026-10-30): die App zieht eine vorgemerkte Kartenzahlung schon ab, der Export enthaelt sie
+-- erst nach der Buchung. Die Luecke App-Stand - (bestaetigter Stand + Exportzeilen) gehoert in den Rest DIESES
+-- Zeitraums, nie als drift an den bestaetigten Schnitt. drift bleibt nur fuer Systemaenderungen vor dem Schnitt seit
+-- der Bestaetigung. Naechster Export mit der dann (spaet, vor dem Schnitt datiert) gebuchten Zeile -> Rest 0.
+-- ============================================================
+DO $$
+DECLARE
+    T      DATE := core.fn_today();
+    v_hdr  JSONB := '["Booking Date","Value Date","Partner Name","Partner Iban","Type","Payment Reference","Account Name","Amount (EUR)","Original Amount","Original Currency","Exchange Rate"]';
+    v_acct INT;
+    v_rows JSONB;
+    v_p    JSONB;
+    v_prep JSONB;
+    v_app  JSONB;
+BEGIN
+    v_acct := (finance.fn_create_account(jsonb_build_object('name', '__t_n26_pend__', 'account_type', 'cash', 'currency', 'EUR',
+                  'bank', 'N26', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
+    IF v_acct IS NULL THEN RAISE EXCEPTION 'SETUP pend account'; END IF;
+    v_rows := jsonb_build_array(
+        pg_temp.n26_row(T - 25, 'Vor dem Schnitt', '', 'Presentment', '', '-99'),
+        pg_temp.n26_row(T - 10, 'Testfirma GmbH', 'DE02120300000000202051', 'Credit Transfer', 'Gehalt', '500.00'),
+        pg_temp.n26_row(T - 5, 'Baeckerei Test', '', 'Presentment', '', '-40.00'));
+    -- Export erklaert 1000 + 460 = 1460; die App zeigt 1435 (Karte -25 vorgemerkt, noch nicht im Export)
+    v_p := jsonb_build_object('source', 'file', 'account_name', '__t_n26_pend__', 'closing_balance', '1435',
+                              'table', jsonb_build_object('rows', jsonb_build_array(v_hdr) || v_rows));
+
+    v_prep := finance.fn_statement_prepare(v_p);
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [B10 prepare ok]: %', v_prep; END IF;
+    IF (v_prep->>'drift')::numeric <> 0 OR (v_prep->>'lump')::numeric <> 435
+       OR (v_prep->>'opening_balance')::numeric <> 1000 OR (v_prep->>'closing_balance')::numeric <> 1435 THEN
+        RAISE EXCEPTION 'FAIL [B10 Vormerkung im Rest, nie drift am Schnitt]: %', v_prep;
+    END IF;
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_drift')
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                      WHERE c->>'value' = 'finance.note.statement_export_gap'
+                        AND (c->'params'->'amount'->>'value')::numeric = 25) THEN
+        RAISE EXCEPTION 'FAIL [B11 Karte: Hinweis "nicht im Export" 25 statt drift]: %', v_prep->'card_lines';
+    END IF;
+    -- Export beginnt erst nach dem Schnitt (z. B. "dieses Jahr" im Januar) -> Warnung statt Vormerkungs-Vermutung
+    v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('table', jsonb_build_object('rows',
+                  jsonb_build_array(v_hdr) || (v_rows - 0))));
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                   WHERE c->>'value' = 'finance.note.statement_export_starts_late'
+                     AND (c->'params'->'date'->>'value')::date = T - 20)
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.statement_export_gap') THEN
+        RAISE EXCEPTION 'FAIL [B11b Export beginnt nach dem Schnitt -> Warnung]: %', v_prep->'card_lines';
+    END IF;
+    -- App-Stand hoeher als erklaert, ohne vorigen Export-Abgleich -> kein "steckt im letzten Rest" (es gibt keinen)
+    v_prep := finance.fn_statement_prepare(v_p || '{"closing_balance":"1500"}'::jsonb);
+    IF (v_prep->>'lump')::numeric <> 500
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' LIKE 'finance.note.statement_export_%') THEN
+        RAISE EXCEPTION 'FAIL [B11c positive Luecke ohne Vor-Export: kein Hinweis]: %', v_prep;
+    END IF;
+    v_prep := finance.fn_statement_prepare(v_p);
+    v_app := finance.fn_apply_bank_statement(v_p || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR (v_app->>'drift_amount')::numeric <> 0
+       OR (v_app->>'balance_after')::numeric <> 1435
+       OR finance.fn_get_balance_as_of(v_acct, T - 20) <> 1000 THEN
+        RAISE EXCEPTION 'FAIL [B12 apply: bestaetigter Stand am Schnitt bleibt 1000]: %', v_app;
+    END IF;
+    RAISE NOTICE 'PASS [B10-B12 Vormerkung im Rest]';
+
+    -- naechster Export: voriger Abgleich endete heute-3 (Rest dorthin verschoben, bestaetigt 1435). Die Karte -25 ist
+    -- jetzt gebucht, mit ihrem Kartendatum heute-4 (vor dem Schnitt, Referenz neu -> spaete Zeile). Dazu von Hand eine
+    -- Ausgabe -30 vor den Schnitt gebucht -> drift +30 stellt den bestaetigten Stand am Schnitt wieder her.
+    UPDATE finance.bank_statements SET period_end = T - 3 WHERE id = (v_app->>'statement_id')::int;
+    UPDATE finance.accounts SET last_reconciled_at = T - 3 WHERE id = v_acct;
+    UPDATE finance.transactions SET transaction_date = T - 3 WHERE account_id = v_acct AND transaction_date > T - 3;
+    IF NOT (finance.fn_book_transaction(jsonb_build_object('account_id', v_acct, 'amount', '30', 'direction', 'outflow',
+                'category', 'other', 'transaction_date', (T - 4)::text)) ? 'tx_id') THEN
+        RAISE EXCEPTION 'SETUP ad-hoc booking';
+    END IF;
+    v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('table', jsonb_build_object('rows',
+                  jsonb_build_array(v_hdr) || v_rows
+                  || jsonb_build_array(pg_temp.n26_row(T - 4, 'Kiosk Test', '', 'Presentment', '', '-25.00')))));
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR (v_prep->>'late_count')::int <> 1
+       OR (v_prep->>'drift')::numeric <> 30 OR (v_prep->>'opening_balance')::numeric <> 1435
+       OR (v_prep->>'lump')::numeric <> 0 OR (v_prep->>'unmatched_out')::numeric <> -25 THEN
+        RAISE EXCEPTION 'FAIL [B13 Folge-Export: spaete Zeile, drift nur Systemaenderung, Rest 0]: %', v_prep;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                   WHERE c->>'value' = 'finance.note.statement_export_gap_settled'
+                     AND (c->'params'->'amount'->>'value')::numeric = 25) THEN
+        RAISE EXCEPTION 'FAIL [B13b Karte: Hinweis "steckt schon im letzten Rest" 25]: %', v_prep->'card_lines';
+    END IF;
+    RAISE NOTICE 'PASS [B13 Vormerkung gleicht sich aus]';
+END $$;
 ROLLBACK;

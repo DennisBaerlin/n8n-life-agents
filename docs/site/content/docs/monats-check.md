@@ -61,6 +61,8 @@ Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei a
 
 Die Datei liest ein fester Leser im Bot, kein Sprachmodell. Sie geht also nicht an einen KI-Anbieter. Der Monats-Check umfasst die Tage nach dem zuletzt bestätigten Stand bis gestern. Umsätze von heute zählen erst beim nächsten Mal.
 
+**Vorgemerkte Kartenzahlungen** zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Der Unterschied zählt diesmal zum Rest, die Karte nennt ihn eigens. Ein schon bestätigter Stand bleibt dabei unverändert. Beim nächsten Export taucht die Zahlung auf; die Karte sagt dann, dass sie schon im letzten Rest steckt. Nichts zählt doppelt. Beginnt der Export erst nach dem zuletzt bestätigten Tag (z. B. „dieses Jahr" im Januar), warnt die Karte stattdessen, dass Umsätze fehlen könnten. Dann lieber abbrechen und einen längeren Zeitraum exportieren.
+
 Bei Trade Republic zusätzlich zum normalen Ablauf:
 
 - **Sparpläne mit echter Stückzahl:** Der Export nennt die genaue Stückzahl jeder Ausführung. Der Bot muss sie nicht aus dem Kurs schätzen.
@@ -73,7 +75,6 @@ Bei N26:
 - **Export:** In der N26-App bzw. im Web-Banking die Umsätze als CSV herunterladen, am einfachsten für dieses Jahr. Exportiere das Hauptkonto und jeden Space einzeln; mischt die Datei mehrere Spaces, fragt der Bot nach einer Datei je Konto.
 - **Eigene Konten:** Überweisungen an oder von einem deiner Konten erkennt der Bot an der IBAN und bucht sie als Übertrag. Dafür muss die IBAN beim anderen Konto als Kontonummer hinterlegt sein.
 - **Datum:** Es zählt der Buchungstag, nicht die Wertstellung.
-- **Vorgemerkte Kartenzahlungen** zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Eine solche Zahlung landet diesmal im Rest; beim nächsten Mal zeigt die Karte deshalb eine kleine Abweichung, die der Bot korrigiert. In der Summe stimmt alles.
 - **Unbekannte Umsatzarten** bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.
 
 ## Bondora Go&Grow (Excel-Kontoauszug)

@@ -11,7 +11,8 @@
 --        bestaetigt (last_reconciled_at >= period_end -> already_covered), Saldo-Probe Anfang + Summe = Ende (0,00).
 --     2. Schnitt cut = spaetester bestaetigter Tag: GREATEST(period_start-1, last_reconciled_at, opening_balance_date).
 --        Zeilen bis cut stecken im bestaetigten Saldo und werden ignoriert (Ueberlappung ok). drift = Stand laut
---        Auszug am cut - Systemstand am cut (Abweichung VOR dem Zeitraum, separat gebucht und auf der Karte gewarnt).
+--        Auszug am cut - Systemstand am cut (Abweichung VOR dem Zeitraum, separat gebucht und auf der Karte gewarnt;
+--        Datei mit Owner-Saldo: s. BANK-EXPORT-DATEI).
 --     3. fn_statement_match; Anreicherung: Sparplan -> Stueck = Betrag / Kurs (market_prices +-3 Tage, Depot-Waehrung;
 --        sonst pending = Rest), Kredit -> fn_get_loan_payment_split muss ok sein, Transfer -> Gegenkonto darf am
 --        Zeilendatum nicht abgeglichen sein (sonst blocked = Rest), Plan-Anpassung nur fuer einfache Dauerauftraege
@@ -38,8 +39,11 @@
 --   fn_bank_export_resolve_account (Konto-Waechter: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil;
 --   closing_balance_required/no_starting_point tragen account_name); Zeitraum =
 --   Schnitt+1 bis gestern (Schnitt = last_reconciled_at bzw. opening_balance_date, sonst no_starting_point); Stand am
---   period_end = closing_balance - Summe der Zeilen danach; Anfang daraus (keine Saldo-Probe, der drift zeigt einen
---   unvollstaendigen Export). Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
+--   period_end = closing_balance - Summe der Zeilen danach; Anfang = bestaetigter Stand am Schnitt (last_reconciled_balance,
+--   sonst Systemstand am Anlagetag; keine Saldo-Probe; drift = nur Systemaenderungen vor dem Schnitt seit der
+--   Bestaetigung). Was App-Stand und Export nicht gemeinsam erklaeren (meist vorgemerkte Kartenzahlungen), steckt im Rest
+--   am period_end, nie am Schnitt; Karten-Hinweis statement_export_gap (< 0) bzw. _settled (> 0, mit vorigem
+--   Export-Abgleich), statement_export_starts_late (Export beginnt nach Schnitt+1: evtl. fehlen Zeilen). Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
 --   Schnitt+1. Sparplan-Treffer mit exakter Stueckzahl (shares_estimated false). Wertpapier-Zeilen ohne Treffer: Stufe 0
 --   gegen gebuchte Trades, sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend), nicht buchbar ->
 --   trades_blocked[] (covered_by_takeover, oversell, security_unknown); unknown-Zeilen des Exports -> export_unknown[].
@@ -137,6 +141,8 @@ DECLARE
     v_moved    JSONB := '[]'::jsonb;
     v_partner_at DATE;
     v_printed_file BOOLEAN := false;   -- Datei mit gedrucktem Endstand (Profil printed_balance)
+    v_export_gap NUMERIC := 0;         -- Owner-Saldo-Datei: App-Stand - (Stand am Schnitt + Exportzeilen), steckt im Rest
+    v_export_from DATE;                -- fruehestes Datum im Export (beginnt er nach Schnitt+1, fehlen evtl. Zeilen)
     v_int_lines NUMERIC := 0;          -- Summe der Zinszeilen (interest_line) im Zeitraum
     v_int_booked NUMERIC := 0;         -- Summe der Scheduler-Zinsbuchungen im Zeitraum
     v_int_corr NUMERIC := 0;           -- Zinskorrektur = Zeilen - gebucht (EINE Buchung)
@@ -152,8 +158,7 @@ BEGIN
     -- ---------- 1a. Broker-CSV: Export normieren, Zeitraum = nach dem bestaetigten Tag bis gestern ----------
     --   Kein gedruckter Saldo: der Owner nennt den Kontostand aus der App (Pflicht, nie ein errechneter Saldo als
     --   bestaetigt). Stand am period_end = Owner-Zahl - Summe der Zeilen danach (Teil-Tag-Export bis heute). Anfang
-    --   = dieser Stand - Summe der Zeitraum-Zeilen -> die Abweichung zum System am Schnitt ist der drift (Export
-    --   unvollstaendig oder falsche Zahl), die Saldo-Probe entfaellt (fester Leser, keine Lesefehler).
+    --   = bestaetigter Stand am Schnitt (s. u.), die Saldo-Probe entfaellt (fester Leser, keine Lesefehler).
     --   Spaete Zeilen: Datum im Zeitraum des letzten CSV-Abgleichs, Referenz dort nicht gesehen -> Datum = Schnitt+1.
     IF v_file THEN
         v_norm := finance.fn_bank_export_normalize(COALESCE(p->'table', '{}'::jsonb));
@@ -229,7 +234,16 @@ BEGIN
         FROM jsonb_array_elements(v_norm->'rows') r WHERE (r->>'date')::date > v_pe;
         SELECT COALESCE(sum((l->>'amount')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lines) l;
         v_close := v_owner - v_after;
-        v_open  := v_close - v_sum;
+        -- Anfang = BESTAETIGTER Stand am Schnitt (Live-Befund 2026-10-30), nie aus App-Stand - Zeilen zurueckgerechnet:
+        -- der drift (Schritt 2) zeigt dann nur noch, was im System seit der Bestaetigung vor dem Schnitt dazukam. Die
+        -- Luecke App-Stand - (Anfang + Exportzeilen) (meist vorgemerkte Kartenzahlungen: die App zieht sie schon ab, der
+        -- Export enthaelt sie erst nach der Buchung) faellt in den Rest am period_end, nie an den bestaetigten Schnitt
+        -- (Muster YNAB/Actual: Abgleich-Korrektur am Abgleichtag), und steht als Hinweis auf der Karte.
+        v_open  := CASE WHEN v_acct.last_reconciled_at = v_cut AND v_acct.last_reconciled_balance IS NOT NULL
+                        THEN v_acct.last_reconciled_balance
+                        ELSE finance.fn_get_balance_as_of(v_acct.id, v_cut) END;   -- Startsaldo: Stand am Anlagetag
+        v_export_gap := v_close - v_sum - v_open;
+        SELECT min((r->>'date')::date) INTO v_export_from FROM jsonb_array_elements(v_norm->'rows') r;
         v_balance_ok := true;
         END IF;
         SELECT COALESCE(jsonb_agg(u ORDER BY (u->>'row_no')::int), '[]'::jsonb) INTO v_file_unk
@@ -793,6 +807,19 @@ BEGIN
                       'value', 'finance.note.statement_after_period',
                       'params', jsonb_build_object('amount', core.fn_ui_money(v_after, v_acct.currency, true),
                                                    'date', core.fn_ui_date(v_pe)))) ELSE '[]'::jsonb END
+               -- Luecke App-Stand/Export: beginnt der Export nach Schnitt+1 -> evtl. fehlende Zeilen (Warnung, keine
+               -- Vermutung); < 0 -> noch nicht im Export (Vormerkung); > 0 nach einem vorigen Export-Abgleich -> steckt
+               -- schon im letzten Rest; > 0 ohne Vor-Export -> nur das Rest-Label "Ungeklaerter Eingang"
+               || CASE WHEN v_export_gap <> 0 AND (v_export_from IS NULL OR v_export_from > v_cut + 1)
+                       THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_export_starts_late',
+                            'params', jsonb_build_object('amount', core.fn_ui_money(abs(v_export_gap), v_acct.currency),
+                                                         'date', core.fn_ui_date(v_cut))))
+                       WHEN v_export_gap < 0 OR (v_export_gap > 0 AND v_prev.id IS NOT NULL)
+                       THEN jsonb_build_array(jsonb_build_object('kind', 'note',
+                            'value', CASE WHEN v_export_gap < 0 THEN 'finance.note.statement_export_gap'
+                                          ELSE 'finance.note.statement_export_gap_settled' END,
+                            'params', jsonb_build_object('amount', core.fn_ui_money(abs(v_export_gap), v_acct.currency))))
+                       ELSE '[]'::jsonb END
            ELSE jsonb_build_array(
                core.fn_ui_money(v_open, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_opening'),
                core.fn_ui_money(v_close, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_closing')) END;

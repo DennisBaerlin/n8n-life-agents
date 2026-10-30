@@ -30,9 +30,10 @@ BEGIN
       FROM finance.depot_reserve_status s
      WHERE s.account_id = p_account_id;
 
+    -- ohne Ziel-Geld im Depot gibt es nichts zu decken: eine Position ohne Kurs macht es dann nicht „unbekannt"
     v_unk := COALESCE(r.fx_missing, false)
-             OR EXISTS (SELECT 1 FROM finance.depot_holdings_overview o
-                         WHERE o.account_id = p_account_id AND o.market_value_eur IS NULL)
+             OR (COALESCE(r.reserved, 0) > 0 AND EXISTS (SELECT 1 FROM finance.depot_holdings_overview o
+                         WHERE o.account_id = p_account_id AND o.market_value_eur IS NULL))
              OR EXISTS (SELECT 1 FROM finance.savings_goal_account_share sh
                          WHERE sh.account_id = p_account_id AND sh.goal_status = 'active' AND sh.has_fx_gap);
     IF v_unk THEN

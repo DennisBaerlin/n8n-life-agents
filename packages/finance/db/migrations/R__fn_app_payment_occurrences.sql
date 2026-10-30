@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION finance.fn_app_payment_occurrences(p_account_id int, 
 RETURNS jsonb LANGUAGE sql STABLE AS $$
     SELECT jsonb_build_object(
         'rows', COALESCE(jsonb_agg(jsonb_build_object(
-                    'key', finance.fn_recurring_lineage_head(r.id)::text || CASE WHEN pf.amount < 0 THEN ':out' ELSE ':in' END,
+                    'key', lh.head::text || CASE WHEN pf.amount < 0 THEN ':out' ELSE ':in' END,
                     'date', pf.due_date,
                     'amount', pf.amount,
                     'cur', acc.currency,
@@ -32,5 +32,7 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
       JOIN finance.recurring_payments r ON r.id = pf.recurring_payment_id
       JOIN finance.accounts sa ON sa.id = r.account_id
       LEFT JOIN finance.accounts ta ON ta.id = r.target_account_id
-      LEFT JOIN finance.savings_plans sp ON sp.recurring_payment_id = finance.fn_recurring_lineage_head(r.id);
+      -- Kettenkopf einmal je Vorkommen (nicht je Sparplan-Paar im Join)
+      CROSS JOIN LATERAL (SELECT finance.fn_recurring_lineage_head(r.id) AS head) lh
+      LEFT JOIN finance.savings_plans sp ON sp.recurring_payment_id = lh.head;
 $$;

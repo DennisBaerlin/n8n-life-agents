@@ -64,6 +64,9 @@ BEGIN
   r := finance.fn_depot_cover_state(v_ok);
   IF r->>'state' <> 'ok' OR (r->>'gap')::numeric IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL [6] gedeckt -> ok/0, got %', r; END IF;
   IF finance.fn_depot_cover_state(v_settle)->>'state' <> 'ok' THEN RAISE EXCEPTION 'FAIL [7] ohne Reserve -> ok'; END IF;
+  -- Depot ohne Ziel-Geld mit einer Position ohne Kurs: nichts zu decken -> ok, nicht „unbekannt" (Code-Review 2026-10-30)
+  DELETE FROM finance.savings_goal_reserve_entries WHERE account_id = v_noprice;
+  IF finance.fn_depot_cover_state(v_noprice)->>'state' <> 'ok' THEN RAISE EXCEPTION 'FAIL [7b] ohne Ziel-Geld, Kurs fehlt -> ok'; END IF;
   RAISE NOTICE 'PASS [1-7] dip / short / unknown (kein Kurs, Teilkurs, fx-Anteil) / ok';
 
   -- Schwelle aus der Config: 0,3 %% -> dieselbe Delle ist eine echte Luecke

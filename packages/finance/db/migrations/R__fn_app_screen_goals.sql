@@ -18,7 +18,7 @@
 --   Hero „Zurueckgelegt" = Sparziele + Ruecklagen (Notreserve gedeckt + Instandhaltung), Note mit der Aufschluesselung
 --     (entfaellt bei fx-Luecke, dann gap). Keine Doppelzaehlung: Instandhaltung hat per Form-CHECK keinen Zielbetrag, die
 --     Notreserve ist aus der Ziel-Liste ausgeschlossen.
---   1 Ruecklagen (Notreserve nur fuer Haushalts-Betrachter, Zero-Trust; dann Instandhaltung): Summe neben dem Titel
+--   1 Ruecklagen (Notreserve nur fuer Haushalts-Betrachter, Zero-Trust; Reihenfolge gelb -> normal -> vollstaendig): Summe neben dem Titel
 --     (NULL bei fx-Luecke). Notreserve: „Ziel …", Pille vollstaendig / „fehlen {gap}" / nicht ermittelbar, Balken nur
 --     solange nicht vollstaendig; Aufklappen = Ziel-Herleitung + Geld je Konto. Instandhaltung: Untertitel „{rate} im
 --     Monat · wie empfohlen" bzw. „· empfohlen {rec}", Pille (nur aktive Immobilie mit bekannter Empfehlung) ausreichend /
@@ -35,7 +35,7 @@
 --     Depot, Depot auch bei Ziel-Anteil ohne Kurs), Dauerauftraegen als Quelle oder Spar-Deckung eine Zeile. Wert =
 --     Kontostand (account_balances, nativ) bzw. Depot-Marktwert (EUR). Untertitel „fuer Ziele X · frei Y" („frei"
 --     entfaellt bei Fehlbetrag) bzw. „Dauerauftraege X im Monat". Pille nur bei Abweichung, Rang alert > warn > neutral:
---     Luecke ab / fehlen {gap} (Saldo bzw. Depot ab der Schwelle) / reicht bis / „Kurswert {gap} darunter" (Kursdelle,
+--     Luecke ab / fehlen {gap} (Saldo bzw. Depot ab der Schwelle) / reicht bis / „{gap} Kursminus" (Kursdelle,
 --     fn_depot_cover_state) / nicht ermittelbar. Aufklappen = Bank-To-do je Auftrag „→ Ziel" = Betrag · Rhythmus · ab Datum
 --     + geplante Aenderungen (Spar-Lastschriften ohne Ziel mit ihrem Namen), „Geld kommt von" je Zufluss (Quellkonto bzw.
 --     Name eines externen Eingangs), zuletzt „Konto" (rein · raus im Monat · tiefster Stand) und die Alltags-Schaetzung.
@@ -93,6 +93,7 @@ DECLARE
     v_det       jsonb;
     v_val       jsonb;
     v_agap      boolean;
+    v_res_warn  int;       -- Instandhaltungs-Zeilen mit gelber Pille (Reihenfolge der Notreserve)
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -390,15 +391,23 @@ BEGIN
                     WHERE m.running_monthly_eur IS NOT NULL) x))
              ORDER BY COALESCE(m.gap_monthly_eur > 0 AND m.property_status = 'active', false) DESC, m.goal_name), '[]'::jsonb),
            COALESCE(sum(m.saved_eur), 0),
-           COALESCE(bool_or(sg.has_fx_gap), false)
-      INTO v_reserves, v_res_total, v_res_gap
+           COALESCE(bool_or(sg.has_fx_gap), false),
+           count(*) FILTER (WHERE m.gap_monthly_eur > 0 AND m.property_status = 'active')
+      INTO v_reserves, v_res_total, v_res_gap, v_res_warn
       FROM finance.maintenance_reserve_status m
       JOIN finance.savings_goals g ON g.id = m.goal_id
       LEFT JOIN finance.savings_goal_progress sg ON sg.id = m.goal_id
      WHERE v_hh OR g.beneficiary_person_id = v_pid;
 
+    -- Notreserve nach der Reihenfolge-Regel (Abweichung zuerst, Erledigtes zuletzt): gelb ganz oben, vollstaendig ganz
+    -- unten, nicht ermittelbar nach den gelben Instandhaltungs-Zeilen
     IF v_emerg IS NOT NULL THEN
-        v_reserves := jsonb_build_array(v_emerg) || v_reserves;
+        v_reserves := CASE v_es->>'state'
+            WHEN 'warn' THEN jsonb_build_array(v_emerg) || v_reserves
+            WHEN 'ok'   THEN v_reserves || jsonb_build_array(v_emerg)
+            ELSE COALESCE((SELECT jsonb_agg(x ORDER BY o) FROM jsonb_array_elements(v_reserves) WITH ORDINALITY t(x, o) WHERE o <= v_res_warn), '[]'::jsonb)
+                 || jsonb_build_array(v_emerg)
+                 || COALESCE((SELECT jsonb_agg(x ORDER BY o) FROM jsonb_array_elements(v_reserves) WITH ORDINALITY t(x, o) WHERE o > v_res_warn), '[]'::jsonb) END;
         v_res_total := v_res_total + COALESCE((v_es->>'covered_eur')::numeric, 0);
         v_res_gap := v_res_gap OR COALESCE((v_es->>'has_fx_gap')::boolean, false);
     END IF;
@@ -524,7 +533,8 @@ BEGIN
           FROM finance.accounts a
           LEFT JOIN finance.account_balances ab ON ab.account_id = a.id
           LEFT JOIN finance.account_reserve_status rs ON rs.account_id = a.id
-         WHERE a.status = 'active'
+         -- ein noch laufender Dauerauftrag von einem geschlossenen Konto bleibt sichtbar (Bank-To-do), sonst nur aktive
+         WHERE (a.status = 'active' OR v_orders ? a.id::text)
            AND (v_hh OR a.owner_person_id IS NOT DISTINCT FROM v_pid)
            AND (COALESCE(rs.reserved, 0) > 0
                 OR v_orders ? a.id::text
@@ -660,8 +670,8 @@ BEGIN
             'label', core.fn_ui_tpl('finance.app.goals.hero'),
             'value', core.fn_ui_money(v_total + v_res_total, 'EUR'),
             'gap', v_gap OR v_res_gap,
-            -- Aufschluesselung nur mit Ruecklagen und ohne fx-Luecke (sonst waeren die Teile still zu niedrig)
-            'note', CASE WHEN jsonb_array_length(v_reserves) > 0 AND NOT (v_gap OR v_res_gap)
+            -- Aufschluesselung nur mit beiden Teilen und ohne fx-Luecke (sonst waeren die Teile still zu niedrig)
+            'note', CASE WHEN jsonb_array_length(v_reserves) > 0 AND jsonb_array_length(v_goals) > 0 AND NOT (v_gap OR v_res_gap)
                          THEN core.fn_ui_tpl('finance.app.goals.hero_note', jsonb_build_object(
                                   'goals', core.fn_ui_money(v_total, 'EUR'), 'reserves', core.fn_ui_money(v_res_total, 'EUR'))) END),
         'banners', '[]'::jsonb,

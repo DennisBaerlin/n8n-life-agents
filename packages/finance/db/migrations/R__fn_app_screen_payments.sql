@@ -15,7 +15,9 @@
 --     Darstellung (Mini-App UX 2026-10-30, Ergebnis zuerst): „Tiefster Stand“ ist immer die erste Zeile, der Abschnitt
 --     traegt keinen Wert (Abschnittswert = nur eine Summe). Konto ok -> genau zwei Zeilen: Tiefster Stand (Aufklappen = die
 --     Bruecke als Posten-Liste inkl. Alltag je Auszug, Puffer, naechster Geldeingang) + „Zahlungen bis Fensterende“
---     (Aufklappen = alle Vorkommen ab heute); warn/alert/neutral -> die Bruecke bleibt offen (Handlung noetig).
+--     (Aufklappen = alle Vorkommen ab Bruecken-Beginn, also auch noch offene der letzten Tage); die Posten-Liste wird
+--     beim Aufbau der Bruecke mitgeschrieben (kein Nachbau ueber Text-Keys); warn/alert/neutral -> die Bruecke bleibt
+--     offen (Handlung noetig).
 --   * Konto ohne Vorschau mit Zahlungen im Fenster [heute, heute + finance.app_payments_days]: grauer Hinweis
 --     (section.note) „keine Vorschau“ mit Grund (cash: noch kein Kontoauszug; andere Kontoart: Vorschau nur fuer
 --     Giro/Tagesgeld) + die Vorkommen aus finance.fn_app_payment_occurrences (eigener Uebertrag: Abgang bei der Quelle,
@@ -121,6 +123,7 @@ BEGIN
         -- probe (jeder App-Start) braucht nur Banner + empty: keine Bruecke bauen; ohne Tief keine Bruecke
         CONTINUE WHEN v_probe OR v_b IS NULL;
         v_bridge := '[]'::jsonb;
+        v_flat   := '[]'::jsonb;   -- dieselben Posten als Schluessel/Wert-Liste (Aufklappen der Tief-Zeile, Konto ok)
 
         -- Stand (bestaetigt) + ggf. Korrektur (rueckdatierte Buchung vor dem Abgleich) + gebucht seit dem Abgleich
         v_conf  := (v_b->>'confirmed')::numeric;
@@ -130,11 +133,13 @@ BEGIN
                          jsonb_build_object('date', core.fn_ui_date((v_b->>'from')::date - 1))),
             'sub', NULL, 'value', core.fn_ui_money(v_start, v_cur), 'gap', false,
             'pill', NULL, 'progress', NULL, 'target', NULL);
+        v_flat := v_flat || jsonb_build_object('label', v_bridge->-1->'label', 'value', v_bridge->-1->'value');
         IF (v_b->>'base')::numeric <> v_start THEN
             v_bridge := v_bridge || jsonb_build_object(
                 'label', core.fn_ui_tpl('finance.app.payments.b_correction'),
                 'sub', NULL, 'value', core.fn_ui_money((v_b->>'base')::numeric - v_start, v_cur), 'gap', false,
                 'pill', NULL, 'progress', NULL, 'target', NULL);
+            v_flat := v_flat || jsonb_build_object('label', v_bridge->-1->'label', 'value', v_bridge->-1->'value');
         END IF;
         IF (v_b->>'booked')::numeric <> 0 THEN
             v_bridge := v_bridge || jsonb_build_object(
@@ -142,6 +147,7 @@ BEGIN
                              jsonb_build_object('date', core.fn_ui_date((v_b->>'from')::date))),
                 'sub', NULL, 'value', core.fn_ui_money((v_b->>'booked')::numeric, v_cur), 'gap', false,
                 'pill', NULL, 'progress', NULL, 'target', NULL);
+            v_flat := v_flat || jsonb_build_object('label', v_bridge->-1->'label', 'value', v_bridge->-1->'value');
         END IF;
 
         -- feste Ab-/Eingaenge bis zum Tief (Einzelvorkommen = dieselbe Quelle wie die Reihe, wiederholte zusammengefasst)
@@ -158,6 +164,7 @@ BEGIN
                     'value', core.fn_ui_money((v_b->>CASE WHEN v_n = 0 THEN 'out' ELSE 'in' END)::numeric, v_cur, v_n = 1), 'gap', false,
                     'pill', NULL, 'progress', NULL, 'target', NULL,
                     'details', finance.fn_app_payment_rows(jsonb_build_object('mode', 'details', 'rows', v_det)));
+                v_flat := v_flat || jsonb_build_object('label', v_bridge->-1->'label', 'value', v_bridge->-1->'value');
             END IF;
         END LOOP;
 
@@ -188,6 +195,9 @@ BEGIN
                                           'days', core.fn_ui_num((v_b->>'days')::numeric))),
             'value', core.fn_ui_money((v_b->>'everyday')::numeric, v_cur), 'gap', false,
             'pill', NULL, 'progress', NULL, 'target', NULL, 'details', COALESCE(v_det, '[]'::jsonb));
+        -- flach: „≈ x pro Tag x n Tage" mit Betrag, darunter je Auszug (Herleitung bleibt einen Tipp entfernt)
+        v_flat := v_flat || jsonb_build_object('label', v_bridge->-1->'sub', 'value', v_bridge->-1->'value')
+                         || COALESCE(v_det, '[]'::jsonb);
 
         -- Puffer
         v_bridge := v_bridge || jsonb_build_object(
@@ -197,6 +207,9 @@ BEGIN
                        jsonb_build_object('tight', core.fn_ui_money(v_factor * (v_o->>'buffer')::numeric, v_cur))),
             'value', core.fn_ui_money((v_o->>'buffer')::numeric, v_cur), 'gap', false,
             'pill', NULL, 'progress', NULL, 'target', NULL);
+        v_flat := v_flat || jsonb_build_object(
+            'label', core.fn_ui_tpl('finance.app.payments.b_buffer_kv', jsonb_build_object('detail', v_bridge->-1->'sub')),
+            'value', v_bridge->-1->'value');
 
         -- naechster Geldeingang: Name nur, wenn die Quelle sichtbar ist (Haushalt oder eigenes Konto)
         IF v_o->>'next_income_date' IS NOT NULL THEN
@@ -213,6 +226,9 @@ BEGIN
                 'value', CASE WHEN v_o->>'next_income_amount' IS NOT NULL
                               THEN core.fn_ui_money((v_o->>'next_income_amount')::numeric, v_cur, true) END,
                 'gap', false, 'pill', NULL, 'progress', NULL, 'target', NULL);
+            v_flat := v_flat || jsonb_build_object('label', v_bridge->-1->'label',
+                'value', core.fn_ui_tpl('finance.app.payments.d_payment', jsonb_build_object(
+                             'date', core.fn_ui_date((v_o->>'next_income_date')::date), 'amount', v_bridge->-1->'value')));
         END IF;
 
         -- Umbuchungs-Vorschlag (nennt ein Haushaltskonto -> nur Haushalts-Sicht; v_sugg oben, nur bei alert)
@@ -240,26 +256,11 @@ BEGIN
             'progress', NULL, 'target', NULL);
 
         IF v_state = 'ok' THEN
-            -- Konto reicht: die Bruecke als Posten-Liste im Aufklappen (Posten + Alltag je Auszug, nicht verschachtelbar)
-            SELECT jsonb_agg(x.d ORDER BY x.o1, x.o2) INTO v_flat FROM (
-                SELECT b.o AS o1, 0 AS o2, jsonb_build_object(
-                           'label', CASE WHEN b.e->'label'->>'value' = 'finance.app.payments.b_everyday' THEN b.e->'sub'
-                                         WHEN b.e->'label'->>'value' = 'finance.app.payments.b_buffer' THEN core.fn_ui_tpl(
-                                              'finance.app.payments.b_buffer_kv', jsonb_build_object('detail', b.e->'sub'))
-                                         ELSE b.e->'label' END,
-                           'value', CASE WHEN b.e->'label'->>'value' LIKE 'finance.app.payments.b_income%'
-                                         THEN core.fn_ui_tpl('finance.app.payments.d_payment', jsonb_build_object(
-                                                  'date', b.e->'sub'->'params'->'date', 'amount', b.e->'value'))
-                                         ELSE b.e->'value' END) AS d
-                  FROM jsonb_array_elements(v_bridge) WITH ORDINALITY AS b(e, o)
-                UNION ALL
-                SELECT b.o, dd.o, dd.e
-                  FROM jsonb_array_elements(v_bridge) WITH ORDINALITY AS b(e, o)
-                 CROSS JOIN LATERAL jsonb_array_elements(b.e->'details') WITH ORDINALITY AS dd(e, o)
-                 WHERE b.e->'label'->>'value' = 'finance.app.payments.b_everyday') x;
+            -- Konto reicht: die Bruecke als Posten-Liste im Aufklappen der Tief-Zeile (beim Aufbau mitgeschrieben)
             v_items := jsonb_build_array(v_lowitem || jsonb_build_object('details', COALESCE(v_flat, '[]'::jsonb)));
-            -- alle Zahlungen ab heute bis zum Fensterende (Vollstaendigkeit: nichts verschwindet aus der Liste)
-            v_occ := finance.fn_app_payment_occurrences(v_acc.id, v_today, v_until, v_hh, v_pid);
+            -- alle Zahlungen ab Bruecken-Beginn (auch noch offene der letzten Tage) bis zum Fensterende: nichts aus der
+            -- Rechnung verschwindet aus der Liste
+            v_occ := finance.fn_app_payment_occurrences(v_acc.id, LEAST((v_b->>'from')::date, v_today), v_until, v_hh, v_pid);
             SELECT count(*), sum((x->>'amount')::numeric) INTO v_cnt, v_amt FROM jsonb_array_elements(v_occ->'rows') x;
             IF v_cnt > 0 THEN
                 v_items := v_items || jsonb_build_object(
@@ -323,6 +324,9 @@ BEGIN
          WHERE a.status = 'active'
            AND (v_hh OR a.owner_person_id IS NOT DISTINCT FROM v_pid)
            AND a.id NOT IN (SELECT cc.id FROM finance.fn_coverage_accounts() cc(id))
+           -- nur Konten mit Vorkommen im Fenster (ein Lauf ueber alle Zahlungen statt einer Projektion je Konto)
+           AND a.id IN (SELECT x.id FROM finance.fn_upcoming_payments(v_today, v_until) up
+                         CROSS JOIN LATERAL (VALUES (up.account_id), (up.target_account_id)) x(id))
          ORDER BY a.name, a.id
     LOOP
         v_occ := finance.fn_app_payment_occurrences(v_acc.id, v_today, v_until, v_hh, v_pid);

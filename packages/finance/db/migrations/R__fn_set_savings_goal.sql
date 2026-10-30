@@ -142,6 +142,13 @@ BEGIN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'Part of this goal''s money lies on a depot, fixed-deposit or P2P account - an emergency reserve may only lie on cash/Tagesgeld accounts. Move or release that part first.');
         END IF;
+        -- auch die laufende Rate: fliesst sie in einen Nicht-Geld-Topf, waere das Geld fuer die Notreserve unsichtbar
+        IF EXISTS (SELECT 1 FROM finance.recurring_payments r JOIN finance.accounts ta ON ta.id = r.target_account_id
+                    WHERE r.id IN (SELECT finance.fn_recurring_lineage(v_row.recurring_payment_id))
+                      AND NOT ta.account_type = ANY (finance.fn_emergency_reserve_account_types())) THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'The monthly rate of this goal goes into a fixed-deposit or P2P account - an emergency reserve lies on cash/Tagesgeld accounts only. Move the savings account first (reserve_account_name), then turn it into the emergency reserve.');
+        END IF;
         v_kind := 'emergency_reserve';
         v_convert := true;
     END IF;
@@ -459,9 +466,17 @@ BEGIN
         || CASE WHEN v_covered THEN jsonb_build_object('covered', true) ELSE '{}'::jsonb END
         || CASE WHEN v_need IS NOT NULL AND (v_rate IS NULL OR (v_old IS NOT NULL AND v_need <> v_rate))
                 THEN jsonb_build_object('required_monthly_rate', v_need) ELSE '{}'::jsonb END
-        || CASE WHEN v_old_id IS NOT NULL THEN jsonb_build_object('replaced_transfer_id', v_old_id,
-                    'card_lines', jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_replaces_transfer',
-                        'params', jsonb_build_object('name', v_old->>'name', 'date', core.fn_ui_date(v_first)))))
+        || CASE WHEN v_old_id IS NOT NULL THEN jsonb_build_object('replaced_transfer_id', v_old_id) ELSE '{}'::jsonb END
+        -- Karten-Hinweise: fortgefuehrter Dauerauftrag; Notreserve: Ziel in EUR (bei Monaten mit Basis) + gedeckt aus
+        -- derselben Adresse wie die Anlage (Probelauf = Post-State, Karte zeigt den abgeleiteten Betrag)
+        || CASE WHEN v_old_id IS NOT NULL OR v_kind = 'emergency_reserve' THEN jsonb_build_object('card_lines',
+                    CASE WHEN v_old_id IS NOT NULL THEN jsonb_build_array(jsonb_build_object('kind', 'note',
+                             'value', 'finance.note.goal_replaces_transfer',
+                             'params', jsonb_build_object('name', v_old->>'name', 'date', core.fn_ui_date(v_first))))
+                         ELSE '[]'::jsonb END
+                    || CASE WHEN v_kind = 'emergency_reserve'
+                            THEN finance.fn_emergency_reserve_card_lines(finance.fn_emergency_reserve_status())
+                            ELSE '[]'::jsonb END)
                 ELSE '{}'::jsonb END
         || CASE WHEN v_code IS NOT NULL THEN jsonb_build_object('code', v_code,
                     'note', 'No monthly rate is running for this goal; it still needs ' || to_char(v_need, 'FM999999990D00')

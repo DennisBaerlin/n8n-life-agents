@@ -127,5 +127,32 @@ BEGIN
   v := finance.fn_app_screen_goals(jsonb_build_object('person_id', '__ers_kid__', 'params', '{"probe":true}'::jsonb));
   IF v::text LIKE '%banner_emergency%' THEN RAISE EXCEPTION 'FAIL [5d] Kind-Banner zur Notreserve: %', v; END IF;
   RAISE NOTICE 'PASS [5] Berater ohne reached-Alert; Mini-App nur fuer den Haushalt';
+
+  -- ===== 6) Code-Review 2026-10-30: Karte beim Aendern, Kinderkonto zaehlt nie, Umwidmung mit Rate in P2P =====
+  v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'target_months', 6));
+  IF NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_target_months")'
+     OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")' THEN
+    RAISE EXCEPTION 'FAIL [6a] set-Karte nennt Ziel in EUR + gedeckt: %', v_res; END IF;
+  DECLARE v_kidacc INT; v_before NUMERIC; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
+      VALUES ('__ers_kidacc__', 'cash', 'EUR', 'active', '__ers_kid__') RETURNING id INTO v_kidacc;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_kidacc, 1000, t, 'other');
+    v_before := (finance.fn_emergency_reserve_status()->>'covered_eur')::numeric;
+    PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g, 'account_id', v_kidacc, 'amount', 500));
+    IF (finance.fn_emergency_reserve_status()->>'covered_eur')::numeric IS DISTINCT FROM v_before THEN
+      RAISE EXCEPTION 'FAIL [6b] Kinderkonto zaehlt zur Haushalts-Notreserve'; END IF;
+  END;
+  DECLARE v_g2 INT; v_rp INT; BEGIN
+    UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = v_g;
+    INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__ers_p2pziel__', 5000, t + 400) RETURNING id INTO v_g2;
+    v_rp := finance.fn_add_recurring_payment(v_giro, -100, 'Sparrate __ers_p2pziel__', 1::smallint, 'month'::finance.schedule_unit,
+              1::smallint, t + 20, t + 20, NULL, NULL, NULL);
+    UPDATE finance.recurring_payments SET target_account_id = v_p2p WHERE id = v_rp;
+    UPDATE finance.savings_goals SET recurring_payment_id = v_rp WHERE id = v_g2;
+    v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g2, 'kind', 'emergency_reserve'));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (SELECT kind FROM finance.savings_goals WHERE id = v_g2) <> 'goal' THEN
+      RAISE EXCEPTION 'FAIL [6c] Umwidmung trotz Rate in einen P2P-Topf: %', v_res; END IF;
+  END;
+  RAISE NOTICE 'PASS [6] set-Karte, Kinderkonto raus, Umwidmung prueft die laufende Rate';
 END $$;
 ROLLBACK;

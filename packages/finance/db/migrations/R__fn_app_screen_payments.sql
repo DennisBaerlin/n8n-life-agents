@@ -55,6 +55,8 @@ DECLARE
     v_amt      numeric;
     v_conf     numeric;
     v_start    numeric;
+    v_probe    boolean := COALESCE(p -> 'params' -> 'probe' = 'true'::jsonb, false);
+    v_ncov     int := 0;    -- Vorschau-Konten mit Ergebnis (probe: empty)
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -86,6 +88,26 @@ BEGIN
             ELSE 'ok' END;
         v_low := jsonb_build_object('amount', core.fn_ui_money((v_o->>'min_projected')::numeric, v_cur),
                                     'date',   core.fn_ui_date((v_o->>'min_date')::date));
+        v_sugg := CASE WHEN v_hh AND v_state = 'alert' THEN v_o->'suggestion' END;
+        IF v_state IN ('alert', 'warn') THEN
+            v_banners := v_banners || jsonb_build_array(jsonb_build_object(
+                'state', v_state,
+                'icon', CASE v_state WHEN 'warn' THEN 'clock' ELSE 'alert' END,
+                'text', CASE
+                    WHEN v_state = 'warn' THEN core.fn_ui_tpl('finance.app.payments.banner_tight',
+                        jsonb_build_object('account', v_acc.name, 'min', v_low->'amount', 'date', v_low->'date'))
+                    WHEN jsonb_typeof(v_sugg) = 'object' THEN core.fn_ui_tpl('finance.app.payments.banner_short_suggest',
+                        jsonb_build_object('account', v_acc.name, 'min', v_low->'amount', 'date', v_low->'date',
+                            'amount', core.fn_ui_money((v_sugg->>'amount')::numeric, v_cur),
+                            'from', v_sugg->>'from_account',
+                            'by', core.fn_ui_date((v_sugg->>'by_date')::date)))
+                    ELSE core.fn_ui_tpl('finance.app.payments.banner_short',
+                        jsonb_build_object('account', v_acc.name, 'min', v_low->'amount', 'date', v_low->'date')) END,
+                'target', jsonb_build_object('screen', 'payments', 'params', '{}'::jsonb)));
+        END IF;
+        v_ncov := v_ncov + 1;
+        -- probe (jeder App-Start) braucht nur Banner + empty: keine Bruecke bauen; ohne Tief keine Bruecke
+        CONTINUE WHEN v_probe OR v_b IS NULL;
         v_items := '[]'::jsonb;
 
         -- Stand (bestaetigt) + ggf. Korrektur (rueckdatierte Buchung vor dem Abgleich) + gebucht seit dem Abgleich
@@ -118,7 +140,7 @@ BEGIN
                   FROM finance.fn_account_planned_flows(v_acc.id, (v_b->>'from')::date, (v_o->>'min_date')::date) pf
                   JOIN finance.recurring_payments r ON r.id = pf.recurring_payment_id
                   JOIN finance.accounts sa ON sa.id = r.account_id
-                 WHERE v_b IS NOT NULL AND CASE WHEN v_n = 0 THEN pf.amount < 0 ELSE pf.amount > 0 END
+                 WHERE CASE WHEN v_n = 0 THEN pf.amount < 0 ELSE pf.amount > 0 END
             )
             SELECT jsonb_agg(jsonb_build_object(
                        'label', CASE WHEN f.src_vis THEN to_jsonb(f.rp_name)
@@ -126,8 +148,8 @@ BEGIN
                        'value', core.fn_ui_tpl('finance.app.payments.d_payment', jsonb_build_object(
                                      'date', core.fn_ui_date(f.due_date), 'amount', core.fn_ui_money(f.amount, v_cur))))
                        ORDER BY f.due_date, f.rp_name),
-                   count(*), sum(f.amount)
-              INTO v_det, v_cnt, v_amt
+                   count(*)
+              INTO v_det, v_cnt
               FROM f;
             IF v_cnt > 0 THEN
                 v_items := v_items || jsonb_build_object(
@@ -197,8 +219,7 @@ BEGIN
                 'gap', false, 'pill', NULL, 'progress', NULL, 'target', NULL);
         END IF;
 
-        -- Umbuchungs-Vorschlag (nennt ein Haushaltskonto -> nur Haushalts-Sicht)
-        v_sugg := CASE WHEN v_hh AND v_state = 'alert' THEN v_o->'suggestion' END;
+        -- Umbuchungs-Vorschlag (nennt ein Haushaltskonto -> nur Haushalts-Sicht; v_sugg oben)
         IF jsonb_typeof(v_sugg) = 'object' THEN
             v_items := v_items || jsonb_build_object(
                 'label', core.fn_ui_tpl('finance.app.payments.b_suggest', jsonb_build_object(
@@ -241,23 +262,19 @@ BEGIN
                 'empty', core.fn_ui_tpl('finance.app.payments.empty'),
                 'items', v_items));
 
-        IF v_state IN ('alert', 'warn') THEN
-            v_banners := v_banners || jsonb_build_array(jsonb_build_object(
-                'state', v_state,
-                'icon', CASE v_state WHEN 'warn' THEN 'clock' ELSE 'alert' END,
-                'text', CASE
-                    WHEN v_state = 'warn' THEN core.fn_ui_tpl('finance.app.payments.banner_tight',
-                        jsonb_build_object('account', v_acc.name, 'min', v_low->'amount', 'date', v_low->'date'))
-                    WHEN jsonb_typeof(v_sugg) = 'object' THEN core.fn_ui_tpl('finance.app.payments.banner_short_suggest',
-                        jsonb_build_object('account', v_acc.name, 'min', v_low->'amount', 'date', v_low->'date',
-                            'amount', core.fn_ui_money((v_sugg->>'amount')::numeric, v_cur),
-                            'from', v_sugg->>'from_account',
-                            'by', core.fn_ui_date((v_sugg->>'by_date')::date)))
-                    ELSE core.fn_ui_tpl('finance.app.payments.banner_short',
-                        jsonb_build_object('account', v_acc.name, 'min', v_low->'amount', 'date', v_low->'date')) END,
-                'target', jsonb_build_object('screen', 'payments', 'params', '{}'::jsonb)));
-        END IF;
     END LOOP;
+
+    IF v_probe THEN
+        SELECT COALESCE(jsonb_agg(b.e ORDER BY b.e->>'state' = 'alert' DESC, b.pos), '[]'::jsonb) INTO v_banners
+          FROM jsonb_array_elements(v_banners) WITH ORDINALITY AS b(e, pos);
+        RETURN jsonb_build_object('ok', true,
+            'empty', v_ncov = 0 AND NOT EXISTS (
+                SELECT 1 FROM finance.fn_upcoming_payments(v_today, v_until) u
+                  JOIN finance.accounts sa ON sa.id = u.account_id
+                  LEFT JOIN finance.accounts ta ON ta.id = u.target_account_id
+                 WHERE v_hh OR sa.owner_person_id IS NOT DISTINCT FROM v_pid OR ta.owner_person_id IS NOT DISTINCT FROM v_pid),
+            'banners', v_banners);
+    END IF;
 
     -- ===== Kommende Zahlungen im Fenster: Hero + Abschnitte der Konten OHNE Vorschau =====
     -- Abschnitts-Konto = sichtbare Quelle, sonst sichtbares Ziel (dann neutral „vom Haushalt“)
@@ -318,14 +335,6 @@ BEGIN
     SELECT COALESCE(jsonb_agg(c->'section' ORDER BY (c->>'rank')::int, c->>'name'), '[]'::jsonb) || v_other
       INTO v_sections
       FROM jsonb_array_elements(v_cov) c;
-
-    IF p -> 'params' -> 'probe' = 'true'::jsonb THEN
-        SELECT COALESCE(jsonb_agg(b.e ORDER BY b.e->>'state' = 'alert' DESC, b.pos), '[]'::jsonb) INTO v_banners
-          FROM jsonb_array_elements(v_banners) WITH ORDINALITY AS b(e, pos);
-        RETURN jsonb_build_object('ok', true,
-            'empty', jsonb_array_length(v_sections) = 0,
-            'banners', v_banners);
-    END IF;
 
     IF jsonb_array_length(v_sections) = 0 THEN
         v_sections := jsonb_build_array(jsonb_build_object(

@@ -81,7 +81,7 @@ BEGIN
     END IF;
     v_depot := v_atype IN ('stocks_depot', 'crypto_depot');
     -- Instandhaltungsruecklage (2026-10-27): nur saldo-basierte Konten (kein Kursrisiko, kein Glide-Path ohne Datum).
-    IF v_depot AND EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_goal AND real_estate_id IS NOT NULL) THEN
+    IF v_depot AND EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_goal AND kind = 'maintenance_reserve') THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Money of a maintenance reserve can only be earmarked on a cash/Tagesgeld, fixed-deposit or P2P account, not in a depot.');
     END IF;

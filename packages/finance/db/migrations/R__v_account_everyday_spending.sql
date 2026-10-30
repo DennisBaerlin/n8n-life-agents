@@ -8,7 +8,7 @@
 --   Netto-Schaetzung per_day_net (24-Monats-Hochrechnung), daher kann ihre Zahl abweichen.
 --   Ohne Auszug (has_history false) sind beide Werte NULL: unbekannt, nicht 0. provisional = nur ein Auszug (der
 --   frueheste, meist vor den Dauerauftraegen eingelesen) -> Schaetzung vorlaeufig, eher zu hoch (Transparenz 2026-10-30;
---   die fn wird bei Signatur-Wechsel per DROP CASCADE neu angelegt -> diese Datei aendert sich mit, damit sie neu laeuft).
+--   der Signatur-Wechsel der fn lief per finance:V034 DROP CASCADE -> diese Datei aenderte sich im selben Release mit).
 --   Bewusst EIGENE Datei (R__v_*, sortiert nach R__fn_*) und nur Tabellen + Funktionen (Muster R__v_savings_plan_overview).
 --   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles).
 -- ============================================================

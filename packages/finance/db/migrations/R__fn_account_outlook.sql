@@ -82,9 +82,11 @@ BEGIN
            (SELECT COALESCE(sum(s.inflow), 0) FROM s)
     INTO v_est, v_min, v_min_date, v_out, v_in;
 
-    -- Bruecke bis zum Tief: dieselbe Reihe, Teilsummen d0..min_date (Alltag = per_day x Tage, wie im Kern)
+    -- Bruecke bis zum Tief: dieselbe Reihe, Teilsummen d0..min_date (Alltag = per_day x Tage, wie im Kern); ohne Tief
+    -- (leere Reihe) keine Bruecke
+    IF v_min_date IS NOT NULL THEN
     WITH s AS (
-        SELECT * FROM finance.fn_account_projection(p_account_id, v_d0, COALESCE(v_min_date, v_d0), v_per_day)
+        SELECT * FROM finance.fn_account_projection(p_account_id, v_d0, v_min_date, v_per_day)
     )
     SELECT jsonb_build_object(
                'from', v_d0, 'base', round(v_base, 2), 'confirmed', v_acct.last_reconciled_balance,
@@ -94,7 +96,8 @@ BEGIN
                'everyday', round(COALESCE(v_per_day, 0) * count(*), 2),
                'days', count(*))
     INTO v_bridge
-    FROM s WHERE v_min_date IS NOT NULL;
+    FROM s;
+    END IF;
 
     -- Betrag des naechsten Geldeingangs (dieselbe Quelle wie die Reihe: Zielwaehrung, Kredit-Schlussrate)
     SELECT sum(pf.amount) INTO v_inc_amt

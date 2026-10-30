@@ -9,12 +9,12 @@
 --   provisional = nur EIN Auszug vorhanden (der frueheste zaehlt mangels spaeterer) -> Schaetzung vorlaeufig, eher zu hoch.
 --   Konsumenten: fn_account_outlook (per_day), fn_account_funding (per_day_net), View account_everyday_spending.
 --   RUECKGABE: (per_day <= 0, per_day_net <= 0, has_history, provisional)
---   Rueckgabetyp geaendert 2026-10-30 -> DROP ... CASCADE; die abhaengige View R__v_account_everyday_spending.sql wird im
---   selben Commit mitgeaendert (Checksumme -> Neubau beim selben Apply, sortiert nach R__fn_*).
+--   Rueckgabetyp geaendert 2026-10-30: das einmalige DROP (reisst die View account_everyday_spending mit) macht
+--   finance:V034 — NIE hier (jede spaetere Aenderung nur dieser Datei verloere sonst die View still). Eine weitere
+--   Signatur-Aenderung braucht wieder eine V-Migration + Aenderung der View-Datei.
 --   Tests: tests/db/finance/test_fn_account_everyday_per_day.sql
 -- ============================================================
-DROP FUNCTION IF EXISTS finance.fn_account_everyday_per_day(int) CASCADE;
-CREATE FUNCTION finance.fn_account_everyday_per_day(p_account_id int)
+CREATE OR REPLACE FUNCTION finance.fn_account_everyday_per_day(p_account_id int)
 RETURNS TABLE(per_day numeric, per_day_net numeric, has_history boolean, provisional boolean)
 LANGUAGE plpgsql STABLE AS $$
 DECLARE

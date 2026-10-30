@@ -919,7 +919,7 @@ BEGIN
                          THEN core.fn_ui_tpl('finance.advisor.digest_emergency_line', jsonb_build_object(
                                   'name', sgp.name, 'covered', core.fn_ui_money((v_es->>'covered_eur')::numeric),
                                   'target', core.fn_ui_money((v_es->>'target_eur')::numeric)))
-                         WHEN sgp.real_estate_id IS NOT NULL
+                         WHEN m.goal_id IS NOT NULL
                          THEN core.fn_ui_tpl('finance.advisor.digest_maintenance_line', jsonb_build_object(
                                   'name', sgp.name, 'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),
                                   'rate', core.fn_ui_money(m.running_monthly_eur)))

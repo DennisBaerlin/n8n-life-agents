@@ -36,7 +36,7 @@ BEGIN
             RETURN jsonb_build_object('savings_squeeze', jsonb_build_object(
                 'account_change', round(v_change, 2),
                 'note', CASE WHEN v_free < 0
-                             THEN 'Warning: spending and loan instalments already exceed income; with the current savings '
+                             THEN 'Warning: spending, loan instalments and estimated everyday spending already exceed income; with the current savings '
                                   || 'rates the current account shrinks by about ' || round(abs(v_change), 2)
                                   || ' EUR/month. Levers: lower a savings rate, cut expenses or raise income.'
                              ELSE 'Warning: the savings rates exceed what remains free after spending, loan instalments and '

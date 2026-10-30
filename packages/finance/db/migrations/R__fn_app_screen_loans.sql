@@ -2,23 +2,26 @@
 -- finance.fn_app_screen_loans(p jsonb) — Mini-App-Bildschirm „Kredite“ (READ, View-Modell v1)
 --   Handler der Registry app_screens (docs/package-contract.md §3.12), Vertrag wie finance.fn_app_screen_overview.
 --   Quelle finance.loan_overview, nur ausstehende Kredite (finance.fn_loan_is_outstanding = active + paused). Je Kredit:
---   Rohname, Restschuld positiv in Kontowaehrung, Untertitel „Bank · Zins · Rate", gap wie loan_summary (Restschuld ohne
---   Kurs), Balken „getilgt“ nur mit Kreditbetrag (Prozent rechnet die DB).
+--   Rohname, Restschuld positiv in Kontowaehrung, Untertitel „Zins · Rate · schuldenfrei {Jahr}" bzw. „· Schlussrate
+--   {Datum}" (Tilgung erst nach dem Laufzeitende fertig), gap wie loan_summary (Restschuld ohne Kurs), Balken „getilgt“
+--   nur mit Kreditbetrag (Prozent rechnet die DB).
 --   HERO = Restschuld gesamt in EUR; Note „Raten im Monat · davon Zins" (EUR-Summen der aktiven Kredite). Haushalts-
 --     Betrachter: Kredite eines Kindes (Kreditnehmer role = 'child') zaehlen nicht (Uebersicht R3, wie die Vermoegen-
 --     Seite) und stehen im Abschnitt „Kinder · nicht in der Summe". Die Vermoegen-Zeile „Kredite" (networth_by_asset_class,
 --     Kreditkonto-Besitzer = Kreditnehmer) ist dieselbe Zahl, solange das Kreditkonto eines ausstehenden Kredits aktiv
 --     ist (Randfall: dort zaehlt das Kreditkonto, hier der Kreditstatus).
---   Pille (Prioritaet warn vor neutral): Zinsbindung endet in [heute, heute + finance.fixed_rate_warn_months) -> warn +
---   Banner (mit voraussichtlicher Restschuld zum Bindungsende, wenn loan_overview sie kennt), auch wenn pausiert; Bindung
---   schon abgelaufen -> warn ohne Banner (das Datum ist evtl. nur nicht nachgepflegt); pausiert -> neutral; sonst neutral
---   „schuldenfrei {Jahr}" (loan_overview.payoff_date_projected; nicht, wenn die Tilgung erst nach dem Laufzeitende
---   fertig waere). Das Jahr ist Klartext (fn_ui_num setzte Tausenderpunkte).
---   Aufklappen (details, NULL-Zeilen entfallen): Kreditnehmer (nur Haushalt), Kreditbetrag + Auszahlung, getilgt,
+--   Pille nur als Urteil (Mini-App UX 2026-10-30, Prioritaet warn vor neutral): Zinsbindung endet in [heute, heute +
+--   finance.fixed_rate_warn_months) -> warn + Banner (mit voraussichtlicher Restschuld zum Bindungsende, wenn
+--   loan_overview sie kennt), auch wenn pausiert; Bindung schon abgelaufen -> warn ohne Banner (das Datum ist evtl. nur
+--   nicht nachgepflegt); pausiert -> neutral. „schuldenfrei {Jahr}" (loan_overview.payoff_date_projected; nicht, wenn
+--   die Tilgung erst nach dem Laufzeitende fertig waere) ist ein Fakt und steht im Untertitel; das Jahr ist Klartext
+--   (fn_ui_num setzte Tausenderpunkte).
+--   Aufklappen (details, NULL-Zeilen entfallen): Bank, Kreditnehmer (nur Haushalt), Kreditbetrag + Auszahlung, getilgt,
 --   Zins/Tilgung der Rate, Zinsbindung + Restschuld dann, Laufzeitende + Restschuld dann, schuldenfrei voraussichtlich,
 --   Zinsen bis dahin.
---   Der Kreditgeber (lender) steht seit R3 im Untertitel (Owner-Wunsch 2026-10-28: fuer Haushalts-Betrachter keine
---   schutzwuerdige Information; ein Kind sieht ohnehin nur eigene Kredite). Keine Kontonamen, keine IDs.
+--   Der Kreditgeber (lender) ist fuer Haushalts-Betrachter keine schutzwuerdige Information (Owner 2026-10-28; ein Kind
+--   sieht ohnehin nur eigene Kredite); er steht seit 2026-10-30 im Aufklappen (Untertitel einzeilig). Keine Kontonamen,
+--   keine IDs.
 --   ZERO-TRUST-SICHTBARKEIT (core.fn_app_sees_household): owner/partner sehen alle; sonst nur borrower_person_id = ich
 --   (Haushaltskredit mit NULL bleibt unsichtbar).
 --   params.probe = true -> {ok, empty, banners} (eigene schlanke Abfrage: ohne Details und Tilgungs-Simulation).
@@ -88,9 +91,13 @@ BEGIN
                -- warn vor neutral: auch ein pausierter Kredit braucht die Anschlussfinanzierung
                CASE WHEN lo.interest_rate_fixed_until >= v_today AND lo.interest_rate_fixed_until < v_warn_to THEN 'ends'
                     WHEN lo.interest_rate_fixed_until < v_today THEN 'ended'
-                    WHEN lo.status = 'paused' THEN 'paused'
-                    WHEN lo.payoff_date_projected IS NOT NULL
-                         AND (lo.term_end_date IS NULL OR lo.payoff_date_projected <= lo.term_end_date) THEN 'payoff' END AS flag
+                    WHEN lo.status = 'paused' THEN 'paused' END AS flag,
+               (lo.payoff_date_projected IS NOT NULL
+                AND (lo.term_end_date IS NULL OR lo.payoff_date_projected <= lo.term_end_date)) AS payoff_ok,
+               -- Schlussrate: zum Laufzeitende bleibt eine Restschuld (Tilgung erst danach fertig)
+               (lo.term_end_date IS NOT NULL AND lo.balance_at_term_end_projected IS NOT NULL
+                AND abs(lo.balance_at_term_end_projected) > 0
+                AND (lo.payoff_date_projected IS NULL OR lo.payoff_date_projected > lo.term_end_date)) AS final_rate
           FROM finance.loan_overview lo
           LEFT JOIN core.fn_household_persons() hp ON hp.person_id = lo.borrower_person_id
          WHERE finance.fn_loan_is_outstanding(lo.status)
@@ -98,11 +105,18 @@ BEGIN
     ), it AS (
         SELECT l.*, jsonb_build_object(
                'label', l.name,
-               'sub', CASE WHEN l.lender IS NOT NULL
-                           THEN core.fn_ui_tpl('finance.app.loans.rate_line_lender', jsonb_build_object(
-                                    'lender', l.lender,
+               -- Untertitel „Zins · Rate · schuldenfrei {Jahr}" bzw. „· Schlussrate {Datum}" (Fakten, keine Pille; Mini-App
+               -- UX 2026-10-30), die Bank steht im Aufklappen
+               'sub', CASE WHEN l.payoff_ok
+                           THEN core.fn_ui_tpl('finance.app.loans.rate_line_payoff', jsonb_build_object(
                                     'interest', core.fn_ui_num(l.interest_rate, 2),
-                                    'rate', core.fn_ui_money(l.monthly_annuity, l.currency)))
+                                    'rate', core.fn_ui_money(l.monthly_annuity, l.currency),
+                                    'year', to_char(l.payoff_date_projected, 'YYYY')))
+                           WHEN l.final_rate
+                           THEN core.fn_ui_tpl('finance.app.loans.rate_line_final', jsonb_build_object(
+                                    'interest', core.fn_ui_num(l.interest_rate, 2),
+                                    'rate', core.fn_ui_money(l.monthly_annuity, l.currency),
+                                    'date', core.fn_ui_date(l.term_end_date)))
                            ELSE core.fn_ui_tpl('finance.app.loans.rate_line', jsonb_build_object(
                                     'interest', core.fn_ui_num(l.interest_rate, 2),
                                     'rate', core.fn_ui_money(l.monthly_annuity, l.currency))) END,
@@ -117,17 +131,18 @@ BEGIN
                    WHEN 'ended'  THEN jsonb_build_object('state', 'warn', 'icon', 'calendar',
                                           'text', core.fn_ui_tpl('finance.app.loans.fixed_ended',
                                               jsonb_build_object('date', core.fn_ui_date(l.interest_rate_fixed_until))))
-                   WHEN 'payoff' THEN jsonb_build_object('state', 'neutral', 'icon', 'calendar',
-                                          'text', core.fn_ui_tpl('finance.app.loans.payoff_year',
-                                              jsonb_build_object('year', to_char(l.payoff_date_projected, 'YYYY'))))
                    END,
                'progress', CASE WHEN l.original_amount > 0 AND l.current_remaining_debt IS NOT NULL THEN
                    jsonb_build_object('pct', round(100 * GREATEST(l.original_amount - abs(l.current_remaining_debt), 0)
                                                    / l.original_amount, 1), 'state', 'neutral') END,
                'target', NULL,
                'details', (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (
-                   SELECT 1 AS o, jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_borrower'),
-                              'value', COALESCE(to_jsonb(l.borrower_name), core.fn_ui_tpl('finance.app.common.joint'))) AS d
+                   SELECT 0 AS o, jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_lender'),
+                              'value', l.lender) AS d
+                    WHERE l.lender IS NOT NULL
+                   UNION ALL
+                   SELECT 1, jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_borrower'),
+                              'value', COALESCE(to_jsonb(l.borrower_name), core.fn_ui_tpl('finance.app.common.joint')))
                     WHERE v_hh
                    UNION ALL
                    SELECT 2, jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_amount'),
@@ -207,7 +222,7 @@ BEGIN
         'empty', core.fn_ui_tpl('finance.app.loans.empty'), 'items', v_items));
     IF jsonb_array_length(v_kids) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
-            'title', core.fn_ui_tpl('finance.app.loans.section_kids'),
+            'title', core.fn_ui_tpl('finance.app.common.kids_not_in_sum'),
             'value', CASE WHEN v_kid_sum IS NOT NULL THEN core.fn_ui_money(v_kid_sum, 'EUR') END,
             'empty', core.fn_ui_tpl('finance.app.loans.empty'), 'items', v_kids);
     END IF;

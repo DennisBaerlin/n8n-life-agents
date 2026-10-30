@@ -102,7 +102,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1h] Schulden: Kredit -2000 mit Sprung nach loans, got %', v_sec; END IF;
   -- Kinder: je Kind Netto, Details je Anlageart ergeben die Summe
   v_sec := v->'sections'->2;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_kids') OR jsonb_array_length(v_sec->'items') <> 1
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.common.kids_not_in_sum') OR jsonb_array_length(v_sec->'items') <> 1
      OR v_sec->'items'->0->>'label' <> 'Kind Beispiel' OR v_sec->'items'->0->'value' <> core.fn_ui_money(1300, 'EUR') THEN
     RAISE EXCEPTION 'FAIL [1q] Kinder-Abschnitt: Kind Beispiel 1300, got %', v_sec; END IF;
   SELECT sum((d->'value'->>'value')::numeric) INTO v_n FROM jsonb_array_elements(v_sec->'items'->0->'details') d;
@@ -151,7 +151,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->'label'->>'value' = 'loan') THEN
     RAISE EXCEPTION 'FAIL [2e] Haushalts-Kredit in der Kind-Sicht'; END IF;
   IF v->'hero'->'label' <> core.fn_ui_tpl('finance.app.overview.hero_own') OR jsonb_array_length(v->'sections') <> 2
-     OR v_txt LIKE '%finance.app.overview.section_kids%' OR v_txt LIKE '%finance.app.overview.owner%' THEN
+     OR v_txt LIKE '%finance.app.common.kids_not_in_sum%' OR v_txt LIKE '%finance.app.overview.owner%' THEN
     RAISE EXCEPTION 'FAIL [2f] Kind: „Mein Vermoegen", nur Besitz + Konten, kein Kinder-Abschnitt/Besitzer, got %', v; END IF;
   RAISE NOTICE 'PASS [2] Kind sieht nur Eigenes (1300), keine fremden Namen/IDs in der ganzen Antwort';
 

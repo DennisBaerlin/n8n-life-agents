@@ -478,10 +478,10 @@ button.row:active, button.banner:active { opacity: .6; }
     if (p.text) s.appendChild(el('span', null, txt(R, p.text)));
     return s;
   }
-  // item.trend (optional) {dir: up|down|flat, text}: Pfeil nur aus der Whitelist, Text wie jeder andere Wert
+  // item.trend (optional) {direction: up|down|flat, text}: Pfeil nur aus der Whitelist, Text wie jeder andere Wert
   function trend(tr, R) {
     const s = el('span', 'trend');
-    const ic = icon(tr.dir === 'up' || tr.dir === 'down' ? tr.dir : null);
+    const ic = icon(tr.direction === 'up' || tr.direction === 'down' ? tr.direction : null);
     if (ic) s.appendChild(ic);
     if (tr.text) s.appendChild(el('span', null, txt(R, tr.text)));
     return s;

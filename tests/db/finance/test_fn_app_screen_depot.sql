@@ -100,9 +100,10 @@ BEGIN
   v_it := v_sec->'items'->0;
   IF v_it->'value' <> core.fn_ui_money(1200, 'EUR') OR (v_it->>'gap')::boolean
      OR v_it->'sub'->>'value' <> 'finance.app.depot.shares' OR v_it->'sub'->'params'->'shares' <> core.fn_ui_num(10, 0)
-     OR v_it->'pill' <> jsonb_build_object('state', 'ok', 'icon', 'up', 'text', core.fn_ui_tpl('finance.app.depot.gain',
+     OR jsonb_typeof(v_it->'pill') <> 'null'
+     OR v_it->'trend' <> jsonb_build_object('direction', 'up', 'text', core.fn_ui_tpl('finance.app.depot.gain',
           jsonb_build_object('amount', core.fn_ui_money(200, 'EUR', true), 'pct', core.fn_ui_num(20.0, 1, true)))) THEN
-    RAISE EXCEPTION 'FAIL [1i] Position mit aktuellem Kurs: EUR, Stueck ohne Datum, Gewinn-Pille ok/up, got %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [1i] Position mit aktuellem Kurs: EUR, Stueck ohne Datum, Gewinn als trend up (keine Pille), got %', v_it; END IF;
   v_it := v_sec->'items'->1;
   IF v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.depot.price_stale'))
      OR (v_it->>'gap')::boolean OR v_it->'sub'->>'value' <> 'finance.app.depot.shares_date'
@@ -114,9 +115,9 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1k] Position ohne Kurs: kein Wert, gap, Pill, got %', v_it; END IF;
   SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
    WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', '__apdp_g_depot__'));
-  IF v_sec->'items'->0->'pill'->>'state' <> 'alert' OR v_sec->'items'->0->'pill'->>'icon' <> 'down'
-     OR v_sec->'items'->0->'pill'->'text'->'params'->'amount' <> core.fn_ui_money(-10, 'EUR', true) THEN
-    RAISE EXCEPTION 'FAIL [1k2] Verlust: alert/down, -10, got %', v_sec; END IF;
+  IF jsonb_typeof(v_sec->'items'->0->'pill') <> 'null' OR v_sec->'items'->0->'trend'->>'direction' <> 'down'
+     OR v_sec->'items'->0->'trend'->'text'->'params'->'amount' <> core.fn_ui_money(-10, 'EUR', true) THEN
+    RAISE EXCEPTION 'FAIL [1k2] Verlust: trend down -10, kein roter Alarm, got %', v_sec; END IF;
   SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
    WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', '__apdp_hh_crypto__'));
   IF v_sec->'items'->0->'value' <> core.fn_ui_money(20000, 'CHF') OR (v_sec->'items'->0->>'gap')::boolean IS NOT TRUE
@@ -217,7 +218,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [6b1] Rendite-Abschnitt nur mit jungen Depots, got %', v->'sections'->0; END IF;
     SELECT it INTO v_it FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') it
      WHERE it->>'label' = '__apdp_r4__';
-    IF v_it->'pill' <> jsonb_build_object('state', 'ok', 'icon', 'up', 'text', core.fn_ui_tpl('finance.app.depot.gain',
+    IF v_it->'trend' <> jsonb_build_object('direction', 'up', 'text', core.fn_ui_tpl('finance.app.depot.gain',
          jsonb_build_object('amount', core.fn_ui_money(200, 'EUR', true), 'pct', core.fn_ui_num(40.0, 1, true)))) THEN
       RAISE EXCEPTION 'FAIL [6b1] uebernommene Position: seit Kauf +200 / +40,0 %%, got %', v_it; END IF;
 
@@ -255,27 +256,27 @@ BEGIN
   IF v_sec->'title' <> core.fn_ui_tpl('finance.app.depot.section_perf') OR jsonb_array_length(v_sec->'items') <> 3 THEN
     RAISE EXCEPTION 'FAIL [6b] Rendite-Abschnitt zuerst, 2 Jahres-Depots + Alle Depots (ohne junge Depots), got %', v_sec; END IF;
   v_it := v_sec->'items'->0;
-  IF v_it->'label' <> '"__apdp_perf1__"'::jsonb OR jsonb_typeof(v_it->'value') <> 'null' OR (v_it->>'gap')::boolean
+  IF v_it->'label' <> '"__apdp_perf1__"'::jsonb OR (v_it->>'gap')::boolean
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.perf_since', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 365)))
-     OR v_it->'pill' <> jsonb_build_object('state', 'ok', 'icon', 'up', 'text', core.fn_ui_tpl('finance.app.depot.perf_pa',
-          jsonb_build_object('pct', core.fn_ui_num(10.0, 1, true))))
+     OR jsonb_typeof(v_it->'pill') <> 'null'
+     OR v_it->'value' <> core.fn_ui_tpl('finance.app.depot.perf_pa', jsonb_build_object('pct', core.fn_ui_num(10.0, 1, true)))
      OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_value'), 'value', core.fn_ui_money(1100, 'EUR'))
      OR v_it->'details'->-1 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_how'), 'value', NULL) THEN
-    RAISE EXCEPTION 'FAIL [6c] Depot ab 1 Jahr: +10,0 %% pro Jahr (ok/up), seit-Datum, Wert heute + Erklaerung, got %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [6c] Depot ab 1 Jahr: +10,0 %% pro Jahr als Wert (keine Pille), seit-Datum, Wert heute + Erklaerung, got %', v_it; END IF;
   v_it := v_sec->'items'->1;
   IF v_it->'label' <> '"__apdp_perf3__"'::jsonb
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.perf_since', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 400)))
-     OR v_it->'pill'->'text'->>'value' <> 'finance.app.depot.perf_pa' THEN
+     OR v_it->'value'->>'value' <> 'finance.app.depot.perf_pa' THEN
     RAISE EXCEPTION 'FAIL [6d] zweites Jahres-Depot nach Wert: pro Jahr, seit-Datum, got %', v_it; END IF;
   v_it := v_sec->'items'->2;
-  IF v_it->'label' <> core.fn_ui_tpl('finance.app.depot.perf_total') OR v_it->'pill'->'text'->>'value' <> 'finance.app.depot.perf_pa' THEN
+  IF v_it->'label' <> core.fn_ui_tpl('finance.app.depot.perf_total') OR v_it->'value'->>'value' <> 'finance.app.depot.perf_pa' THEN
     RAISE EXCEPTION 'FAIL [6e] Alle Depots zuletzt, pro Jahr (Beginn vor 365 Tagen), got %', v_it; END IF;
   IF v::text ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [6f] *id-Feld im Rendite-Abschnitt'; END IF;
   -- veralteter Kurs (30 Tage): Zahl bleibt, Pille warn/clock, Hinweis beim Aufklappen
   UPDATE finance.market_prices SET as_of = core.fn_today() - 30 WHERE symbol = 'APDPR1';
   v_it := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0->'items'->0;
   IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->>'icon' <> 'clock'
-     OR v_it->'pill'->'text'->>'value' <> 'finance.app.depot.perf_pa'
+     OR v_it->'pill'->'text'->>'value' <> 'finance.app.depot.price_stale' OR v_it->'value'->>'value' <> 'finance.app.depot.perf_pa'
      OR NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_stale')))) THEN
     RAISE EXCEPTION 'FAIL [6f2] veralteter Kurs: warn/clock mit Zahl + Hinweis, got %', v_it; END IF;
   UPDATE finance.market_prices SET as_of = core.fn_today() WHERE symbol = 'APDPR1';

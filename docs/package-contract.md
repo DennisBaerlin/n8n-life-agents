@@ -758,9 +758,10 @@ page computes nothing — states, progress and sums come from the DB.
   "hero": { "label": <tpl>, "value": <money>, "gap": false, "note": <tpl>|null } | null,
   "banners": [ { "state": "alert|warn|ok", "icon": "alert|calendar|clock|check|pause|info", "text": <tpl>,
                  "target": { "screen": "<screen>", "params": {} } | null } ],
-  "sections": [ { "title": <tpl>, "value"?: <money>|<tpl>|null, "empty": <tpl>, "items": [ {
-      "label": "<raw name>" | <tpl>, "sub": <tpl>|null, "value": <money>|<number>|null, "gap": false,
+  "sections": [ { "title": <tpl>, "value"?: <money>|<tpl>|null, "note"?: <tpl>|null, "empty": <tpl>, "items": [ {
+      "label": "<raw name>" | <tpl>, "sub": <tpl>|null, "value": <money>|<number>|<tpl>|null, "gap": false,
       "pill": { "state": "ok|warn|alert|neutral", "icon": "…", "text": <tpl> } | null,
+      "trend"?: { "direction": "up|down|flat", "text": <tpl> } | null,
       "progress": { "pct": 0-100, "state": "ok|warn|alert|neutral" } | null,
       "target": { "screen": "<screen>", "params": {} } | null,
       "details"?: [ { "label": "<raw>" | <typed>, "value": "<raw>" | <typed> | null } ] | null } ] } ] }
@@ -770,13 +771,31 @@ page computes nothing — states, progress and sums come from the DB.
   signal). `gap: true` = an FX rate or price is missing in that sum (`has_fx_gap`), the page marks the value as
   incomplete. Optional fields (additive, still v1; a handler without them stays valid): `section.value` = the sum
   shown next to the section title; `item.details` = key/value lines the row expands to on tap (progressive
-  disclosure, no navigation, so no IDs leave the DB; a `target` wins over `details`). Money may carry `sign: true`
-  (`core.fn_ui_money(v, cur, true)`): the renderer puts `+` before a positive amount (gain since purchase).
+  disclosure, no navigation, so no IDs leave the DB; a `target` wins over `details`); `section.note` = one grey
+  sentence about the whole section (not a list row); `item.trend` = a change shown under the value as arrow + text in
+  text colour (gain/return is information, not a verdict, so no pill colour). Money may carry `sign: true`
+  (`core.fn_ui_money(v, cur, true)`): the renderer puts `+` before a positive amount (gain since purchase, inflows).
+- **Design rules** (one meaning per element on every screen; Mini-App UX 2026-10-30, design review + owner decisions):
+
+  | Element | Carries | Rule |
+  |---|---|---|
+  | `item.value` | the actual amount of the row (balance, saved, remaining debt, monthly amount; a rate as tpl) | always there, never replaced by a pill |
+  | `section.value` | the sum of the row values | only a real sum, else null; null when a part has no FX rate |
+  | `pill` | a verdict | main status of the row also green (on track, reached, complete, sufficient, enough); side findings (coverage) only on deviation; never for facts or measurements; warn/alert name the amount or date when it is known |
+  | `progress` | progress towards an amount target | colour = the row's pill; shares neutral; no bar when reached or without an amount target |
+  | `sub` | „from/whom · when“ | one line; derivations and settings go to `details` |
+  | `details` | derivation, single items | ≈ 8 lines, no fact twice on a screen |
+  | order | alert → warn → normal → done | inside every section |
+
+  Dates: inside the Mini App the renderer drops the year for a date in `ui.date_short = {from, to}` = [today − 3
+  months, today + 9 months) (DB today in the household time zone, so no "15.11." can mean two years); chat, HITL and
+  cron bundles never carry it.
 - **Page responses** of `core.fn_app_screen` (POST body `{init_data, screen?, params?}`):
   navigation `{ok:true, ui, screens:[{screen, title:<tpl>, icon}], first?:{screen, view}}` (the first screen rides along,
   one request on open), screen `{ok:true, ui, view}`, refusal
   `{ok:false, code, ui, text:<tpl>}` — `ui` = `agent.fn_ui_texts_for` (`{lang, locale, t}`) for the viewer, with
-  every key of the response plus the shell keys (`core.app.*`, `core.fmt.*`).
+  every key of the response plus the shell keys (`core.app.*`, `core.fmt.*`), plus `date_short` on navigation and
+  screen responses.
 
 ---
 

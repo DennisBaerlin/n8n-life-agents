@@ -4,7 +4,7 @@
 --   Quellen: depot_holdings_overview (Marktwert, Kurs, Kurs-Datum, price_status ok|stale|missing, Kaufwert, Gewinn),
 --   networth_by_asset_class (Hero), transactions (Kauf/Verkauf/Dividende je Position, finance.fn_app_holding_transactions).
 --   Die Seite rechnet nichts. Was im Depot fuer Ziele reserviert ist, zeigt EIN Ort: Bildschirm Ziele, Abschnitt
---   „Fuer Ziele verplant" (Uebersicht R3; vorher ein eigener Abschnitt hier).
+--   „Konten" (Uebersicht R3; vorher ein eigener Abschnitt hier).
 --   HERO = Anlageart „depot" aus networth_by_asset_class mit derselben Personen-Auswahl wie die Vermoegen-Seite (Uebersicht
 --     R3: Depotwert = „Wertpapiere & Krypto" dort, ohne Kurs zaehlt der Kaufwert); gap, wenn eine Position keinen Kurs
 --     oder keinen Wechselkurs hat. Haushalts-Betrachter: ohne Kinder-Depots (role = 'child', T2-Muster), die stehen
@@ -14,8 +14,8 @@
 --   entfaellt, wenn eine Position keinen EUR-Wert hat, statt still zu niedrig zu sein);
 --   Positionen nach Wert. Wert IMMER in EUR (market_value_eur); nur ohne Wechselkurs der Kurs-Waehrungs-Wert + gap.
 --   Untertitel: Stueck (mit den Nachkommastellen, die sie hat), bei Fremdwaehrung „Kurs 148,60 $", Kurs-Datum nur wenn
---   es vom Hero-Datum abweicht. Pille: Kurs veraltet/fehlt (warn, Vorrang) sonst Gewinn/Verlust seit Kauf
---   („+x € · +y %", ok/up bzw. alert/down; 0 -> keine). Bekannte Grenze: book_value_eur rechnet eine Fremdwaehrungs-
+--   es vom Hero-Datum abweicht. Pille nur fuer Kurs veraltet/fehlt (warn); Gewinn/Verlust seit Kauf als trend unter dem
+--   Wert („+x € · +y %", Pfeil up/down, keine Ampel-Farbe; 0 -> keiner; Mini-App UX 2026-10-30). Bekannte Grenze: book_value_eur rechnet eine Fremdwaehrungs-
 --   Kostenbasis zum heutigen Kurs um -> der Waehrungseffekt fehlt im „seit Kauf" (EUR-Kaeufe nicht betroffen).
 --   Aufklappen (details): Ø Kaufkurs, Kaufwert, Gewinn (aus den eigenen Zeilen), dann die letzten 12 Buchungen und
 --   „n aeltere" (finance.fn_app_holding_transactions).
@@ -25,8 +25,8 @@
 --     Haushalts-Depots mit Einzahlung eine Zeile haben; keine Zeile -> kein Abschnitt. EIN Zeitraum auf der
 --     Seite (Owner 2026-10-30): juengere Depots fehlen, statt „seit Beginn" (bei Uebernahme ab Uebernahme-Kurs) neben
 --     „Seit Kauf" (Hero, Positionen) zu stellen; Fonds zeigen unter einem Jahr ebenfalls keine Wertentwicklung (ESMA
---     Q&A zu Art. 15(4) VO 583/2010). Pille = Rendite pro Jahr, ok/up | alert/down | neutral bei 0,0, warn/clock bei
---     veraltetem Kurs (Zahl bleibt); ohne Kurs/Wechselkurs warn + gap. Aufklappen: Wert heute, Hinweis veralteter Kurs,
+--     Q&A zu Art. 15(4) VO 583/2010). Wert rechts = Rendite pro Jahr (Messwert, ohne Ampel-Farbe); Pille nur warn/clock
+--     bei veraltetem Kurs (Zahl bleibt), ohne Kurs/Wechselkurs warn + gap. Aufklappen: Wert heute, Hinweis veralteter Kurs,
 --     ein Erklaer-Satz. Depot-Auswahl ueberall = finance.fn_visible_depots.
 --   ZERO-TRUST-SICHTBARKEIT (core.fn_app_sees_household): owner/partner sehen alle aktiven Depots, alle anderen nur
 --     Depots mit owner_person_id = ich (dann ohne Kinder-Trennung: der Hero ist die eigene Summe).
@@ -123,19 +123,19 @@ BEGIN
                    'value', CASE WHEN h.market_value_eur IS NOT NULL THEN core.fn_ui_money(h.market_value_eur, 'EUR')
                                  WHEN h.market_value IS NOT NULL THEN core.fn_ui_money(h.market_value, h.price_currency) END,
                    'gap', h.market_value_eur IS NULL,
+                   -- Pille nur fuer ein Kurs-Problem (Urteil); der Gewinn seit Kauf ist Information -> trend (Mini-App UX
+                   -- 2026-10-30: ein Kursverlust ist kein roter Alarm)
                    'pill', CASE
                        WHEN h.price_status = 'stale' THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
                                                  'text', core.fn_ui_tpl('finance.app.depot.price_stale'))
                        WHEN h.price_status = 'missing' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                                                  'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
-                       WHEN h.has_gain AND h.unrealized_gain_eur <> 0
-                       THEN jsonb_build_object(
-                                'state', CASE WHEN h.unrealized_gain_eur > 0 THEN 'ok' ELSE 'alert' END,
-                                'icon', CASE WHEN h.unrealized_gain_eur > 0 THEN 'up' ELSE 'down' END,
+                   END,
+                   'trend', CASE WHEN h.has_gain AND h.unrealized_gain_eur <> 0 THEN jsonb_build_object(
+                                'direction', CASE WHEN h.unrealized_gain_eur > 0 THEN 'up' ELSE 'down' END,
                                 'text', core.fn_ui_tpl('finance.app.depot.gain', jsonb_build_object(
                                             'amount', core.fn_ui_money(h.unrealized_gain_eur, 'EUR', true),
-                                            'pct', core.fn_ui_num(h.gain_pct, 1, true))))
-                   END,
+                                            'pct', core.fn_ui_num(h.gain_pct, 1, true)))) END,
                    'progress', NULL,
                    'target', NULL,
                    'details', (SELECT COALESCE(jsonb_agg(e ORDER BY n) FILTER (WHERE e IS NOT NULL), '[]'::jsonb)
@@ -200,17 +200,15 @@ BEGIN
                              ELSE r.x -> 'depot_name' END,
                'sub', core.fn_ui_tpl('finance.app.depot.perf_since',
                           jsonb_build_object('date', core.fn_ui_date((r.x ->> 'start_date')::date))),
-               'value', NULL,
+               -- Wert rechts = die Rendite pro Jahr (Messwert, keine Ampel-Farbe; Mini-App UX 2026-10-30)
+               'value', CASE WHEN r.pct IS NOT NULL THEN core.fn_ui_tpl('finance.app.depot.perf_pa',
+                                  jsonb_build_object('pct', core.fn_ui_num(round(r.pct, 1), 1, true))) END,
                'gap', r.x ->> 'missing_reason' IN ('no_price', 'no_fx'),
                'pill', CASE
-                   -- veralteter Kurs: Zahl bleibt, Pille warnt (Uhr) statt Gewinn-/Verlust-Farbe
-                   WHEN r.pct IS NOT NULL THEN jsonb_build_object(
-                       'state', CASE WHEN (r.x ->> 'price_stale')::boolean THEN 'warn'
-                                     WHEN round(r.pct, 1) > 0 THEN 'ok' WHEN round(r.pct, 1) < 0 THEN 'alert' ELSE 'neutral' END,
-                       'icon', CASE WHEN (r.x ->> 'price_stale')::boolean THEN 'clock'
-                                    WHEN round(r.pct, 1) > 0 THEN 'up' WHEN round(r.pct, 1) < 0 THEN 'down' ELSE 'info' END,
-                       'text', core.fn_ui_tpl('finance.app.depot.perf_pa',
-                                              jsonb_build_object('pct', core.fn_ui_num(round(r.pct, 1), 1, true))))
+                   -- veralteter Kurs: Zahl bleibt, Pille warnt wie an der Position
+                   WHEN r.pct IS NOT NULL AND (r.x ->> 'price_stale')::boolean THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
+                       'text', core.fn_ui_tpl('finance.app.depot.price_stale'))
+                   WHEN r.pct IS NOT NULL THEN NULL
                    WHEN r.x ->> 'missing_reason' = 'no_price' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                        'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
                    WHEN r.x ->> 'missing_reason' = 'no_fx' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',

@@ -215,7 +215,7 @@ BEGIN
     END IF;
     IF jsonb_array_length(v_kids) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
-            'title', core.fn_ui_tpl('finance.app.overview.section_kids'),
+            'title', core.fn_ui_tpl('finance.app.common.kids_not_in_sum'),
             'value', NULL,
             'empty', v_empty, 'items', v_kids);
     END IF;

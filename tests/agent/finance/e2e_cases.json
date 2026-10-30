@@ -497,5 +497,17 @@
         "expect":  1,
         "is_negative":  false,
         "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30): 100 EUR Guthaben, 50 EUR/Monat ohne Zufluss -> Luecke (warn). Der echte Write nach dem approve feuert den Latch (der Probelauf vor der Karte darf ihn nicht verbrauchen), und der Agent stellt nur die Frage: er legt KEINEN Dauerauftrag und keine Einnahme auf das Konto an (die Antwort kommt erst vom Nutzer). Den Antworttext selbst prueft kein Tier automatisch (E2E prueft nur die DB). Datum fest; sobald 2027-01-04 naeher als ~1 Monat rueckt, nachziehen."
+    },
+    {
+        "id":  "e2e46",
+        "name":  "create_recurring_payment mit Gegen-IBAN aus einem Vorschlag: Schluessel fuer den Monats-Check",
+        "task":  "Lege den Vorschlag als Dauerauftrag an: Miete (Vermieter Test), Ausgabe 850 Euro monatlich am 1. vom Konto __E2E__ RS Giro, erste Zahlung 2027-02-01, counterparty_iban DE89370400440532013000.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ RS Giro', finance.fn_create_account(jsonb_build_object('name','__E2E__ RS Giro','account_type','cash','account_holder','Erika','currency','EUR','opening_balance',2000)));",
+        "chat_id":  "test_e2e_e2e46",
+        "sentinel_accounts":  1,
+        "verify_sql":  "SELECT count(*) FROM finance.recurring_payments rp JOIN finance.accounts a ON a.id = rp.account_id JOIN finance.recurring_payment_keys k ON k.recurring_payment_id = rp.id WHERE a.name = '__E2E__ RS Giro' AND rp.amount = -850 AND rp.schedule_day_of_month = 1 AND k.key_type = 'counterparty_iban' AND k.key_value = 'DE89370400440532013000' AND k.source = 'user';",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Import zuerst (Session 3d, 2026-10-30), Schema-Fidelity counterparty_iban -> fn_create_recurring_payment -> recurring_payment_keys (source user) in derselben fn; die Karte zeigt die IBAN (finance.note.recurring_iban_key). Cleanup via fn_clear_e2e_data (Konto-Scope, Schluessel haengen per CASCADE am Dauerauftrag). Datum fest; sobald 2027-02-01 naeher als ~1 Monat rueckt, nachziehen."
     }
 ]

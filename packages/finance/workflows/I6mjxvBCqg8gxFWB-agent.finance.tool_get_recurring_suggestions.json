@@ -1,0 +1,538 @@
+{
+    "id":  "I6mjxvBCqg8gxFWB",
+    "name":  "agent.finance.tool_get_recurring_suggestions",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "file_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "account_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "f94d75c7-597a-51d4-b96a-858db7505156",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PWPPVNrauWK7EpuB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PWPPVNrauWK7EpuB",
+                                                            "cachedResultName":  "agent.tool_fetch_telegram_file"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Start\u0027).item.json.file_id }}",
+                                                                              "accept":  "table"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "389722c8-8273-5b01-9bc2-20ba0b7addb0",
+                      "name":  "Fetch telegram file"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "cef8fb37-9e40-5818-975c-1390769cd6e7",
+                                                                                   "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "e41f48a7-ce21-5b0d-a693-62e22b528e5d",
+                      "name":  "File ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "bc8abea5-9250-5bc3-8ae0-74654398bed3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0469e885-86f4-5aef-a3d4-425a8da152c3",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "aa130e63-9da7-560e-85ff-40fe247be73f",
+                      "name":  "File unusable"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const f = $(\u0027Fetch telegram file\u0027).first().json;\nconst fail = (code, m) =\u003e [{ json: { ok: false, code, error: m, rows: [] } }];\nconst cell = (v) =\u003e (v === null || v === undefined) ? \u0027\u0027 : String(v);\nif (Array.isArray(f.rows) \u0026\u0026 f.rows.length) {\n  const grid = f.rows.map((r) =\u003e (Array.isArray(r) ? r : []).map(cell));\n  if (grid.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\n  return [{ json: { ok: true, rows: grid, row_count: grid.length } }];\n}\nconst t = String(f.text || \u0027\u0027);\nif (!t.trim()) return fail(\u0027not_an_export\u0027, \u0027This file is not a bank export (it is a photo or PDF). A printed bank statement goes to tool_reconcile_bank_statement.\u0027);\nconst head = t.split(/\\r?\\n/, 20).join(\u0027\\n\u0027);\nconst delim = head.split(\u0027;\u0027).length \u003e head.split(\u0027,\u0027).length ? \u0027;\u0027 : \u0027,\u0027;\nconst rows = []; let row = []; let fld = \u0027\u0027; let q = false;\nfor (let i = 0; i \u003c t.length; i++) {\n  const c = t[i];\n  if (q) { if (c === \u0027\"\u0027) { if (t[i + 1] === \u0027\"\u0027) { fld += \u0027\"\u0027; i++; } else q = false; } else fld += c; }\n  else if (c === \u0027\"\u0027) q = true;\n  else if (c === delim) { row.push(fld); fld = \u0027\u0027; }\n  else if (c === \u0027\\n\u0027 || c === \u0027\\r\u0027) { if (c === \u0027\\r\u0027 \u0026\u0026 t[i + 1] === \u0027\\n\u0027) i++; row.push(fld); rows.push(row); row = []; fld = \u0027\u0027; }\n  else fld += c;\n}\nif (fld !== \u0027\u0027 || row.length) { row.push(fld); rows.push(row); }\nif (rows.length \u003c 2 || !rows.some((r) =\u003e r.length \u003e= 2)) return fail(\u0027export_invalid\u0027, \u0027The file has no readable table (header row missing).\u0027);\nif (rows.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\nreturn [{ json: { ok: true, rows, row_count: rows.length } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "b6829a8b-96ce-5993-9135-6fe6387c2246",
+                      "name":  "Read table"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e01cf479-6509-5e4f-8803-70fa94bf56b5",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "c521fada-2a87-55e6-bdf5-6e0927a3f5ee",
+                      "name":  "Table read?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5063c7d6-9989-5c88-9f97-3db93ca55eb1",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "dbb7b538-df07-5c1e-b0f8-8c209cdc712a",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.code }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "85c7b32d-9ab6-5bf3-9c99-51e4f6e0d7ab",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "c313fffe-0c3f-5cef-979f-f9a9c048aa61",
+                      "name":  "Not an export"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_get_recurring_suggestions($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "2f1a579e-630a-50c3-b7e2-35eedf188dae",
+                      "name":  "Get suggestions",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RO__",
+                                                           "name":  "Postgres finance_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f76adb9a-1508-5947-99a5-19ddc6d0ac98",
+                                                                                   "leftValue":  "={{ $json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "d0b0642a-9514-52fe-82ba-a488c55bd583",
+                      "name":  "Suggestions ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "80e7b4fc-a90c-5d5e-8ac5-1784330f33d6",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b81db37e-fbfa-5988-95b7-7702582f46d9",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.code }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c814e62f-5b1d-54d6-93a8-d65eba29efae",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.reason }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d40064c0-e6c5-5d48-b2c9-a748a7dc450c",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c4653b4b-a513-565a-92fe-5fb90576ca94",
+                                                                                     "name":  "bank",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.bank || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a4c88b11-cc0b-50ca-993a-a46410c7213a",
+                                                                                     "name":  "account_name",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.account_name || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       200
+                                   ],
+                      "id":  "65db3302-b580-52c6-ab1a-1f6ee84cd380",
+                      "name":  "Export not usable"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "781e1742-37d3-527f-a237-75aa504bad57",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cfdd9591-546b-5909-bffc-a65e3f7714e2",
+                                                                                     "name":  "account_name",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.account_name }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e6b069f6-0295-5777-a7ab-d6f6597c5455",
+                                                                                     "name":  "period_first",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.period_first }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4ecb931b-7112-5e32-a995-5ea098aecec6",
+                                                                                     "name":  "period_last",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.period_last }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "81264a0c-c85e-5b68-8f54-c4ba244829d1",
+                                                                                     "name":  "span_days",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.span_days }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d785b84d-59c8-57e6-86bd-d759309edb1f",
+                                                                                     "name":  "hint",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.hint || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7ac725a5-59da-5939-92b7-a854e6fbde61",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.reason || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1b800ab4-53c8-57bf-93b9-4b1fa39a5ff6",
+                                                                                     "name":  "suggestions",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.suggestions || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c7f74f65-aba7-5bb3-9764-40cb3c24f251",
+                                                                                     "name":  "known_elsewhere",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.known_elsewhere || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "7aa377b6-a34b-5f24-8036-39acbd7fedce",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Daueraufträge aus einem Bank-Export vorschlagen (Lese-Tool, kein Write, kein LLM)**\n\nFetch telegram file + Read table = der geteilte Leser (bank_export_table.ps1, gleich in tool_import_bank_export). Get suggestions (finance_ro) = finance.fn_get_recurring_suggestions: fn_bank_export_load (Bank-Profil, Konto-Wächter, ein Sub-Konto je Datei; kein Startpunkt nötig, es wird nichts gebucht) -\u003e Geldzeilen je Gegenkonto/IBAN/Name -\u003e Betrags-Cluster (Ausgaben ±7,5 %, Preisstufe = eine Reihe) -\u003e Rhythmus (Woche, Monat 1/3/6, Jahr; Termin ±3 Tage, 80 % Treffer, reif ab 3 bzw. 2 Terminen, noch aktiv) -\u003e Startdatum nach dem letzten Termin und nach dem Abgleich-Tag -\u003e Bekannt-Filter gegen laufende Daueraufträge (IBAN-Schlüssel, Transfer-Gegenkonto, exakter Betrag, Name + Betrag; auf einem anderen Konto -\u003e known_elsewhere). Datei unter 90 Tagen -\u003e nur hint export_too_short. Kein HITL: der Agent fragt je Vorschlag, angelegt wird über tool_create_recurring_payment (mit counterparty_iban als Schlüssel) bzw. tool_create_recurring_transfer, jeweils mit Karte.",
+                                         "height":  460,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -520
+                                   ],
+                      "id":  "83e03d58-7282-598a-8e6c-29f4b1b40ce1",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Nur Aggregate an das Modell**\n\nDie Datei verlässt n8n nicht. Die Rückgabe trägt je Reihe nur Name (Gegenpart wie gedruckt; ohne Gegenpart die ersten drei Wörter ohne Ziffern des Buchungstexts), Gegen-IBAN (nicht bei einer IBAN, die sich mehrere Händler teilen), Beträge, Rhythmus und Termine – nie Export-Zeilen oder ganze Verwendungszwecke. Fehlertexte der DB zitieren keine Zellinhalte.",
+                                         "height":  300,
+                                         "width":  240,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1100,
+                                       -300
+                                   ],
+                      "id":  "71e7dd0f-49b1-5703-b3d4-8e5c00ec43b8",
+                      "name":  "Privacy"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Fetch telegram file",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Fetch telegram file":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "File ok?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "File ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Read table",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "File unusable",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Read table":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Table read?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Table read?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Get suggestions",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Not an export",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Get suggestions":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Suggestions ok?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Suggestions ok?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Return",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Export not usable",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

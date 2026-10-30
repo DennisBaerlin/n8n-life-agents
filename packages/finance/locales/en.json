@@ -898,5 +898,6 @@
   "finance.note.funding_timing": "Afterwards the money reaches {account} too late: it runs short from {date}, lowest balance {min} on {min_date}. In and out are equal, but the incoming money arrives after the debit.",
   "finance.note.funding_ok_plain": "Afterwards {account} is covered.",
   "finance.note.funding_until_date": "Afterwards the money on {account} lasts until {date}.",
-  "finance.note.funding_gap_date": "Afterwards {account} runs short from {date}."
+  "finance.note.funding_gap_date": "Afterwards {account} runs short from {date}.",
+  "finance.note.recurring_iban_key": "From now on this payment is recognised by the IBAN {iban}, even when the amount varies. If it is wrong, please cancel."
 }

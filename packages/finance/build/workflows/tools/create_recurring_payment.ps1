@@ -10,7 +10,7 @@ function Build-CreateRecurringPayment {
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','account_name','direction','amount','schedule_interval','schedule_unit',
-                           'schedule_day_of_month','first_payment_date','valid_from','valid_to','notes')
+                           'schedule_day_of_month','first_payment_date','valid_from','valid_to','notes','counterparty_iban')
 
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
         "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name');" `
@@ -38,6 +38,7 @@ function Build-CreateRecurringPayment {
             valid_from            = '$(''Start'').item.json.valid_from'
             valid_to              = '$(''Start'').item.json.valid_to'
             notes                 = '$(''Start'').item.json.notes'
+            counterparty_iban     = '$(''Start'').item.json.counterparty_iban'
         })
 
     # --- HITL approval gate ---

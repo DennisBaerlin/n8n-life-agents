@@ -219,6 +219,19 @@ BEGIN
     IF finance.fn_bank_export_account_profile(v_a) IS DISTINCT FROM 'trade_republic_v1' THEN
       RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_bank_export_account_profile]'; END IF;
     RESET ROLE;
+    -- (2-mc-rs) Dauerauftrags-Vorschlaege ("Import zuerst"): tool_get_recurring_suggestions laeuft unter finance_ro, inkl.
+    -- Haushalts-Zweig (fn_match_household_holder -> core.fn_household_persons, Fenster ueber Schemas)
+    INSERT INTO agent.persons (person_id, full_name, role) VALUES ('role_rs', 'Rolla Testhaus', 'partner');
+    SET LOCAL ROLE finance_ro;
+    v_res := finance.fn_get_recurring_suggestions(jsonb_build_object('account_name', '__t_role_csv__',
+                'table', jsonb_build_object('rows', jsonb_build_array('["datetime","category","type","amount","currency","transaction_id","counterparty_name"]'::jsonb) ||
+                (SELECT jsonb_agg(jsonb_build_array((CURRENT_DATE - 3 - make_interval(months => k))::date::text, 'CASH',
+                                                    'TRANSFER_OUTBOUND', '-50.00', 'EUR', 'rs-' || k, 'Rolla Testhaus'))
+                 FROM generate_series(0, 4) k))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'suggestions') s WHERE s->>'kind' = 'household') THEN
+      RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_get_recurring_suggestions household]: %', v_res; END IF;
+    RESET ROLE;
     -- Rundungs-Paket 2026-10-23: ungerundete Kurs-Umrechnung (fn_statement_prepare/fn_account_outlook/Transfer) und die
     -- darauf gebaute fn_to_eur (Views) unter beiden Rollen mit einem echten Fremdwaehrungs-Kurs
     PERFORM finance.fn_ensure_currency('USD');

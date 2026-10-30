@@ -138,6 +138,8 @@ Monats-Check-Erinnerung (3. und 17., `schedule.reconcile_accounts`): fällig ist
 - **Transfers zwischen eigenen Konten:** Stufe T (Gegen-IBAN = Kontonummer bzw. Verrechnungskonto eines P2P-Kontos bei Ein-/Auszahlung ohne IBAN) und Stufe 0 `g:` (schon gebuchte Gruppe, auch mit fehlender Gebühr) in beiden Import-Reihenfolgen; nie zweimal (`pending_pair`); Bein unterwegs an der Monatsgrenze -> `moved_legs` bzw. `partner_date`; `fn_book_transfer` verweigert abgeglichene Zeiträume; `fn_void_bank_statement` verweigert `partner_reconciled`.
 - **Wertpapier-Zeilen** (TR) nie im Rest; ein Kauf bis zum Datum einer Bestandsübernahme wird nie gebucht (`covered_by_takeover`), erst `fn_replace_takeover_with_lots` macht ihn zur Einzelbuchung.
 - **Bei uns anders:** Der Sammelimport (`fn_import_stage`) bleibt getrennt (Stammdaten, keine Umsätze gegen einen Saldo). Der Rest (Lump) bleibt eine benannte, per Karte bestätigte Zeile (Barausgaben auf Girokonten).
+- **Laden:** Export-Datei nur über `fn_bank_export_load` (Leser + Konto- + Sub-Konto-Wächter), im Workflow nur über den geteilten Leser `bank_export_table.ps1`.
+- **Dauerauftrags-Vorschläge** (`fn_get_recurring_suggestions`, Lese-Tool, „Import zuerst“): Erkennung nach Actual/Plaid/Sure (Belege im fn-Kopf). Bei uns anders: Termin-Toleranz ±3 statt ±2 Tage (Wochenende + Feiertag verschieben Buchungstage), vierteljährlich/halbjährlich zusätzlich (Versicherungs-/Vereinsbeiträge), abgelehnte Vorschläge werden **nicht** gespeichert (jeder Write braucht eine Karte; Vorschläge nur auf Anfrage, Trigger im BACKLOG). Die Gegen-IBAN geht als `counterparty_iban` in `fn_create_recurring_payment` und wird Schlüssel (Stufe A), damit schwankende Beträge im Monats-Check getroffen werden; eine IBAN, die mehrere Reihen trägt (Zahlungsdienst), nie.
 
 ## Write-Tools-Katalog (`doc_lint` Check 4 ↔ `packages/*/build/workflows/tools/*.ps1`, alle Pakete)
 
@@ -163,8 +165,9 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_reconcile_account` | Ein Konto-Saldo abgleichen (Korrekturbuchung) |
 | `tool_reconcile_accounts_batch` | Mehrere Konten mit einem Sammel-Approval abgleichen |
 | `tool_close_account` | Konto schliessen |
-| `tool_create_recurring_payment` | Standalone Dauerauftrag (Gehalt/Miete/Abo/Rente) anlegen |
+| `tool_create_recurring_payment` | Standalone Dauerauftrag (Gehalt/Miete/Abo/Rente) anlegen; optional mit der Gegen-IBAN aus einem Vorschlag als Erkennungs-Schlüssel für den Monats-Check |
 | `tool_create_recurring_transfer` | Wiederkehrender interner Transfer zwischen zwei eigenen Konten (cashflow-neutral) |
+| `tool_get_recurring_suggestions` | Lese-Tool ohne Karte: wiederkehrende Zahlungen aus einem mehrmonatigen Bank-Export erkennen, die noch kein Dauerauftrag abdeckt (Rhythmus/Betrag/Startdatum aus der DB); der Agent fragt je Vorschlag, angelegt wird über die beiden Tools oben |
 | `tool_create_pension` | Altersvorsorge (+ optional Beitrag) anlegen |
 | `tool_set_account` | Konto-Stammdaten ändern |
 | `tool_set_account_interest` | Kontozins setzen/ändern |

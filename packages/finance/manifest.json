@@ -26,7 +26,7 @@
       "create_pension", "set_pension", "close_pension",
       "create_real_estate", "set_real_estate", "sell_real_estate", "delete_real_estate",
       "create_recurring_payment", "set_recurring_payment", "delete_recurring_payment",
-      "create_recurring_transfer",
+      "create_recurring_transfer", "get_recurring_suggestions",
       "create_savings_goal", "set_savings_goal", "close_savings_goal",
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",

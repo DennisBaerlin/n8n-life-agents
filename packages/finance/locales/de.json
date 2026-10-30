@@ -898,5 +898,6 @@
   "finance.note.funding_timing": "Danach kommt das Geld auf {account} zu spät: Es fehlt ab {date}, tiefster Stand {min} am {min_date}. Rein und raus sind gleich, der Eingang kommt aber erst nach der Abbuchung.",
   "finance.note.funding_ok_plain": "Danach ist {account} gedeckt.",
   "finance.note.funding_until_date": "Danach reicht das Geld auf {account} bis {date}.",
-  "finance.note.funding_gap_date": "Danach fehlt Geld auf {account} ab {date}."
+  "finance.note.funding_gap_date": "Danach fehlt Geld auf {account} ab {date}.",
+  "finance.note.recurring_iban_key": "Die Zahlung wird künftig an der IBAN {iban} erkannt, auch wenn der Betrag schwankt. Stimmt sie nicht, bitte abbrechen."
 }

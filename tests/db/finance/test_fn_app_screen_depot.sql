@@ -190,24 +190,70 @@ BEGIN
   -- ohne Buchungen (alle Positionen oben sind direkt angelegt) gibt es keinen Rendite-Abschnitt
   IF finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))::text LIKE '%finance.app.depot.section_perf%' THEN
     RAISE EXCEPTION 'FAIL [6a] Rendite-Abschnitt ohne Einzahlungen'; END IF;
-  -- Depot 1: genau 1 Jahr, -1000 -> 1100 = +10,0 % pro Jahr; Depot 2: 100 Tage, -500 -> 450 = -10,0 % seit Beginn
+  -- EIN Zeitraum auf der Seite („seit Kauf"): eine Rendite-Zeile erst ab einem vollen Jahr. Junge Depots (auch
+  -- uebernommene) fehlen, statt eine zweite Gewinnzahl mit anderem Startpunkt zu zeigen.
+  -- Depot 2: 100 Tage, -500 -> 450; Depot 4: Uebernahme vor 20 Tagen, 10 Stueck Einstand 50, Kurs damals 80, heute 70
   DECLARE
-    v_r1 INT; v_r2 INT; h_r1 INT; h_r2 INT;
+    v_r1 INT; v_r2 INT; v_r3 INT; v_r4 INT; h_r1 INT; h_r2 INT; h_r3 INT; h_r4 INT; g uuid := gen_random_uuid();
   BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
-      VALUES ('__apdp_perf1__', 'stocks_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_r1;
-    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
       VALUES ('__apdp_perf2__', 'stocks_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_r2;
-    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_r1, 'APD00000011', 'APDPR1', '__apdp_r1__', 'EUR') RETURNING id INTO h_r1;
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+      VALUES ('__apdp_perf4__', 'crypto_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_r4;
     INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_r2, 'APD00000012', 'APDPR2', '__apdp_r2__', 'EUR') RETURNING id INTO h_r2;
+    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_r4, NULL, 'APDPR4', '__apdp_r4__', 'EUR') RETURNING id INTO h_r4;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares) VALUES
-      (v_giro, -1000, core.fn_today() - 365, 'buy', h_r1, 10), (v_giro, -500, core.fn_today() - 100, 'buy', h_r2, 5);
-    INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPR1', 110, 'EUR', core.fn_today()), ('APDPR2', 90, 'EUR', core.fn_today());
+      (v_giro, -500, core.fn_today() - 100, 'buy', h_r2, 5);
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares, unit_price, group_id) VALUES
+      (v_giro, -500, core.fn_today() - 20, 'buy', h_r4, 10, 50, g);
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, group_id) VALUES
+      (v_giro, 500, core.fn_today() - 20, 'position_takeover', g);
+    INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES
+      ('APDPR2', 90, 'EUR', core.fn_today()), ('APDPR4', 80, 'EUR', core.fn_today() - 20), ('APDPR4', 70, 'EUR', core.fn_today());
+
+    -- [6b1] nur junge Depots -> kein Rendite-Abschnitt; die Position zeigt „seit Kauf" (+200 € · +40,0 %)
+    v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'));
+    IF v::text LIKE '%finance.app.depot.section_perf%' THEN
+      RAISE EXCEPTION 'FAIL [6b1] Rendite-Abschnitt nur mit jungen Depots, got %', v->'sections'->0; END IF;
+    SELECT it INTO v_it FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') it
+     WHERE it->>'label' = '__apdp_r4__';
+    IF v_it->'pill' <> jsonb_build_object('state', 'ok', 'icon', 'up', 'text', core.fn_ui_tpl('finance.app.depot.gain',
+         jsonb_build_object('amount', core.fn_ui_money(200, 'EUR', true), 'pct', core.fn_ui_num(40.0, 1, true)))) THEN
+      RAISE EXCEPTION 'FAIL [6b1] uebernommene Position: seit Kauf +200 / +40,0 %%, got %', v_it; END IF;
+
+    -- [6b2] ein Depot mit vollem Jahr (-1000 -> 1100 = +10,0 % pro Jahr) -> eine Zeile, ohne „Alle Depots"
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+      VALUES ('__apdp_perf1__', 'stocks_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_r1;
+    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_r1, 'APD00000011', 'APDPR1', '__apdp_r1__', 'EUR') RETURNING id INTO h_r1;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares) VALUES
+      (v_giro, -1000, core.fn_today() - 365, 'buy', h_r1, 10);
+    INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPR1', 110, 'EUR', core.fn_today());
+    v_sec := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0;
+    IF v_sec->'title' <> core.fn_ui_tpl('finance.app.depot.section_perf') OR jsonb_array_length(v_sec->'items') <> 1
+       OR v_sec->'items'->0->'label' <> '"__apdp_perf1__"'::jsonb THEN
+      RAISE EXCEPTION 'FAIL [6b2] ein Jahres-Depot: nur seine Zeile, keine jungen, kein Alle Depots, got %', v_sec; END IF;
+
+    -- [6b3] zweites Depot mit vollem Jahr (400 Tage, Wert 440): zwei Zeilen, aber noch kein „Alle Depots", weil die
+    -- Summe die versteckten jungen Depots (2, 4) poolen wuerde
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+      VALUES ('__apdp_perf3__', 'stocks_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_r3;
+    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_r3, 'APD00000013', 'APDPR3', '__apdp_r3__', 'EUR') RETURNING id INTO h_r3;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares) VALUES
+      (v_giro, -400, core.fn_today() - 400, 'buy', h_r3, 4);
+    INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPR3', 110, 'EUR', core.fn_today());
+    SELECT array_agg(it->>'label' ORDER BY o) INTO v_labels
+      FROM jsonb_array_elements(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0->'items')
+           WITH ORDINALITY AS t(it, o);
+    IF v_labels IS DISTINCT FROM ARRAY['__apdp_perf1__', '__apdp_perf3__'] THEN
+      RAISE EXCEPTION 'FAIL [6b3] zwei Jahres-Depots neben jungen: nur ihre Zeilen, kein Alle Depots, got %', v_labels; END IF;
+
+    -- ohne die jungen Depots (keine Einzahlung mehr) stehen alle Haushalts-Depots -> „Alle Depots" erscheint
+    DELETE FROM finance.transactions WHERE holding_id IN (h_r2, h_r4) OR group_id = g;
   END;
   v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'));
   v_sec := v->'sections'->0;
   IF v_sec->'title' <> core.fn_ui_tpl('finance.app.depot.section_perf') OR jsonb_array_length(v_sec->'items') <> 3 THEN
-    RAISE EXCEPTION 'FAIL [6b] Rendite-Abschnitt zuerst, 2 Depots + Alle Depots (ohne Depots ohne Einzahlung), got %', v_sec; END IF;
+    RAISE EXCEPTION 'FAIL [6b] Rendite-Abschnitt zuerst, 2 Jahres-Depots + Alle Depots (ohne junge Depots), got %', v_sec; END IF;
   v_it := v_sec->'items'->0;
   IF v_it->'label' <> '"__apdp_perf1__"'::jsonb OR jsonb_typeof(v_it->'value') <> 'null' OR (v_it->>'gap')::boolean
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.perf_since', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 365)))
@@ -217,10 +263,10 @@ BEGIN
      OR v_it->'details'->-1 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_how'), 'value', NULL) THEN
     RAISE EXCEPTION 'FAIL [6c] Depot ab 1 Jahr: +10,0 %% pro Jahr (ok/up), seit-Datum, Wert heute + Erklaerung, got %', v_it; END IF;
   v_it := v_sec->'items'->1;
-  IF v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.perf_since_short', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 100)))
-     OR v_it->'pill' <> jsonb_build_object('state', 'alert', 'icon', 'down', 'text', core.fn_ui_tpl('finance.app.depot.perf_total_return',
-          jsonb_build_object('pct', core.fn_ui_num(-10.0, 1, true)))) THEN
-    RAISE EXCEPTION 'FAIL [6d] unter 1 Jahr: -10,0 %% seit Beginn (alert/down), kein Jahreswert, got %', v_it; END IF;
+  IF v_it->'label' <> '"__apdp_perf3__"'::jsonb
+     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.perf_since', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 400)))
+     OR v_it->'pill'->'text'->>'value' <> 'finance.app.depot.perf_pa' THEN
+    RAISE EXCEPTION 'FAIL [6d] zweites Jahres-Depot nach Wert: pro Jahr, seit-Datum, got %', v_it; END IF;
   v_it := v_sec->'items'->2;
   IF v_it->'label' <> core.fn_ui_tpl('finance.app.depot.perf_total') OR v_it->'pill'->'text'->>'value' <> 'finance.app.depot.perf_pa' THEN
     RAISE EXCEPTION 'FAIL [6e] Alle Depots zuletzt, pro Jahr (Beginn vor 365 Tagen), got %', v_it; END IF;
@@ -233,10 +279,20 @@ BEGIN
      OR NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_stale')))) THEN
     RAISE EXCEPTION 'FAIL [6f2] veralteter Kurs: warn/clock mit Zahl + Hinweis, got %', v_it; END IF;
   UPDATE finance.market_prices SET as_of = core.fn_today() WHERE symbol = 'APDPR1';
+  -- altes Depot ohne Kurs: ohne Endwert-Fluss ist period_days 0, die Zeile bleibt trotzdem (Beginn vor 400 Tagen) mit
+  -- „Kurs fehlt" + gap, statt still zu verschwinden
+  DELETE FROM finance.market_prices WHERE symbol = 'APDPR3';
+  SELECT it INTO v_it
+    FROM jsonb_array_elements(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0->'items') it
+   WHERE it->>'label' = '__apdp_perf3__';
+  IF v_it IS NULL OR (v_it->>'gap')::boolean IS NOT TRUE
+     OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing')) THEN
+    RAISE EXCEPTION 'FAIL [6f3] altes Depot ohne Kurs: Zeile mit Kurs fehlt + gap, got %', v_it; END IF;
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPR3', 110, 'EUR', core.fn_today());
   -- Partner-Depot hat keine Einzahlung, ein eigenes Kind-Depot ebenso -> Kind sieht keinen Rendite-Abschnitt
   IF finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid'))::text LIKE '%section_perf%' THEN
     RAISE EXCEPTION 'FAIL [6g] Kind sieht fremde Rendite'; END IF;
-  RAISE NOTICE 'PASS [6] Rendite je Depot: p.a. ab 1 Jahr, seit Beginn darunter, Alle Depots, keine IDs';
+  RAISE NOTICE 'PASS [6] Rendite je Depot: nur ab 1 Jahr (p.a.), junge Depots fehlen, Alle Depots nur wenn alle stehen, altes Depot ohne Kurs bleibt, keine IDs';
 
   -- ===== 5) Muell =====
   IF finance.fn_app_screen_depot('{}') <> '{"ok":false,"code":"bad_request"}'::jsonb

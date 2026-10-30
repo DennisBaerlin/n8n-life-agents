@@ -20,8 +20,9 @@
 --     Einstand ist kein echter Geldfluss (sonst verteilten sich Jahre an Gewinn auf Wochen). Start S = erster Kurs-Tag
 --     >= juengster Uebernahme-Tag der Position; Startwert = Bestand nach allen Buchungen bis S x Kurs an S als
 --     Einzahlung am Tag S; alle Buchungen der Position bis S fallen in den Startwert. Liegt S nach dem
---     Uebernahme-Tag (kein Kurs an dem Tag), traegt das Depot takeover_start_date = juengstes solches S (Hinweis
---     „ab <Datum>"). Kein Kurs ab dem Uebernahme-Tag -> no_price.
+--     Uebernahme-Tag (kein Kurs an dem Tag), traegt das Depot takeover_start_date = juengstes solches S (fuer den
+--     Agenten-Read; die Mini-App zeigt nur Jahreswerte und keinen Uebernahme-Hinweis, finance.fn_app_screen_depot).
+--     Kein Kurs ab dem Uebernahme-Tag -> no_price.
 --   missing_reason (dann value_eur und/oder Rendite NULL, nie 0, nie Kaufwert-Fallback): no_price (Position mit Bestand
 --     ohne Kurs, Uebernahme ohne Startkurs), no_fx (Wechselkurs fehlt fuer Endwert, Startwert oder einen Fluss),
 --     no_flows (nichts eingezahlt, z. B. leeres Depot), no_result (XIRR ohne Loesung).

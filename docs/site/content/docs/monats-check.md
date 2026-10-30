@@ -13,7 +13,7 @@ Der Monats-Check hält deine Kontostände und regelmäßigen Zahlungen aktuell, 
    - was sich geändert hat (z. B. Strom 92 € statt 85 €; beim zweiten gleichen Betrag passt er den Plan an);
    - was **nicht** im Auszug stand (das wird für diesen Monat übersprungen);
    - Lastschriften, die er noch nicht kennt;
-   - den Rest als **eine** Summe „Alltagsausgaben" (Supermarkt, Tanken, Kleinkram).
+   - den Rest als **eine** Summe „Alltagsausgaben" (Supermarkt, Tanken, Kleinkram). Kam mehr Geld herein, als die Karte erklärt, heißt der Rest „Ungeklärter Eingang".
 
    Ein Tipp auf „Übernehmen", fertig.
 4. **Vorschau.** Danach sagt dir der Bot, ob das Geld auf dem Konto bis zum nächsten Geldeingang reicht. Wird es knapp, schlägt er eine Umbuchung vor: wie viel, bis wann und von welchem Konto.
@@ -24,7 +24,7 @@ An der **IBAN** auf dem Auszug. Legst du ein neues Konto an, fragt der Buchhalte
 
 **Auszug eines Kontos, das der Bot noch nicht kennt** (z. B. das Konto deines Kindes): Sag einfach, wem es gehört, etwa „das ist das neue Trade-Republic-Konto von Lisa“. Der Buchhalter legt es in **einem** Schritt an, mit der IBAN und dem Endstand aus dem Auszug. Auf der Karte steht der Stichtag, zu dem dieser Stand gilt. Den Auszug selbst spielt er dafür nicht mehr ein: Der Endstand ist der Startpunkt, der Monats-Check beginnt mit dem nächsten Auszug. Geht die Rechenprobe des Auszugs nicht auf, legt er das Konto ohne Kontostand an und fragt dich danach.
 
-Ein Dokument kannst du auch ohne Text schicken. Der Bot liest es zuerst selbst und erkennt, ob es ein Kontoauszug, ein Depotauszug oder ein anderes Dokument ist.
+Ein Dokument kannst du auch ohne Text schicken. Der Bot liest es zuerst selbst und erkennt, ob es ein Kontoauszug, ein Depotauszug oder ein anderes Dokument ist. Eine CSV- oder Excel-Datei erkennt er an der Dateiendung und liest sie gleich als Umsatz-Export (siehe unten).
 
 ## Woran er die Zahlungen erkennt
 
@@ -32,7 +32,7 @@ Beim ersten Mal am Betrag, am Datum und am Namen des Empfängers. Danach merkt e
 
 ## Überträge zwischen deinen Konten
 
-Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen **Übertrag**: Das Geld verschwindet nicht als Ausgabe, sondern kommt beim anderen Konto an. Es ist egal, welchen Auszug du zuerst schickst. Der zweite erkennt den Übertrag wieder und bucht ihn nicht noch einmal.
+Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen **Übertrag**: Das Geld verschwindet nicht als Ausgabe, sondern kommt beim anderen Konto an. Es ist egal, welchen Auszug du zuerst schickst. Der zweite erkennt den Übertrag wieder und bucht ihn nicht noch einmal. Nach der Buchung nennt dir der Bot jeden erkannten Übertrag mit Gegenkonto, Betrag und Gebühr.
 
 - **Geld unterwegs:** Geht eine Überweisung am Monatsende ab und kommt erst im nächsten Monat an, zählt sie beim anderen Konto im neuen Monat. Die Karte zeigt das im Abschnitt „Unterwegs“.
 - **Anderer Betrag:** Passt eine Zeile zu einem schon gebuchten Übertrag, aber nicht im Betrag, bucht der Bot keinen zweiten. Die Zeile bleibt im Rest.
@@ -43,7 +43,7 @@ Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen *
 - **Rechenprobe:** Anfangsstand plus alle Zeilen muss genau den Endstand ergeben. Stimmt das nicht (z. B. eine Seite fehlt), übernimmt der Bot nichts und sagt dir die Differenz.
 - **Nichts doppelt:** Was schon gebucht ist, wird abgehakt statt neu gebucht. Derselbe Monat kann nicht zweimal eingespielt werden.
 - **Zurücknehmen:** Falsches Konto erwischt? „Nimm den letzten Kontoauszug von Giro zurück" macht den letzten Monats-Check dieses Kontos komplett rückgängig.
-- **Einzelumsätze werden nicht gespeichert.** Aus dem Auszug bleiben nur Zeitraum, Anfangs- und Endstand und die Summe der Alltagsausgaben.
+- **Einzelumsätze werden nicht gespeichert.** Aus dem Auszug bleiben nur Zeitraum, Anfangs- und Endstand und die Summe des Rests.
 
 ## Was der Finanzberater daraus macht
 
@@ -55,7 +55,9 @@ Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen *
 Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic. Für so ein Konto lautet die Erinnerung anders:
 
 1. In der App den Transaktions-Export für dieses Jahr erstellen und die CSV-Datei an den Bot schicken.
-2. Dazu den Kontostand nennen, den die App **gerade** zeigt, z. B. „laut App 1.234,56 €". Der Export enthält keinen Kontostand. Ohne deine Zahl macht der Bot keine Karte; er rechnet sich nie selbst einen Stand aus.
+2. Dazu den Kontostand nennen, den die App **gerade** zeigt, z. B. „laut App 1.234,56 €". Der Export enthält keinen Kontostand. Ohne deine Zahl macht der Bot keine Karte; er rechnet sich nie selbst einen Stand aus. Schickst du die Datei ohne Text, fragt er danach.
+
+**Welches Konto?** Nennst du keins, nimmt der Bot das Konto der Bank, von der die Datei stammt. Gibt es davon mehrere, fragt er. Nennst du ein Konto einer anderen Bank, bucht er nichts und fragt nach. Ist bei einem Konto die Bank falsch eingetragen, sag es ihm, dann korrigiert er sie.
 
 Die Datei liest ein fester Leser im Bot, kein Sprachmodell. Sie geht also nicht an einen KI-Anbieter. Der Monats-Check umfasst die Tage nach dem zuletzt bestätigten Stand bis gestern. Umsätze von heute zählen erst beim nächsten Mal.
 

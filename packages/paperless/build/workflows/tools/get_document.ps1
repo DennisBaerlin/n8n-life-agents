@@ -7,7 +7,7 @@
 # Ablauf: Parse args (document_id Pflicht, nur Ziffern) -> Adresse lesen -> GET /api/documents/<id>/ -> ok? ->
 # Namensaufloesung -> Shape document.
 function Build-PaperlessGetDocument {
-    $extra = "if (!/^[0-9]{1,12}`$/.test(out.document_id)) return bad('document_id must be the numeric Paperless id from search_documents');"
+    $extra = "if (!/^[1-9][0-9]{0,11}`$/.test(out.document_id)) return bad('document_id must be the numeric Paperless id from search_documents');"
     $head = New-PaperlessToolHead 'get_document' 'Get document' $extra
 
     $get = New-PaperlessHttp 'Get document' @(1000, 0) "$($script:PaperlessBaseJs) + '/api/documents/' + `$('Parse args').first().json.document_id + '/'"

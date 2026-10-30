@@ -93,6 +93,18 @@ BEGIN
            WHERE f.account_id = v_ga AND f.category = 'fee' AND f.amount = -1 AND t.account_id = v_tr AND t.amount = 200) <> 1 THEN
         RAISE EXCEPTION 'FAIL [P6 Buchung]: %', v_app;
     END IF;
+    -- Live-Befund 2026-10-30: die erkannten Uebertraege stehen in der Rueckgabe (Gegenkonto, gebuchtes Bein aus Sicht
+    -- dieses Kontos, Gebuehr beim Gegenkonto), booked_count = 3 Vorgaenge
+    IF (SELECT string_agg((t->>'account_name') || ':' || (t->>'amount') || ':' || (t->>'fee') || ':' || COALESCE(t->>'fee_account', '-')
+                          || ':' || (t->>'date') || ':' || (t->>'already_booked'), ',' ORDER BY (t->>'date')::date)
+        FROM jsonb_array_elements(v_app->'transfers') t)
+       IS DISTINCT FROM '__t_pl_gga__:200.00:1.00:partner:' || (ps + 3) || ':false,'
+                     || '__t_pl_ggb__:-100.00:0:-:' || (ps + 5) || ':false,'
+                     || '__t_pl_ggb__:-50.00:0:-:' || (ps + 7) || ':false'
+       OR (v_app->>'booked_count')::int IS DISTINCT FROM 3
+       OR (v_app->>'rest_outflow')::numeric IS DISTINCT FROM 0 OR (v_app->>'rest_inflow')::numeric IS DISTINCT FROM 0 THEN
+        RAISE EXCEPTION 'FAIL [P6b transfers + booked_count]: %', v_app;
+    END IF;
     RAISE NOTICE 'PASS [P3-P6 Pool-Regel mit Wahl]';
 
     -- ---------- Bondora-Export danach: die Auszahlung (-201) trifft die Gruppe inkl. Gebuehr ----------
@@ -107,6 +119,24 @@ BEGIN
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'already_booked') <> 1
        OR jsonb_array_length(v_res->'matched') <> 0 OR (v_res->>'lump')::numeric <> 0 THEN
         RAISE EXCEPTION 'FAIL [P7 Bondora danach]: %', v_res;
+    END IF;
+    -- schon gebuchter Transfer erscheint mit already_booked (Gegenkonto ueber die Gruppe, Gebuehr-Bein auf DIESEM Konto)
+    v_app := finance.fn_apply_bank_statement(jsonb_build_object('source', 'file', 'account_name', '__t_pl_gga__',
+        'table', jsonb_build_object('rows', jsonb_build_array(
+            jsonb_build_array('', '', '', 'Summary', ''),
+            jsonb_build_array(to_char(ps, 'FMMM/FMDD/YYYY') || '-' || to_char(pe, 'FMMM/FMDD/YYYY'), '', '', 'Opening', '600'),
+            jsonb_build_array('', '', '', 'Payments in', '0'), jsonb_build_array('', '', '', 'Payments out', '201'),
+            jsonb_build_array('', '', '', 'Closing', '399'),
+            jsonb_build_array('Date', 'Payment type', 'In', 'Out', 'Balance'),
+            jsonb_build_array(to_char(ps + 2, 'FMMM/FMDD/YYYY'), 'Withdrawal to bank account', '', '201', '399'))),
+        'fingerprint', v_res->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR (v_app->>'booked_count')::int IS DISTINCT FROM 0
+       OR jsonb_array_length(v_app->'transfers') <> 1
+       OR v_app->'transfers'->0->>'account_name' IS DISTINCT FROM '__t_pl_tr__'
+       OR (v_app->'transfers'->0->>'amount')::numeric IS DISTINCT FROM -200
+       OR (v_app->'transfers'->0->>'fee')::numeric IS DISTINCT FROM 1 OR v_app->'transfers'->0->>'fee_account' IS DISTINCT FROM 'this'
+       OR (v_app->'transfers'->0->>'already_booked')::boolean IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'FAIL [P7b schon gebuchter Transfer in transfers]: %', v_app;
     END IF;
     RAISE NOTICE 'PASS [P7 Bondora danach]';
 

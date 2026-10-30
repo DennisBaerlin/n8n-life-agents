@@ -829,6 +829,7 @@
   "finance.label.statement_unknown": "Unbekannte Lastschriften",
   "finance.label.statement_everyday": "Alltagsausgaben (als eine Summe)",
   "finance.label.statement_other_diff": "Sonstige Abweichung (als eine Summe)",
+  "finance.label.statement_unexplained_in": "Ungeklärter Eingang (als eine Summe)",
   "finance.label.statement_in_transit": "Unterwegs (zählt erst später)",
   "finance.tpl.statement_in_transit_row": "{name}: {amount}, zählt ab {date}",
   "finance.label.statement_interest_correction": "Zinskorrektur laut Auszug",

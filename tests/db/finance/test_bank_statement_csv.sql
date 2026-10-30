@@ -80,7 +80,8 @@ BEGIN
     v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('table', jsonb_build_object(
                  'rows', jsonb_build_array(v_hdr) || v_rows || jsonb_build_array(jsonb_set(v_rows->0, '{2}', '"JUNIOR"')))));
     IF v_res->>'code' IS DISTINCT FROM 'multiple_sub_accounts' THEN RAISE EXCEPTION 'FAIL [C3 Unterkonten]: %', v_res; END IF;
-    PERFORM finance.fn_create_account('{"name":"__t_bc_nostart__","account_type":"cash","currency":"EUR"}'::jsonb);
+    -- Bank eingetragen: ein Konto ohne Bank hielte der Konto-Waechter neben __t_bc_tr__ fuer geraten (export_account_mismatch)
+    PERFORM finance.fn_create_account('{"name":"__t_bc_nostart__","account_type":"cash","currency":"EUR","bank":"Trade Republic"}'::jsonb);
     v_res := finance.fn_statement_prepare(v_p || '{"account_name":"__t_bc_nostart__"}'::jsonb);
     IF v_res->>'code' IS DISTINCT FROM 'no_starting_point' THEN RAISE EXCEPTION 'FAIL [C4 kein Startpunkt]: %', v_res; END IF;
     RAISE NOTICE 'PASS [C1-C4 Ablehnungen]';
@@ -125,6 +126,12 @@ BEGIN
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_opening') THEN
         RAISE EXCEPTION 'FAIL [C14 Karte]: %', v_prep->'card_lines';
     END IF;
+    -- Rest +57 auf einem Cash-Konto ist ein ungeklaerter EINGANG, nie "Alltagsausgaben" (Live-Befund 2026-10-30)
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                   WHERE c->>'label' = 'finance.label.statement_unexplained_in' AND (c->>'value')::numeric = 57)
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_everyday') THEN
+        RAISE EXCEPTION 'FAIL [C14b Rest-Eingang heisst ungeklaerter Eingang]: %', v_prep->'card_lines';
+    END IF;
     RAISE NOTICE 'PASS [C5-C14 Vorschau]';
 
     -- ---------- Buchung ----------
@@ -133,6 +140,11 @@ BEGIN
     IF (v_app->>'trades_booked')::int <> 5 OR (v_app->>'balance_after')::numeric <> 1040.25
        OR (v_app->>'lump_amount')::numeric <> 57.00 OR jsonb_array_length(v_app->'savings_plan_estimated') <> 0 THEN
         RAISE EXCEPTION 'FAIL [C16 apply Zahlen]: %', v_app;
+    END IF;
+    -- Rest getrennt nach Richtung (Netto-Differenz, eines ist 0); booked_count = 1 Sparplan (Trades separat)
+    IF (v_app->>'rest_inflow')::numeric IS DISTINCT FROM 57.00 OR (v_app->>'rest_outflow')::numeric IS DISTINCT FROM 0
+       OR (v_app->>'booked_count')::int IS DISTINCT FROM 1 OR jsonb_array_length(v_app->'transfers') <> 0 THEN
+        RAISE EXCEPTION 'FAIL [C16b rest_inflow 57, booked_count 1]: %', v_app;
     END IF;
     IF (SELECT shares FROM finance.depot_holdings WHERE id = v_old) <> 9
        OR (SELECT shares FROM finance.depot_holdings WHERE isin = 'IE00TESTNEW1') <> 2

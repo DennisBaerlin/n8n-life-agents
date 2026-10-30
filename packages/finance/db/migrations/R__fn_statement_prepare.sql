@@ -33,8 +33,10 @@
 --   (fn_create_account opening_balance + opening_balance_date; derselbe Auszug ist danach already_covered).
 --   codes: invalid_statement, account_unknown (+candidates), account_ambiguous, not_bookable, currency_mismatch,
 --   period_in_future, already_covered, already_imported, balance_check_failed (+difference).
---   BANK-EXPORT-DATEI (source:'file', Bank-Import-Modul): Eingabe {source, account_name, closing_balance = Kontostand laut App JETZT
---   (Pflicht), table:{rows} = Raster des Lesers}. fn_bank_export_normalize liest den Export (kein LLM); Zeitraum =
+--   BANK-EXPORT-DATEI (source:'file', Bank-Import-Modul): Eingabe {source, account_name (optional), closing_balance = Kontostand laut App JETZT
+--   (Pflicht), table:{rows} = Raster des Lesers}. fn_bank_export_normalize liest den Export (kein LLM); das Konto waehlt
+--   fn_bank_export_resolve_account (Konto-Waechter: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil;
+--   closing_balance_required/no_starting_point tragen account_name); Zeitraum =
 --   Schnitt+1 bis gestern (Schnitt = last_reconciled_at bzw. opening_balance_date, sonst no_starting_point); Stand am
 --   period_end = closing_balance - Summe der Zeilen danach; Anfang daraus (keine Saldo-Probe, der drift zeigt einen
 --   unvollstaendigen Export). Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
@@ -46,7 +48,7 @@
 --   neue Position nur ins EINE Depot der passenden Art (Krypto ohne ISIN -> crypto_depot); Stufe 0 auch gegen eine von
 --   Hand vor dem Schnitt datierte Buchung (+-5 Tage, nie doppelt); App-Kontostand ueber fn_parse_numeric_or_null.
 --   Zusaetzliche codes: export_profile_unknown, export_invalid, closing_balance_required (keine Karte), no_starting_point,
---   multiple_sub_accounts. Zusaetzliche Rueckgabe: source, balance_source (printed|owner), owner_balance, after_period,
+--   multiple_sub_accounts, export_account_mismatch (+bank, account_name, candidates). Zusaetzliche Rueckgabe: source, balance_source (printed|owner), owner_balance, after_period,
 --   trades, trades_blocked, export_unknown, late_count, seen_refs (Hashes fuer finance.statement_seen_refs).
 --   BANK-IMPORT-MODUL (Transfers zwischen eigenen Konten, alle Wege): matched kind transfer (Stufe T, other_account_id)
 --   -> apply bucht fn_book_transfer; nicht buchbar -> blocked[].reason not_bookable | currency_mismatch | pending_pair
@@ -54,7 +56,8 @@
 --   mehr als 5 Tage nach dem Zeilendatum abgeglichen); bis 5 Tage -> matched.partner_date = dessen Abgleich+1 (unterwegs).
 --   moved_legs[] = Transfer-Beine dieses Kontos, die der Auszug eines ANDEREN Kontos in den letzten 5 Tagen gebucht
 --   hat und die hier keine Zeile haben (unterwegs) -> zaehlen nicht zum Stand am period_end, apply setzt period_end+1.
---   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label: cash "Alltagsausgaben", sonst "Sonstige Abweichung".
+--   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label: cash "Alltagsausgaben" (Rest <= 0) bzw. "Ungeklaerter
+--   Eingang" (Rest > 0), sonst "Sonstige Abweichung".
 --   POOL-REGEL (Profil counterparty_pattern, Bondora): Geldzeile an/von einem Anbieter-Sammelkonto -> P2P-Konto des Profils,
 --   nur buchbar und am Zeilendatum nicht abgeglichen (Eingang: Verrechnungskonto bzw. gleicher Inhaber ohne anderes
 --   Verrechnungskonto, Gebuehr-Bein partner_fee beim P2P-Konto; Ausgang: Referenz = Kontonummer als ganzes Wort im
@@ -157,17 +160,12 @@ BEGIN
         IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
             RETURN v_norm;
         END IF;
-        IF NULLIF(trim(p->>'account_name'), '') IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'account_unknown', 'candidates', '[]'::jsonb,
-                'reason', 'Name the account this export belongs to.');
+        -- Konto-Waechter (Live-Befund 2026-10-30): Datei-Profil gegen Konto-Profil, ohne Namen Vorauswahl nach Bank
+        v_m := finance.fn_bank_export_resolve_account(p->>'account_name', v_norm->>'profile', v_norm->'currencies');
+        IF (v_m->>'ok')::boolean IS DISTINCT FROM true THEN
+            RETURN v_m;
         END IF;
-        SELECT * INTO v_res FROM finance.fn_resolve_account(trim(p->>'account_name'), NULL, TRUE);
-        IF v_res.hit_count <> 1 THEN
-            RETURN jsonb_build_object('ok', false, 'code', CASE WHEN v_res.hit_count = 0 THEN 'account_unknown' ELSE 'account_ambiguous' END,
-                'reason', 'No unique active account named "' || trim(p->>'account_name') || '".',
-                'candidates', v_res.candidates);
-        END IF;
-        SELECT * INTO v_acct FROM finance.accounts WHERE id = v_res.id;
+        SELECT * INTO v_acct FROM finance.accounts WHERE id = (v_m->>'account_id')::int;
         IF jsonb_array_length(v_norm->'account_types') > 1 THEN
             RETURN jsonb_build_object('ok', false, 'code', 'multiple_sub_accounts', 'account_types', v_norm->'account_types',
                 'reason', 'The export mixes several sub-accounts (' || (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(v_norm->'account_types') x)
@@ -197,13 +195,13 @@ BEGIN
         -- so, wie der Nutzer ihn nennt ("1.234,56", "1234.56 EUR"): die eine Adresse fuer freie Geld-Eingaben
         v_owner := round(finance.fn_parse_numeric_or_null(p->>'closing_balance', true), 2);
         IF v_owner IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'closing_balance_required',
-                'reason', 'The export has no balance - ask the user for the current balance of "' || v_acct.name
+            RETURN jsonb_build_object('ok', false, 'code', 'closing_balance_required', 'account_name', v_acct.name,
+                'reason','The export has no balance - ask the user for the current balance of "' || v_acct.name
                        || '" exactly as the bank app shows it right now, then call again.');
         END IF;
         IF v_acct.last_reconciled_at IS NULL AND v_acct.opening_balance_date IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'no_starting_point',
-                'reason', 'The account "' || v_acct.name || '" has no confirmed balance date yet - confirm its balance once '
+            RETURN jsonb_build_object('ok', false, 'code', 'no_starting_point', 'account_name', v_acct.name,
+                'reason','The account "' || v_acct.name || '" has no confirmed balance date yet - confirm its balance once '
                        || '(tool_reconcile_account), then send the export again.');
         END IF;
         v_pe  := core.fn_today() - 1;
@@ -977,8 +975,12 @@ BEGIN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_no_settlement'));
     END IF;
     v_card := v_card || jsonb_build_array(
+        -- Rest-Label nach Richtung (Live-Befund 2026-10-30): ein positiver Rest auf einem Cash-Konto ist ein ungeklaerter
+        -- Eingang, nie "Alltagsausgaben"
         core.fn_ui_money(v_lump, v_acct.currency) || jsonb_build_object('label',
-            CASE WHEN v_acct.account_type::text = 'cash' THEN 'finance.label.statement_everyday' ELSE 'finance.label.statement_other_diff' END),
+            CASE WHEN v_acct.account_type::text <> 'cash' THEN 'finance.label.statement_other_diff'
+                 WHEN v_lump > 0 THEN 'finance.label.statement_unexplained_in'
+                 ELSE 'finance.label.statement_everyday' END),
         jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_lump'));
     -- S7: die IBAN, die dieser Auszug dem Konto beibringt, steht sichtbar auf der Karte (Kontrolle durch den Nutzer)
     IF v_learn_no IS NOT NULL THEN

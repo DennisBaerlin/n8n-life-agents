@@ -8,7 +8,9 @@
 # lesen, am Trailer splitten. Die KI laeuft IN Paperless mit dem dort eingestellten Anbieter (ausserhalb dieses
 # Systems — Setup-Hilfe sagt es). Aufruf NUR ueber den Core-Vermittler (Service 'paperless:ask_documents', adults_only).
 function Build-PaperlessAskDocuments {
-    $extra = "if (out.document_id !== undefined && !/^[0-9]{1,12}`$/.test(out.document_id)) return bad('document_id must be the numeric Paperless id from search_documents, or empty');"
+    # Paperless-ids beginnen bei 1: '0' kam frueher durch (truthy String -> document_id 0) und Paperless fragte dann ueber
+    # ALLE Dokumente (Live-Befund 2026-10-30, Platzhalter-Aufruf eines Agenten).
+    $extra ="if (out.document_id !== undefined && !/^[1-9][0-9]{0,11}`$/.test(out.document_id)) return bad('document_id must be the numeric Paperless id from search_documents, or empty');"
     $head = New-PaperlessToolHead 'ask_documents' 'Ask Paperless' $extra
 
     $bodyJs = "JSON.stringify(Object.assign({ q: `$('Parse args').first().json.question }, " +
@@ -53,7 +55,7 @@ return [{ json: { ok: true, untrusted: UNTRUSTED, answer, truncated, references,
 
     $sticky = Build-Sticky 'Doc: Überblick' @(0, -420) 'agent.paperless.tool_ask_documents — Frage an die Paperless-KI (read-only)' (@'
 Wird NUR ueber den Core-Vermittler agent.sub_dispatch_tool gerufen (Service paperless:ask_documents; Paket aktiv + nur Erwachsene prueft core.fn_resolve_service). Eingang: args (JSON) + chat_id (ungenutzt).
-**Eingabe:** question (Pflicht), document_id (optional, nur Ziffern -> Frage nur zu diesem Dokument).
+**Eingabe:** question (Pflicht), document_id (optional, Paperless-id ab 1 -> Frage nur zu diesem Dokument; 0 wird abgewiesen, sonst fragte Paperless über alle Dokumente).
 **Paperless:** POST /api/documents/chat/ {q, document_id?} — liest nur. Antwort = text/event-stream mit reinem Text + Trailer __PAPERLESS_CHAT_METADATA__{references} -> als TEXT gelesen und am Trailer getrennt. Dauer ~20-60 s -> Timeout 180 s, KEIN Retry.
 **KI-Anbieter:** der in Paperless eingestellte (ausserhalb dieses Systems). KI in Paperless aus -> HTTP 400 -> paperless_ai_disabled (Suche/Lesen gehen weiter).
 **Ausgabe:** {ok:true, untrusted, answer (max 6000 Zeichen), truncated, references[{id,title,link}]}.

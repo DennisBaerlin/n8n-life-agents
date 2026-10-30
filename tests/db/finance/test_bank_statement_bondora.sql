@@ -127,6 +127,14 @@ BEGIN
     IF EXISTS (SELECT 1 FROM finance.fn_interest_due_open(pe) o WHERE o.account_id = v_gg AND o.period_end <= pe) THEN
         RAISE EXCEPTION 'FAIL [A5 offene Zins-Vorkommen uebersprungen]';
     END IF;
+    -- booked_count = jeder Vorgang einmal: Einzahlung, Dauerauftrag, Auszahlung (+ Gebuehr-Bein), Zinskorrektur, Altkredit
+    IF (v_app->>'booked_count')::int IS DISTINCT FROM 5
+       OR (SELECT string_agg((t->>'account_name') || ':' || ((t->>'amount')::numeric)::text || ':' || ((t->>'fee')::numeric)::text
+                             || ':' || COALESCE(t->>'fee_account', '-'), ',' ORDER BY (t->>'date')::date)
+           FROM jsonb_array_elements(v_app->'transfers') t)
+          IS DISTINCT FROM '__t_bb_tr__:500.00:0:-,__t_bb_tr__:50.00:0:-,__t_bb_tr__:-200.00:1.00:this' THEN
+        RAISE EXCEPTION 'FAIL [A6 booked_count 5 + transfers]: %', v_app;
+    END IF;
     RAISE NOTICE 'PASS [A1-A5 Buchung]';
 
     -- ---------- TR-Auszug danach: alles schon gebucht ----------
@@ -143,6 +151,13 @@ BEGIN
     END IF;
     v_app := finance.fn_apply_bank_statement(v_grid || jsonb_build_object('fingerprint', v_res->>'fingerprint'));
     IF (v_app->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [T2 apply TR]: %', v_app; END IF;
+    -- nichts neu gebucht; die drei schon gebuchten Uebertraege stehen trotzdem in transfers (already_booked)
+    IF (v_app->>'booked_count')::int IS DISTINCT FROM 0 OR jsonb_array_length(v_app->'transfers') <> 3
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_app->'transfers') t
+                  WHERE (t->>'already_booked')::boolean IS DISTINCT FROM true OR t->>'account_name' IS DISTINCT FROM '__t_bb_gg__')
+       OR (SELECT sum((t->>'amount')::numeric) FROM jsonb_array_elements(v_app->'transfers') t) IS DISTINCT FROM -350 THEN
+        RAISE EXCEPTION 'FAIL [T3 TR: transfers already_booked]: %', v_app;
+    END IF;
     RAISE NOTICE 'PASS [T1-T2 TR danach]';
 
     -- ---------- Void: Bondora erst nach TR ----------
@@ -186,6 +201,15 @@ BEGIN
        OR (SELECT count(*) FROM finance.transactions WHERE account_id = v_gg2 AND category = 'fee' AND amount = -1 AND group_id IS NULL) <> 1
        OR (SELECT balance FROM finance.account_balances WHERE account_id = v_gg2) <> 457.88 THEN
         RAISE EXCEPTION 'FAIL [N3 Gebuehr eigene Buchung, Stand]: %', v_app;
+    END IF;
+    -- nachgebuchte Gebuehr = 1 Vorgang (+ Zinskorrektur + Altkredit); der Transfer stand schon (already_booked)
+    IF (v_app->>'booked_count')::int IS DISTINCT FROM 3
+       OR jsonb_array_length(v_app->'transfers') <> 1
+       OR (v_app->'transfers'->0->>'amount')::numeric IS DISTINCT FROM -200
+       OR (v_app->'transfers'->0->>'fee')::numeric IS DISTINCT FROM 1 OR v_app->'transfers'->0->>'fee_account' IS DISTINCT FROM 'this'
+       OR (v_app->'transfers'->0->>'already_booked')::boolean IS DISTINCT FROM true
+       OR (v_app->>'rest_inflow')::numeric IS DISTINCT FROM 550 OR (v_app->>'rest_outflow')::numeric IS DISTINCT FROM 0 THEN
+        RAISE EXCEPTION 'FAIL [N4 fee_add: booked_count + transfers + Rest-Eingang]: %', v_app;
     END IF;
     RAISE NOTICE 'PASS [N2-N3 Bank-Import zuerst]';
 END $$;

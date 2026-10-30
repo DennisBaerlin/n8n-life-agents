@@ -24,7 +24,14 @@
 --   Gebuehr als eigene Buchung dieses Auszugs (nie in die fremde Gruppe). Datei mit gedrucktem Endstand: interest_correction (category interest, ohne
 --   interest_period_end) und legacy_returns (category other, Profil-Label) je EINE Buchung am period_end;
 --   interest_skips -> fn_skip_interest_occurrence (in skipped, der Void holt sie zurueck).
---   RUECKGABE: {ok:true, statement_id, booked_count, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
+--   Rueckgabe-Vertrag (Live-Befund 2026-10-30): booked_count = neue Buchungs-VORGAENGE dieses Abgleichs, je einer:
+--   jeder matched-Treffer (Dauerauftrag, Sparplan, Zins, Transfer inkl. seines Gebuehr-Beins), jede nachgebuchte Gebuehr
+--   (fee_add), Zinskorrektur, Altkredit-Rueckfluesse; nicht: Trades (trades_booked), Drift, Rest, Trade-Steuern,
+--   Umdatierungen. transfers[] = jede neu ODER schon gebuchte Transfer-Gruppe dieses Auszugs {account_name (Gegenkonto),
+--   amount (Transfer-Bein DIESES Kontos, signiert), fee (Gebuehr-Beine der Gruppe + fee_add, 0 = keine), fee_account
+--   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) nach Richtung,
+--   Netto-Differenz (eines ist 0) - ein positiver Rest ist ein ungeklaerter Eingang, nie Ausgaben.
+--   RUECKGABE: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
 -- ============================================================
@@ -52,6 +59,9 @@ DECLARE
     v_trades   INT := 0;
     v_hold     INT;
     v_fee      JSONB;
+    v_tg       JSONB := '[]'::jsonb;   -- Transfer-Gruppen dieses Auszugs {g, d (Zeilendatum), b (schon gebucht), fa (fee_add)}
+    v_transfers JSONB;
+    v_lump     NUMERIC;
 BEGIN
     v_prep := finance.fn_statement_prepare(p - 'fingerprint');
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -160,6 +170,11 @@ BEGIN
             END IF;
             v_ids := v_ids || ARRAY_REMOVE(ARRAY[NULLIF(v_r->>'transaction_id', '')::int, NULLIF(v_r->>'debit_tx_id', '')::int,
                                                  NULLIF(v_r->>'credit_tx_id', '')::int, NULLIF(v_r->>'buy_tx_id', '')::int], NULL);
+            -- Transfer-Buchung (Ad-hoc fn_book_transfer bzw. Dauerauftrag ueber fn_book_recurring_transfer): Gruppe merken
+            IF v_r ? 'debit_tx_id' THEN
+                v_tg := v_tg || jsonb_build_object('g', (SELECT group_id FROM finance.transactions WHERE id = (v_r->>'debit_tx_id')::int),
+                                                   'd', v_m->>'line_date', 'b', false, 'fa', 0);
+            END IF;
             IF v_m->>'kind' = 'savings_plan' AND COALESCE((v_m->>'shares_estimated')::boolean, true) THEN
                 UPDATE finance.transactions SET shares_estimated = true WHERE id = (v_r->>'buy_tx_id')::int;
                 v_spe := v_spe || jsonb_build_object('name', v_m->>'name', 'shares', (v_m->>'shares')::numeric,
@@ -325,15 +340,47 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'booking_failed', 'reason', SQLERRM);
     END;
 
+    -- Erkannte Uebertraege (Live-Befund 2026-10-30: der Agent kannte sie nicht): neu gebuchte + schon gebuchte
+    -- Transfer-Gruppen; Zahlen aus den gebuchten Beinen (Bein DIESES Kontos signiert, Gebuehr-Beine der Gruppe + fee_add).
+    SELECT v_tg || COALESCE(jsonb_agg(jsonb_build_object(
+               'g', COALESCE(e->>'group_id', (SELECT x.group_id::text FROM finance.transactions x WHERE x.id = (e->>'transaction_id')::int)),
+               'd', e->>'line_date', 'b', true, 'fa', COALESCE((e->>'fee_add')::numeric, 0))), '[]'::jsonb)
+    INTO v_tg FROM jsonb_array_elements(v_prep->'already_booked') e;
+    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+               'account_name', (SELECT a.name FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id
+                                WHERE t.group_id = (g->>'g')::uuid AND t.account_id <> v_acct AND t.category::text = 'transfer'
+                                ORDER BY t.id LIMIT 1),
+               'amount', s.amt,
+               'fee', s.fee + (g->>'fa')::numeric,
+               'fee_account', CASE WHEN (g->>'fa')::numeric > 0 OR s.fee_here THEN 'this' WHEN s.fee > 0 THEN 'partner' END,
+               'date', (g->>'d')::date,
+               'already_booked', (g->>'b')::boolean) ORDER BY (g->>'d')::date, (g->>'b')::boolean), '[]'::jsonb)
+    INTO v_transfers
+    -- je Gruppe EIN Eintrag (eine Gruppe kann nie zweimal als Uebertrag erscheinen; neu gebucht geht vor)
+    FROM (SELECT DISTINCT ON (x->>'g') x AS g FROM jsonb_array_elements(v_tg) x
+          WHERE x->>'g' IS NOT NULL ORDER BY x->>'g', (x->>'b')::boolean) d
+    CROSS JOIN LATERAL (SELECT sum(t.amount) FILTER (WHERE t.account_id = v_acct AND t.category::text = 'transfer') AS amt,
+                               COALESCE(-sum(t.amount) FILTER (WHERE t.category::text = 'fee'), 0) AS fee,
+                               COALESCE(bool_or(t.account_id = v_acct AND t.category::text = 'fee'), false) AS fee_here
+                        FROM finance.transactions t WHERE t.group_id = (g->>'g')::uuid) s
+    WHERE g->>'g' IS NOT NULL AND s.amt IS NOT NULL;
+    v_lump := COALESCE((v_final->>'difference')::numeric, 0);
+
     RETURN jsonb_build_object('ok', true,
         'statement_id', v_stmt,
-        'booked_count', jsonb_array_length(v_prep->'matched'),
+        'booked_count', jsonb_array_length(v_prep->'matched')
+                        + (SELECT count(*) FROM jsonb_array_elements(v_prep->'already_booked') e WHERE e ? 'fee_add')::int
+                        + CASE WHEN COALESCE((v_prep->>'interest_correction')::numeric, 0) <> 0 THEN 1 ELSE 0 END
+                        + CASE WHEN COALESCE((v_prep->>'legacy_returns')::numeric, 0) <> 0 THEN 1 ELSE 0 END,
+        'transfers', v_transfers,
+        'rest_outflow', GREATEST(-v_lump, 0),
+        'rest_inflow', GREATEST(v_lump, 0),
         'trades_booked', v_trades,
         'trades_blocked', COALESCE(v_prep->'trades_blocked', '[]'::jsonb),
         'export_unknown', COALESCE(v_prep->'export_unknown', '[]'::jsonb),
         'booked_tx_ids', to_jsonb(v_ids),
         'drift_amount', v_drift,
-        'lump_amount', COALESCE((v_final->>'difference')::numeric, 0),
+        'lump_amount', v_lump,
         'skipped_occurrences', jsonb_array_length(v_skipped),
         'redated_count', v_redated,
         'learned_keys', cardinality(v_keys),

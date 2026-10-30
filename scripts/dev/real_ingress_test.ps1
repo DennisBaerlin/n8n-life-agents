@@ -310,7 +310,11 @@ function Build-BurstUpdates($Tc, [long]$ChatId, [long]$FromUid) {
         }
         switch ("$($u.type)") {
             'text'  { $msg['text'] = "$($u.text)" }
-            'doc'   { $msg['document'] = @{ file_id = "$($u.file_id)"; file_unique_id = "u$($u.file_id)"; file_name = 'beleg.pdf'; mime_type = 'application/pdf' } }
+            'doc'   {
+                $fname = if ($u.file_name) { "$($u.file_name)" } else { 'beleg.pdf' }
+                $mime  = if ($u.mime_type) { "$($u.mime_type)" } else { 'application/pdf' }
+                $msg['document'] = @{ file_id = "$($u.file_id)"; file_unique_id = "u$($u.file_id)"; file_name = $fname; mime_type = $mime }
+            }
             'photo' { $msg['photo'] = @( @{ file_id = "$($u.file_id)_s"; file_unique_id = 's'; width = 90; height = 90 }, @{ file_id = "$($u.file_id)"; file_unique_id = 'l'; width = 1280; height = 1280 } ) }
             default { throw "burst: unbekannter Update-Typ '$($u.type)'" }
         }
@@ -898,7 +902,8 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
     # Wie Telegram "Weiterleiten mit Kommentar" (zwei Updates ~0,4 s) bzw. Alben liefert: alle Updates des Falls
     # parallel an den echten Webhook. Assert: genau expect_processed Laeufe erreichen 'Trigger normalize' (die
     # anderen enden nach 'Ingress action' still), alle success; expect_together = Teiltexte, die gemeinsam in der
-    # Ausgabe EINES verarbeiteten Laufs stehen (das zusammengefuehrte Update). revoke_claim = fail-open-Probe.
+    # Ausgabe EINES verarbeiteten Laufs stehen (das zusammengefuehrte Update; together_node = anderer Node, z. B. die
+    # Marker-Normalisierung; forbid_together = Teiltexte, die dort nie stehen duerfen). revoke_claim = fail-open-Probe.
     if ($tc.kind -eq 'burst') {
         $burstUpdates = Build-BurstUpdates $tc $chatId $fromUid
         $grantees = @()
@@ -914,9 +919,12 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
         $allOk = ($execs.Count -eq $burstUpdates.Count) -and -not ($execs | Where-Object { $_.status -ne 'success' })
         $togetherOk = $true
         if ($tc.expect_together) {
+            $togetherNode = if ($tc.together_node) { "$($tc.together_node)" } else { 'Trigger normalize' }
+            # forbid_together = Teiltexte, die in der Ausgabe desselben Nodes NIE stehen duerfen (z. B. der Dateiname)
             $togetherOk = [bool]($processed | Where-Object {
-                $o = Get-NodeOutputText $_ 'Trigger normalize'
-                -not (@($tc.expect_together) | Where-Object { -not $o.Contains("$_") })
+                $o = Get-NodeOutputText $_ $togetherNode
+                -not (@($tc.expect_together) | Where-Object { -not $o.Contains("$_") }) -and
+                -not (@($tc.forbid_together) | Where-Object { $_ -and $o.Contains("$_") })
             })
         }
         $maxRuns = ($execs | ForEach-Object { @($_.data.resultData.runData.'Ingress claim').Count } | Measure-Object -Maximum).Maximum

@@ -1001,5 +1001,20 @@
     "forbid_texts": ["Der Buchhalter meint"],
     "expect_router_memory": "NOFRAME",
     "notes": "Live-Befund 2026-10-26: Haiku schrieb nach dem Spezialisten eine Umformulierung (Mock final_router), die der Nutzer nie sah, die aber im Gedaechtnis stand und nachgeahmt wurde. Relay compose sendet woertlich; agent.fn_set_router_memory_signal ersetzt die Router-Zeile durch NOFRAME."
+  },
+  {
+    "id": "ri67",
+    "name": "CSV-Dokument ohne Bildunterschrift -> Anhang-Marker traegt ext=csv (klein), nie den Dateinamen",
+    "kind": "burst",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "updates": [
+      { "type": "doc", "file_id": "burst_doc_67", "file_name": "Umsaetze_Oktober.CSV", "mime_type": "text/comma-separated-values" }
+    ],
+    "expect_processed": 1,
+    "together_node": "Chat message normalization document",
+    "expect_together": ["burst_doc_67", "type=document ext=csv]"],
+    "forbid_together": ["Umsaetze_Oktober"],
+    "notes": "Live-Befund 2026-10-30 (Werte erfunden): eine CSV ohne Bildunterschrift ging erst an die Vision. Der Marker traegt jetzt die Endung des Dateinamens (der Agent greift sofort zum Datei-Import); der Name selbst ('Umsaetze_Oktober') steht nie im Text."
   }
 ]

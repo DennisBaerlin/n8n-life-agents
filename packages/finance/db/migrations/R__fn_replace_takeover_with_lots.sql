@@ -1,8 +1,9 @@
 -- ============================================================
 -- fn_replace_takeover_with_lots (ATOMIC WRITE) -- Bestandsuebernahme durch die echten Einzelkaeufe ersetzen (Paket B)
 --   Live-Befund 2026-10-28: eine Position wurde als EINE Uebernahme erfasst, der Broker-Export kennt die Einzelkaeufe.
---   Eingabe jsonb: account_name (Verrechnungskonto = das Cashkonto des Exports), table:{rows} (Raster des Lesers),
---   fingerprint (opt, aus dem Probelauf).
+--   Eingabe jsonb: account_name (opt; Verrechnungskonto = das Cashkonto des Exports), table:{rows} (Raster des Lesers),
+--   fingerprint (opt, aus dem Probelauf). Konto ueber fn_bank_export_resolve_account (derselbe Konto-Waechter wie der
+--   Monats-Check: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil).
 --   Je Position eines Depots mit diesem Verrechnungskonto, die GENAU EIN Uebernahme-Paar hat (eine group_id mit einem
 --   Kauf + einer position_takeover-Gegenbuchung) und im Export Kaeufe bis zum Uebernahme-Datum:
 --     Lots = Export-Kaeufe minus -Verkaeufe (FIFO) seit dem letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
@@ -22,16 +23,17 @@
 --   dem Tipp bekommt ihn mit und bucht nur bei gleichem Plan (sonst stale_preview, kein Write; Muster fn_apply_bank_statement).
 --   Eine Gruppe aus einer frueheren Ersetzung (transaction_audit.replaced_by_group) ist nie wieder Kandidat.
 --   Ein nicht buchbares Lot (fn_trade_amount_reason, z. B. FIFO-Rest unter 1 Cent) -> mismatched code lots_not_bookable.
---   RUECKGABE: {ok:true, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
+--   RUECKGABE: {ok:true, account_id, account_name, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
 --   cash_lots_count}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
 --   settlement_balance, settlement_change (Saldo nachher - vorher, DB-Delta), card_lines, fingerprint}
---   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|stale_preview), reason}.
+--   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|
+--   export_account_mismatch|stale_preview), reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_replace_takeover_with_lots(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_norm     JSONB;
-    v_res      RECORD;
+    v_res      JSONB;
     v_acct     finance.accounts%ROWTYPE;
     v_reason   TEXT;
     v_cut      DATE;
@@ -62,17 +64,12 @@ BEGIN
     IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_norm;
     END IF;
-    SELECT * INTO v_res FROM finance.fn_resolve_account(NULLIF(trim(p->>'account_name'), ''), NULL, TRUE);
-    IF v_res.hit_count IS DISTINCT FROM 1 THEN
-        RETURN jsonb_build_object('ok', false, 'code', CASE WHEN v_res.hit_count > 1 THEN 'account_ambiguous' ELSE 'account_unknown' END,
-            'reason', 'No unique active account named "' || COALESCE(trim(p->>'account_name'), '') || '".',
-            'candidates', COALESCE(v_res.candidates, '[]'::jsonb));
+    -- derselbe Konto-Waechter wie der Monats-Check (eine Adresse; buchbar prueft er mit)
+    v_res := finance.fn_bank_export_resolve_account(p->>'account_name', v_norm->>'profile', v_norm->'currencies');
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+        RETURN v_res;
     END IF;
-    SELECT * INTO v_acct FROM finance.accounts WHERE id = v_res.id;
-    v_reason := finance.fn_bookable_account_reason(v_acct.id);
-    IF v_reason IS NOT NULL THEN
-        RETURN jsonb_build_object('ok', false, 'code', 'not_bookable', 'reason', v_reason);
-    END IF;
+    SELECT * INTO v_acct FROM finance.accounts WHERE id = (v_res->>'account_id')::int;
     v_cut := GREATEST(v_acct.last_reconciled_at, v_acct.opening_balance_date);
     PERFORM 1 FROM finance.account_balances WHERE account_id = v_acct.id FOR UPDATE;
     v_before := finance.fn_get_balance(v_acct.id);
@@ -220,7 +217,8 @@ BEGIN
                   FROM jsonb_array_elements(v_mism) m);
     END IF;
 
-    RETURN jsonb_build_object('ok', true, 'replaced', v_replaced, 'mismatched', v_mism,
+    RETURN jsonb_build_object('ok', true, 'account_id', v_acct.id, 'account_name', v_acct.name,
+        'replaced', v_replaced, 'mismatched', v_mism,
         'settlement_balance', v_after, 'settlement_change', v_after - v_before, 'card_lines', v_card,
         'fingerprint', v_fp);
 END;

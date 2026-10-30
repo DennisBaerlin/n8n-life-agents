@@ -829,6 +829,7 @@
   "finance.label.statement_unknown": "Unknown direct debits",
   "finance.label.statement_everyday": "Everyday spending (as one total)",
   "finance.label.statement_other_diff": "Other difference (as one total)",
+  "finance.label.statement_unexplained_in": "Unexplained incoming money (as one total)",
   "finance.label.statement_in_transit": "In transit (counts later)",
   "finance.tpl.statement_in_transit_row": "{name}: {amount}, counts from {date}",
   "finance.label.statement_interest_correction": "Interest correction per statement",

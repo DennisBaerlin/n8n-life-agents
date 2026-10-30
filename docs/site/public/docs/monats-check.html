@@ -227,7 +227,7 @@
 <li>was sich geändert hat (z. B. Strom 92 € statt 85 €; beim zweiten gleichen Betrag passt er den Plan an);</li>
 <li>was <strong>nicht</strong> im Auszug stand (das wird für diesen Monat übersprungen);</li>
 <li>Lastschriften, die er noch nicht kennt;</li>
-<li>den Rest als <strong>eine</strong> Summe „Alltagsausgaben&quot; (Supermarkt, Tanken, Kleinkram).</li>
+<li>den Rest als <strong>eine</strong> Summe „Alltagsausgaben&quot; (Supermarkt, Tanken, Kleinkram). Kam mehr Geld herein, als die Karte erklärt, heißt der Rest „Ungeklärter Eingang&quot;.</li>
 </ul>
 <p>Ein Tipp auf „Übernehmen&quot;, fertig.</p>
 </li>
@@ -238,11 +238,11 @@
 <h2 id="woran-der-bot-das-konto-erkennt">Woran der Bot das Konto erkennt</h2>
 <p>An der <strong>IBAN</strong> auf dem Auszug. Legst du ein neues Konto an, fragt der Buchhalter einmal danach. Hast du sie gerade nicht zur Hand, ist das kein Problem: Beim ersten Auszug fragt er, welches deiner Konten gemeint ist, und merkt sich die IBAN.</p>
 <p><strong>Auszug eines Kontos, das der Bot noch nicht kennt</strong> (z. B. das Konto deines Kindes): Sag einfach, wem es gehört, etwa „das ist das neue Trade-Republic-Konto von Lisa“. Der Buchhalter legt es in <strong>einem</strong> Schritt an, mit der IBAN und dem Endstand aus dem Auszug. Auf der Karte steht der Stichtag, zu dem dieser Stand gilt. Den Auszug selbst spielt er dafür nicht mehr ein: Der Endstand ist der Startpunkt, der Monats-Check beginnt mit dem nächsten Auszug. Geht die Rechenprobe des Auszugs nicht auf, legt er das Konto ohne Kontostand an und fragt dich danach.</p>
-<p>Ein Dokument kannst du auch ohne Text schicken. Der Bot liest es zuerst selbst und erkennt, ob es ein Kontoauszug, ein Depotauszug oder ein anderes Dokument ist.</p>
+<p>Ein Dokument kannst du auch ohne Text schicken. Der Bot liest es zuerst selbst und erkennt, ob es ein Kontoauszug, ein Depotauszug oder ein anderes Dokument ist. Eine CSV- oder Excel-Datei erkennt er an der Dateiendung und liest sie gleich als Umsatz-Export (siehe unten).</p>
 <h2 id="woran-er-die-zahlungen-erkennt">Woran er die Zahlungen erkennt</h2>
 <p>Beim ersten Mal am Betrag, am Datum und am Namen des Empfängers. Danach merkt er sich die Kennung der Lastschrift (Gläubiger-ID und Mandatsreferenz) bzw. die IBAN des Empfängers. Ab dann erkennt er die Zahlung sicher, auch wenn sich der Betrag ändert. Wechselst du den Anbieter, ist das eine neue Kennung. Der Bot zeigt die Zahlung dann zuerst als „unbekannt&quot; und fragt nach.</p>
 <h2 id="überträge-zwischen-deinen-konten">Überträge zwischen deinen Konten</h2>
-<p>Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen <strong>Übertrag</strong>: Das Geld verschwindet nicht als Ausgabe, sondern kommt beim anderen Konto an. Es ist egal, welchen Auszug du zuerst schickst. Der zweite erkennt den Übertrag wieder und bucht ihn nicht noch einmal.</p>
+<p>Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen <strong>Übertrag</strong>: Das Geld verschwindet nicht als Ausgabe, sondern kommt beim anderen Konto an. Es ist egal, welchen Auszug du zuerst schickst. Der zweite erkennt den Übertrag wieder und bucht ihn nicht noch einmal. Nach der Buchung nennt dir der Bot jeden erkannten Übertrag mit Gegenkonto, Betrag und Gebühr.</p>
 <ul>
 <li><strong>Geld unterwegs:</strong> Geht eine Überweisung am Monatsende ab und kommt erst im nächsten Monat an, zählt sie beim anderen Konto im neuen Monat. Die Karte zeigt das im Abschnitt „Unterwegs“.</li>
 <li><strong>Anderer Betrag:</strong> Passt eine Zeile zu einem schon gebuchten Übertrag, aber nicht im Betrag, bucht der Bot keinen zweiten. Die Zeile bleibt im Rest.</li>
@@ -253,7 +253,7 @@
 <li><strong>Rechenprobe:</strong> Anfangsstand plus alle Zeilen muss genau den Endstand ergeben. Stimmt das nicht (z. B. eine Seite fehlt), übernimmt der Bot nichts und sagt dir die Differenz.</li>
 <li><strong>Nichts doppelt:</strong> Was schon gebucht ist, wird abgehakt statt neu gebucht. Derselbe Monat kann nicht zweimal eingespielt werden.</li>
 <li><strong>Zurücknehmen:</strong> Falsches Konto erwischt? „Nimm den letzten Kontoauszug von Giro zurück&quot; macht den letzten Monats-Check dieses Kontos komplett rückgängig.</li>
-<li><strong>Einzelumsätze werden nicht gespeichert.</strong> Aus dem Auszug bleiben nur Zeitraum, Anfangs- und Endstand und die Summe der Alltagsausgaben.</li>
+<li><strong>Einzelumsätze werden nicht gespeichert.</strong> Aus dem Auszug bleiben nur Zeitraum, Anfangs- und Endstand und die Summe des Rests.</li>
 </ul>
 <h2 id="was-der-finanzberater-daraus-macht">Was der Finanzberater daraus macht</h2>
 <ul>
@@ -264,8 +264,9 @@
 <p>Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic. Für so ein Konto lautet die Erinnerung anders:</p>
 <ol>
 <li>In der App den Transaktions-Export für dieses Jahr erstellen und die CSV-Datei an den Bot schicken.</li>
-<li>Dazu den Kontostand nennen, den die App <strong>gerade</strong> zeigt, z. B. „laut App 1.234,56 €&quot;. Der Export enthält keinen Kontostand. Ohne deine Zahl macht der Bot keine Karte; er rechnet sich nie selbst einen Stand aus.</li>
+<li>Dazu den Kontostand nennen, den die App <strong>gerade</strong> zeigt, z. B. „laut App 1.234,56 €&quot;. Der Export enthält keinen Kontostand. Ohne deine Zahl macht der Bot keine Karte; er rechnet sich nie selbst einen Stand aus. Schickst du die Datei ohne Text, fragt er danach.</li>
 </ol>
+<p><strong>Welches Konto?</strong> Nennst du keins, nimmt der Bot das Konto der Bank, von der die Datei stammt. Gibt es davon mehrere, fragt er. Nennst du ein Konto einer anderen Bank, bucht er nichts und fragt nach. Ist bei einem Konto die Bank falsch eingetragen, sag es ihm, dann korrigiert er sie.</p>
 <p>Die Datei liest ein fester Leser im Bot, kein Sprachmodell. Sie geht also nicht an einen KI-Anbieter. Der Monats-Check umfasst die Tage nach dem zuletzt bestätigten Stand bis gestern. Umsätze von heute zählen erst beim nächsten Mal.</p>
 <p>Zusätzlich zum normalen Ablauf:</p>
 <ul>

@@ -829,6 +829,7 @@
   "finance.label.statement_unknown": "알 수 없는 자동이체",
   "finance.label.statement_everyday": "일상 지출 (합계 하나로)",
   "finance.label.statement_other_diff": "기타 차이 (합계 하나로)",
+  "finance.label.statement_unexplained_in": "확인되지 않은 입금 (합계 하나로)",
   "finance.label.statement_in_transit": "이체 중 (나중에 반영)",
   "finance.tpl.statement_in_transit_row": "{name}: {amount}, {date}부터 반영",
   "finance.label.statement_interest_correction": "명세서 기준 이자 보정",

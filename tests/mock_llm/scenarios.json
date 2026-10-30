@@ -796,6 +796,14 @@
     "final": "Der Buchhalter liest das Dokument aus."
   },
   {
+    "_comment": "oc36 (Live-Befund 2026-10-30): CSV-Dokument ohne Bildunterschrift (Marker ext=csv) -> Call_agent_finance_, Marker woertlich inkl. ext.",
+    "match": "fin_oc36_001",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Der Nutzer hat ein Dokument ohne Bildunterschrift gesendet. [attachment file_id=fin_oc36_001 type=document ext=csv]" } }
+    ],
+    "final": "Der Buchhalter liest den Export ein."
+  },
+  {
     "_comment": "Phase C (oc22): Trigger-Mechanik (Schwelle aendern) -> Call_agent_monitor_.",
     "match": "Schwelle meines Bitcoin-Alarms",
     "calls": [
@@ -1010,6 +1018,22 @@
       { "tool": "tool_import_bank_export", "args": { "file_id": "mock_photo_084", "account_name": "Bondora Go&Grow" } }
     ],
     "final": "Ein Konto Bondora Go&Grow kenne ich noch nicht. Soll ich es anlegen?"
+  },
+  {
+    "_comment": "tc85 Live-Befund 2026-10-30: CSV ohne Bildunterschrift (Marker ext=csv) -> sofort tool_import_bank_export OHNE account_name (die DB waehlt das Konto nach Bank-Profil, antwortet closing_balance_required).",
+    "match": "ohne Bildunterschrift gesendet. [attachment file_id=mock_photo_083",
+    "calls": [
+      { "tool": "tool_import_bank_export", "args": { "file_id": "mock_photo_083" } }
+    ],
+    "final": "Das ist ein Trade-Republic-Export fuer das Trade Republic Cash Girokonto. Welchen Kontostand zeigt dir die App dort gerade?"
+  },
+  {
+    "_comment": "tc86 Live-Befund 2026-10-30: Trade-Republic-CSV fuer ein genanntes DKB-Konto -> export_account_mismatch -> Rueckfrage mit dem Kandidaten.",
+    "match": "Hier ist der Umsatz-Export fuer mein DKB Giro",
+    "calls": [
+      { "tool": "tool_import_bank_export", "args": { "file_id": "mock_photo_083", "account_name": "DKB Giro", "closing_balance": "1234.56" } }
+    ],
+    "final": "Die Datei ist ein Trade-Republic-Export und passt nicht zum DKB Giro. Gehoert sie zum Trade Republic Cash Girokonto?"
   },
   {
     "_comment": "tc52 Monats-Check: letzten Kontoauszug zuruecknehmen -> tool_void_bank_statement mit dem Kontonamen.",

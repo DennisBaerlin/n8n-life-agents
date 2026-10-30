@@ -303,5 +303,13 @@
     "followup_agent": "agent.finance_advisor",
     "expected_route": "finance_advisor",
     "notes": "Router-Regel 2a: die Antwort auf die Wunsch-Frage des Beraters (ohne Bindung koennte sie als Buchungs-/Sparziel-Auftrag beim Buchhalter landen)."
+  },
+  {
+    "id": "oc36",
+    "name": "CSV-Dokument OHNE Bildunterschrift (Marker ext=csv) -> agent.finance",
+    "task": "Der Nutzer hat ein Dokument ohne Bildunterschrift gesendet. [attachment file_id=fin_oc36_001 type=document ext=csv]",
+    "chat_id": "test_orc36",
+    "expected_route": "finance",
+    "notes": "Live-Befund 2026-10-30: der Dokument-Marker traegt die Datei-Endung (ext); der Orchestrator reicht ihn woertlich an den Buchhalter durch (Bank-Export)."
   }
 ]

@@ -20,9 +20,9 @@ Der Monats-Check hält deine Kontostände und regelmäßigen Zahlungen aktuell, 
 
 ## Woran der Bot das Konto erkennt
 
-An der **IBAN** auf dem Auszug. Legst du ein neues Konto an, weist der Buchhalter einmal darauf hin, dass du sie hinterlegen kannst. Hast du sie gerade nicht zur Hand, ist das kein Problem: Beim ersten Auszug fragt er, welches deiner Konten gemeint ist, und merkt sich die IBAN. Ein CSV-Export enthält die eigene IBAN nicht; für Konten, die du nur per Export abgleichst, trägst du sie einmal selbst ein, z. B. „Trag beim N26-Konto die IBAN DE.. ein“.
+An der **IBAN** auf dem Auszug. Du musst sie nicht abtippen. Beim ersten Auszug fragt der Buchhalter, welches deiner Konten gemeint ist, und merkt sich die IBAN. Ein CSV-Export enthält die eigene IBAN zwar nicht, der Bot lernt sie dann aber meist trotzdem: Überweist du von einem anderen deiner Konten auf dieses Konto, erkennt er es an deinem Namen (bzw. euren Namen bei einem Gemeinschaftskonto) und an dem einen passenden Konto ohne IBAN. Auf der Karte steht dann „Die IBAN … wird beim Konto … gespeichert“. Passt eine IBAN zu mehreren deiner Konten, rät er nicht: Ein Hinweis auf der Karte nennt die Konten, und du sagst ihm, welches es ist. Nimmst du einen Auszug zurück (Storno), bleibt eine dabei gespeicherte IBAN bewusst stehen, denn sie ist eine Angabe zum Konto und keine Buchung. Eine falsch gespeicherte IBAN entfernt der Bot auf Zuruf wieder, z. B. „Die IBAN beim N26-Konto stimmt nicht, nimm sie raus“.
 
-**Auszug eines Kontos, das der Bot noch nicht kennt** (z. B. das Konto deines Kindes): Sag einfach, wem es gehört, etwa „das ist das neue Trade-Republic-Konto von Lisa“. Der Buchhalter legt es in **einem** Schritt an, mit der IBAN und dem Endstand aus dem Auszug. Auf der Karte steht der Stichtag, zu dem dieser Stand gilt. Den Auszug selbst spielt er dafür nicht mehr ein: Der Endstand ist der Startpunkt, der Monats-Check beginnt mit dem nächsten Auszug. Geht die Rechenprobe des Auszugs nicht auf, legt er das Konto ohne Kontostand an und fragt dich danach.
+**Auszug eines Kontos, das der Bot noch nicht kennt** (z. B. das Konto deines Kindes): Schick ihn einfach. Der Buchhalter legt das Konto in **einem** Schritt an, mit der IBAN und dem Endstand aus dem Auszug. Den gedruckten Kontoinhaber schlägt er als Besitzer vor (bei zwei Namen: gemeinsam). Stimmt der Vorschlag nicht, sag einfach, wem das Konto gehört, etwa „das ist das neue Trade-Republic-Konto von Lisa“. Auf der Karte steht der Stichtag, zu dem dieser Stand gilt. Den Auszug selbst spielt er dafür nicht mehr ein: Der Endstand ist der Startpunkt, der Monats-Check beginnt mit dem nächsten Auszug. Geht die Rechenprobe des Auszugs nicht auf, legt er das Konto ohne Kontostand an und fragt dich danach.
 
 Ein Dokument kannst du auch ohne Text schicken. Der Bot liest es zuerst selbst und erkennt, ob es ein Kontoauszug, ein Depotauszug oder ein anderes Dokument ist. Eine CSV- oder Excel-Datei erkennt er an der Dateiendung und liest sie gleich als Umsatz-Export (siehe unten).
 
@@ -61,6 +61,8 @@ Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei a
 
 Die Datei liest ein fester Leser im Bot, kein Sprachmodell. Sie geht also nicht an einen KI-Anbieter. Der Monats-Check umfasst die Tage nach dem zuletzt bestätigten Stand bis gestern. Umsätze von heute zählen erst beim nächsten Mal.
 
+**Vorgemerkte Kartenzahlungen** zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Der Unterschied zählt diesmal zum Rest, die Karte nennt ihn eigens. Ein schon bestätigter Stand bleibt dabei unverändert. Beim nächsten Export taucht die Zahlung auf; die Karte sagt dann, dass sie schon im letzten Rest steckt. Passt sie zu einem Dauerauftrag oder Abo, bucht der Bot sie dort, und die Karte zeigt den Gegenbetrag als „Ausgleich vorgemerkter Zahlungen“, nicht als Eingang. Nichts zählt doppelt. Beginnt der Export erst nach dem zuletzt bestätigten Tag (z. B. „dieses Jahr" im Januar), warnt die Karte stattdessen, dass Umsätze fehlen könnten. Dann lieber abbrechen und einen längeren Zeitraum exportieren.
+
 Bei Trade Republic zusätzlich zum normalen Ablauf:
 
 - **Sparpläne mit echter Stückzahl:** Der Export nennt die genaue Stückzahl jeder Ausführung. Der Bot muss sie nicht aus dem Kurs schätzen.
@@ -71,9 +73,8 @@ Bei Trade Republic zusätzlich zum normalen Ablauf:
 Bei N26:
 
 - **Export:** In der N26-App bzw. im Web-Banking die Umsätze als CSV herunterladen, am einfachsten für dieses Jahr. Exportiere das Hauptkonto und jeden Space einzeln; mischt die Datei mehrere Spaces, fragt der Bot nach einer Datei je Konto.
-- **Eigene Konten:** Überweisungen an oder von einem deiner Konten erkennt der Bot an der IBAN und bucht sie als Übertrag. Dafür muss die IBAN beim anderen Konto als Kontonummer hinterlegt sein.
+- **Eigene Konten:** Überweisungen an oder von einem deiner Konten erkennt der Bot an der IBAN und bucht sie als Übertrag. Kennt er die IBAN des anderen Kontos noch nicht, lernt er sie meist aus der Überweisung selbst (siehe oben), sonst bleibt die Zahlung einmal im Rest.
 - **Datum:** Es zählt der Buchungstag, nicht die Wertstellung.
-- **Vorgemerkte Kartenzahlungen** zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Eine solche Zahlung landet diesmal im Rest; beim nächsten Mal zeigt die Karte deshalb eine kleine Abweichung, die der Bot korrigiert. In der Summe stimmt alles.
 - **Unbekannte Umsatzarten** bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.
 
 ## Bondora Go&Grow (Excel-Kontoauszug)

@@ -6,7 +6,7 @@ function Build-SetAccount {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('account_name','new_name','bank','account_number','owner_person','settlement_account',
+    $trig = Build-Trigger @('account_name','new_name','bank','account_number','remove_account_number','owner_person','settlement_account',
                            'notes','fixed_deposit_maturity_date','fixed_deposit_auto_renew',
                            'ownership','has_transmortal_poa')  # WS-0b estate
 
@@ -48,7 +48,8 @@ function Build-SetAccount {
             name                        = '$(''Start'').item.json.new_name'
             bank                        = '$(''Start'').item.json.bank'
             account_number              = '$(''Start'').item.json.account_number'
-            owner_person_id             = '$(''Resolve Person'').item.json.person_id'
+            remove_account_number       = '$(''Start'').item.json.remove_account_number'   # Import zuerst: falsche IBAN entfernen
+            owner_person_id            = '$(''Resolve Person'').item.json.person_id'
             settlement_id               = '($(''Start'').item.json.settlement_account ? $(''Resolve Settlement'').item.json.id : null)'
             notes                       = '$(''Start'').item.json.notes'
             fixed_deposit_maturity_date = '$(''Start'').item.json.fixed_deposit_maturity_date'
@@ -66,6 +67,7 @@ function Build-SetAccount {
         (New-HitlLine 'finance.label.new_name'           "$S.new_name" -If "$S.new_name")
         (New-HitlLine 'finance.label.bank'               "$S.bank" -If "$S.bank")
         (New-HitlLine 'finance.label.iban_number' "$S.account_number" -If "$S.account_number")
+        (New-HitlNote -Key 'finance.note.iban_removed' -If "(['true','t','yes','y','on','1'].indexOf(String($S.remove_account_number || '').toLowerCase().trim()) >= 0)")
         (New-HitlLine 'finance.label.owner_person'       "($P.full_name || $S.owner_person)" -If "$S.owner_person")
         (New-HitlLine 'finance.label.settlement_account' "$S.settlement_account" -If "$S.settlement_account")
         (New-HitlLine 'finance.label.maturity'           (Get-DryEffectiveExpr 'fixed_deposit_maturity_date') -Kind date -If "$S.fixed_deposit_maturity_date")
@@ -96,7 +98,7 @@ function Build-SetAccount {
 
     $stickyOv = Build-Sticky 'Doc set_account' @(2200, -220) `
         'fn_set_account: partielles Stammdaten-UPDATE' `
-        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE). Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Kontonummer schon vergeben, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
+        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE); remove_account_number=true entfernt die Kontonummer (Korrektur einer falsch zugeordneten bzw. gelernten IBAN, Karten-Hinweis). Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Kontonummer schon vergeben, Nummer setzen und entfernen zugleich, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
 
     $nodes = @($trig, $resAcct, $ifAcct, $errAcct, $resPerson, $ifPersonBad, $errPerson, $resSettle, $ifSettleBad, $errSettle) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ret, $stickyDry, $stickyOv)

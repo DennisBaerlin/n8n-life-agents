@@ -29,6 +29,9 @@ function New-StatementGateChain {
         ,@('closing_balance', "={{ $P.closing_balance === undefined || $P.closing_balance === null ? '' : String($P.closing_balance) }}", 'string')
         ,@('balance_date', "={{ $P.balance_date || '' }}", 'string')
         ,@('currency', "={{ $P.currency || '' }}", 'string')
+        # Import zuerst: gedruckter Kontoinhaber eines unbekannten Kontos als Inhaber-Vorschlag (aus der DB)
+        ,@('owner_person', "={{ $P.owner_person || '' }}", 'string')
+        ,@('owner_joint', "={{ $P.owner_joint === true }}", 'boolean')
         # Pool-Regel (transfer_choice_required): die EINE unklare Zahlung, damit der Agent sie beim Nachfragen nennt
         ,@('payment_amount', "={{ $P.amount === undefined || $P.amount === null ? '' : String($P.amount) }}", 'string')
         ,@('payment_date', "={{ $P.date || '' }}", 'string')
@@ -63,6 +66,11 @@ function New-StatementGateChain {
         ,@('transfers', "={{ $A.transfers || [] }}", 'array')
         ,@('rest_outflow', "={{ $A.rest_outflow }}", 'number')
         ,@('rest_inflow', "={{ $A.rest_inflow }}", 'number')
+        # Vormerkungen des letzten Exports, die dessen Rest jetzt ausgleichen (nie Einnahme/Ausgabe)
+        ,@('pending_settled', "={{ $A.pending_settled || 0 }}", 'number')
+        # Import zuerst: IBANs eigener Konten, die dieser Abgleich gespeichert hat bzw. die mehrdeutig blieben
+        ,@('iban_learned', "={{ $A.learned_accounts || [] }}", 'array')
+        ,@('iban_ambiguous', "={{ $P.iban_ambiguous || [] }}", 'array')
         ,@('difference_before_period', "={{ $A.drift_amount }}", 'number')
         ,@('skipped_payments', "={{ $A.skipped_occurrences }}", 'number')
         ,@('plan_adjusted', "={{ $A.plan_adjusted || [] }}", 'array')

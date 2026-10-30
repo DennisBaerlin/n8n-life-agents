@@ -28,7 +28,7 @@ Schick dem Bot `/onboarding` — er zeigt dir eine Übersicht: den Haushalt und 
 
 - Den **Haushalts-Teil** (wer gehört dazu) hat der Owner meist schon erledigt — für dich ist da nichts mehr zu tun. Ist er noch nicht fertig, sagt dir der Bot das ehrlich und meldet sich mit „Es kann losgehen", sobald der Owner so weit ist.
 - **Eigene, persönliche Bereiche** — zum Beispiel dein Profil beim [Karriere-Coach](karriere-coach.html) — richtest du über die Buttons im Menü selbst ein; der zuständige Fachagent führt dich mit Fragen geführt hindurch. Gibt es solche Bereiche schon, wenn der Owner dich bestätigt, trägt die Bestätigung gleich den Knopf „Meine Bereiche“.
-- Für **Finanzielles** (Konten, Ausgaben — sofern das Finanzen-Paket installiert ist) reicht es meist, dem Buchhalter einfach zu erzählen, was du hast, oder ein Foto von einem Kontoauszug zu schicken — er fragt bei Bedarf nach.
+- Für **Finanzielles** (Konten, Depots — sofern das Finanzen-Paket installiert ist) ist der einfachste Weg eine Datei: der letzte Kontoauszug als PDF je Konto, ein Foto oder PDF vom Depotauszug, bei Trade Republic, N26 oder Bondora auch deren Export-Datei. Der Buchhalter liest IBAN, Kontostand und Kontoinhaber selbst heraus und zeigt dir alles auf einer Karte zur Bestätigung. Erzählen geht genauso („Tagesgeld bei der DKB, 5.000 €“) — er fragt bei Bedarf nach.
 
 Mehr zu den einzelnen Fachagenten und was sie können, steht unter [Befehle](befehle.html) und [So funktioniert's](so-funktionierts.html).
 

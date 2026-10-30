@@ -1202,5 +1202,27 @@
       { "tool": "Call_agent_finance_", "args": { "task": "Oma Erika ueberweist ab Januar jeden Monat 50 Euro auf das Trade Republic Cash Girokonto, das ist fuer den Sparplan." } }
     ],
     "final": "Der Buchhalter traegt die Einzahlung ein."
+  },
+  {
+    "_comment": "tc94 Kontoauszug eines neuen Kontos ohne Inhaber-Angabe: reconcile -> account_unknown mit owner_person (gedruckter Kontoinhaber) -> create_account mit diesem Inhaber-Vorschlag.",
+    "match": "Hier ist der Kontoauszug von meinem neuen Girokonto bei der Musterbank",
+    "calls": [
+      { "tool": "tool_reconcile_bank_statement", "args": { "file_id": "mock_photo_056", "doc_hint": "neuen Girokonto bei der Musterbank" } },
+      { "tool": "tool_create_account", "args": { "name": "Musterbank Giro", "account_type": "cash", "bank": "Musterbank", "account_number": "DE72100123450000000562", "owner_person": "Lisa Mustermann", "opening_balance": "150", "opening_balance_date": "2000-01-31" } }
+    ],
+    "final": "Die Karte fuer das neue Musterbank-Girokonto ist unterwegs - als Inhaberin schlage ich Lisa vor, so steht es auf dem Auszug."
+  },
+  {
+    "_comment": "tc94 Lesen des Auszugs: wie tc61, zusaetzlich der gedruckte Kontoinhaber.",
+    "match": "neuen Girokonto bei der Musterbank",
+    "final": "{\"is_statement\":true,\"account_number\":\"DE72 1001 2345 0000 0005 62\",\"account_holder\":\"MUSTERMANN, LISA\",\"currency\":\"EUR\",\"period_start\":\"2000-01-01\",\"period_end\":\"2000-01-31\",\"opening_balance\":100,\"closing_balance\":150,\"lines\":[{\"date\":\"2000-01-03\",\"amount\":100,\"counterparty\":\"Erika Mustermann\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Eingehende Ueberweisung\"},{\"date\":\"2000-01-04\",\"amount\":-50,\"counterparty\":\"Vanguard\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Sparplan Vanguard FTSE All-World UCITS ETF\"}]}"
+  },
+  {
+    "_comment": "tc95 Falsch zugeordnete IBAN entfernen: tool_set_account mit remove_account_number.",
+    "match": "Beim DKB Giro steht die falsche IBAN",
+    "calls": [
+      { "tool": "tool_set_account", "args": { "account_name": "DKB Giro", "remove_account_number": "true" } }
+    ],
+    "final": "Die Karte zum Entfernen der IBAN beim DKB Giro ist unterwegs."
   }
 ]

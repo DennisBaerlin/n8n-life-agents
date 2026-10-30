@@ -659,12 +659,24 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "99692eec-5b7f-5da6-a6c4-039ede9fb408",
+                                                                                     "name":  "owner_person",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.owner_person || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "73f29eab-78f1-58b6-b40e-56ffefe2863f",
+                                                                                     "name":  "owner_joint",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.owner_joint === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cc08bd94-b864-547e-83f7-788c1879a1f9",
                                                                                      "name":  "payment_amount",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.amount === undefined || $(\u0027Prepare statement\u0027).item.json.r.amount === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.amount) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "73f29eab-78f1-58b6-b40e-56ffefe2863f",
+                                                                                     "id":  "17871d0c-cab9-5917-a048-77d2b6fc1d3c",
                                                                                      "name":  "payment_date",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.date || \u0027\u0027 }}",
                                                                                      "type":  "string"
@@ -972,96 +984,114 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "9f9b64f4-d43a-555f-8412-d15563f1e140",
+                                                                                     "name":  "pending_settled",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.pending_settled || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6df2df10-8ec2-52af-b9ec-45fa19f9df0f",
+                                                                                     "name":  "iban_learned",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.learned_accounts || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c24333c9-a14e-5836-a2ae-6beb0f08d276",
+                                                                                     "name":  "iban_ambiguous",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.iban_ambiguous || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d8c2dc36-1954-5833-9c5d-cdecff7d718e",
                                                                                      "name":  "difference_before_period",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.drift_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "6df2df10-8ec2-52af-b9ec-45fa19f9df0f",
+                                                                                     "id":  "a9925354-faa0-511d-92f3-e6ad3ed918b2",
                                                                                      "name":  "skipped_payments",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.skipped_occurrences }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c24333c9-a14e-5836-a2ae-6beb0f08d276",
+                                                                                     "id":  "e9a38958-a4f6-5b93-ad95-251abf5a21b1",
                                                                                      "name":  "plan_adjusted",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.plan_adjusted || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d8c2dc36-1954-5833-9c5d-cdecff7d718e",
+                                                                                     "id":  "a73f7480-41cc-5e9b-a061-9f3f71ee6701",
                                                                                      "name":  "savings_plan_estimated",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.savings_plan_estimated || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a9925354-faa0-511d-92f3-e6ad3ed918b2",
+                                                                                     "id":  "c222457d-7454-5400-b776-4e954125695f",
                                                                                      "name":  "unknown_direct_debits",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.unknown_mandates || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "e9a38958-a4f6-5b93-ad95-251abf5a21b1",
+                                                                                     "id":  "3f075089-297a-5a53-b74c-8d7e01d6b9bb",
                                                                                      "name":  "balance_after",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.balance_after }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a73f7480-41cc-5e9b-a061-9f3f71ee6701",
+                                                                                     "id":  "6991a567-44db-5267-b509-49f0c896242b",
                                                                                      "name":  "outlook",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
                                                                                      "type":  "object"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c222457d-7454-5400-b776-4e954125695f",
+                                                                                     "id":  "c9d41e04-fe9d-51fc-ae56-dd6b82d9f9a1",
                                                                                      "name":  "trades_booked",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.trades_booked || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "3f075089-297a-5a53-b74c-8d7e01d6b9bb",
+                                                                                     "id":  "6a24ea95-089e-512e-8342-636181250cbb",
                                                                                      "name":  "trades_not_booked",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.trades_blocked || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "6991a567-44db-5267-b509-49f0c896242b",
+                                                                                     "id":  "73c49a0c-e3f2-5e12-83de-6ff466cb6b08",
                                                                                      "name":  "unknown_export_rows",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.export_unknown || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c9d41e04-fe9d-51fc-ae56-dd6b82d9f9a1",
+                                                                                     "id":  "198073fb-f895-50f8-91d8-f8920f4f1d1c",
                                                                                      "name":  "positions_replaced_by_purchases",
                                                                                      "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).replaced || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "6a24ea95-089e-512e-8342-636181250cbb",
+                                                                                     "id":  "4809b1e0-bed1-52f2-a9b0-4d5d412d3164",
                                                                                      "name":  "positions_not_matching_export",
                                                                                      "value":  "={{ $(\u0027Preview lots\u0027).isExecuted ? ($(\u0027Preview lots\u0027).first().json.r.mismatched || []) : [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "73c49a0c-e3f2-5e12-83de-6ff466cb6b08",
+                                                                                     "id":  "d3486d45-168b-5389-8014-dabac9a5af94",
                                                                                      "name":  "purchases_cash_effect",
                                                                                      "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).settlement_change || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "198073fb-f895-50f8-91d8-f8920f4f1d1c",
+                                                                                     "id":  "3d98f921-87f9-59f9-a807-144250e0c39f",
                                                                                      "name":  "interest_correction",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.interest_correction || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "4809b1e0-bed1-52f2-a9b0-4d5d412d3164",
+                                                                                     "id":  "c129fb38-8f20-575d-9e30-955283b12cae",
                                                                                      "name":  "legacy_returns",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.legacy_returns || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d3486d45-168b-5389-8014-dabac9a5af94",
+                                                                                     "id":  "7762681d-f36c-54a7-9e24-0010a82b5904",
                                                                                      "name":  "provider_payments_unassigned",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.pool_unassigned || 0 }}",
                                                                                      "type":  "number"

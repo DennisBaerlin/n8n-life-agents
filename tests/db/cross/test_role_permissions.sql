@@ -828,6 +828,27 @@ BEGIN
     RAISE EXCEPTION 'FAIL [finance_ro -> core.fn_household_persons]: 0 Zeilen trotz Person-Fixture (Grant ok, aber Read defekt?)'; END IF;
   RAISE NOTICE 'PASS [finance_ro -> core.fn_household_persons (% Zeilen, Rollen-Aufloesung ueber Fenster)]', v_cnt;
 
+  -- (4d2) "Import zuerst": fn_match_household_holder (INVOKER) liest die Haushaltsnamen ueber dasselbe Fenster -
+  -- unter finance_rw (Monats-Check-Prepare im Write-Tool) und finance_ro; die Fixture-Person "RP Person" muss treffen.
+  DECLARE v_res JSONB;
+  BEGIN
+    SET LOCAL ROLE finance_rw;
+    v_res := finance.fn_match_household_holder('RP PERSON');
+    RESET ROLE;
+    IF v_res->>'owner_person_id' IS DISTINCT FROM '__rp_person__' THEN
+      RAISE EXCEPTION 'FAIL [finance_rw -> fn_match_household_holder]: kein Treffer: %', v_res; END IF;
+    SET LOCAL ROLE finance_ro;
+    v_res := finance.fn_match_household_holder('Person, RP');
+    RESET ROLE;
+    IF v_res->>'owner_person_id' IS DISTINCT FROM '__rp_person__' THEN
+      RAISE EXCEPTION 'FAIL [finance_ro -> fn_match_household_holder]: kein Treffer: %', v_res; END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+    RAISE EXCEPTION 'FAIL [finance_rw/_ro -> fn_match_household_holder]: %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [finance_rw/_ro -> fn_match_household_holder (Namen ueber core.fn_household_persons)]';
+
   -- (4e) finance_ro liest die Eltern-Scope-Cashflow-View (joint das Fenster) ohne permission denied
   BEGIN
     SET LOCAL ROLE finance_ro;

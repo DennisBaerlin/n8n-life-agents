@@ -1091,5 +1091,32 @@
         "expected_tool":  null,
         "expected_behavior":  "Ruft KEIN Write-Tool auf (kein Dauerauftrag, keine Einnahme, keine Sparplan-Aenderung). Bestaetigt kurz in Alltagssprache, dass nichts angelegt wird; darf sagen, dass die Uebersicht (Seite Ziele) zeigt, bis wann das Geld reicht, und darf das Datum per Datenbank-Abfrage nennen, rechnet es aber nicht selbst aus.",
         "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 3: gewollter Abbau ist keine Luecke und wird nicht markiert (arch-challenge 2026-10-29)."
+    },
+    {
+        "id":  "tc94",
+        "name":  "Kontoauszug eines neuen Kontos ohne Inhaber-Angabe: gedruckten Inhaber als Vorschlag uebernehmen",
+        "task":  "Hier ist der Kontoauszug von meinem neuen Girokonto bei der Musterbank [attachment file_id=mock_photo_056 type=document]",
+        "chat_id":  "test_tc94",
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {
+                                   "account_type":  "cash",
+                                   "owner_person":  "Lisa",
+                                   "opening_balance":  "150"
+                               },
+        "expected_behavior":  "Liest den Auszug mit tool_reconcile_bank_statement (account_unknown mit owner_person=Lisa Mustermann aus dem gedruckten Kontoinhaber) und ruft dann tool_create_account mit account_type=cash, owner_person=Lisa (Mustermann), der gedruckten IBAN, opening_balance=150 und opening_balance_date=2000-01-31 auf. Fragt NICHT, wem das Konto gehoert (die Karte zeigt den Vorschlag zur Bestaetigung), und spielt den Auszug danach NICHT erneut ein.",
+        "notes":  "Import zuerst (2026-10-30): Inhaber aus dem PDF. Mock-Telegram liefert mock_photo_056.pdf (wie tc61); das Vision-Szenario 'neuen Girokonto bei der Musterbank' (= doc_hint) liefert zusaetzlich account_holder 'MUSTERMANN, LISA' -> fn_match_household_holder trifft die Fixture-Person Lisa Mustermann. Routing-Tier lehnt die create-Karte ab."
+    },
+    {
+        "id":  "tc95",
+        "name":  "Falsch zugeordnete IBAN entfernen",
+        "task":  "Beim DKB Giro steht die falsche IBAN, die gehoert gar nicht zu dem Konto. Bitte nimm sie dort raus.",
+        "chat_id":  "test_tc95",
+        "expected_tool":  "tool_set_account",
+        "expected_tool_args":  {
+                                   "account_name":  "DKB Giro",
+                                   "remove_account_number":  "true"
+                               },
+        "expected_behavior":  "Ruft tool_set_account mit account_name='DKB Giro' und remove_account_number=true auf, OHNE eine neue account_number und ohne weitere Felder. Die Karte zeigt, dass die gespeicherte IBAN entfernt wird.",
+        "notes":  "Import zuerst (2026-10-30): Korrekturweg fuer eine falsch gelernte IBAN (arch-challenge ADOPT). DKB Giro ist ein dauerhaftes Fixture-Konto; die Routing-Tier lehnt die Karte ab (nichts wird entfernt)."
     }
 ]

@@ -10,7 +10,9 @@
 --   fixed_deposit_maturity_date, fixed_deposit_auto_renew, ownership/has_transmortal_poa (WS-0b estate:
 --   Nachlass-Attribute, geschlossene ownership-Liste per CHECK; leer=unveraendert).
 --   Kontonummer (Monats-Check WP-B) in der Normalform fn_normalize_account_number; schon bei einem ANDEREN aktiven
---   Konto vergeben -> {ok:false, reason} ohne Write (UNIQUE-Index = Backstop).
+--   Konto vergeben -> {ok:false, reason} ohne Write (UNIQUE-Index = Backstop). remove_account_number = true entfernt die
+--   Nummer ("Import zuerst": Korrekturweg fuer eine falsch zugeordnete bzw. gelernte IBAN, die sonst beim richtigen Konto
+--   als Dublette abgelehnt wuerde); zusammen mit account_number -> {ok:false, code:'conflicting_input'}.
 --   settlement_id (im Tool aufgeloest; leer=unveraendert): Verrechnungskonto, Pruefung fn_settlement_account_reason
 --   (nur Depot/P2P; P2P = das Girokonto, auf das der Anbieter auszahlt, Bank-Import-Modul) -> sonst {ok:false, reason}.
 --   Bankwechsel setzt den Depot-Kalender accounts.plan_execution_days zurueck (NULL = unbekannt): er beschreibt die
@@ -25,6 +27,8 @@ DECLARE
     v_taken  TEXT;
     v_dates  JSONB;
     v_settle INT;
+    -- dieselbe Ja-Liste wie die Karte (tool_set_account): alles andere = nicht entfernen, nie ein Cast-Fehler
+    v_remove BOOLEAN := lower(btrim(COALESCE(p->>'remove_account_number', ''))) IN ('true', 't', 'yes', 'y', 'on', '1');
 BEGIN
     -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['fixed_deposit_maturity_date']);
@@ -32,6 +36,11 @@ BEGIN
     p := v_dates->'p';
     IF NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_id) THEN
         RAISE EXCEPTION 'Account % not found.', v_id;
+    END IF;
+
+    IF v_remove AND v_number IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'conflicting_input',
+            'reason', 'Either set a new account number or remove it - not both in one call.');
     END IF;
 
     -- S7: eine IBAN-foermige Nummer muss ihre Pruefziffer bestehen (Spiegel-CHECK finance_accounts_iban_chk)
@@ -62,7 +71,7 @@ BEGIN
         plan_execution_days         = CASE WHEN NULLIF(p->>'bank', '') IS NOT NULL
                                                 AND p->>'bank' IS DISTINCT FROM bank
                                            THEN NULL ELSE plan_execution_days END,
-        account_number              = COALESCE(v_number, account_number),
+        account_number              = CASE WHEN v_remove THEN NULL ELSE COALESCE(v_number, account_number) END,
         settlement_account_id       = COALESCE(v_settle, settlement_account_id),
         owner_person_id             = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- WS-4: typisierter Eigentuemer (Slug); leer=unveraendert (Un-Tag->BACKLOG)
         notes                       = COALESCE(NULLIF(p->>'notes', ''), notes),

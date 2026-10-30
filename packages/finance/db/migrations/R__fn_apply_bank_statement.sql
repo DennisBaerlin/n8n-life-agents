@@ -29,10 +29,13 @@
 --   (fee_add), Zinskorrektur, Altkredit-Rueckfluesse; nicht: Trades (trades_booked), Drift, Rest, Trade-Steuern,
 --   Umdatierungen. transfers[] = jede neu ODER schon gebuchte Transfer-Gruppe dieses Auszugs {account_name (Gegenkonto),
 --   amount (Transfer-Bein DIESES Kontos, signiert), fee (Gebuehr-Beine der Gruppe + fee_add, 0 = keine), fee_account
---   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) nach Richtung,
---   Netto-Differenz (eines ist 0) - ein positiver Rest ist ein ungeklaerter Eingang, nie Ausgaben.
---   RUECKGABE: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
---   learned_keys, plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
+--   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) ohne
+--   pending_settled nach Richtung, Netto-Differenz (eines ist 0) - ein positiver Rest ist ein ungeklaerter Eingang, nie
+--   Ausgaben. pending_settled (aus der Prepare, >= 0) = Teil des Rests, der vorgemerkte Zahlungen des vorigen
+--   Export-Abgleichs ausgleicht (weder Eingang noch Ausgabe); lump_amount = die ganze Rest-Buchung.
+--   RUECKGABE: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, pending_settled, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
+--   learned_keys, learned_accounts[{account_id, account_name, account_number}] (IBAN-Lernen der Prepare, per fn_set_account
+--   gespeichert; gesperrt wie die Transfer-Gegenkonten), plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_apply_bank_statement(p jsonb)
@@ -62,6 +65,7 @@ DECLARE
     v_tg       JSONB := '[]'::jsonb;   -- Transfer-Gruppen dieses Auszugs {g, d (Zeilendatum), b (schon gebucht), fa (fee_add)}
     v_transfers JSONB;
     v_lump     NUMERIC;
+    v_settled  NUMERIC;   -- Teil des Rests = Ausgleich vorgemerkter Zahlungen (prepare.pending_settled)
 BEGIN
     v_prep := finance.fn_statement_prepare(p - 'fingerprint');
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -79,6 +83,7 @@ BEGIN
                            WHERE r.id IN (SELECT (m->>'recurring_payment_id')::int
                                           FROM jsonb_array_elements(v_prep->'matched') m))
        OR b.account_id IN (SELECT (m->>'other_account_id')::int FROM jsonb_array_elements((v_prep->'matched') || (v_prep->'blocked')) m)
+       OR b.account_id IN (SELECT (m->>'account_id')::int FROM jsonb_array_elements(v_prep->'learned_accounts') m)
        OR b.account_id IN (SELECT t.account_id FROM finance.transactions t
                            WHERE t.group_id IN (SELECT (m->>'group_id')::uuid FROM jsonb_array_elements(v_prep->'already_booked') m))
     ORDER BY b.account_id
@@ -102,6 +107,14 @@ BEGIN
                 RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = v_r->>'reason';
             END IF;
         END IF;
+        -- IBAN-Lernen: die auf der Karte gezeigten IBANs eigener Konten (Prepare 3a2) speichern
+        FOR v_m IN SELECT e FROM jsonb_array_elements(v_prep->'learned_accounts') e LOOP
+            v_r := finance.fn_set_account(jsonb_build_object('account_id', (v_m->>'account_id')::int,
+                       'account_number', v_m->>'account_number'));
+            IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
+                RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = v_r->>'reason';
+            END IF;
+        END LOOP;
 
         v_drift := (v_prep->>'drift')::numeric;
         IF v_drift <> 0 THEN
@@ -319,12 +332,12 @@ BEGIN
         INSERT INTO finance.bank_statements
             (account_id, period_start, period_end, opening_balance, closing_balance, currency, line_count, matched_count,
              unmatched_out, unmatched_in, prev_last_reconciled_balance, prev_last_reconciled_at, skipped, learned_key_ids,
-             balance_source)
+             balance_source, export_gap)
         VALUES (v_acct, (v_prep->>'period_start')::date, (v_prep->>'period_end')::date,
                 (v_prep->>'opening_balance')::numeric, (v_prep->>'closing_balance')::numeric, v_prep->>'currency',
                 (v_prep->>'line_count')::int, (v_prep->>'matched_count')::int,
                 (v_prep->>'unmatched_out')::numeric, (v_prep->>'unmatched_in')::numeric, v_prev_bal, v_prev_at,
-                v_skipped, v_keys, v_prep->>'balance_source')
+                v_skipped, v_keys, v_prep->>'balance_source', (v_prep->>'export_gap')::numeric)
         RETURNING id INTO v_stmt;
 
         -- Broker-CSV: gesehene Bank-Referenzen nur als Hash (spaete Zeilen beim naechsten Export erkennen)
@@ -365,6 +378,7 @@ BEGIN
                         FROM finance.transactions t WHERE t.group_id = (g->>'g')::uuid) s
     WHERE g->>'g' IS NOT NULL AND s.amt IS NOT NULL;
     v_lump := COALESCE((v_final->>'difference')::numeric, 0);
+    v_settled := COALESCE((v_prep->>'pending_settled')::numeric, 0);
 
     RETURN jsonb_build_object('ok', true,
         'statement_id', v_stmt,
@@ -373,8 +387,9 @@ BEGIN
                         + CASE WHEN COALESCE((v_prep->>'interest_correction')::numeric, 0) <> 0 THEN 1 ELSE 0 END
                         + CASE WHEN COALESCE((v_prep->>'legacy_returns')::numeric, 0) <> 0 THEN 1 ELSE 0 END,
         'transfers', v_transfers,
-        'rest_outflow', GREATEST(-v_lump, 0),
-        'rest_inflow', GREATEST(v_lump, 0),
+        'rest_outflow', GREATEST(-(v_lump - v_settled), 0),
+        'rest_inflow', GREATEST(v_lump - v_settled, 0),
+        'pending_settled', v_settled,
         'trades_booked', v_trades,
         'trades_blocked', COALESCE(v_prep->'trades_blocked', '[]'::jsonb),
         'export_unknown', COALESCE(v_prep->'export_unknown', '[]'::jsonb),
@@ -384,6 +399,7 @@ BEGIN
         'skipped_occurrences', jsonb_array_length(v_skipped),
         'redated_count', v_redated,
         'learned_keys', cardinality(v_keys),
+        'learned_accounts', COALESCE(v_prep->'learned_accounts', '[]'::jsonb),
         'plan_adjusted', v_adjusted,
         'savings_plan_estimated', v_spe,
         'unknown_mandates', v_prep->'unknown_mandates',

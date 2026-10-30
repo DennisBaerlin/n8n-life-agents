@@ -20,6 +20,18 @@
                       "reason":  "model:agent-eingabe (Prompt-/Marker-Text fuer das Sprachmodell)"
                   },
                   {
+                      "where":  "packages/finance/db/migrations/R__fn_holder_tokens.sql",
+                      "literal":  "und",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Fuellwort, das aus gedruckten Bank-Namen wie 'Max und Erika' entfernt wird; nie Nutzertext)"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/R__fn_holder_tokens.sql",
+                      "literal":  "oder",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Fuellwort, das aus gedruckten Bank-Namen entfernt wird; nie Nutzertext)"
+                  },
+                  {
                       "where":  "packages/career/db/migrations/R__fn_clear_e2e_data.sql",
                       "literal":  "fn_clear_e2e_data GUARD: career.job_matches Sentinel-Zeilen nach Cleanup noch vorhanden — Abbruch",
                       "count":  1,

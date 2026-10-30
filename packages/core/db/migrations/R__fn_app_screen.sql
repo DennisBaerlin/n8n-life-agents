@@ -14,7 +14,10 @@
 --     Handler lehnt ab -> sein code. Der Handler bekommt {person_id, params} und loest die Rolle SELBST auf.
 --   view.banners setzt immer der Dispatcher: die Startseite (erster Bildschirm der Navigation, auch beim Einzelabruf =
 --     Tab zurueck) bekommt die eingesammelten Banner, jede andere Seite []; Banner der vollen Handler-View zaehlen nie.
---   ui = agent.fn_ui_texts_for fuer die Person mit allen Keys der Antwort + den Shell-Keys (core.app.*, core.fmt.*).
+--   ui = agent.fn_ui_texts_for fuer die Person mit allen Keys der Antwort + den Shell-Keys (core.app.*, core.fmt.*)
+--     + date_short = {from, to}: Datums-Kurzform der Mini-App (Mini-App UX 2026-10-30): ein Datum in [heute - 3 Monate,
+--     heute + 9 Monate) zeigt der Renderer ohne Jahr; heute = core.fn_today (Haushalts-Zeitzone, nicht die Geraeteuhr),
+--     asymmetrisch, damit kein „15.11." zwei Jahre meinen kann. Chat/HITL/Cron setzen es nie (dort immer mit Jahr).
 --   INVOKER unter der Host-Credential (Muster core.fn_dispatch_callback); handler_fn ist installer-geschrieben und per
 --   CHECK schema-qualifiziert, nie Caller-Input.
 --   p: Request-Body als Text
@@ -41,6 +44,9 @@ DECLARE
     v_first  jsonb;
     v_prev   record;
     v_home   boolean;
+    v_short  jsonb := jsonb_build_object('date_short', jsonb_build_object(
+                          'from', to_char(core.fn_today() - interval '3 months', 'YYYY-MM-DD'),
+                          'to', to_char(core.fn_today() + interval '9 months', 'YYYY-MM-DD')));
     v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing',
                                      'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes',
                                      'core.fmt.no', 'core.fmt.removed']);
@@ -100,7 +106,7 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'screens', v_nav)
             || CASE WHEN v_first IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('first', v_first) END
             || jsonb_build_object('ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell,
-                                                                                  'doc', jsonb_build_array(v_nav, v_first))));
+                                                                                  'doc', jsonb_build_array(v_nav, v_first))) || v_short);
     END IF;
 
     SELECT s.screen, s.package, s.handler_fn INTO v_reg FROM core.app_screens s WHERE s.screen = v_screen;
@@ -145,7 +151,7 @@ BEGIN
     v_res := v_res || jsonb_build_object('banners',
         CASE WHEN v_home THEN core.fn_app_nav(v_pid)->'banners' ELSE '[]'::jsonb END);
     RETURN jsonb_build_object('ok', true, 'view', v_res,
-        'ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell, 'doc', v_res)));
+        'ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell, 'doc', v_res)) || v_short);
   EXCEPTION WHEN OTHERS THEN
     BEGIN
         RETURN core.fn_app_refusal('error', v_chat);

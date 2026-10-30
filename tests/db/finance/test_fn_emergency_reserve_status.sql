@@ -159,12 +159,15 @@ BEGIN
               WHERE a->>'kind' = 'savings_goal_reached' AND a->>'label' = '__ers_reise__') THEN
     RAISE EXCEPTION 'FAIL [5a] savings_goal_reached fuer die Notreserve'; END IF;
   v := finance.fn_app_screen_goals(jsonb_build_object('person_id', '__ers_owner__', 'params', '{}'::jsonb));
-  IF v->'sections'->0->'title' <> core.fn_ui_tpl('finance.app.goals.section_emergency')
+  IF v->'sections'->0->'title' <> core.fn_ui_tpl('finance.app.goals.section_reserves')
      OR v->'sections'->0->'items'->0->>'label' <> '__ers_reise__'
+     -- vollstaendig = erreicht -> kein Balken; Hero zaehlt die gedeckte Notreserve mit
+     OR (v->'sections'->0->'items'->0->'pill'->>'state' = 'ok' AND jsonb_typeof(v->'sections'->0->'items'->0->'progress') <> 'null')
+     OR (v->'hero'->'value'->>'value')::numeric < (finance.fn_emergency_reserve_status()->>'covered_eur')::numeric
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->1->'items') i WHERE i->>'label' = '__ers_reise__') THEN
-    RAISE EXCEPTION 'FAIL [5b] Notreserve-Abschnitt zuerst, nicht in der Ziel-Liste: %', v->'sections'; END IF;
+    RAISE EXCEPTION 'FAIL [5b] Notreserve zuerst im Abschnitt Ruecklagen, nicht in der Ziel-Liste, im Hero: %', v; END IF;
   v := finance.fn_app_screen_goals(jsonb_build_object('person_id', '__ers_kid__', 'params', '{}'::jsonb));
-  IF v::text LIKE '%section_emergency%' OR v::text LIKE '%__ers_reise__%' THEN
+  IF v::text LIKE '%emergency_sub%' OR v::text LIKE '%__ers_reise__%' THEN
     RAISE EXCEPTION 'FAIL [5c] Kind sieht die Notreserve: %', v; END IF;
   v := finance.fn_app_screen_goals(jsonb_build_object('person_id', '__ers_kid__', 'params', '{"probe":true}'::jsonb));
   IF v::text LIKE '%banner_emergency%' THEN RAISE EXCEPTION 'FAIL [5d] Kind-Banner zur Notreserve: %', v; END IF;

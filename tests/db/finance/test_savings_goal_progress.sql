@@ -183,4 +183,38 @@ BEGIN
   RAISE NOTICE 'PASS [H: Hand-Zuordnung zaehlt zum Stand, nicht zum Spartempo; negative Zuordnung kein Tempo]';
 END $$;
 
+-- (I) behind_amount (Mini-App UX 2026-10-30): Soll-Stand heute minus Gespartes in EUR, >= 0, aus den UNGERUNDETEN
+--     Termen von pace_drift_pp; NULL ohne Messbarkeit oder bei Ziel-Anteil ohne Wechselkurs (sonst zu hoch).
+--     Ziel 2000, 180 von 360 Tagen vergangen, 600 gespart -> Soll 1000 -> behind 400; vorne -> 0.
+DO $$
+DECLARE v_giro int; v_chf int; v_g int; v_g2 int; v_g3 int;
+BEGIN
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2) ON CONFLICT (code) DO NOTHING;
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF' OR base_currency = 'CHF';
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sgp_i_giro__', 'cash', 'EUR', 'active') RETURNING id INTO v_giro;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sgp_i_chf__', 'cash', 'CHF', 'active') RETURNING id INTO v_chf;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__sgp_i_behind__', 2000, current_date + 180, 'active', (current_date - 180)::timestamptz) RETURNING id INTO v_g;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_giro, 600, current_date - 10, 'transfer', v_g, gen_random_uuid());
+  IF (SELECT behind_amount FROM finance.savings_goal_progress WHERE id = v_g) IS DISTINCT FROM 400.00 THEN
+    RAISE EXCEPTION 'FAIL [I behind 400]: got %', (SELECT behind_amount FROM finance.savings_goal_progress WHERE id = v_g); END IF;
+  -- Zusammenspiel mit der Ampel: hinter Plan => Betrag > 0
+  IF finance.fn_savings_goal_pace(v_g) = 'behind' AND (SELECT behind_amount FROM finance.savings_goal_progress WHERE id = v_g) <= 0 THEN
+    RAISE EXCEPTION 'FAIL [I behind => Betrag]'; END IF;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__sgp_i_ahead__', 2000, current_date + 180, 'active', (current_date - 180)::timestamptz) RETURNING id INTO v_g2;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_giro, 1500, current_date - 10, 'transfer', v_g2, gen_random_uuid());
+  IF (SELECT behind_amount FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [I vorne -> 0]: got %', (SELECT behind_amount FROM finance.savings_goal_progress WHERE id = v_g2); END IF;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__sgp_i_chf_goal__', 2000, current_date + 180, 'active', (current_date - 180)::timestamptz) RETURNING id INTO v_g3;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_chf, 100, current_date - 10, 'transfer', v_g3, gen_random_uuid());
+  IF (SELECT behind_amount FROM finance.savings_goal_progress WHERE id = v_g3) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [I fx-Luecke -> NULL]'; END IF;
+  RAISE NOTICE 'PASS [I: behind_amount 400 / 0 / NULL bei fx-Luecke]';
+END $$;
+
 ROLLBACK;

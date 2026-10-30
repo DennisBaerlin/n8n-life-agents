@@ -642,6 +642,25 @@ BEGIN
     RAISE EXCEPTION 'FAIL [S3]: reserve_coverage_depot trotz on-pace (laufende Rate schliesst die Lücke) -> Smart-Unterdrückung griff nicht'; END IF;
   RAISE NOTICE 'PASS [S3: identischer breach, aber laufende Rate >= Nachhol-Rate -> unterdrückt (laufende != observed)]';
 
+  -- ---------- (S3b) Kursdelle (Mini-App UX 2026-10-30): Marktwert 1000 gegen Reserve 1010 = 1 %% < 10 %% ----------
+  -- dieselbe Regel wie die App (fn_depot_cover_state = dip) -> kein Alert, auch wenn das Ziel hinter Plan ist
+  DECLARE v_pd int; v_gd int; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__s3_depot_dip__','stocks_depot','EUR','active', v_fund) RETURNING id INTO v_pd;
+    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency, asset_class)
+    VALUES (v_pd,'S300000009','S3D','S3 Delle ETF', 10, 90, 'EUR', 'sp500');
+    INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('S3D', 100, 'EUR', current_date);
+    INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__s3_dip_goal__', 10000, v_td, 'active', v_old) RETURNING id INTO v_gd;
+    INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_gd, v_pd, 1010, 'manual');
+    r := finance.fn_advisor_review('finance');
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+               WHERE a->>'metric_key' = 'depot_reserve_coverage:' || v_pd) THEN
+      RAISE EXCEPTION 'FAIL [S3b]: Kursdelle 1 %% darf keinen Deckungs-Alert ausloesen'; END IF;
+    UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = v_gd;
+  END;
+  RAISE NOTICE 'PASS [S3b: Kursdelle unter der Schwelle -> kein Deckungs-Alert (Regel fn_depot_cover_state)]';
+
   -- ---------- (S4) Fremdwaehrungs-Caveat ----------
   PERFORM finance.fn_ensure_currency('GBP');   -- non-EUR-Code registrieren (FK currencies)
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)

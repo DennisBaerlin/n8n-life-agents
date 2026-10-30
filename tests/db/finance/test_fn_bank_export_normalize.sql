@@ -87,7 +87,8 @@ BEGIN
     END IF;
     IF jsonb_array_length(v_res->'unknown_rows') <> 3
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'unknown_rows') u WHERE (u->>'row_no')::int = 9
-                      AND u->>'type' = 'SOMETHING_NEW' AND (u->>'cash_amount')::numeric = -3.33) THEN
+                      AND u->>'type' = 'SOMETHING_NEW' AND (u->>'cash_amount')::numeric = -3.33
+                      AND u->>'name' = 'Neu') THEN   -- ohne Wertpapiername faellt der Name auf den Verwendungszweck zurueck
         RAISE EXCEPTION 'FAIL [N10 unknown_rows]: %', v_res->'unknown_rows';
     END IF;
     SELECT r INTO v_r FROM jsonb_array_elements(v_res->'rows') r WHERE (r->>'row_no')::int = 10;
@@ -133,6 +134,12 @@ BEGIN
                  jsonb_build_array(v_hdr, jsonb_set(v_rows->0, '{10}', '"1,234.50"'))));
     IF v_res->>'code' IS DISTINCT FROM 'export_invalid' OR (v_res->>'row_no')::int <> 2 THEN
         RAISE EXCEPTION 'FAIL [N16 unlesbare Zahl]: %', v_res;
+    END IF;
+    -- NaN ist fuer pg numeric gueltig, aber kein Betrag (wuerde jede Summe vergiften)
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows',
+                 jsonb_build_array(v_hdr, jsonb_set(v_rows->0, '{10}', '"NaN"'))));
+    IF v_res->>'code' IS DISTINCT FROM 'export_invalid' OR (v_res->>'row_no')::int <> 2 THEN
+        RAISE EXCEPTION 'FAIL [N16b NaN]: %', v_res;
     END IF;
     RAISE NOTICE 'PASS [N15/N16 Ablehnungen]';
 

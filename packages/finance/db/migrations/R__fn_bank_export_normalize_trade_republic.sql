@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_bank_export_normalize_trade_republic (READ, IMMUTABLE) -- Profil trade_republic_v1 des Bank-Import-Moduls
 --   Fester Leser in Code, kein LLM (die Datei geht nicht an Anthropic). Aufruf NUR ueber den Dispatcher
---   fn_bank_export_normalize (erkennt Profil + Kopfzeile): Eingabe {header:[text], rows:[[text]] (Zeilen nach der
---   Kopfzeile), header_row_no}. Zuordnung nach Portfolio Performance TradeRepublicCSVExtractor: Datum = Spalte date (Buchungstag), sonst die
+--   fn_bank_export_normalize (erkennt Profil + Kopfzeile): Eingabe {columns (Spaltenname -> Index), rows:[[text]]
+--   (Zeilen nach der Kopfzeile), header_row_no}. Zuordnung nach Portfolio Performance TradeRepublicCSVExtractor: Datum = Spalte date (Buchungstag), sonst die
 --   ersten 10 Zeichen von datetime; cash_amount = amount + fee + tax (alle signiert, gerundet auf Cent) = Wirkung aufs
 --   Cashkonto; isin = symbol (bei asset_class CRYPTO NULL, symbol bleibt der Ticker).
 --   kind: buy/sell (TRADING BUY/SELL mit Stueck), dividend (DIVIDEND/DISTRIBUTION/DIVIDEND_EQUIVALENT_PAYMENT,
@@ -23,9 +23,8 @@
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_normalize_trade_republic(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
-    v_hdr     JSONB;
     v_hrow    INT := COALESCE((p->>'header_row_no')::int, 1);
-    v_idx     JSONB := '{}'::jsonb;
+    v_idx     JSONB;
     v_row     JSONB;
     v_n       INT;
     v_out     JSONB;
@@ -48,13 +47,10 @@ DECLARE
     v_col     TEXT;
     v_reason  TEXT;
 BEGIN
-    IF jsonb_typeof(p->'header') IS DISTINCT FROM 'array' OR jsonb_typeof(p->'rows') IS DISTINCT FROM 'array' THEN
+    IF jsonb_typeof(p->'columns') IS DISTINCT FROM 'object' OR jsonb_typeof(p->'rows') IS DISTINCT FROM 'array' THEN
         RETURN jsonb_build_object('ok', false, 'code', 'export_invalid', 'reason', 'The file is not a readable table.');
     END IF;
-    SELECT jsonb_agg(lower(btrim(h, E' \t\r\n"﻿')) ORDER BY o) INTO v_hdr
-    FROM jsonb_array_elements_text(p->'header') WITH ORDINALITY AS x(h, o);
-    SELECT jsonb_object_agg(h, o - 1) INTO v_idx
-    FROM (SELECT DISTINCT ON (h) h, o FROM jsonb_array_elements_text(v_hdr) WITH ORDINALITY AS x(h, o) ORDER BY h, o) s;
+    v_idx := p->'columns';
 
     FOR v_row, v_n IN SELECT e, (o)::int FROM jsonb_array_elements(p->'rows') WITH ORDINALITY AS x(e, o) LOOP
         -- komplett leere Zeile (Dateiende, Leerzeile) ueberspringen
@@ -65,9 +61,9 @@ BEGIN
             v_raw := NULLIF(btrim(v_row->>((v_idx->>v_col)::int)), '');
             IF v_raw IS NOT NULL THEN v_r := v_r || jsonb_build_object(v_col, v_raw); END IF;
         END LOOP;
-        -- Zahlen strikt (Punkt als Dezimaltrenner, keine Tausender): eine unlesbare Zahl bricht laut ab
+        -- Zahlen strikt (Punkt als Dezimaltrenner, keine Tausender, kein NaN/Infinity/Exponent): eine unlesbare Zahl bricht laut ab
         FOREACH v_col IN ARRAY ARRAY['amount', 'fee', 'tax', 'shares', 'price'] LOOP
-            IF v_r ? v_col AND NOT pg_input_is_valid(v_r->>v_col, 'numeric') THEN
+            IF v_r ? v_col AND v_r->>v_col !~ '^[+-]?[0-9]+(\.[0-9]+)?$' THEN
                 RETURN jsonb_build_object('ok', false, 'code', 'export_invalid', 'row_no', v_n + v_hrow,
                     'reason', 'Row ' || (v_n + v_hrow) || ': "' || v_col || '" is not a number (' || (v_r->>v_col) || ').');
             END IF;
@@ -144,7 +140,7 @@ BEGIN
     RETURN jsonb_build_object('ok', true, 'rows', v_out,
         'unknown_rows', (SELECT COALESCE(jsonb_agg(jsonb_build_object('row_no', r->'row_no', 'date', r->'date',
                              'category', r->'category', 'type', r->'type', 'cash_amount', r->'cash_amount',
-                             'name', COALESCE(r->'name', r->'purpose'), 'reason', r->'reason') ORDER BY (r->>'row_no')::int), '[]'::jsonb)
+                             'name', COALESCE(r->>'name', r->>'purpose'), 'reason', r->'reason') ORDER BY (r->>'row_no')::int), '[]'::jsonb)
                          FROM jsonb_array_elements(v_out) r WHERE r->>'kind' = 'unknown'),
         'account_types', (SELECT COALESCE(jsonb_agg(DISTINCT r->>'account_type'), '[]'::jsonb)
                           FROM jsonb_array_elements(v_out) r WHERE r->>'account_type' IS NOT NULL),

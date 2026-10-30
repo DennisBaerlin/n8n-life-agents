@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_bank_export_normalize_bondora (READ, IMMUTABLE) -- Profil bondora_go_grow_v1 des Bank-Import-Moduls
---   Fester Leser in Code, kein LLM. Aufruf NUR ueber den Dispatcher fn_bank_export_normalize: Eingabe {header,
---   rows (nach der Kopfzeile Date|Payment type|In|Out|Balance), preamble (Kopfblock davor), header_row_no}.
+--   Fester Leser in Code, kein LLM. Aufruf NUR ueber den Dispatcher fn_bank_export_normalize: Eingabe {columns
+--   (Spaltenname -> Index), rows (nach der Kopfzeile Date|Payment type|In|Out|Balance), preamble (Kopfblock davor), header_row_no}.
 --   Kopfblock (Bondora-Kontoauszug, Blatt "Data"): Labels Opening / Payments in / Payments out / Closing mit dem Wert
 --   in der naechsten nicht leeren Zelle rechts daneben, Zeitraum M/D/YYYY-M/D/YYYY (US-Format) -> statement
 --   (gedruckter Auszug, balance_source printed). Weitere Zellen (Inhabername) werden nie gelesen oder zurueckgegeben.
@@ -54,9 +54,7 @@ DECLARE
     v_rows    JSONB;
 BEGIN
     SELECT pr INTO v_prof FROM jsonb_array_elements(finance.fn_bank_export_profiles()) pr WHERE pr->>'key' = 'bondora_go_grow_v1';
-    SELECT jsonb_object_agg(h, o - 1) INTO v_idx
-    FROM (SELECT DISTINCT ON (lower(btrim(h, E' \t\r\n"﻿'))) lower(btrim(h, E' \t\r\n"﻿')) AS h, o   -- Strip-Menge wie der Dispatcher
-          FROM jsonb_array_elements_text(p->'header') WITH ORDINALITY AS x(h, o) ORDER BY lower(btrim(h, E' \t\r\n"﻿')), o) s;
+    v_idx := p->'columns';
 
     -- Kopfblock: Label -> naechste nicht leere Zelle rechts daneben; der Zeitraum steht als eigene Zelle
     FOR v_row IN SELECT r FROM jsonb_array_elements(COALESCE(p->'preamble', '[]'::jsonb)) r WHERE jsonb_typeof(r) = 'array' LOOP

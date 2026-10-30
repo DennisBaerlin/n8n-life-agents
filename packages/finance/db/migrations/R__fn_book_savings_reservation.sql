@@ -24,7 +24,8 @@
 --     + Depot: market_value (Depot-Marktwert EUR, NULL ohne Kurs), shortfall (Depot-Deckungsluecke, depot_reserve_status)
 --     + savings_goal_reached {current_amount, target_amount, note}, wenn eine Erhoehung das Ziel deckt (Event-Fold).
 --   Korrigierbar (kein RAISE -> kein Owner-Alert): amount NULL/<0 / Ziel nicht gefunden oder nicht aktiv / Konto nicht gefunden ODER
---     nicht zuordenbar (Kredit) / Depot fuer eine Instandhaltungsruecklage / delta=0 (no-op) / insufficient_free_balance
+--     nicht zuordenbar (Kredit) / Depot fuer eine Instandhaltungsruecklage / kein Geld-Konto fuer die Notreserve
+--     (fn_emergency_reserve_account_types) / delta=0 (no-op) / insufficient_free_balance
 --     -> {ok:false, reason}.
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_book_savings_reservation.sql
 -- ============================================================
@@ -80,9 +81,15 @@ BEGIN
     END IF;
     v_depot := v_atype IN ('stocks_depot', 'crypto_depot');
     -- Instandhaltungsruecklage (2026-10-27): nur saldo-basierte Konten (kein Kursrisiko, kein Glide-Path ohne Datum).
-    IF v_depot AND EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_goal AND real_estate_id IS NOT NULL) THEN
+    IF v_depot AND EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_goal AND kind = 'maintenance_reserve') THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Money of a maintenance reserve can only be earmarked on a cash/Tagesgeld, fixed-deposit or P2P account, not in a depot.');
+    END IF;
+    -- Notreserve (2026-10-30): nur Geld-Konten (sofort verfuegbar, einlagengesichert; fn_emergency_reserve_account_types).
+    IF NOT v_atype = ANY (finance.fn_emergency_reserve_account_types())
+       AND EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_goal AND kind = 'emergency_reserve') THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'Emergency reserve money can only be earmarked on a cash/Tagesgeld account (available at once, deposit-insured) - not on a fixed deposit, P2P or depot.');
     END IF;
 
     -- Absolut-rein -> delta-append. Aktueller Anteil (Ziel, Konto) inkl. getaggter Transfers: saldo-basiert nativ,

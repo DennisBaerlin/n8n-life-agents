@@ -75,10 +75,10 @@ BEGIN
   INSERT INTO finance.real_estate (name, current_value) VALUES ('__apgl_re2__', 200000) RETURNING id INTO v_re2;
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('__apgl_rp_res__', v_giro, v_pot, -50, 'month', current_date - 30, current_date - 30) RETURNING id INTO v_rp;
-  INSERT INTO finance.savings_goals (name, real_estate_id, recurring_payment_id) VALUES ('__apgl_res_a__', v_re1, v_rp);
-  INSERT INTO finance.savings_goals (name, real_estate_id) VALUES ('__apgl_res_b__', v_re2);
+  INSERT INTO finance.savings_goals (name, kind, real_estate_id, recurring_payment_id) VALUES ('__apgl_res_a__', 'maintenance_reserve', v_re1, v_rp);
+  INSERT INTO finance.savings_goals (name, kind, real_estate_id) VALUES ('__apgl_res_b__', 'maintenance_reserve', v_re2);
   INSERT INTO finance.real_estate (name, current_value, living_area_m2, year_built, status) VALUES ('__apgl_re3__', 1, 100, 1990, 'sold') RETURNING id INTO v_re3;
-  INSERT INTO finance.savings_goals (name, real_estate_id) VALUES ('__apgl_res_c__', v_re3);   -- verkauft: Empfehlung bekannt, aber keine Pill
+  INSERT INTO finance.savings_goals (name, kind, real_estate_id) VALUES ('__apgl_res_c__', 'maintenance_reserve', v_re3);   -- verkauft: Empfehlung bekannt, aber keine Pill
 
   -- ===== Sparplaene =====
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)

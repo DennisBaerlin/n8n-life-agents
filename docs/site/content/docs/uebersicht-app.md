@@ -38,6 +38,7 @@ Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeig
   - **pausiert:** die Sparrate oder der Sparplan des Ziels ist angehalten.
   - **nicht messbar:** die Sparrate geht ohne eigenes Sparkonto ab, dann lässt sich der Stand nicht verfolgen. Abhilfe: dem Ziel im Chat ein Sparkonto zuordnen.
 - **Für Ziele verplant:** jedes Konto und Depot, auf dem Geld für Sparziele liegt. Der Balken zeigt, welcher Anteil verplant ist, darunter steht, wie viel noch frei ist. „gedeckt“ heißt, der Kontostand reicht; „nicht gedeckt“ heißt, es ist weniger auf dem Konto, als für die Ziele zurückgelegt sein sollte; „nicht ermittelbar“ steht da, solange ein Kurs fehlt.
+- **Notreserve** (ganz oben, nur für Eltern sichtbar): wie viel deiner Notreserve gedeckt ist, „gedeckt von Ziel“, mit Balken und „vollständig“ oder „es fehlen …“. Aufgeklappt siehst du, wie das Ziel zustande kommt (feste Zahlungen und Kreditraten plus geschätzter Alltag je Monat, mal die gewünschten Monate) und auf welchen Konten wie viel liegt. Gezählt wird nur Geld auf Giro- und Tagesgeldkonten, und nur so viel, wie nach den anderen Sparzielen auf dem Konto wirklich da ist.
 - **Rücklagen:** etwa die Instandhaltungsrücklage für eine Immobilie, mit Stand, monatlicher Rate und der Empfehlung dazu („unter Empfehlung“ oder „ausreichend“). Aufgeklappt siehst du, wie die Empfehlung zustande kommt: Wohnfläche, Baujahr und Alter, der Satz je m² und Jahr nach der II. Berechnungsverordnung und daraus der Jahres- und Monatsbetrag.
 - **Sparpläne:** was jeder Plan im Monat ausmacht, darunter der Betrag je Ausführung und die nächste Ausführung. Neben der Überschrift steht die Summe aller laufenden Pläne. Aufgeklappt siehst du Wertpapier, Depot, Abbuchungskonto, für wen der Plan ist, das Sparziel, eine geplante Änderung und was die Position heute wert ist. Ein angehaltener Plan steht als „pausiert“ darunter. Neben jedem laufenden Plan steht, ob das Geld auf seinem Abbuchungskonto reicht:
   - **gedeckt:** in den nächsten zwei Jahren fällt das Konto nie unter null.
@@ -51,9 +52,18 @@ Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €
 
 ### Zahlungen
 
-- **Kommende Zahlungen:** alle Daueraufträge der nächsten 30 Tage mit Datum, Konto und Betrag, Abbuchungen mit Minus, Eingänge wie das Gehalt mit Plus. Bei einer Umbuchung zwischen zwei Konten steht das Zielkonto dabei. Oben steht die Summe dessen, was in dieser Zeit abgeht (ohne Umbuchungen zwischen eigenen Konten).
-- **Kontovorschau bis zum nächsten Geldeingang:** für jedes Konto, zu dem du schon einen Kontoauszug eingespielt hast (siehe [Monats-Check](monats-check.html)), der geschätzte Stand heute und der tiefste Stand bis zum nächsten Gehalt, mit Datum. Ein Beispiel: Steht beim Girokonto „Tiefster Stand 140 € am 27.11.“ und darunter **rot „unter Puffer“**, fällt das Konto vor dem nächsten Gehalt unter deinen Sicherheitspuffer (Standard 250 €). **Gelb „knapp“** heißt, der Stand bleibt zwar über dem Puffer, aber unter dem Doppelten davon. **Grün „reicht“** heißt alles gut.
-- Fehlt für ein Konto in Fremdwährung der Wechselkurs, steht dort grau „Kurs fehlt“ statt einer Ampel.
+Oben steht die Summe dessen, was in den nächsten 30 Tagen abgeht (ohne Umbuchungen zwischen eigenen Konten). Darunter hat **jedes Konto einen eigenen Abschnitt**, Konten mit Problemen zuerst.
+
+Für jedes Konto, zu dem du schon einen Kontoauszug eingespielt hast (siehe [Monats-Check](monats-check.html)), steht dort eine Rechnung bis zum tiefsten Stand vor dem nächsten Geldeingang. Jede Zeile kannst du nachrechnen, sie ergeben zusammen genau den tiefsten Stand:
+
+- **Stand am …:** der bestätigte Stand aus dem letzten Kontoauszug oder Abgleich (und, falls seitdem gebucht wurde, „Gebucht seit …“).
+- **Feste Abgänge / feste Eingänge bis …:** die Daueraufträge bis zum Tief. Antippen zeigt jede einzelne Zahlung mit Datum und Betrag.
+- **Alltagsausgaben (geschätzt):** Einkauf, Karte und Bargeld, geschätzt aus deinen Kontoauszügen, etwa „≈ 62 € pro Tag × 29 Tage“. Antippen zeigt den Wert je Auszug. Dein **erster** Kontoauszug zählt nicht mehr, sobald ein zweiter da ist: Er stammt meist aus der Zeit, bevor deine Daueraufträge erfasst waren, und würde Gehalt oder Überweisungen als „Alltag“ mitzählen. Gibt es erst einen Auszug, steht „vorläufig“ dabei.
+- **Tiefster Stand** mit Datum und Ampel: **rot „unter Puffer“**, **gelb „knapp“** (über dem Puffer, aber unter dem Doppelten), **grün „reicht“**. Fehlt für ein Konto in Fremdwährung der Wechselkurs, steht dort grau „Kurs fehlt“.
+- **Puffer:** wie viel mindestens auf dem Konto bleiben soll, mit dem Hinweis „Standard“ (250 €) oder „für dieses Konto festgelegt“. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“
+- **Nächster Geldeingang**, bei rotem Konto ein **Umbuchungs-Vorschlag**, und darunter **weitere Zahlungen** bis zum Ende der 30 Tage.
+
+Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem Hinweis „Keine Vorschau – für dieses Konto gibt es noch keinen Kontoauszug“.
 
 ### Kredite
 

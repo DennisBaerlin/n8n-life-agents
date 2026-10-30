@@ -1,12 +1,13 @@
 -- tests/db/finance/test_fn_advisor_review.sql
 -- WS2 (Core-Advisor-Engine): finance.fn_advisor_review — die paket-besessene Soll-Ist-Drift + der
 -- Quartals-Digest. WS2a-Stand = buchwert-immune Metriken (Sparziel-Pace, Notreserve, Staleness).
---   (1) Notreserve-Unterdeckung (Cash < target_eur) -> emergency_reserve-Alert
+--   (1) Notreserve-Unterdeckung (Ruecklage kind emergency_reserve, gedeckt < Ziel; seit 2026-10-30 statt Plan-Fakt)
+--       -> emergency_reserve-Alert
 --   (2) Sparziel hinter Pace (10% Ist vs ~50% erwartet) -> savings_pace-Alert
 --   (3) Plan ueberfaellig (_meta.last_confirmed_at alt) -> staleness-Alert
 --   (4) Digest traegt alle 12 Felder (Regressionsnetz: plan_version/armed/fired ueber DEFINER-Fenster)
 --       + den paket-gerenderten digest.text (Generik-Vertrag: der generische Cron sendet nur 'text')
---   (5) partial-tolerant: ohne emergency_reserve-Fakt KEIN emergency-Alert (kein Crash)
+--   (5) ohne aktive Notreserve KEIN emergency-Alert (kein Crash; die Luecke meldet fn_plan_gaps)
 BEGIN;
 
 -- ---------- Fixtures ----------
@@ -24,11 +25,12 @@ INSERT INTO finance.transactions (account_id, amount, transaction_date, category
 VALUES (910001, -1000, current_date - 31, 'transfer', NULL, gen_random_uuid()),       -- Abbuchung (Giro-Soll, untagged)
        (910001,  1000, current_date - 30, 'transfer', 910002, gen_random_uuid());     -- Reserve-Zufluss (markiert) -> progress 1000
 
--- Soll-Plan: Notreserve 20000 (Cash 1000 < 20000) + alter Stempel (Staleness)
+-- Notreserve 20000 als Ruecklage (das Cash ist schon vom Sparziel belegt -> gedeckt 0) + alter Plan-Stempel (Staleness)
+INSERT INTO finance.savings_goals (id, name, kind, target_amount, status)
+VALUES (910099, '__test_er__', 'emergency_reserve', 20000, 'active');
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
 VALUES ('financial_planning', 'test', NULL, 'lazy', 'x', 'agent', 'finance',
         jsonb_build_object('facts', jsonb_build_object(
-            'emergency_reserve', jsonb_build_object('target_eur', 20000),
             '_meta', jsonb_build_object('last_confirmed_at', '2023-01-01'))))
 ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata, managed_by = 'agent', package = 'finance';
 
@@ -110,13 +112,14 @@ BEGIN
     RAISE EXCEPTION 'FAIL [4c]: Digest-lines/Rohwerte (%)', v_dig; END IF;
   RAISE NOTICE 'PASS [4c: Alerts/Digest als tpl-Struktur mit typisierten Werten]';
 
-  -- (5) partial-tolerant: emergency_reserve-Fakt entfernen -> kein emergency-Alert, kein Crash
+  -- (5) ohne aktive Notreserve -> kein emergency-Alert, kein Crash
+  UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = 910099;
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('facts', jsonb_build_object(
       '_meta', jsonb_build_object('last_confirmed_at', to_char(current_date, 'YYYY-MM-DD'))))
   WHERE name = 'financial_planning';
   r := finance.fn_advisor_review('finance');
   SELECT count(*) INTO v_em FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'emergency_reserve';
-  IF v_em <> 0 THEN RAISE EXCEPTION 'FAIL [5]: emergency-Alert trotz fehlendem Fakt'; END IF;
+  IF v_em <> 0 THEN RAISE EXCEPTION 'FAIL [5]: emergency-Alert ohne aktive Notreserve'; END IF;
   RAISE NOTICE 'PASS [partial-tolerant: ohne Fakt kein Alert, kein Crash]';
 END $$;
 
@@ -808,7 +811,7 @@ UPDATE agent.core_contexts SET metadata = metadata - 'facts' WHERE name = 'finan
 
 DO $$
 DECLARE
-  r jsonb; v_cnt int; v_val numeric; v_inv numeric; v_nw numeric;
+  r jsonb; v_cnt int; v_val numeric; v_inv numeric; v_nw numeric; v_res jsonb;
   v_giro int; v_depot int; v_fd int; v_loan int; v_rp int; v_re int; v_goal int; v_pot int;
 BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__p3_giro__','cash','EUR','active') RETURNING id INTO v_giro;
@@ -999,17 +1002,20 @@ BEGIN
     RAISE EXCEPTION 'FAIL [G2]: Depot-Unterdeckung eines nicht messbaren Ziels fehlt (alerts=%)', r->'alerts'; END IF;
   RAISE NOTICE 'PASS [G2: nicht messbares Ziel gilt nie als on-pace -> Depot-Deckung meldet sich]';
 
-  -- ---------- (E1) Notreserve = freies Cash aus fn_liquidity_snapshot ----------
-  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,emergency_reserve}',
-      jsonb_build_object('target_eur', 99999999)) WHERE name = 'financial_planning';
+  -- ---------- (E1) Notreserve = zugeordnetes Geld (Ruecklage, 2026-10-30); fuer die Runway verfuegbar ----------
+  -- 3.000 auf dem Giro (10.000, frei) als Notreserve: Alert-Wert = gedeckt 3.000; das freie Cash der Runway bleibt
+  -- 10.000 (Notreserve zaehlt dort als verfuegbar), emergency_eur = 3.000.
+  INSERT INTO finance.savings_goals (name, kind, target_amount, status) VALUES ('__p3_er__', 'emergency_reserve', 99999999, 'active')
+    RETURNING id INTO v_goal;
+  v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_giro, 'amount', 3000));
   r := finance.fn_advisor_review('finance');
   SELECT (a->>'value')::numeric INTO v_val FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'emergency_reserve';
-  IF v_val IS DISTINCT FROM round((finance.fn_liquidity_snapshot()->>'cash_eur')::numeric, 2) THEN
-    RAISE EXCEPTION 'FAIL [E1]: Notreserve-Cash % <> freies Cash aus fn_liquidity_snapshot %', v_val, finance.fn_liquidity_snapshot()->>'cash_eur'; END IF;
-  -- Topf (10.000, voll reserviert) zaehlt nicht: freies Cash = Giro 10.000
-  IF v_val IS DISTINCT FROM 10000.00 THEN
-    RAISE EXCEPTION 'FAIL [E1]: freies Cash 10.000 erwartet (Giro; Sparziel-Topf reserviert), got %', v_val; END IF;
-  RAISE NOTICE 'PASS [E1: Notreserve liest das freie Cash aus fn_liquidity_snapshot]';
+  IF v_val IS DISTINCT FROM 3000.00 OR (finance.fn_emergency_reserve_status()->>'covered_eur')::numeric IS DISTINCT FROM 3000.00 THEN
+    RAISE EXCEPTION 'FAIL [E1]: Notreserve gedeckt 3000 erwartet, got % (res %)', v_val, v_res; END IF;
+  IF round((finance.fn_liquidity_snapshot()->>'cash_eur')::numeric, 2) IS DISTINCT FROM 10000.00
+     OR (finance.fn_liquidity_snapshot()->>'emergency_eur')::numeric IS DISTINCT FROM 3000.00 THEN
+    RAISE EXCEPTION 'FAIL [E1]: Runway-Cash 10.000 inkl. Notreserve + emergency_eur 3.000, got %', finance.fn_liquidity_snapshot(); END IF;
+  RAISE NOTICE 'PASS [E1: Notreserve = zugeordnetes Geld; Runway zaehlt es als verfuegbar]';
 END $$;
 
 ROLLBACK TO SAVEPOINT paket3;

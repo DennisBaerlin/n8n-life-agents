@@ -205,15 +205,24 @@ BEGIN
             || CASE WHEN array_length(v_phases,1) > 0 THEN ' — Phasen: ' || array_to_string(v_phases, '; ') ELSE '' END);
     END IF;
 
-    -- ---------- Notreserve-Ziel ----------
-    v_er := v_facts->'emergency_reserve';
-    IF jsonb_typeof(v_er) = 'object' THEN
-        IF v_er ? 'target_months' AND jsonb_typeof(v_er->'target_months') = 'number' THEN
-            v_lines := v_lines || ('Notreserve-Ziel: ' || (v_er->>'target_months') || ' Monatsausgaben');
-        ELSIF v_er ? 'target_eur' AND jsonb_typeof(v_er->'target_eur') = 'number' THEN
-            v_lines := v_lines || ('Notreserve-Ziel: ' || (v_er->>'target_eur') || ' €');
-        END IF;
-    END IF;
+    -- ---------- Notreserve (2026-10-30: Ruecklage, nicht mehr Plan-Fakt) ----------
+    -- Ziel, Basis und Deckung aus finance.fn_emergency_reserve_status (eine Adresse mit Review und App)
+    v_er := finance.fn_emergency_reserve_status();
+    IF (v_er->>'exists')::boolean THEN
+        -- englisch (LLM-Kontext, Sprachpolitik: Modell-Instruktion), Zahlen roh aus dem Status
+        v_lines := v_lines || (
+            'Emergency reserve "' || (v_er->>'name') || '": covered ' || (v_er->>'covered_eur') || ' EUR of '
+            || COALESCE((v_er->>'target_eur') || ' EUR', 'an undeterminable target')
+            || CASE WHEN v_er->>'target_kind' = 'months'
+                    THEN ' (target ' || (v_er->>'months') || ' months of expenses at ' || (v_er->'basis'->>'monthly_eur')
+                         || ' EUR: fixed ' || (v_er->'basis'->>'fixed_eur') || ' EUR + estimated everyday '
+                         || (v_er->'basis'->>'everyday_eur') || ' EUR)'
+                    ELSE ' (fixed amount)' END
+            || CASE WHEN jsonb_array_length(v_er->'accounts') > 0
+                    THEN '; lies on ' || (SELECT string_agg((a->>'name') || ' ' || (a->>'eur') || ' EUR', ', ')
+                                           FROM jsonb_array_elements(v_er->'accounts') a)
+                    ELSE '' END);
+    END IF;   -- keine Notreserve: meldet die Luecken-Zeile (fn_plan_gaps), nicht doppelt
 
     -- ---------- Renten (Renteninformation-Plan 2026-10-26) ----------
     -- Je aktiver Altersvorsorge die juengste Renteninformation aus finance.fn_pension_outlook (EINE Rechen-Adresse),

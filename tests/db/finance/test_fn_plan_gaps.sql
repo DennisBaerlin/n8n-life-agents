@@ -65,23 +65,23 @@ BEGIN
   IF v->'open_sections' <> '["emergency_reserve","debts_loans","retirement_pension","korea_crossborder"]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [Altlast skalar]: %', v; END IF;
 
-  -- ---------- (5) bestaetigt, aber Block fehlt bzw. ohne verwertbare Zahl ----------
+  -- ---------- (5) bestaetigt, aber Block fehlt; Notreserve-Sektion bestaetigt ohne angelegte Ruecklage (2026-10-30) ----------
   UPDATE agent.advisor_plans
-     SET interview_state = interview_state || '{"emergency_reserve":{"content":"x","data":{"emergency_reserve":{"note":"spaeter"}}}}'
+     SET interview_state = interview_state || '{"emergency_reserve":{"content":"x"}}'
    WHERE domain = 'finance' AND status = 'active';
-  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,emergency_reserve}', '{"note":"spaeter"}')
-   WHERE name = 'financial_planning';
   v := finance.fn_plan_gaps((SELECT c.metadata->'facts' FROM agent.core_contexts c WHERE c.name = 'financial_planning'));
   IF v->'missing_blocks' <> '[{"section":"emergency_reserve","block":"emergency_reserve"}]'::jsonb OR v->'open_sections' ? 'emergency_reserve' THEN
-    RAISE EXCEPTION 'FAIL [Block ohne Zahl]: %', v; END IF;
+    RAISE EXCEPTION 'FAIL [Notreserve nicht angelegt]: %', v; END IF;
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts}', (metadata->'facts') - 'glidepath')
    WHERE name = 'financial_planning';
   v := finance.fn_plan_gaps((SELECT c.metadata->'facts' FROM agent.core_contexts c WHERE c.name = 'financial_planning'));
   IF v->'missing_blocks' <> '[{"section":"emergency_reserve","block":"emergency_reserve"},{"section":"wealth_building","block":"glidepath"}]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [Block fehlt]: %', v; END IF;
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts}', (metadata->'facts')
-         || '{"emergency_reserve":{"target_months":6},"glidepath":{"start_age":54}}')
+         || '{"glidepath":{"start_age":54}}')
    WHERE name = 'financial_planning';
+  -- Notreserve als Ruecklage angelegt -> keine Luecke mehr
+  INSERT INTO finance.savings_goals (name, kind, target_months, status) VALUES ('__pg_er__', 'emergency_reserve', 6, 'active');
 
   -- ---------- (6) Draft-Sektion getrennt ausgewiesen (gespeichert, nur noch zu publizieren -> nicht zusaetzlich offen) ----------
   INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state)
@@ -116,6 +116,7 @@ BEGIN
 
   -- ---------- (10) leerer Sidecar + aktiver Plan -> NUR die Luecken-Zeile (keine Renten-/Fakten-Zeilen) ----------
   UPDATE agent.advisor_plans SET interview_state = '{}' WHERE domain = 'finance';
+  DELETE FROM finance.savings_goals WHERE name = '__pg_er__';   -- angelegte Notreserve haette eine eigene Fakten-Zeile
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('managed_by','agent','facts','{}'::jsonb)
    WHERE name = 'financial_planning';
   v_h := finance.fn_render_plan_facts('financial_planning');

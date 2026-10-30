@@ -79,6 +79,8 @@ DECLARE
     v_f         jsonb;
     v_fund      jsonb := '{}'::jsonb;
     v_fund_ban  jsonb := '[]'::jsonb;
+    v_es        jsonb;     -- finance.fn_emergency_reserve_status() (Notreserve, nur Haushalts-Sicht)
+    v_emerg     jsonb;     -- Abschnitts-Zeile Notreserve
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -129,12 +131,24 @@ BEGIN
         END IF;
     END LOOP;
 
+    -- Notreserve (2026-10-30): Ruecklage des HAUSHALTS -> nur fuer Haushalts-Betrachter (Zero-Trust); Rechnung allein in
+    -- finance.fn_emergency_reserve_status (Ziel, Basis, Deckung je Konto)
+    v_es := CASE WHEN v_hh THEN finance.fn_emergency_reserve_status() ELSE jsonb_build_object('exists', false) END;
+    IF v_probe AND (v_es->>'exists')::boolean AND v_es->>'state' = 'warn' THEN
+        v_fund_ban := jsonb_build_array(jsonb_build_object('state', 'warn', 'icon', 'alert',
+            'text', core.fn_ui_tpl('finance.app.goals.banner_emergency', jsonb_build_object(
+                        'covered', core.fn_ui_money((v_es->>'covered_eur')::numeric, 'EUR'),
+                        'target', core.fn_ui_money((v_es->>'target_eur')::numeric, 'EUR'))),
+            'target', jsonb_build_object('screen', 'goals', 'params', '{}'::jsonb))) || v_fund_ban;
+    END IF;
+
     -- probe (jeder App-Start): Ziele + Ampel fuer Banner, Ruecklagen/Sparplaene nur per EXISTS, keine Details
     IF v_probe THEN
         WITH g AS (
             SELECT sg.name, sg.target_date, sg.priority, sg.has_fx_gap, finance.fn_savings_goal_pace(sg.id) AS pace
               FROM finance.savings_goal_progress sg
              WHERE sg.status = 'active' AND sg.target_amount IS NOT NULL
+               AND sg.id NOT IN (SELECT e.id FROM finance.savings_goals e WHERE e.kind = 'emergency_reserve')
                AND (v_hh OR sg.beneficiary_person_id = v_pid)
         )
         SELECT jsonb_build_object('ok', true,
@@ -142,6 +156,7 @@ BEGIN
                             AND NOT EXISTS (SELECT 1 FROM finance.savings_goals sg
                                              WHERE sg.status = 'active' AND sg.real_estate_id IS NOT NULL
                                                AND (v_hh OR sg.beneficiary_person_id = v_pid))
+                            AND NOT COALESCE((v_es->>'exists')::boolean, false)
                             AND NOT EXISTS (SELECT 1 FROM finance.savings_plans s
                                               JOIN finance.accounts d ON d.id = s.depot_id
                                              WHERE v_hh OR (s.beneficiary_person_id = v_pid AND d.owner_person_id = v_pid))
@@ -172,6 +187,7 @@ BEGIN
                age(sg.target_date, current_date) AS left_age
           FROM finance.savings_goal_progress sg
          WHERE sg.status = 'active' AND sg.target_amount IS NOT NULL
+               AND sg.id NOT IN (SELECT e.id FROM finance.savings_goals e WHERE e.kind = 'emergency_reserve')
            AND (v_hh OR sg.beneficiary_person_id = v_pid)
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
@@ -500,6 +516,12 @@ BEGIN
                        'balance', core.fn_ui_money((v_fund -> m.account_id::text ->> 'balance')::numeric, m.src_cur),
                        'in', core.fn_ui_money((v_fund -> m.account_id::text ->> 'monthly_in')::numeric, m.src_cur),
                        'out', core.fn_ui_money(-(v_fund -> m.account_id::text ->> 'monthly_out')::numeric, m.src_cur))) END))
+                   ELSE '[]'::jsonb END
+                   -- Transparenz 2026-10-30: die Deckung rechnet mit der Netto-Alltags-Schaetzung aus den Kontoauszuegen
+                   || CASE WHEN v_fund -> m.account_id::text ->> 'everyday' = 'estimated' THEN jsonb_build_array(jsonb_build_object(
+                   'label', core.fn_ui_tpl('finance.app.goals.d_fund_everyday'),
+                   'value', core.fn_ui_tpl('finance.app.goals.d_fund_everyday_value', jsonb_build_object('per_day',
+                       core.fn_ui_money(abs((v_fund -> m.account_id::text ->> 'everyday_per_day')::numeric), m.src_cur)))))
                    ELSE '[]'::jsonb END)
              ORDER BY finance.fn_to_eur(m.monthly, m.src_cur) DESC NULLS LAST, m.src_name), '[]'::jsonb)
       INTO v_orders
@@ -507,7 +529,55 @@ BEGIN
       JOIN a ON a.account_id = m.account_id;
 
     -- Sparziele immer (mit Leer-Text), alles Weitere nur mit Eintraegen
-    v_sections := jsonb_build_array(jsonb_build_object(
+    -- 0 Notreserve (2026-10-30, nur Haushalt): gedeckt von Ziel, aufklappbar: Ziel-Herleitung + Geld je Konto
+    IF (v_es->>'exists')::boolean THEN
+        v_emerg := jsonb_build_object(
+            'label', v_es->>'name',
+            'sub', CASE WHEN v_es->>'target_kind' = 'months' AND v_es->'target_eur' <> 'null'::jsonb
+                        THEN core.fn_ui_tpl('finance.app.goals.emergency_sub_months', jsonb_build_object(
+                                 'target', core.fn_ui_money((v_es->>'target_eur')::numeric, 'EUR'),
+                                 'months', core.fn_ui_num((v_es->>'months')::numeric, 1)))
+                        WHEN v_es->>'target_kind' = 'months'
+                        THEN core.fn_ui_tpl('finance.app.goals.emergency_sub_unknown', jsonb_build_object(
+                                 'months', core.fn_ui_num((v_es->>'months')::numeric, 1)))
+                        ELSE core.fn_ui_tpl('finance.app.goals.emergency_sub_amount', jsonb_build_object(
+                                 'target', core.fn_ui_money((v_es->>'target_eur')::numeric, 'EUR'))) END,
+            'value', core.fn_ui_money((v_es->>'covered_eur')::numeric, 'EUR'),
+            'gap', (v_es->>'has_fx_gap')::boolean,
+            'pill', CASE v_es->>'state'
+                        WHEN 'ok' THEN jsonb_build_object('state', 'ok', 'icon', 'check',
+                                          'text', core.fn_ui_tpl('finance.app.goals.emergency_ok'))
+                        WHEN 'warn' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
+                                          'text', core.fn_ui_tpl('finance.app.goals.emergency_short', jsonb_build_object(
+                                              'gap', core.fn_ui_money((v_es->>'gap_eur')::numeric, 'EUR'))))
+                        ELSE jsonb_build_object('state', 'neutral', 'icon', 'info',
+                                          'text', core.fn_ui_tpl('finance.app.goals.emergency_unknown')) END,
+            'progress', CASE WHEN (v_es->>'target_eur')::numeric > 0 THEN jsonb_build_object(
+                            'pct', round(LEAST(100 * (v_es->>'covered_eur')::numeric / (v_es->>'target_eur')::numeric, 100), 1),
+                            'state', CASE WHEN v_es->>'state' = 'ok' THEN 'ok' ELSE 'warn' END) END,
+            'target', NULL,
+            'details', CASE WHEN v_es->>'target_kind' = 'months' THEN jsonb_build_array(
+                           jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_emergency_fixed'),
+                                              'value', core.fn_ui_money((v_es->'basis'->>'fixed_eur')::numeric, 'EUR')),
+                           jsonb_build_object('label', core.fn_ui_tpl(CASE WHEN (v_es->'basis'->>'everyday_provisional')::boolean
+                                                                           THEN 'finance.app.goals.d_emergency_everyday_provisional'
+                                                                           ELSE 'finance.app.goals.d_emergency_everyday' END),
+                                              'value', core.fn_ui_money((v_es->'basis'->>'everyday_eur')::numeric, 'EUR')),
+                           jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_emergency_monthly',
+                                                  jsonb_build_object('months', core.fn_ui_num((v_es->>'months')::numeric, 1))),
+                                              'value', core.fn_ui_money((v_es->'basis'->>'monthly_eur')::numeric, 'EUR')))
+                           ELSE '[]'::jsonb END
+                       || COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                              'label', core.fn_ui_tpl('finance.app.goals.d_on_account', jsonb_build_object('account', a->>'name')),
+                              'value', core.fn_ui_money((a->>'eur')::numeric, 'EUR')))
+                            FROM jsonb_array_elements(v_es->'accounts') a), '[]'::jsonb));
+    END IF;
+
+    v_sections := CASE WHEN v_emerg IS NOT NULL THEN jsonb_build_array(jsonb_build_object(
+        'title', core.fn_ui_tpl('finance.app.goals.section_emergency'),
+        'value', NULL,
+        'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', jsonb_build_array(v_emerg)))
+        ELSE '[]'::jsonb END || jsonb_build_array(jsonb_build_object(
         'title', core.fn_ui_tpl('finance.app.goals.section_goals'),
         'value', NULL,
         'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', v_goals));

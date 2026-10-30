@@ -8,10 +8,12 @@ function Build-SetAccount {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('account_name','new_name','bank','account_number','remove_account_number','owner_person','settlement_account',
                            'notes','fixed_deposit_maturity_date','fixed_deposit_auto_renew',
-                           'ownership','has_transmortal_poa')  # WS-0b estate
+                           'ownership','has_transmortal_poa',  # WS-0b estate
+                           'min_balance','min_balance_default')  # Puffer je Konto (Transparenz 2026-10-30)
 
+    # currency: Waehrung des Puffers auf der Karte (min_balance ist in Kontowaehrung)
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE);" `
+        "=SELECT r.id, r.hit_count, r.candidates, a.currency FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE) r LEFT JOIN finance.accounts a ON a.id = r.id;" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
     $ifAcct = Build-If 'Account unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
@@ -56,12 +58,15 @@ function Build-SetAccount {
             fixed_deposit_auto_renew    = '$(''Start'').item.json.fixed_deposit_auto_renew'
             ownership                   = '$(''Start'').item.json.ownership'              # WS-0b estate
             has_transmortal_poa         = '$(''Start'').item.json.has_transmortal_poa'
+            min_balance                 = '$(''Start'').item.json.min_balance'            # Puffer je Konto
+            min_balance_default         = '$(''Start'').item.json.min_balance_default'
         })
 
     # HITL: nur die tatsaechlich gelieferten Felder anzeigen (-If je Zeile). Strukturiertes Summary (Textkatalog).
-    # Keine Geldbetraege in dieser Summary (nur Stammdaten).
+    # Einziger Geldbetrag: der Puffer (min_balance) in Kontowaehrung.
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
+    $A = "`$('Resolve Account').item.json"
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.set_account' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.account'            "$S.account_name")
         (New-HitlLine 'finance.label.new_name'           "$S.new_name" -If "$S.new_name")
@@ -75,6 +80,8 @@ function Build-SetAccount {
         (New-HitlLine 'finance.label.ownership'          "$S.ownership" -Kind enum -Enum 'finance.enum.ownership' -If "$S.ownership")
         (New-HitlLine 'finance.label.transmortal_poa'    "(['true','t','yes','y','on','1'].indexOf(String($S.has_transmortal_poa).toLowerCase().trim()) >= 0)" -Kind bool -If "$S.has_transmortal_poa")
         (New-HitlLine 'core.label.note'                  "$S.notes" -If "$S.notes")
+        (New-HitlLine 'finance.label.min_balance'        "Number($S.min_balance)" -Kind money -Currency "$A.currency" -If "$S.min_balance")
+        (New-HitlNote -Key 'finance.note.min_balance_default' -If "(['true','t','yes','y','on','1'].indexOf(String($S.min_balance_default || '').toLowerCase().trim()) >= 0)")
     )
 
     $gateId = $GateId
@@ -98,7 +105,7 @@ function Build-SetAccount {
 
     $stickyOv = Build-Sticky 'Doc set_account' @(2200, -220) `
         'fn_set_account: partielles Stammdaten-UPDATE' `
-        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE); remove_account_number=true entfernt die Kontonummer (Korrektur einer falsch zugeordneten bzw. gelernten IBAN, Karten-Hinweis). Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Kontonummer schon vergeben, Nummer setzen und entfernen zugleich, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
+        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE); remove_account_number=true entfernt die Kontonummer (Korrektur einer falsch zugeordneten bzw. gelernten IBAN, Karten-Hinweis). Puffer je Konto (min_balance, Kontowährung, nur Geld-Konten; min_balance_default=true = zurück auf den Haushalts-Standard core.config coverage_buffer_eur) speist die Kontovorschau fn_account_outlook; CHECK finance_accounts_min_balance_chk ist der Backstop. Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Puffer negativ / kein Geld-Konto / Puffer setzen und zurücksetzen zugleich, Kontonummer schon vergeben, Nummer setzen und entfernen zugleich, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
 
     $nodes = @($trig, $resAcct, $ifAcct, $errAcct, $resPerson, $ifPersonBad, $errPerson, $resSettle, $ifSettleBad, $errSettle) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ret, $stickyDry, $stickyOv)

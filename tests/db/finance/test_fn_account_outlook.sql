@@ -58,6 +58,11 @@ BEGIN
   v_alerts := finance.fn_advisor_review('finance')->'alerts';
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'account_coverage:' || v_giro) THEN
     RAISE EXCEPTION 'FAIL advisor account_coverage fehlt: %', v_alerts; END IF;
+  -- Transparenz 2026-10-30: die Warnung nennt die Alltags-Schaetzung je Tag und dass der Puffer der Standard ist
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'account_coverage:' || v_giro
+                   AND a->'msg'->0->'params'->'per_day' = core.fn_ui_money(10, 'EUR')
+                   AND a->'msg' @> jsonb_build_array(core.fn_ui_tpl('finance.advisor.account_coverage_default_buffer'))) THEN
+    RAISE EXCEPTION 'FAIL advisor account_coverage nennt Alltag je Tag + Standard-Puffer: %', v_alerts; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'account_coverage:' || v_tg) THEN
     RAISE EXCEPTION 'FAIL advisor: Konto ohne Auszug darf nicht gewarnt werden'; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'recurring_missing:' || v_handy) THEN
@@ -169,6 +174,52 @@ BEGIN
   IF v_res->'suggestion'->>'from_account' = '__t_ol_kid__' THEN
     RAISE EXCEPTION 'FAIL outlook: einziges Quellkonto ist ein Kinderkonto, trotzdem vorgeschlagen: %', v_res; END IF;
   RAISE NOTICE 'PASS outlook: Umbuchungs-Vorschlag nie von einem Kinderkonto';
+END $$;
+
+-- Transparenz 2026-10-30: Bruecke bis zum Tief summiert EXAKT auf min_projected (start = Saldo zum Vortag von d0, inkl.
+-- einer rueckdatierten Buchung vor dem Abgleich -> Korrektur gegen den bestaetigten Stand), Puffer je Konto
+-- (accounts.min_balance) vor dem Standard, buffer_source, provisional, naechster Geldeingang mit Betrag. Werte erfunden.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_a INT; v_res JSONB; v_b JSONB;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__t_ol_bridge__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_a, 1000, t - 40, 'other');
+  PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', v_a, 'confirmed_balance', 1000, 'reconciliation_date', (t - 5)::text));
+  -- rueckdatiert (vor dem Abgleich, nachtraeglich erfasst) und eine Buchung nach dem Abgleich
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_a, 30, t - 10, 'other'),
+                                                                                         (v_a, -50, t - 2, 'other');
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_a, t - 64, t - 35, 1600, 1300, 'EUR', 5, 0, -900, 0, NULL),
+         (v_a, t - 34, t - 5, 1300, 1000, 'EUR', 5, 0, -300, 0, t - 35);
+  PERFORM finance.fn_add_recurring_payment(v_a, -800, 'Miete', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 3, t + 3, NULL, NULL, NULL);
+  PERFORM finance.fn_add_recurring_payment(v_a, 2000, 'Gehalt', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 10, t + 10, NULL, NULL, NULL);
+
+  v_res := finance.fn_account_outlook(v_a);
+  v_b := v_res->'bridge';
+  -- d0 = t-4; Basis 1030 (1000 + rueckdatierte 30); booked -50; Miete -800; Alltag 10/Tag x 14 Tage (t-4..t+9) = -140
+  IF (v_b->>'base')::numeric IS DISTINCT FROM 1030 OR (v_b->>'confirmed')::numeric IS DISTINCT FROM 1000
+     OR (v_b->>'booked')::numeric IS DISTINCT FROM -50 OR (v_b->>'out')::numeric IS DISTINCT FROM -800
+     OR (v_b->>'in')::numeric IS DISTINCT FROM 0 OR (v_b->>'everyday')::numeric IS DISTINCT FROM -140
+     OR (v_b->>'days')::int IS DISTINCT FROM 14 OR (v_b->>'from')::date IS DISTINCT FROM t - 4
+     OR (v_res->>'min_projected')::numeric IS DISTINCT FROM 40 OR (v_res->>'min_date')::date IS DISTINCT FROM t + 9 THEN
+    RAISE EXCEPTION 'FAIL [B1] Bruecke: %', v_res; END IF;
+  IF (v_b->>'base')::numeric + (v_b->>'booked')::numeric + (v_b->>'out')::numeric + (v_b->>'in')::numeric
+     + (v_b->>'everyday')::numeric <> (v_res->>'min_projected')::numeric THEN
+    RAISE EXCEPTION 'FAIL [B2] Bruecke summiert nicht exakt auf das Tief: %', v_res; END IF;
+  IF v_res->>'buffer_source' IS DISTINCT FROM 'default' OR (v_res->>'provisional')::boolean IS DISTINCT FROM false
+     OR (v_res->>'next_income_amount')::numeric IS DISTINCT FROM 2000 THEN
+    RAISE EXCEPTION 'FAIL [B3] buffer_source default / provisional false / Geldeingang 2000: %', v_res; END IF;
+
+  -- eigener Puffer fuer dieses Konto: 30 statt 250 -> kein Fehlbetrag mehr
+  UPDATE finance.accounts SET min_balance = 30 WHERE id = v_a;
+  v_res := finance.fn_account_outlook(v_a);
+  IF (v_res->>'buffer')::numeric IS DISTINCT FROM 30 OR v_res->>'buffer_source' IS DISTINCT FROM 'account'
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [B4] Puffer je Konto: %', v_res; END IF;
+  RAISE NOTICE 'PASS outlook Bruecke: exakt bis zum Tief inkl. rueckdatierter Buchung; Puffer je Konto';
 END $$;
 
 ROLLBACK;

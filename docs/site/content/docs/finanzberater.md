@@ -36,15 +36,21 @@ Der Berater rechnet deinen Monat in klar getrennten Teilen:
 
 Ein ETF-Sparplan ist damit keine Ausgabe mehr.
 
-Diese Rechnung kennt nur deine regelmäßigen Zahlungen. Einkäufe, Kartenzahlungen und Bargeld stecken nicht darin. „Frei" heißt also nicht „bleibt am Monatsende übrig". Bei Fragen wie „Kann ich mir das Auto leisten?" sagt der Berater das dazu. Hast du Kontoauszüge eingespielt, nennt er die daraus geschätzten Alltagsausgaben je Konto; ohne Auszug sagt er, dass diese Zahl fehlt.
+Die Monatsübersicht selbst kennt nur deine regelmäßigen Zahlungen. Für „was frei bleibt“ rechnet der Berater deshalb die Alltagsausgaben (Einkauf, Karte, Bargeld) dazu, die aus deinen Kontoauszügen geschätzt werden, und sagt bei jeder Warnung, womit er gerechnet hat. Ohne Kontoauszug sagt er, dass diese Zahl noch fehlt und in Wirklichkeit weniger frei bleibt.
 
 Er meldet sich auf zwei Arten:
-- **Warnung vor einem Defizit:** nur dann, wenn Konsum und Kreditraten deine Einnahmen übersteigen.
-- **Eigener Hinweis:** wenn deine Sparraten höher sind als das, was frei bleibt. Dann leert sich dein Girokonto wirklich.
+- **Warnung vor einem Defizit:** wenn feste Zahlungen, Kreditraten und geschätzter Alltag deine Einnahmen übersteigen.
+- **Eigener Hinweis:** wenn deine Sparraten höher sind als das, was danach frei bleibt. Dann leert sich dein Girokonto wirklich.
 
-Auch die Notgroschen-Prüfung rechnet ehrlich:
-- Sie geht von den Pflichtausgaben aus (Konsum und Kreditraten), Sparraten zählen nicht. Auch hier fehlen die Alltagsausgaben; legst du fest, wie viele Monate der Notgroschen reichen soll, weist der Berater darauf hin.
-- Als Notgroschen zählt nur freies Geld. Geld auf Kinderkonten und für Sparziele zurückgelegtes Geld zählen nicht mit.
+## Notreserve
+
+Deine Notreserve ist eine eigene Rücklage, keine Zahl im Finanzplan:
+- **Ziel:** ein fester Betrag oder eine Zahl von Monatsausgaben, etwa „3 Monatsausgaben“. Die Monatsausgaben sind feste Zahlungen und Kreditraten (ohne Sparraten) plus der geschätzte Alltag; das Ziel passt sich an, wenn sich deine Ausgaben ändern.
+- **Wo das Geld liegt:** Du ordnest Beträge auf einem oder mehreren Giro- oder Tagesgeldkonten zu, ohne Geld zu bewegen. P2P, Festgeld und Depots zählen nicht, weil das Geld dort nicht sofort und nicht einlagengesichert verfügbar ist.
+- **Anlegen:** beim Onboarding im Schritt „Notreserve“ oder jederzeit im Chat („Leg meine Notreserve an: drei Monatsausgaben, 6.000 € liegen auf dem Tagesgeld“). Hast du schon ein Sparziel für den Notgroschen, wird es umgewidmet statt doppelt angelegt.
+- **Prüfung:** Der Berater meldet sich, wenn weniger zugeordnet ist als das Ziel. Notreserve-Geld schlägt er nie für Umbuchungen vor.
+
+Drei Begriffe, die oft verwechselt werden: Der **Puffer** ist, was auf einem Zahlungskonto immer bleiben soll (je Konto). Die **Notreserve** sind Monate an Ausgaben für Notfälle. Ein **Sparziel** ist Geld für einen bestimmten Zweck.
 
 ## Reicht das Geld für deine Sparpläne?
 

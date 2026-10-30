@@ -40,6 +40,12 @@
 --   effective pinnt name + monthly_savings_rate (Karte = Write, auch wenn sich Empfehlung/Config dazwischen aendert).
 --   Rueckgabe zusaetzlich real_estate_id, recommended_monthly, rate_eur_m2, band (null ohne Daten); card_lines:
 --   Empfehlung (finance.note.maintenance_recommendation) + Rate darunter (finance.note.maintenance_rate_below).
+--   NOTRESERVE (kind = emergency_reserve, 2026-10-30): hoechstens eine aktive (code reserve_exists; Partial-UNIQUE als
+--   Backstop); Ziel = GENAU EINES von target_amount / target_months (Monatsausgaben, Betrag leitet
+--   fn_emergency_reserve_status ab), kein target_date, kein Sparplan, keine Immobilie; Topf nur ein Geld-Konto
+--   (fn_emergency_reserve_account_types); Rate nur, wenn genannt (monthly_savings_rate + Abbuchungskonto). name leer ->
+--   'Notreserve'. Weitere Konten ordnet tool_book_savings_reservation zu. card_lines: Ziel und Deckung aus
+--   fn_emergency_reserve_status (Post-State nach dem Insert, im Probelauf derselbe Wert).
 --   SPARKONTO-PFLICHT (Audit Paket 3): ohne Topf liefe eine Rate als nackte Abbuchung ins Leere -> Fortschritt 0. Der
 --   Topf ist Gesetz in der fn (auch fuer den Import-Pfad), nicht nur im Tool.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, goal_id, recurring_payment_id (NULL ohne Rate), monthly_rate (eigene Rate,
@@ -91,6 +97,10 @@ DECLARE
     v_re         RECORD;    -- fn_resolve_real_estate
     v_re_id      INT;       -- gesetzt = Instandhaltungsruecklage
     v_rec        JSONB;     -- Empfehlung nach II. BV (fn_savings_goal_funding.recommendation)
+    v_kind       TEXT     := COALESCE(NULLIF(btrim(p->>'kind'), ''), 'goal');
+    v_emerg      BOOLEAN;
+    v_tmonths    NUMERIC  := NULLIF(p->>'target_months', '')::numeric;
+    v_es         JSONB;     -- fn_emergency_reserve_status (Karte)
 BEGIN
     -- relative Datumsangaben ("in 2 years") -> ISO, damit effective sie fest in den Write nach der Karte traegt
     -- (fn_savings_rate_schedule loest dieselben Keys fuer die Karte auf); nicht aufloesbar -> {ok:false, code:'invalid_date'}
@@ -140,6 +150,48 @@ BEGIN
         END IF;
         p := p || jsonb_build_object('real_estate_id', v_re_id);
     END IF;
+    -- Notreserve (2026-10-30): Art + Form-Regeln (Gesetz: Form-CHECK + Partial-UNIQUE), write-frei
+    IF v_kind NOT IN ('goal', 'emergency_reserve') THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'kind is goal (default) or emergency_reserve; a maintenance reserve is created with real_estate_name.');
+    END IF;
+    v_emerg := v_kind = 'emergency_reserve';
+    IF v_tmonths IS NOT NULL AND NOT v_emerg THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'target_months only applies to the emergency reserve (kind emergency_reserve).');
+    END IF;
+    IF v_emerg THEN
+        IF v_re_name IS NOT NULL OR NULLIF(btrim(p->>'savings_plan'), '') IS NOT NULL OR NULLIF(p->>'target_date', '') IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'The emergency reserve has no target date, no savings plan and no property - it is money kept on cash/Tagesgeld accounts.');
+        END IF;
+        -- target_amount 0 = nicht gesetzt (das Tool-Feld ist eine Zahl mit Default 0)
+        IF (COALESCE(NULLIF(p->>'target_amount', '')::numeric, 0) <> 0) = (v_tmonths IS NOT NULL) THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'target_required',
+                'reason', 'Give the emergency reserve target either as a fixed amount (target_amount) or as months of expenses (target_months) - exactly one.');
+        END IF;
+        IF v_tmonths IS NOT NULL AND v_tmonths <= 0 THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'target_months must be a positive number, got ' || v_tmonths || '.');
+        END IF;
+        SELECT g.name INTO v_sim FROM finance.savings_goals g WHERE g.kind = 'emergency_reserve' AND g.status = 'active';
+        IF v_sim IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'reserve_exists',
+                'reason', 'There already is an active emergency reserve ("' || v_sim || '"). Change it with tool_set_savings_goal, '
+                       || 'and earmark money on further accounts with tool_book_savings_reservation.');
+        END IF;
+        v_name := COALESCE(v_name, 'Notreserve');
+        IF (SELECT r.hit_count FROM finance.fn_resolve_savings_goal(v_name, TRUE) r) > 0 THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'name_exists',
+                'reason', 'An active savings goal named "' || v_name || '" already exists - to turn it into the emergency reserve use '
+                       || 'tool_set_savings_goal with kind emergency_reserve, or give the reserve a different name.');
+        END IF;
+        IF v_reserve IS NOT NULL AND NOT (SELECT account_type FROM finance.accounts WHERE id = v_reserve)
+                                          = ANY (finance.fn_emergency_reserve_account_types()) THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'Emergency reserve money lies on a cash/Tagesgeld account (available at once, deposit-insured) - not on a fixed deposit, P2P or depot.');
+        END IF;
+        p := p || jsonb_build_object('kind', 'emergency_reserve');
+    END IF;
+
     -- Audit Paket 3: Sparkonto-Pflicht (Gesetz in der fn; Tool + Import pruefen vorab nur als Komfort).
     IF v_reserve IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -229,17 +281,20 @@ BEGIN
 
     -- 1. Sparziel (target_date = vom Helper aufgeloest, egal ob genannt oder berechnet)
     INSERT INTO finance.savings_goals
-        (name, goal_type, target_amount, target_date, status, priority, notes, beneficiary_person_id, real_estate_id)
+        (name, goal_type, target_amount, target_date, status, priority, notes, beneficiary_person_id, real_estate_id,
+         kind, target_months)
     VALUES (
         v_name,
         NULLIF(p->>'goal_type', ''),
-        CASE WHEN v_re_id IS NULL THEN NULLIF(p->>'target_amount', '')::numeric END,  -- Instandhaltungsruecklage: NULL (Form-CHECK)
+        CASE WHEN v_re_id IS NULL THEN NULLIF(NULLIF(p->>'target_amount', '')::numeric, CASE WHEN v_emerg THEN 0 END) END,  -- Instandhaltung: NULL; Notreserve in Monaten: NULL (Form-CHECK)
         v_date,
         'active',
         NULLIF(p->>'priority', '')::smallint,     -- WS-C1: Engpass-Reihung (kleiner = wichtiger; leer=NULL=unpriorisiert)
         NULLIF(p->>'notes', ''),
         v_benef,                                  -- WS-4: genannte Person, sonst Topf-Inhaber; NULL=Haushalt. FK->agent.persons.
-        v_re_id
+        v_re_id,
+        CASE WHEN v_re_id IS NOT NULL THEN 'maintenance_reserve' ELSE v_kind END::finance.savings_goal_kind,
+        v_tmonths
     )
     RETURNING id INTO v_goal_id;
 
@@ -275,11 +330,16 @@ BEGIN
     END IF;
 
     SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal_id;
+    IF v_emerg THEN
+        v_es := finance.fn_emergency_reserve_status();
+    END IF;
     v_lines := finance.fn_similar_note(v_sim)
-        || CASE WHEN v_rate = 0 AND v_re_id IS NULL THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_covered'))
+        || CASE WHEN v_rate = 0 AND v_re_id IS NULL AND NOT v_emerg THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_covered'))
                 ELSE '[]'::jsonb END
         -- Instandhaltungsruecklage: Empfehlung nach II. BV (Untergrenze) + Hinweis, wenn die wirksame Rate darunter liegt
         || CASE WHEN v_re_id IS NOT NULL THEN finance.fn_maintenance_card_lines(v_re_id) ELSE '[]'::jsonb END
+        -- Notreserve: Ziel (bei Monaten mit Monatsbasis) + bisher zugeordnet, aus derselben Adresse wie Berater und App
+        || CASE WHEN v_emerg THEN finance.fn_emergency_reserve_card_lines(v_es) ELSE '[]'::jsonb END
         || CASE WHEN v_rec IS NOT NULL AND v_rate < (v_rec->>'monthly_eur')::numeric THEN jsonb_build_array(jsonb_build_object(
                     'kind', 'note', 'value', 'finance.note.maintenance_rate_below',
                     'params', jsonb_build_object('monthly', core.fn_ui_money(v_rate),
@@ -338,8 +398,8 @@ BEGIN
                          'schedule_day_of_month', CASE WHEN v_old IS NOT NULL THEN COALESCE(v_dom::text, '') END,
                          -- Instandhaltungsruecklage: Name (Default) + wirksame Rate (genannt / Dauerauftrag / Empfehlung)
                          -- fest in den Write; goal_name fuer die Karte (Feldname des Einzel-Tools)
-                         'name', CASE WHEN v_re_id IS NOT NULL THEN v_name END,
-                         'goal_name', CASE WHEN v_re_id IS NOT NULL THEN v_name END,
+                         'name', CASE WHEN v_re_id IS NOT NULL OR v_emerg THEN v_name END,
+                         'goal_name', CASE WHEN v_re_id IS NOT NULL OR v_emerg THEN v_name END,
                          'monthly_savings_rate', CASE WHEN v_re_id IS NOT NULL THEN v_rate::text END)))
         || CASE WHEN v_re_id IS NOT NULL
                 THEN jsonb_build_object('real_estate_id', v_re_id,
@@ -347,6 +407,7 @@ BEGIN
                          'rate_eur_m2', (v_rec->>'rate_eur_m2')::numeric,
                          'band', v_rec->>'band')
                 ELSE '{}'::jsonb END
+        || CASE WHEN v_emerg THEN jsonb_build_object('emergency_reserve', v_es) ELSE '{}'::jsonb END
         || CASE WHEN v_plan_id IS NOT NULL
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', v_plan_monthly)
                 ELSE '{}'::jsonb END

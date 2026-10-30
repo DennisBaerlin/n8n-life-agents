@@ -46,6 +46,7 @@ DECLARE
     v_accts    jsonb;
     v_sections jsonb;
     v_empty    jsonb := core.fn_ui_tpl('finance.app.overview.empty');
+    v_bookval  boolean;   -- eine sichtbare Depot-Position ohne Kurs zaehlt zum Kaufwert (Transparenz 2026-10-30)
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -117,6 +118,16 @@ BEGIN
            max(g.total), max(g.assets), max(g.liquid), max(g.bound), max(g.debts), COALESCE(bool_or(g.gap), false)
       INTO v_classes, v_bound_it, v_debt_it, v_total, v_assets, v_liquid, v_bound, v_debts, v_gap
       FROM g LEFT JOIN ord ON true;
+
+    -- Transparenz 2026-10-30: networth_by_asset_class setzt eine Position ohne Kurs still zum Kaufwert an (Summen-Roll-up);
+    -- der Hero sagt es (dieselbe Sicht-Regel wie oben, Kurs-Regel finance.fn_price_status ueber depot_holdings_overview).
+    SELECT EXISTS (
+        SELECT 1 FROM finance.depot_holdings_overview h
+          JOIN finance.accounts a ON a.id = h.account_id
+          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = a.owner_person_id
+         WHERE h.price_status = 'missing' AND h.shares > 0
+           AND ((v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND a.owner_person_id = v_pid)))
+      INTO v_bookval;
 
     -- Kinder (nur Haushalts-Betrachter): je Kind Netto + aufklappbar je Anlageart
     IF v_hh THEN
@@ -221,9 +232,13 @@ BEGIN
                           ELSE core.fn_ui_tpl('finance.app.overview.hero_own') END,
             'value', core.fn_ui_money(v_total, 'EUR'),
             'gap', v_gap,
-            'note', CASE WHEN v_debts < 0 THEN core.fn_ui_tpl('finance.app.overview.hero_note', jsonb_build_object(
+            'note', CASE WHEN v_debts < 0 AND v_bookval THEN core.fn_ui_tpl('finance.app.overview.hero_note_bookval', jsonb_build_object(
                              'assets', core.fn_ui_money(v_assets, 'EUR'),
-                             'debts', core.fn_ui_money(-v_debts, 'EUR'))) END),
+                             'debts', core.fn_ui_money(-v_debts, 'EUR')))
+                         WHEN v_debts < 0 THEN core.fn_ui_tpl('finance.app.overview.hero_note', jsonb_build_object(
+                             'assets', core.fn_ui_money(v_assets, 'EUR'),
+                             'debts', core.fn_ui_money(-v_debts, 'EUR')))
+                         WHEN v_bookval THEN core.fn_ui_tpl('finance.app.overview.hero_note_bookval_only') END),
         'banners', '[]'::jsonb,
         'sections', v_sections);
 END;

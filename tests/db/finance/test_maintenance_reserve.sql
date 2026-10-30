@@ -202,7 +202,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [C2 Ruecklage mit Zielbetrag]';
   EXCEPTION WHEN check_violation THEN NULL; END;
   BEGIN
-    INSERT INTO finance.savings_goals (name, real_estate_id) VALUES ('__mr_x3__', v_haus);
+    INSERT INTO finance.savings_goals (name, kind, real_estate_id) VALUES ('__mr_x3__', 'maintenance_reserve', v_haus);
     RAISE EXCEPTION 'FAIL [C3 zweite aktive Ruecklage]';
   EXCEPTION WHEN unique_violation THEN NULL; END;
   RAISE NOTICE 'PASS [C1-C3 Form-CHECK + UNIQUE aktive Ruecklage je Immobilie]';

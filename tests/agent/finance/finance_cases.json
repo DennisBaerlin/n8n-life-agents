@@ -1120,6 +1120,34 @@
         "notes":  "Import zuerst (2026-10-30): Korrekturweg fuer eine falsch gelernte IBAN (arch-challenge ADOPT). DKB Giro ist ein dauerhaftes Fixture-Konto; die Routing-Tier lehnt die Karte ab (nichts wird entfernt)."
     },
     {
+        "id":  "tc102",
+        "name":  "Puffer je Konto setzen",
+        "task":  "Auf dem DKB Giro sollen immer mindestens 400 Euro bleiben, stell das bitte als Puffer ein.",
+        "chat_id":  "test_tc102",
+        "expected_tool":  "tool_set_account",
+        "expected_tool_args":  {
+                                   "account_name":  "DKB Giro",
+                                   "min_balance":  "400"
+                               },
+        "expected_behavior":  "Ruft tool_set_account mit account_name='DKB Giro' und min_balance=400 auf, ohne weitere Felder und ohne min_balance_default. Rechnet nichts selbst aus.",
+        "notes":  "Transparenz 2026-10-30: Puffer je Konto (accounts.min_balance) statt nur core.config coverage_buffer_eur. DKB Giro ist ein dauerhaftes Fixture-Konto; die Routing-Tier lehnt die Karte ab."
+    },
+    {
+        "id":  "tc103",
+        "name":  "Notreserve als Ruecklage anlegen (Monatsausgaben, Startbestand)",
+        "task":  "Leg bitte meine Notreserve an: drei Monatsausgaben sollen es sein, auf dem DKB Giro liegen dafuer schon 6000 Euro.",
+        "chat_id":  "test_tc103",
+        "expected_tool":  "tool_create_savings_goal",
+        "expected_tool_args":  {
+                                   "kind":  "emergency_reserve",
+                                   "target_months":  "3",
+                                   "reserve_account_name":  "DKB Giro",
+                                   "already_saved":  "6000"
+                               },
+        "expected_behavior":  "Ruft tool_create_savings_goal mit kind=emergency_reserve, target_months=3, reserve_account_name='DKB Giro' und already_saved=6000 auf, OHNE target_date, ohne Sparplan, ohne target_amount und ohne eine Monatsrate zu erfinden. Rechnet den Zielbetrag nicht selbst aus.",
+        "notes":  "Transparenz 2026-10-30: Notreserve = Ruecklage kind emergency_reserve (statt Plan-Fakt). DKB Giro ist ein dauerhaftes Fixture-Konto; die Routing-Tier lehnt die Karte ab."
+    },
+    {
         "id":  "tc97",
         "name":  "Import zuerst: Bank-Export nur fuer die fehlenden Dauerauftraege -> Vorschlags-Tool",
         "task":  "Bei den regelmaessigen Zahlungen: hier ist mein Trade Republic Export der letzten Monate, schlag mir daraus vor, welche Dauerauftraege noch fehlen [attachment file_id=mock_photo_083 type=document]",

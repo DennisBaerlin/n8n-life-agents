@@ -77,10 +77,10 @@ BEGIN
     (g_chain, v_pot, 2000, 'manual'), (g_future, v_pot, 2000, 'manual');
 
   -- Ruecklagen: ohne Ziel/Datum -> NULL; mit laufender Rate ohne Topf -> unmeasurable (Regel 1 vor Regel 2)
-  INSERT INTO finance.savings_goals (name, real_estate_id) VALUES ('__pace_res__', v_re1) RETURNING id INTO g_res;
+  INSERT INTO finance.savings_goals (name, kind, real_estate_id) VALUES ('__pace_res__', 'maintenance_reserve', v_re1) RETURNING id INTO g_res;
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('__pace_rp_res__', v_giro, -80, 'month', current_date - 30, current_date - 30) RETURNING id INTO v_rp_res;
-  INSERT INTO finance.savings_goals (name, real_estate_id, recurring_payment_id) VALUES ('__pace_res_unmeas__', v_re2, v_rp_res) RETURNING id INTO g_res_unmeas;
+  INSERT INTO finance.savings_goals (name, kind, real_estate_id, recurring_payment_id) VALUES ('__pace_res_unmeas__', 'maintenance_reserve', v_re2, v_rp_res) RETURNING id INTO g_res_unmeas;
 
   -- abgeschlossen -> NULL
   INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at, status)

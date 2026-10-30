@@ -513,6 +513,13 @@ CREATE OR REPLACE FUNCTION finance.fn_goal_earmark_account_types()
 RETURNS finance.account_type[] LANGUAGE sql IMMUTABLE AS $$
     SELECT finance.fn_goal_pot_account_types() || ARRAY['stocks_depot', 'crypto_depot']::finance.account_type[];
 $$;
+-- fn_emergency_reserve_account_types (2026-10-30): Kontotypen, auf denen Notreserve-Geld liegen darf — nur Geld-Konten
+-- (Giro/Tagesgeld: sofort verfuegbar, einlagengesichert). Festgeld (Laufzeit), P2P (keine Einlagensicherung) und
+-- Depots (Kursrisiko) nicht (Finanzfluss/vzhh, arch-challenge 2026-10-30). Topf, Zuordnung und Deckung lesen hier.
+CREATE OR REPLACE FUNCTION finance.fn_emergency_reserve_account_types()
+RETURNS finance.account_type[] LANGUAGE sql IMMUTABLE AS $$
+    SELECT ARRAY['cash']::finance.account_type[];
+$$;
 
 -- fn_loan_is_outstanding (Audit Paket 2, Punkt 10): die EINE Schulden-Definition -- ein Kredit ist offene Schuld,
 -- solange er active ODER paused ist (pausiert = Raten ausgesetzt, Restschuld besteht weiter). Vorher zaehlte ein
@@ -807,6 +814,17 @@ DO $$ BEGIN
         ALTER TABLE finance.accounts ADD CONSTRAINT finance_accounts_settlement_kind
             CHECK (settlement_account_id IS NULL OR account_type IN ('stocks_depot', 'crypto_depot', 'p2p')) NOT VALID;
     END IF;
+END $$;
+
+-- Puffer je Konto (Transparenz 2026-10-30): Mindeststand in KONTOwaehrung, unter den die Kontovorschau
+-- (fn_account_outlook) nicht fallen soll; NULL = Standard core.config finance.coverage_buffer_eur (umgerechnet).
+-- Nur Geld-Konten (die Vorschau rechnet nur fuer sie). Nutzer-Praeferenz, nicht ableitbar. Gesetzt nur ueber
+-- fn_set_account (HITL-Karte tool_set_account), die denselben Wert-Guard als {ok:false} spiegelt.
+ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS min_balance numeric(15,2);
+DO $$ BEGIN
+    ALTER TABLE finance.accounts DROP CONSTRAINT IF EXISTS finance_accounts_min_balance_chk;
+    ALTER TABLE finance.accounts ADD CONSTRAINT finance_accounts_min_balance_chk
+        CHECK (min_balance IS NULL OR (min_balance >= 0 AND account_type = 'cash'));
 END $$;
 
 -- Migration: enforce depot-needs-settlement on already-installed databases
@@ -1611,6 +1629,23 @@ ALTER TABLE finance.savings_goals ALTER COLUMN target_amount DROP NOT NULL;
 ALTER TABLE finance.savings_goals ALTER COLUMN target_date DROP NOT NULL;
 ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS real_estate_id int REFERENCES finance.real_estate(id);
 
+-- Ruecklagen-Art (2026-10-30, arch-challenge ADOPT; finance/CLAUDE.md: zweite Ruecklagen-Art ohne Immobilie ->
+-- generisch): kind ist die EINE Adresse der Art, geschlossene Liste. goal = Sparziel mit Betrag + Datum,
+-- maintenance_reserve = Instandhaltungsruecklage (genau dann real_estate_id), emergency_reserve = Notreserve (hoechstens
+-- eine aktive; Ziel = fester Betrag ODER target_months x Monatsausgaben, abgeleitet in fn_emergency_reserve_status;
+-- Geld per Zuordnung auf Geld-Konten). Backfill hier im Init (idempotent) und VOR dem Form-CHECK unten, der bei jedem
+-- Apply neu angelegt wird — eine V-Migration liefe erst nach dem Init und kaeme zu spaet.
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                    WHERE n.nspname = 'finance' AND t.typname = 'savings_goal_kind') THEN
+        CREATE TYPE finance.savings_goal_kind AS ENUM ('goal', 'maintenance_reserve', 'emergency_reserve');
+    END IF;
+END $$;
+ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS kind finance.savings_goal_kind NOT NULL DEFAULT 'goal';
+ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS target_months numeric(4,1);  -- nur Notreserve: Ziel in Monatsausgaben
+UPDATE finance.savings_goals SET kind = 'maintenance_reserve'
+ WHERE real_estate_id IS NOT NULL AND kind <> 'maintenance_reserve';
+
 -- WS-C1 (Phase S): priority — additiv/nullable -> Init-only (Muster asset_class/savings_goal_id/owner_person_id,
 -- KEINE V-Migration). Engpass-Reihung der Ziele: target_date ASC, priority ASC NULLS LAST (kleiner = wichtiger,
 -- NULL = unpriorisiert ans Ende). Reine Anzeige-/Reasoning-Hilfe (kein Constraint) -> der Advisor reasoned
@@ -2032,11 +2067,18 @@ DO $$ BEGIN
         CHECK (disbursement_account_id IS NULL OR original_amount IS NOT NULL);
     ALTER TABLE finance.savings_goals DROP CONSTRAINT IF EXISTS finance_savings_goals_target_pos;
     ALTER TABLE finance.savings_goals ADD  CONSTRAINT finance_savings_goals_target_pos CHECK (target_amount > 0);
-    -- Form: Ziel mit Betrag + Datum ODER Instandhaltungsruecklage (real_estate_id) ohne beides.
+    -- Form je Art (kind): Ziel mit Betrag + Datum; Instandhaltungsruecklage (real_estate_id) ohne beides; Notreserve ohne
+    -- Datum und ohne Immobilie mit GENAU EINEM von festem Betrag / Monatsausgaben.
     ALTER TABLE finance.savings_goals DROP CONSTRAINT IF EXISTS finance_savings_goals_shape;
     ALTER TABLE finance.savings_goals ADD  CONSTRAINT finance_savings_goals_shape CHECK (
-        (real_estate_id IS NULL AND target_amount IS NOT NULL AND target_date IS NOT NULL)
-     OR (real_estate_id IS NOT NULL AND target_amount IS NULL AND target_date IS NULL));
+        (kind = 'goal' AND real_estate_id IS NULL AND target_amount IS NOT NULL AND target_date IS NOT NULL
+             AND target_months IS NULL)
+     OR (kind = 'maintenance_reserve' AND real_estate_id IS NOT NULL AND target_amount IS NULL AND target_date IS NULL
+             AND target_months IS NULL)
+     OR (kind = 'emergency_reserve' AND real_estate_id IS NULL AND target_date IS NULL
+             AND (target_amount IS NULL) <> (target_months IS NULL)));
+    ALTER TABLE finance.savings_goals DROP CONSTRAINT IF EXISTS finance_savings_goals_months_pos;
+    ALTER TABLE finance.savings_goals ADD  CONSTRAINT finance_savings_goals_months_pos CHECK (target_months IS NULL OR target_months > 0);
     -- Wohnflaeche/Baujahr: feste Grenzen (current_date im CHECK waere nicht immutable; "nicht in der Zukunft" prueft die fn)
     ALTER TABLE finance.real_estate   DROP CONSTRAINT IF EXISTS finance_real_estate_area_pos;
     ALTER TABLE finance.real_estate   ADD  CONSTRAINT finance_real_estate_area_pos CHECK (living_area_m2 IS NULL OR living_area_m2 > 0);
@@ -2139,6 +2181,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_goals_rp_uq
 -- Hoechstens EINE aktive Instandhaltungsruecklage je Immobilie (fn_create/set_savings_goal lehnen vorher freundlich ab).
 CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_goals_reserve_uq
     ON finance.savings_goals (real_estate_id) WHERE real_estate_id IS NOT NULL AND status = 'active';
+-- Hoechstens EINE aktive Notreserve im Haushalt (fn_create/set_savings_goal lehnen vorher freundlich ab, code reserve_exists).
+CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_goals_emergency_uq
+    ON finance.savings_goals (kind) WHERE kind = 'emergency_reserve' AND status = 'active';
+-- Die Art einer Ruecklage ist fest; einziger Wechsel: ein Sparziel wird zur Notreserve umgewidmet (bestehender
+-- Notgroschen als Sparziel -> kein doppelt zugeordnetes Geld). fn_set_savings_goal prueft vorher freundlich.
+CREATE OR REPLACE FUNCTION finance.trg_savings_goal_kind_fixed()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.kind IS DISTINCT FROM OLD.kind AND NOT (OLD.kind = 'goal' AND NEW.kind = 'emergency_reserve') THEN
+        RAISE EXCEPTION 'The kind of savings goal % cannot change from % to %.', OLD.id, OLD.kind, NEW.kind;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_savings_goal_kind_fixed ON finance.savings_goals;
+CREATE TRIGGER trg_savings_goal_kind_fixed BEFORE UPDATE OF kind ON finance.savings_goals
+    FOR EACH ROW EXECUTE FUNCTION finance.trg_savings_goal_kind_fixed();
 CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_plans_rp_uq
     ON finance.savings_plans (recurring_payment_id) WHERE recurring_payment_id IS NOT NULL;
 

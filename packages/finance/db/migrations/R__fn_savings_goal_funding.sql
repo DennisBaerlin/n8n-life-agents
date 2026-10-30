@@ -17,6 +17,8 @@
 --   oben (fn_goal_transfer_choice; Bedingung "Rate > 0" statt "Rest > 0"): fortfuehren -> Rate = SEIN Monatsbetrag,
 --   needed_rate = genannte Rate bzw. Empfehlung. Erste Rate = genannt bzw. naechster Termin ab heute (Raster wie
 --   fn_savings_rate_schedule). Zusaetzlich recommendation = das jsonb der Empfehlung (oder null).
+--   NOTRESERVE (p.kind = emergency_reserve, 2026-10-30): derselbe Ruecklagen-Zweig ohne Empfehlung — Rate = genannte
+--   monthly_savings_rate, sonst 0 (keine Rate; das Geld liegt per Zuordnung schon da oder kommt spaeter).
 --   Eingabe: p (Payload wie fn_create_savings_goal; Datumsfelder schon ISO), p_reserve (Topf-id oder NULL = im Import
 --   noch nicht angelegt), p_reserve_is_depot, p_acct (Abbuchungskonto-id oder NULL), p_saved_eur (Startbestand in EUR).
 --   RUECKGABE: {ok:true, monthly_rate (wirksame eigene Rate bzw. der Plan-/Dauerauftrags-Betrag), needed_rate,
@@ -50,12 +52,17 @@ DECLARE
     v_re_id        INT      := NULLIF(p->>'real_estate_id', '')::int;
     v_rec          JSONB;
     v_first        DATE;
+    v_emerg        BOOLEAN  := p->>'kind' = 'emergency_reserve';
 BEGIN
-    -- Instandhaltungsruecklage: eigener Zweig (kein Ziel/Datum, keine Sparplaene - die prueft fn_create_savings_goal)
-    IF v_re_id IS NOT NULL THEN
-        v_rec  := finance.fn_maintenance_reserve_rate(v_re_id);
+    -- Ruecklagen (Instandhaltung, Notreserve): eigener Zweig (kein Datum, keine Sparplaene - die prueft fn_create_savings_goal)
+    IF v_re_id IS NOT NULL OR COALESCE(v_emerg, false) THEN
+        IF v_re_id IS NOT NULL THEN
+            v_rec := finance.fn_maintenance_reserve_rate(v_re_id);
+        END IF;
         v_rate := NULLIF(p->>'monthly_savings_rate', '')::numeric;
-        IF v_rate IS NULL THEN
+        IF v_rate IS NULL AND v_re_id IS NULL THEN
+            v_rate := 0;   -- Notreserve ohne genannte Rate: keine Rate
+        ELSIF v_rate IS NULL THEN
             IF (v_rec->>'ok')::boolean IS DISTINCT FROM true THEN
                 RETURN v_rec;
             END IF;

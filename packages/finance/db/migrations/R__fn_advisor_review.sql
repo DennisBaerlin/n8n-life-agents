@@ -24,7 +24,8 @@
 --     (Audit Paket 3: Konsum/Tilgung/Sparen getrennt): cashflow_coverage = hart monthly_free<0 (Pflichtausgaben =
 --     Konsum + Kreditrate uebersteigen die Einnahmen) + sanfter Puffer advisor.cashflow_buffer_pct/_nudge;
 --     savings_squeeze = monthly_free>=0 ABER Sparen>0 und monthly_account_change<0 (Sparraten leeren das Girokonto;
---     advisor.savings_squeeze_nudge). Guard monthly_income>0. has_fx_gap -> Zusatzsatz "unvollstaendig".
+--     advisor.savings_squeeze_nudge). Guard monthly_income>0. has_fx_gap -> Zusatzsatz "unvollstaendig". Seit 2026-10-30
+--     rechnen „frei“ und Kontoveraenderung den geschaetzten Alltag ein (fn_household_everyday_month), Basis-Satz je Meldung.
 --   Audit Paket 3: Notreserve-Cash + Monatsbasis aus finance.fn_liquidity_snapshot (freies Cash ohne Kinderkonten
 --     und Sparziel-Ruecklagen; Pflichtausgaben ohne Sparraten). Zielmix-Drift normiert die Soll-Anteile der
 --     handelbaren Bloecke auf deren Summe; der Ist-Nenner sind nur handelbare Klassen MIT Plan-Block (Cash als
@@ -64,16 +65,13 @@ CREATE OR REPLACE FUNCTION finance.fn_advisor_review(p_domain text, p_person_id 
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_facts        jsonb;
-    v_er           jsonb;
+    v_es           jsonb;     -- finance.fn_emergency_reserve_status() (Notreserve, 2026-10-30)
     v_goal         jsonb;
     v_alloc        jsonb;
     v_alerts       jsonb := '[]'::jsonb;
     v_digest       jsonb;
     v_stale_days   numeric;
     v_drift_tol    numeric;
-    v_cash_eur     numeric;
-    v_er_target    numeric;
-    v_mon_exp      numeric;
     v_last_conf    text;
     v_stale_age    numeric;
     r              record;
@@ -113,6 +111,10 @@ DECLARE
     -- Audit Paket 3
     v_snap         jsonb;     -- finance.fn_liquidity_snapshot(): freies Cash + Pflicht-Basis (eine Adresse)
     v_cf           record;    -- finance.monthly_cashflow_summary (Konsum/Tilgung/Sparen getrennt)
+    v_ev           record;    -- finance.fn_household_everyday_month(): geschaetzter Alltag je Monat (Transparenz 2026-10-30)
+    v_free         numeric;   -- frei NACH Alltag = monthly_free + Alltag
+    v_chg          numeric;   -- Kontoveraenderung NACH Alltag = monthly_account_change + Alltag
+    v_basis_tpl    jsonb;     -- Satz, womit gerechnet wurde (fest + Alltag aus n Konten / ohne Alltag)
     v_cls          jsonb := '{}'::jsonb;   -- handelbare Klasse -> Wert (ohne Kind; cash = freies Cash)
     v_tgt_trade_sum numeric;  -- Summe der Soll-Anteile handelbarer Bloecke (Normierungs-Basis)
     v_btgt_raw     numeric;
@@ -135,6 +137,17 @@ BEGIN
     -- Audit Paket 3: eine Lese-Adresse fuer freies Cash/Pflicht-Basis und fuer den Monats-Cashflow.
     v_snap := finance.fn_liquidity_snapshot();
     SELECT * INTO v_cf FROM finance.monthly_cashflow_summary;
+    -- Transparenz 2026-10-30 (Owner-Entscheid): „frei“ und Kontoveraenderung rechnen den geschaetzten Alltag ein (die
+    -- regelmaessigen Zahlungen kennen Einkauf/Karte nicht); der Basis-Satz nennt, womit gerechnet wurde.
+    SELECT * INTO v_ev FROM finance.fn_household_everyday_month();
+    v_free := v_cf.monthly_free + v_ev.monthly_everyday;
+    v_chg  := v_cf.monthly_account_change + v_ev.monthly_everyday;
+    v_basis_tpl := CASE WHEN v_ev.accounts > 0
+        THEN core.fn_ui_tpl(CASE WHEN v_ev.provisional THEN 'finance.advisor.cashflow_basis_everyday_provisional'
+                                 ELSE 'finance.advisor.cashflow_basis_everyday' END, jsonb_build_object(
+                 'fixed', core.fn_ui_money(abs(v_cf.monthly_obligations)), 'everyday', core.fn_ui_money(abs(v_ev.monthly_everyday)),
+                 'accounts', core.fn_ui_num(v_ev.accounts)))
+        ELSE core.fn_ui_tpl('finance.advisor.cashflow_basis_no_everyday') END;
 
     -- ---------- (1) Sparziel-Pace-Drift (buchwert-immun; Fakten aus der View) ----------
     -- WS-1: expected/pace/projected/catchup rechnet finance.savings_goal_progress (ein Fakt, eine Adresse);
@@ -169,7 +182,10 @@ BEGIN
                                                 jsonb_build_object('rate', core.fn_ui_money(r.catchup))) END,
                                   CASE WHEN r.projected IS NOT NULL
                                        THEN core.fn_ui_tpl('finance.advisor.savings_pace_projected',
-                                                jsonb_build_object('date', core.fn_ui_date(r.projected))) END));
+                                                jsonb_build_object('date', core.fn_ui_date(r.projected))) END,
+                                  -- Transparenz 2026-10-30: woran „hinter Plan“ gemessen wird (gleichmaessig seit Anlage + Toleranz)
+                                  core.fn_ui_tpl('finance.advisor.savings_pace_basis', jsonb_build_object('tolerance',
+                                      core.fn_ui_num(COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'drift_pace_pp'), '')::numeric, 10))))));
         END IF;
     END LOOP;
 
@@ -202,6 +218,8 @@ BEGIN
         FROM finance.savings_goal_progress p
         WHERE p.status = 'active' AND p.target_amount > 0 AND COALESCE(p.current_amount, 0) >= p.target_amount
           AND COALESCE(p.current_amount, 0) > COALESCE(p.earmarked_amount, 0)
+          -- die Notreserve ist kein Ziel, das man erreicht und ausgibt (eigener Check oben)
+          AND NOT EXISTS (SELECT 1 FROM finance.savings_goals g WHERE g.id = p.id AND g.kind = 'emergency_reserve')
     LOOP
         v_alerts := v_alerts || jsonb_build_object(
             'metric_key', 'savings_goal_reached:' || r.name,
@@ -216,30 +234,27 @@ BEGIN
                                                  'target', core.fn_ui_money(r.target)))));
     END LOOP;
 
-    -- ---------- (2) Notreserve-Drift (buchwert-immun: Cash zu Nennwert) ----------
-    -- Audit Paket 3: freies Cash (ohne Kinderkonten + Sparziel-Ruecklagen) und Pflicht-Basis (Konsum + Kreditrate,
-    -- ohne Sparraten) aus fn_liquidity_snapshot -> dieselben Zahlen wie die career-Runway.
-    IF v_facts IS NOT NULL AND jsonb_typeof(v_facts->'emergency_reserve') = 'object' THEN
-        v_er := v_facts->'emergency_reserve';
-        v_cash_eur := COALESCE((v_snap->>'cash_eur')::numeric, 0);
-        IF (v_er ? 'target_eur') AND jsonb_typeof(v_er->'target_eur') = 'number' THEN
-            v_er_target := (v_er->>'target_eur')::numeric;
-        ELSIF (v_er ? 'target_months') AND jsonb_typeof(v_er->'target_months') = 'number' THEN
-            v_mon_exp := COALESCE((v_snap->>'monthly_expenses_eur')::numeric, 0);
-            v_er_target := (v_er->>'target_months')::numeric * v_mon_exp;
-        END IF;
-        IF v_er_target IS NOT NULL AND v_er_target > 0 AND v_cash_eur < v_er_target THEN
-            v_alerts := v_alerts || jsonb_build_object(
-                'metric_key', 'emergency_reserve',
-                'kind',       'emergency_reserve',
-                'label',      'emergency_reserve',
-                'value',      round(v_cash_eur, 2),
-                'target',     round(v_er_target, 2),
-                'drift',      round(v_er_target - v_cash_eur, 2),
-                'msg',        jsonb_build_array(core.fn_ui_tpl('finance.advisor.emergency_reserve', jsonb_build_object(
-                                  'cash', core.fn_ui_money(v_cash_eur), 'target', core.fn_ui_money(v_er_target),
-                                  'gap', core.fn_ui_money(v_er_target - v_cash_eur)))));
-        END IF;
+    -- ---------- (2) Notreserve (Ruecklage kind emergency_reserve, 2026-10-30) ----------
+    -- Ziel, Basis und Deckung rechnet allein finance.fn_emergency_reserve_status (Ziel = fester Betrag oder Monate x
+    -- Monatsausgaben inkl. geschaetztem Alltag; Deckung = zugeordnetes Geld auf Geld-Konten, nach den anderen Zielen).
+    -- Vorher: Plan-Fakt emergency_reserve gegen alles freie Cash (ein Notgroschen als Sparziel zaehlte dort als
+    -- verplant). Keine Notreserve angelegt -> kein Alert (die Plan-Luecke meldet fn_plan_gaps).
+    v_es := finance.fn_emergency_reserve_status();
+    IF (v_es->>'exists')::boolean AND v_es->>'state' = 'warn' THEN
+        v_alerts := v_alerts || jsonb_build_object(
+            'metric_key', 'emergency_reserve',
+            'kind',       'emergency_reserve',
+            'label',      'emergency_reserve',
+            'value',      (v_es->>'covered_eur')::numeric,
+            'target',     (v_es->>'target_eur')::numeric,
+            'drift',      (v_es->>'gap_eur')::numeric,
+            'msg',        jsonb_build_array(core.fn_ui_tpl('finance.advisor.emergency_reserve', jsonb_build_object(
+                              'cash', core.fn_ui_money((v_es->>'covered_eur')::numeric),
+                              'target', core.fn_ui_money((v_es->>'target_eur')::numeric),
+                              'gap', core.fn_ui_money((v_es->>'gap_eur')::numeric))),
+                          CASE WHEN v_es->>'target_kind' = 'months' THEN core.fn_ui_tpl('finance.advisor.emergency_reserve_basis',
+                              jsonb_build_object('months', core.fn_ui_num((v_es->>'months')::numeric, 1),
+                                                 'monthly', core.fn_ui_money((v_es->'basis'->>'monthly_eur')::numeric))) END));
     END IF;
 
     -- ---------- WS-C3: Reserve-Coverage (Engpass-Beratung) ----------
@@ -366,7 +381,10 @@ BEGIN
                                   'allowed', core.fn_ui_money(r.allowed_depot_eur),
                                   'excess', core.fn_ui_money(r.excess_eur))),
                               CASE WHEN r.active_plan THEN core.fn_ui_tpl('finance.advisor.goal_derisk_plan') END,
-                              core.fn_ui_tpl('finance.advisor.goal_derisk_tax')));
+                              core.fn_ui_tpl('finance.advisor.goal_derisk_tax'),
+                              -- Transparenz 2026-10-30: die Regel hinter „hoechstens {allowed}“ benennen
+                              core.fn_ui_tpl('finance.advisor.goal_derisk_basis', jsonb_build_object(
+                                  'window', core.fn_ui_num(r.window_months)))));
     END LOOP;
 
     -- ---------- (2c) Monats-Check: Konto-Deckung bis zum naechsten Geldeingang ----------
@@ -391,7 +409,13 @@ BEGIN
                                   'account', r.o->>'account_name',
                                   'min',     core.fn_ui_money((r.o->>'min_projected')::numeric, r.o->>'currency'),
                                   'date',    core.fn_ui_date((r.o->>'min_date')::date),
-                                  'buffer',  core.fn_ui_money((r.o->>'buffer')::numeric, r.o->>'currency'))),
+                                  'buffer',  core.fn_ui_money((r.o->>'buffer')::numeric, r.o->>'currency'),
+                                  'per_day', core.fn_ui_money(abs((r.o->>'everyday_per_day')::numeric), r.o->>'currency'))),
+                              -- Transparenz 2026-10-30: Schaetzung aus nur einem Auszug + Standard-Puffer benennen
+                              CASE WHEN (r.o->>'provisional')::boolean
+                                   THEN core.fn_ui_tpl('finance.advisor.account_coverage_provisional') END,
+                              CASE WHEN r.o->>'buffer_source' = 'default'
+                                   THEN core.fn_ui_tpl('finance.advisor.account_coverage_default_buffer') END,
                               CASE WHEN jsonb_typeof(r.o->'suggestion') = 'object' THEN
                                   core.fn_ui_tpl('finance.advisor.account_coverage_suggest', jsonb_build_object(
                                       'amount', core.fn_ui_money((r.o->'suggestion'->>'amount')::numeric, r.o->>'currency'),
@@ -550,23 +574,24 @@ BEGIN
         v_fx_tpl   jsonb   := CASE WHEN v_cf.has_fx_gap THEN core.fn_ui_tpl('finance.advisor.cashflow_fx_gap') END;
     BEGIN
         IF v_cf.monthly_income > 0 THEN
-            IF v_cf.monthly_free < 0 THEN
+            IF v_free < 0 THEN
                 v_alerts := v_alerts || jsonb_build_object(
                     'metric_key', 'cashflow_coverage', 'kind', 'cashflow_coverage', 'label', 'cashflow_coverage',
-                    'value', round(v_cf.monthly_free, 2), 'target', 0, 'drift', round(abs(v_cf.monthly_free), 2),
+                    'value', round(v_free, 2), 'target', 0, 'drift', round(abs(v_free), 2),
                     'msg', jsonb_build_array(core.fn_ui_tpl('finance.advisor.cashflow_deficit', jsonb_build_object(
-                               'deficit', core.fn_ui_money(abs(v_cf.monthly_free)),
+                               'deficit', core.fn_ui_money(abs(v_free)),
                                'income', core.fn_ui_money(v_cf.monthly_income),
-                               'obligations', core.fn_ui_money(abs(v_cf.monthly_obligations)))), v_fx_tpl));
-            ELSIF v_cf_nudge = 'true' AND v_cf.monthly_free < v_cf_buf * v_cf.monthly_income THEN
+                               'obligations', core.fn_ui_money(abs(v_cf.monthly_obligations) + abs(v_ev.monthly_everyday)))),
+                           v_basis_tpl, v_fx_tpl));
+            ELSIF v_cf_nudge = 'true' AND v_free < v_cf_buf * v_cf.monthly_income THEN
                 v_alerts := v_alerts || jsonb_build_object(
                     'metric_key', 'cashflow_coverage', 'kind', 'cashflow_coverage', 'label', 'cashflow_coverage',
-                    'value', round(v_cf.monthly_free, 2), 'target', round(v_cf_buf * v_cf.monthly_income, 2),
-                    'drift', round(v_cf_buf * v_cf.monthly_income - v_cf.monthly_free, 2),
+                    'value', round(v_free, 2), 'target', round(v_cf_buf * v_cf.monthly_income, 2),
+                    'drift', round(v_cf_buf * v_cf.monthly_income - v_free, 2),
                     'msg', jsonb_build_array(core.fn_ui_tpl('finance.advisor.cashflow_buffer', jsonb_build_object(
-                               'free', core.fn_ui_money(v_cf.monthly_free),
-                               'pct', core.fn_ui_num(v_cf.monthly_free / v_cf.monthly_income * 100, 1),
-                               'target', core.fn_ui_num(v_cf_buf * 100))), v_fx_tpl));
+                               'free', core.fn_ui_money(v_free),
+                               'pct', core.fn_ui_num(v_free / v_cf.monthly_income * 100, 1),
+                               'target', core.fn_ui_num(v_cf_buf * 100))), v_basis_tpl, v_fx_tpl));
             END IF;
         END IF;
     END;
@@ -579,16 +604,17 @@ BEGIN
     DECLARE
         v_sq_nudge text := COALESCE(core.fn_config_get('core','advisor','savings_squeeze_nudge'), 'true');
     BEGIN
-        IF v_sq_nudge = 'true' AND v_cf.monthly_income > 0 AND v_cf.monthly_free >= 0
-           AND v_cf.monthly_saving < 0 AND v_cf.monthly_account_change < 0 THEN
+        IF v_sq_nudge = 'true' AND v_cf.monthly_income > 0 AND v_free >= 0
+           AND v_cf.monthly_saving < 0 AND v_chg < 0 THEN
             v_alerts := v_alerts || jsonb_build_object(
                 'metric_key', 'savings_squeeze', 'kind', 'savings_squeeze', 'label', 'savings_squeeze',
-                'value', round(v_cf.monthly_account_change, 2), 'target', 0,
-                'drift', round(abs(v_cf.monthly_account_change), 2),
+                'value', round(v_chg, 2), 'target', 0,
+                'drift', round(abs(v_chg), 2),
                 'msg', jsonb_build_array(core.fn_ui_tpl('finance.advisor.savings_squeeze', jsonb_build_object(
-                           'gap', core.fn_ui_money(abs(v_cf.monthly_account_change)),
+                           'gap', core.fn_ui_money(abs(v_chg)),
                            'saving', core.fn_ui_money(abs(v_cf.monthly_saving)),
-                           'free', core.fn_ui_money(v_cf.monthly_free))),
+                           'free', core.fn_ui_money(v_free))),
+                       v_basis_tpl,
                        CASE WHEN v_cf.has_fx_gap THEN core.fn_ui_tpl('finance.advisor.cashflow_fx_gap') END));
         END IF;
     END;
@@ -849,9 +875,10 @@ BEGIN
         'consumption',     round(abs(v_cf.monthly_consumption), 2),
         'principal',       round(abs(v_cf.monthly_principal), 2),
         'obligations',     round(abs(v_cf.monthly_obligations), 2),
-        'free',            round(v_cf.monthly_free, 2),
+        'everyday',        round(abs(v_ev.monthly_everyday), 2),
+        'free',            round(v_free, 2),
         'saving',          round(abs(v_cf.monthly_saving), 2),
-        'account_change',  round(v_cf.monthly_account_change, 2),
+        'account_change',  round(v_chg, 2),
         'cash_total',      (SELECT round(COALESCE(sum(balance_eur), 0), 2) FROM finance.account_overview WHERE status = 'active' AND account_type = 'cash'),
         'depot_book_value',(SELECT round(COALESCE(sum(book_value_eur), 0), 2) FROM finance.depot_holdings_overview),
         'debt_total',      (SELECT round(ABS(COALESCE(total_debt, 0)), 2) FROM finance.loan_summary),
@@ -872,6 +899,7 @@ BEGIN
                    'income', core.fn_ui_money((v_digest->>'income')::numeric),
                    'consumption', core.fn_ui_money((v_digest->>'consumption')::numeric),
                    'principal', core.fn_ui_money((v_digest->>'principal')::numeric),
+                   'everyday', core.fn_ui_money((v_digest->>'everyday')::numeric),
                    'free', core.fn_ui_money((v_digest->>'free')::numeric),
                    'saving', core.fn_ui_money((v_digest->>'saving')::numeric),
                    'account_change', core.fn_ui_money((v_digest->>'account_change')::numeric))),
@@ -886,7 +914,12 @@ BEGIN
         || COALESCE((SELECT jsonb_agg(CASE
                          -- Instandhaltungsruecklage: kein Ziel -> Stand + eingestellte Rate statt "x % von —"
                          -- (Rate aus maintenance_reserve_status, EIN Join; ohne Kurs NULL -> "—", nie still 0)
-                         WHEN sgp.real_estate_id IS NOT NULL
+                         -- Notreserve (2026-10-30): gedeckt von Ziel aus fn_emergency_reserve_status (Ziel ggf. Monate x Ausgaben)
+                         WHEN sgp.id = (v_es->>'goal_id')::int
+                         THEN core.fn_ui_tpl('finance.advisor.digest_emergency_line', jsonb_build_object(
+                                  'name', sgp.name, 'covered', core.fn_ui_money((v_es->>'covered_eur')::numeric),
+                                  'target', core.fn_ui_money((v_es->>'target_eur')::numeric)))
+                         WHEN m.goal_id IS NOT NULL
                          THEN core.fn_ui_tpl('finance.advisor.digest_maintenance_line', jsonb_build_object(
                                   'name', sgp.name, 'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),
                                   'rate', core.fn_ui_money(m.running_monthly_eur)))

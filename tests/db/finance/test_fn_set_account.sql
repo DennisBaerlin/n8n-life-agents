@@ -173,6 +173,35 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_account [IBAN entfernen + verschieben]';
   END;
 
+  -- Puffer je Konto (Transparenz 2026-10-30): min_balance setzen, leer = unveraendert, min_balance_default = zurueck auf
+  -- den Standard (NULL); negativ / Nicht-Geld-Konto / beides zugleich -> {ok:false}; CHECK als Backstop
+  DECLARE v_c INT; v_d INT; v_r JSONB; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_mb_c__', 'cash', 'EUR', 'active') RETURNING id INTO v_c;
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_mb_d__', 'p2p', 'EUR', 'active') RETURNING id INTO v_d;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_c, 'min_balance', '400'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (SELECT min_balance FROM finance.accounts WHERE id = v_c) IS DISTINCT FROM 400 THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [min_balance 400]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_c, 'notes', 'n', 'min_balance', ''));
+    IF (SELECT min_balance FROM finance.accounts WHERE id = v_c) IS DISTINCT FROM 400 THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [min_balance leer = unveraendert]'; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_c, 'min_balance', '-5'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR (SELECT min_balance FROM finance.accounts WHERE id = v_c) <> 400 THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [min_balance negativ]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_d, 'min_balance', '100'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL fn_set_account [min_balance auf P2P]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_c, 'min_balance', '100', 'min_balance_default', true));
+    IF v_r->>'code' IS DISTINCT FROM 'conflicting_input' THEN RAISE EXCEPTION 'FAIL fn_set_account [min_balance + default]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_c, 'min_balance_default', 'yes'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (SELECT min_balance FROM finance.accounts WHERE id = v_c) IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [zurueck auf Standard]: %', v_r; END IF;
+    BEGIN
+      UPDATE finance.accounts SET min_balance = 10 WHERE id = v_d;
+      RAISE EXCEPTION 'FAIL min_balance CHECK: P2P mit Puffer angenommen';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    RAISE NOTICE 'PASS fn_set_account [Puffer je Konto]';
+  END;
+
 END $$;
 
 ROLLBACK;

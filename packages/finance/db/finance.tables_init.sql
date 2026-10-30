@@ -1222,6 +1222,14 @@ DO $$ BEGIN
     ALTER TABLE finance.bank_statements ADD CONSTRAINT finance_bank_statements_balance_source_chk
         CHECK (balance_source IN ('printed', 'owner'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- Vormerkungen (2026-10-30): Luecke App-Stand - (Anfang + Exportzeilen) dieses Abgleichs (< 0 = noch vorgemerkt, steckt
+-- im Rest). Der naechste Export gleicht hoechstens -export_gap als "Ausgleich vorgemerkter Zahlungen" aus
+-- (fn_statement_prepare pending_settled). NULL = gedruckter Auszug bzw. Abgleich von vor dieser Spalte.
+ALTER TABLE finance.bank_statements ADD COLUMN IF NOT EXISTS export_gap numeric(12,2);
+DO $$ BEGIN
+    ALTER TABLE finance.bank_statements ADD CONSTRAINT finance_bank_statements_export_gap_chk
+        CHECK (export_gap IS NULL OR balance_source = 'owner');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Broker-CSV: gesehene Bank-Referenzen je Konto, NUR als Hash (md5 der transaction_id; Owner-Vorgabe: Einzelumsaetze
 -- werden nicht gespeichert). Zweck: eine spaet nachgebuchte Zeile mit Datum <= Schnitt erkennen (Dedup primaer per

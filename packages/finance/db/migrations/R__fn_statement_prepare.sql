@@ -28,7 +28,7 @@
 --   RUECKGABE: {ok:true, account_id, account_name, currency, period_start, period_end, opening_balance, closing_balance,
 --   cut, stmt_at_cut, drift, gap, matched[], already_booked[], blocked[], savings_plan_pending[], missing[],
 --   unknown_mandates[], plan_adjustments[], learn[], learned_account_number, line_count, matched_count, unmatched_out,
---   unmatched_in, lump, card_lines[], fingerprint} | {ok:false, code, reason, ...}
+--   unmatched_in, lump, pending_settled, export_gap, card_lines[], fingerprint} | {ok:false, code, reason, ...}
 --   account_unknown (Nummern-Pfad) traegt zusaetzlich balance_verified und - nur wenn die Saldo-Probe stimmt und der
 --   Zeitraum abgeschlossen ist - closing_balance, balance_date (= period_end), currency: Startsaldo fuer ein NEUES Konto
 --   (fn_create_account opening_balance + opening_balance_date; derselbe Auszug ist danach already_covered).
@@ -42,8 +42,11 @@
 --   period_end = closing_balance - Summe der Zeilen danach; Anfang = bestaetigter Stand am Schnitt (last_reconciled_balance,
 --   sonst Systemstand am Anlagetag; keine Saldo-Probe; drift = nur Systemaenderungen vor dem Schnitt seit der
 --   Bestaetigung). Was App-Stand und Export nicht gemeinsam erklaeren (meist vorgemerkte Kartenzahlungen), steckt im Rest
---   am period_end, nie am Schnitt; Karten-Hinweis statement_export_gap (< 0) bzw. _settled (> 0, mit vorigem
---   Export-Abgleich), statement_export_starts_late (Export beginnt nach Schnitt+1: evtl. fehlen Zeilen). Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
+--   am period_end, nie am Schnitt (export_gap, apply speichert ihn); Karten-Hinweis statement_export_gap (< 0) bzw.
+--   _settled (> 0 direkt nach einem Abgleich mit Vormerkung), statement_export_starts_late (Export beginnt nach
+--   Schnitt+1: evtl. fehlen Zeilen). pending_settled (>= 0) = Teil des Rests, der eine damals vorgemerkte und jetzt
+--   gebuchte Zahlung ausgleicht (hoechstens damalige Vormerkung, Luecke, gebuchte Abgaenge): eigene Kartenzeile, die
+--   Rest-Zeile zeigt lump - pending_settled. Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
 --   Schnitt+1. Sparplan-Treffer mit exakter Stueckzahl (shares_estimated false). Wertpapier-Zeilen ohne Treffer: Stufe 0
 --   gegen gebuchte Trades, sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend), nicht buchbar ->
 --   trades_blocked[] (covered_by_takeover, oversell, security_unknown); unknown-Zeilen des Exports -> export_unknown[].
@@ -150,6 +153,10 @@ DECLARE
     v_partner_at DATE;
     v_printed_file BOOLEAN := false;   -- Datei mit gedrucktem Endstand (Profil printed_balance)
     v_export_gap NUMERIC := 0;         -- Owner-Saldo-Datei: App-Stand - (Stand am Schnitt + Exportzeilen), steckt im Rest
+    v_starts_late BOOLEAN;             -- Luecke, aber der Export beginnt nach Schnitt+1 (evtl. fehlende Zeilen)
+    v_gap_settles BOOLEAN;             -- positive Luecke direkt nach einem Abgleich mit Vormerkung
+    v_settled  NUMERIC := 0;           -- Teil des Rests = Ausgleich vorgemerkter Zahlungen des vorigen Abgleichs (>= 0)
+    v_rest     NUMERIC;                -- Rest ohne diesen Ausgleich (Kartenzeile; apply: rest_inflow/rest_outflow)
     v_export_from DATE;                -- fruehestes Datum im Export (beginnt er nach Schnitt+1, fehlen evtl. Zeilen)
     v_int_lines NUMERIC := 0;          -- Summe der Zinszeilen (interest_line) im Zeitraum
     v_int_booked NUMERIC := 0;         -- Summe der Scheduler-Zinsbuchungen im Zeitraum
@@ -905,6 +912,19 @@ BEGIN
     -- ---------- 5. Rest als DB-Differenz ----------
     v_s_end := finance.fn_get_balance_as_of(v_acct.id, v_pe);
     v_lump  := v_close - (v_s_end + v_drift + v_book_sum + v_redate_sum);
+    -- Ausgleich vorgemerkter Zahlungen (Export mit App-Stand): eine positive Luecke direkt nach einem Export-Abgleich mit
+    -- Vormerkung (dessen export_gap < 0, Schnitt = dessen period_end) = Zahlungen, die damals vorgemerkt im Rest steckten
+    -- und jetzt im Export stehen. Bleibt so eine Zeile ohne Treffer, hebt sie die Luecke im Rest auf (Rest 0, nichts zu
+    -- tun). Trifft sie einen Dauerauftrag/Transfer/Trade, wird sie gebucht und der Rest gleicht mit + aus: dieser Teil
+    -- (hoechstens die damalige Vormerkung und die jetzt gebuchten Abgaenge) ist weder Eingang noch Ausgabe ->
+    -- pending_settled, eigene Kartenzeile; apply nimmt ihn aus rest_inflow/rest_outflow heraus.
+    v_starts_late := v_export_gap <> 0 AND (v_export_from IS NULL OR v_export_from > v_cut + 1);
+    v_gap_settles := v_export_gap > 0 AND NOT v_starts_late AND v_prev.period_end = v_cut AND v_prev.export_gap < 0;
+    IF v_gap_settles THEN
+        SELECT LEAST(v_export_gap, -v_prev.export_gap, COALESCE(-sum(LEAST((x->>'amount')::numeric, 0)), 0))
+        INTO v_settled FROM jsonb_array_elements(v_to_book || v_trades) x;
+    END IF;
+    v_rest := v_lump - v_settled;
 
     -- ---------- 6. Kartenzeilen (Struktur, je Empfaenger gerendert) ----------
     v_card := jsonb_build_array(
@@ -919,15 +939,17 @@ BEGIN
                -- Luecke App-Stand/Export: beginnt der Export nach Schnitt+1 -> evtl. fehlende Zeilen (Warnung, keine
                -- Vermutung); < 0 -> noch nicht im Export (Vormerkung); > 0 nach einem vorigen Export-Abgleich -> steckt
                -- schon im letzten Rest; > 0 ohne Vor-Export -> nur das Rest-Label "Ungeklaerter Eingang"
-               || CASE WHEN v_export_gap <> 0 AND (v_export_from IS NULL OR v_export_from > v_cut + 1)
+               || CASE WHEN v_starts_late
                        THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_export_starts_late',
                             'params', jsonb_build_object('amount', core.fn_ui_money(abs(v_export_gap), v_acct.currency),
                                                          'date', core.fn_ui_date(v_cut))))
-                       WHEN v_export_gap < 0 OR (v_export_gap > 0 AND v_prev.id IS NOT NULL)
+                       WHEN v_export_gap < 0 OR v_gap_settles
                        THEN jsonb_build_array(jsonb_build_object('kind', 'note',
                             'value', CASE WHEN v_export_gap < 0 THEN 'finance.note.statement_export_gap'
                                           ELSE 'finance.note.statement_export_gap_settled' END,
-                            'params', jsonb_build_object('amount', core.fn_ui_money(abs(v_export_gap), v_acct.currency))))
+                            'params', jsonb_build_object('amount', core.fn_ui_money(
+                                CASE WHEN v_export_gap < 0 THEN -v_export_gap
+                                     ELSE LEAST(v_export_gap, -v_prev.export_gap) END, v_acct.currency))))
                        ELSE '[]'::jsonb END
            ELSE jsonb_build_array(
                core.fn_ui_money(v_open, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_opening'),
@@ -1110,14 +1132,18 @@ BEGIN
              AND o.l->>'sub_kind' IN ('deposit', 'withdrawal')) THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_no_settlement'));
     END IF;
-    v_card := v_card || jsonb_build_array(
+    -- Rest = EINE Buchung; die Karte zeigt den Ausgleich vorgemerkter Zahlungen (v_settled) getrennt vom echten Rest
+    v_card := v_card
+        || CASE WHEN v_settled > 0 THEN jsonb_build_array(core.fn_ui_money(v_settled, v_acct.currency)
+               || jsonb_build_object('label', 'finance.label.statement_pending_settled')) ELSE '[]'::jsonb END
         -- Rest-Label nach Richtung (Live-Befund 2026-10-30): ein positiver Rest auf einem Cash-Konto ist ein ungeklaerter
         -- Eingang, nie "Alltagsausgaben"
-        core.fn_ui_money(v_lump, v_acct.currency) || jsonb_build_object('label',
-            CASE WHEN v_acct.account_type::text <> 'cash' THEN 'finance.label.statement_other_diff'
-                 WHEN v_lump > 0 THEN 'finance.label.statement_unexplained_in'
-                 ELSE 'finance.label.statement_everyday' END),
-        jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_lump'));
+        || CASE WHEN v_settled = 0 OR v_rest <> 0 THEN jsonb_build_array(
+               core.fn_ui_money(v_rest, v_acct.currency) || jsonb_build_object('label',
+                   CASE WHEN v_acct.account_type::text <> 'cash' THEN 'finance.label.statement_other_diff'
+                        WHEN v_rest > 0 THEN 'finance.label.statement_unexplained_in'
+                        ELSE 'finance.label.statement_everyday' END)) ELSE '[]'::jsonb END
+        || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_lump'));
     -- S7: die IBAN, die dieser Auszug dem Konto beibringt, steht sichtbar auf der Karte (Kontrolle durch den Nutzer)
     IF v_learn_no IS NOT NULL THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learned',
@@ -1160,7 +1186,9 @@ BEGIN
         'line_count', jsonb_array_length(v_lines),
         'matched_count', jsonb_array_length(v_to_book) + jsonb_array_length(v_booked),
         'unmatched_out', v_out, 'unmatched_in', v_in,
-        'lump', v_lump, 'card_lines', v_card, 'fingerprint', v_fp,
+        'lump', v_lump, 'pending_settled', v_settled,
+        'export_gap', CASE WHEN v_file AND NOT v_printed_file THEN v_export_gap END,
+        'card_lines', v_card, 'fingerprint', v_fp,
         'source', CASE WHEN v_file THEN 'file' ELSE 'printed' END,
         'balance_source', CASE WHEN v_file AND NOT v_printed_file THEN 'owner' ELSE 'printed' END,
         'interest_correction', v_int_corr, 'interest_lines', v_int_lines, 'interest_booked', v_int_booked,

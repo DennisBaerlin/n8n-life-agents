@@ -126,10 +126,19 @@ DECLARE
     v_p    JSONB;
     v_prep JSONB;
     v_app  JSONB;
+    v_due  DATE := CASE WHEN extract(day FROM core.fn_today() - 4) <= 28 THEN core.fn_today() - 4 ELSE core.fn_today() - 7 END;
 BEGIN
     v_acct := (finance.fn_create_account(jsonb_build_object('name', '__t_n26_pend__', 'account_type', 'cash', 'currency', 'EUR',
                   'bank', 'N26', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
     IF v_acct IS NULL THEN RAISE EXCEPTION 'SETUP pend account'; END IF;
+    -- Abo per Karte (Soll 24,50, Ist 25: nur per Namens-Token, die Kiosk-Zeile in B13 trifft es nicht), faellig v_due:
+    -- die vorgemerkte Zahlung (B10) ist genau dieses Abo (B14)
+    IF (finance.fn_create_recurring_payment(jsonb_build_object('name', 'Streamingdienst', 'account_id', v_acct,
+            'direction', 'expense', 'amount', 24.50, 'schedule_unit', 'month',
+            'schedule_day_of_month', extract(day FROM v_due)::int, 'first_payment_date', v_due::text))->>'ok')::boolean
+       IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'SETUP rp';
+    END IF;
     v_rows := jsonb_build_array(
         pg_temp.n26_row(T - 25, 'Vor dem Schnitt', '', 'Presentment', '', '-99'),
         pg_temp.n26_row(T - 10, 'Testfirma GmbH', 'DE02120300000000202051', 'Credit Transfer', 'Gehalt', '500.00'),
@@ -169,8 +178,9 @@ BEGIN
     v_app := finance.fn_apply_bank_statement(v_p || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
     IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR (v_app->>'drift_amount')::numeric <> 0
        OR (v_app->>'balance_after')::numeric <> 1435
-       OR finance.fn_get_balance_as_of(v_acct, T - 20) <> 1000 THEN
-        RAISE EXCEPTION 'FAIL [B12 apply: bestaetigter Stand am Schnitt bleibt 1000]: %', v_app;
+       OR finance.fn_get_balance_as_of(v_acct, T - 20) <> 1000
+       OR (SELECT export_gap FROM finance.bank_statements WHERE id = (v_app->>'statement_id')::int) IS DISTINCT FROM -25.00 THEN
+        RAISE EXCEPTION 'FAIL [B12 apply: bestaetigter Stand am Schnitt bleibt 1000, export_gap -25 gespeichert]: %', v_app;
     END IF;
     RAISE NOTICE 'PASS [B10-B12 Vormerkung im Rest]';
 
@@ -197,6 +207,43 @@ BEGIN
                      AND (c->'params'->'amount'->>'value')::numeric = 25) THEN
         RAISE EXCEPTION 'FAIL [B13b Karte: Hinweis "steckt schon im letzten Rest" 25]: %', v_prep->'card_lines';
     END IF;
+    -- ohne Treffer hebt die Zeile die Luecke im Rest selbst auf: nichts auszugleichen, kein zweites Mal Alltagsausgaben
+    IF (v_prep->>'pending_settled')::numeric <> 0
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                  WHERE c->>'label' = 'finance.label.statement_pending_settled'
+                     OR CASE WHEN c->>'label' = 'finance.label.statement_everyday' THEN (c->>'value')::numeric <> 0 END) THEN
+        RAISE EXCEPTION 'FAIL [B13c ohne Treffer: kein Ausgleich, Rest 0]: %', v_prep;
+    END IF;
     RAISE NOTICE 'PASS [B13 Vormerkung gleicht sich aus]';
+
+    -- die spaete Zeile trifft das Abo (Stufe B) -> gebucht; der Rest +25 ist der Ausgleich der Vormerkung, kein Eingang
+    v_rows := v_rows || jsonb_build_array(pg_temp.n26_row(v_due, 'Streamingdienst Test', '', 'Presentment', '', '-25.00'));
+    v_p := v_p || jsonb_build_object('table', jsonb_build_object('rows', jsonb_build_array(v_hdr) || v_rows));
+    v_prep := finance.fn_statement_prepare(v_p);
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_prep->'matched') <> 1
+       OR (v_prep->>'lump')::numeric <> 25 OR (v_prep->>'pending_settled')::numeric <> 25 THEN
+        RAISE EXCEPTION 'FAIL [B14 Abo-Treffer: Rest 25 = pending_settled 25]: %', v_prep;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                   WHERE c->>'label' = 'finance.label.statement_pending_settled' AND (c->>'value')::numeric = 25)
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                  WHERE c->>'label' IN ('finance.label.statement_unexplained_in', 'finance.label.statement_everyday')) THEN
+        RAISE EXCEPTION 'FAIL [B15 Karte: Ausgleich statt "Ungeklaerter Eingang"]: %', v_prep->'card_lines';
+    END IF;
+    -- App-Stand 100 zu hoch (Tippfehler oder echter Eingang): ausgeglichen wird hoechstens die damalige Vormerkung
+    v_prep := finance.fn_statement_prepare(v_p || '{"closing_balance":"1535"}'::jsonb);
+    IF (v_prep->>'pending_settled')::numeric <> 25 OR (v_prep->>'lump')::numeric <> 125
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                      WHERE c->>'label' = 'finance.label.statement_unexplained_in' AND (c->>'value')::numeric = 100) THEN
+        RAISE EXCEPTION 'FAIL [B15b Ausgleich gedeckelt, 100 bleiben ungeklaerter Eingang]: %', v_prep;
+    END IF;
+    v_prep := finance.fn_statement_prepare(v_p);
+    v_app := finance.fn_apply_bank_statement(v_p || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR (v_app->>'rest_inflow')::numeric <> 0
+       OR (v_app->>'rest_outflow')::numeric <> 0 OR (v_app->>'pending_settled')::numeric <> 25
+       OR (v_app->>'lump_amount')::numeric <> 25 OR (v_app->>'balance_after')::numeric <> 1435 THEN
+        RAISE EXCEPTION 'FAIL [B16 apply: kein Eingang, pending_settled 25]: %', v_app;
+    END IF;
+    RAISE NOTICE 'PASS [B14-B16 Ausgleich bei Abo-Treffer]';
 END $$;
 ROLLBACK;

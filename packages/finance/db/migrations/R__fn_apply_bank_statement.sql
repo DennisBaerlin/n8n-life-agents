@@ -29,9 +29,11 @@
 --   (fee_add), Zinskorrektur, Altkredit-Rueckfluesse; nicht: Trades (trades_booked), Drift, Rest, Trade-Steuern,
 --   Umdatierungen. transfers[] = jede neu ODER schon gebuchte Transfer-Gruppe dieses Auszugs {account_name (Gegenkonto),
 --   amount (Transfer-Bein DIESES Kontos, signiert), fee (Gebuehr-Beine der Gruppe + fee_add, 0 = keine), fee_account
---   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) nach Richtung,
---   Netto-Differenz (eines ist 0) - ein positiver Rest ist ein ungeklaerter Eingang, nie Ausgaben.
---   RUECKGABE: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
+--   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) ohne
+--   pending_settled nach Richtung, Netto-Differenz (eines ist 0) - ein positiver Rest ist ein ungeklaerter Eingang, nie
+--   Ausgaben. pending_settled (aus der Prepare, >= 0) = Teil des Rests, der vorgemerkte Zahlungen des vorigen
+--   Export-Abgleichs ausgleicht (weder Eingang noch Ausgabe); lump_amount = die ganze Rest-Buchung.
+--   RUECKGABE: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, pending_settled, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, learned_accounts[{account_id, account_name, account_number}] (IBAN-Lernen der Prepare, per fn_set_account
 --   gespeichert; gesperrt wie die Transfer-Gegenkonten), plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
@@ -63,6 +65,7 @@ DECLARE
     v_tg       JSONB := '[]'::jsonb;   -- Transfer-Gruppen dieses Auszugs {g, d (Zeilendatum), b (schon gebucht), fa (fee_add)}
     v_transfers JSONB;
     v_lump     NUMERIC;
+    v_settled  NUMERIC;   -- Teil des Rests = Ausgleich vorgemerkter Zahlungen (prepare.pending_settled)
 BEGIN
     v_prep := finance.fn_statement_prepare(p - 'fingerprint');
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -329,12 +332,12 @@ BEGIN
         INSERT INTO finance.bank_statements
             (account_id, period_start, period_end, opening_balance, closing_balance, currency, line_count, matched_count,
              unmatched_out, unmatched_in, prev_last_reconciled_balance, prev_last_reconciled_at, skipped, learned_key_ids,
-             balance_source)
+             balance_source, export_gap)
         VALUES (v_acct, (v_prep->>'period_start')::date, (v_prep->>'period_end')::date,
                 (v_prep->>'opening_balance')::numeric, (v_prep->>'closing_balance')::numeric, v_prep->>'currency',
                 (v_prep->>'line_count')::int, (v_prep->>'matched_count')::int,
                 (v_prep->>'unmatched_out')::numeric, (v_prep->>'unmatched_in')::numeric, v_prev_bal, v_prev_at,
-                v_skipped, v_keys, v_prep->>'balance_source')
+                v_skipped, v_keys, v_prep->>'balance_source', (v_prep->>'export_gap')::numeric)
         RETURNING id INTO v_stmt;
 
         -- Broker-CSV: gesehene Bank-Referenzen nur als Hash (spaete Zeilen beim naechsten Export erkennen)
@@ -375,6 +378,7 @@ BEGIN
                         FROM finance.transactions t WHERE t.group_id = (g->>'g')::uuid) s
     WHERE g->>'g' IS NOT NULL AND s.amt IS NOT NULL;
     v_lump := COALESCE((v_final->>'difference')::numeric, 0);
+    v_settled := COALESCE((v_prep->>'pending_settled')::numeric, 0);
 
     RETURN jsonb_build_object('ok', true,
         'statement_id', v_stmt,
@@ -383,8 +387,9 @@ BEGIN
                         + CASE WHEN COALESCE((v_prep->>'interest_correction')::numeric, 0) <> 0 THEN 1 ELSE 0 END
                         + CASE WHEN COALESCE((v_prep->>'legacy_returns')::numeric, 0) <> 0 THEN 1 ELSE 0 END,
         'transfers', v_transfers,
-        'rest_outflow', GREATEST(-v_lump, 0),
-        'rest_inflow', GREATEST(v_lump, 0),
+        'rest_outflow', GREATEST(-(v_lump - v_settled), 0),
+        'rest_inflow', GREATEST(v_lump - v_settled, 0),
+        'pending_settled', v_settled,
         'trades_booked', v_trades,
         'trades_blocked', COALESCE(v_prep->'trades_blocked', '[]'::jsonb),
         'export_unknown', COALESCE(v_prep->'export_unknown', '[]'::jsonb),

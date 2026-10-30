@@ -61,7 +61,7 @@ Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei a
 
 Die Datei liest ein fester Leser im Bot, kein Sprachmodell. Sie geht also nicht an einen KI-Anbieter. Der Monats-Check umfasst die Tage nach dem zuletzt bestätigten Stand bis gestern. Umsätze von heute zählen erst beim nächsten Mal.
 
-**Vorgemerkte Kartenzahlungen** zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Der Unterschied zählt diesmal zum Rest, die Karte nennt ihn eigens. Ein schon bestätigter Stand bleibt dabei unverändert. Beim nächsten Export taucht die Zahlung auf; die Karte sagt dann, dass sie schon im letzten Rest steckt. Nichts zählt doppelt. Beginnt der Export erst nach dem zuletzt bestätigten Tag (z. B. „dieses Jahr" im Januar), warnt die Karte stattdessen, dass Umsätze fehlen könnten. Dann lieber abbrechen und einen längeren Zeitraum exportieren.
+**Vorgemerkte Kartenzahlungen** zieht die App schon vom angezeigten Stand ab, der Export enthält sie aber erst nach der Buchung. Der Unterschied zählt diesmal zum Rest, die Karte nennt ihn eigens. Ein schon bestätigter Stand bleibt dabei unverändert. Beim nächsten Export taucht die Zahlung auf; die Karte sagt dann, dass sie schon im letzten Rest steckt. Passt sie zu einem Dauerauftrag oder Abo, bucht der Bot sie dort, und die Karte zeigt den Gegenbetrag als „Ausgleich vorgemerkter Zahlungen“, nicht als Eingang. Nichts zählt doppelt. Beginnt der Export erst nach dem zuletzt bestätigten Tag (z. B. „dieses Jahr" im Januar), warnt die Karte stattdessen, dass Umsätze fehlen könnten. Dann lieber abbrechen und einen längeren Zeitraum exportieren.
 
 Bei Trade Republic zusätzlich zum normalen Ablauf:
 

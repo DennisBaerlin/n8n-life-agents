@@ -852,6 +852,7 @@
   "finance.note.iban_learned_other": "Die IBAN {iban} wird beim Konto „{account}“ gespeichert (aus einer Überweisung erkannt). Solche Überweisungen bucht der Monats-Check künftig als Übertrag. Stimmt das nicht, bitte abbrechen.",
   "finance.note.iban_removed": "Die gespeicherte Kontonummer (IBAN) dieses Kontos wird entfernt.",
   "finance.note.iban_learn_ambiguous": "Eine Überweisung mit der IBAN {iban} passt zu mehreren deiner Konten ({accounts}). Sie steht deshalb im Rest. Sag mir, zu welchem Konto die IBAN gehört, dann trage ich sie ein.",
+  "finance.label.statement_pending_settled": "Ausgleich vorgemerkter Zahlungen (letzter Monats-Check)",
   "finance.label.statement_trades": "Wertpapiere (werden gebucht)",
   "finance.tpl.statement_trade_row": "{what} {name}: {shares} Stück, {amount} am {date}",
   "finance.tpl.statement_trade_buy": "Kauf",

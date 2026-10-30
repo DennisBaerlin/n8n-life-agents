@@ -852,6 +852,7 @@
   "finance.note.iban_learned_other": "The IBAN {iban} will be saved for the account “{account}” (recognised from a transfer). The monthly check will then book such transfers as transfers. If that is wrong, please cancel.",
   "finance.note.iban_removed": "The stored account number (IBAN) of this account will be removed.",
   "finance.note.iban_learn_ambiguous": "A transfer with the IBAN {iban} fits several of your accounts ({accounts}), so it stays in the rest. Tell me which account the IBAN belongs to and I will add it.",
+  "finance.label.statement_pending_settled": "Evens out payments pending at the last monthly check",
   "finance.label.statement_trades": "Securities (will be booked)",
   "finance.tpl.statement_trade_row": "{what} {name}: {shares} units, {amount} on {date}",
   "finance.tpl.statement_trade_buy": "Buy",

@@ -7,12 +7,14 @@
 --     Stand (bestaetigt) [+ Korrektur rueckdatierter Buchungen] [+ gebucht seit Abgleich] + feste Abgaenge + feste
 --     Eingaenge (aufklappbar: Einzelvorkommen aus finance.fn_account_planned_flows, dieselben Betraege wie die Reihe)
 --     + Alltagsausgaben geschaetzt (aufklappbar: je Auszug aus finance.fn_account_everyday_basis, fruehester markiert,
---     „vorlaeufig“ bei nur einem Auszug) = tiefster Stand (Ampel). Dazu Puffer (Standard / je Konto + Knapp-Schwelle),
+--     danach je Auszug die einmaligen Grossausgaben, die nicht zaehlen (Summe + Grenze), „vorlaeufig“ bei nur einem
+--     Auszug) = tiefster Stand (Ampel). Dazu Puffer (Standard / je Konto + Knapp-Schwelle),
 --     naechster Geldeingang, Umbuchungs-Vorschlag (nur Haushalt + alert), weitere Zahlungen bis zum Fensterende.
 --     Ampel aus der DB: Kontowaehrung ohne Kurs -> neutral + gap, shortfall > 0 -> alert,
 --     min_projected < finance.coverage_warn_factor x buffer -> warn, sonst ok. Reihenfolge alert, warn, ok, neutral, Name.
---   * Konto ohne Kontoauszug mit Zahlungen im Fenster [heute, heute + finance.app_payments_days]: Hinweis „keine
---     Vorschau“ + die Zahlungen, Abschnittswert = ihre Summe (Kontowaehrung). Danach, nach Name.
+--   * Konto ohne Vorschau mit Zahlungen im Fenster [heute, heute + finance.app_payments_days]: Hinweis „keine
+--     Vorschau“ mit Grund (cash: noch kein Kontoauszug; andere Kontoart: Vorschau nur fuer Giro/Tagesgeld) + die
+--     Zahlungen, Abschnittswert = ihre Summe (Kontowaehrung). Danach, nach Name.
 --   Hero: Summe der kommenden Abgaenge ohne Uebertraege in EUR (gap bei fehlendem Kurs).
 --   ZERO-TRUST-SICHTBARKEIT (core.fn_app_sees_household): owner/partner sehen alles. Sonst nur eigene Konten; eine
 --     Zahlung von einem verborgenen Konto erscheint nur auf dem eigenen Ziel-Konto als neutrale Zeile „vom Haushalt“ (auch
@@ -161,16 +163,25 @@ BEGIN
             END IF;
         END LOOP;
 
-        -- Alltagsausgaben (geschaetzt): je Tag x Tage; aufklappbar je Auszug, fruehester markiert
-        SELECT jsonb_agg(jsonb_build_object(
-                   'label', core.fn_ui_tpl('finance.app.payments.d_statement', jsonb_build_object(
-                                'from', core.fn_ui_date(e.period_start), 'to', core.fn_ui_date(e.period_end))),
-                   'value', core.fn_ui_tpl(CASE WHEN e.counted THEN 'finance.app.payments.d_rate'
-                                                ELSE 'finance.app.payments.d_rate_earliest' END,
-                                jsonb_build_object('per_day', core.fn_ui_money(abs(e.per_day), v_cur))))
-                   ORDER BY e.period_end DESC)
+        -- Alltagsausgaben (geschaetzt): je Tag x Tage; aufklappbar je Auszug, fruehester markiert; direkt danach je
+        -- Auszug mit einmaligen Grossausgaben deren Summe + Grenze (zaehlen nicht zum Tageswert, Owner-Entscheid 2026-10-30)
+        SELECT jsonb_agg(d.e ORDER BY d.pe DESC, d.k)
           INTO v_det
-          FROM finance.fn_account_everyday_basis(v_acc.id) e;
+          FROM (SELECT e.period_end AS pe, 0 AS k, jsonb_build_object(
+                       'label', core.fn_ui_tpl('finance.app.payments.d_statement', jsonb_build_object(
+                                    'from', core.fn_ui_date(e.period_start), 'to', core.fn_ui_date(e.period_end))),
+                       'value', core.fn_ui_tpl(CASE WHEN e.counted THEN 'finance.app.payments.d_rate'
+                                                    ELSE 'finance.app.payments.d_rate_earliest' END,
+                                    jsonb_build_object('per_day', core.fn_ui_money(abs(e.per_day), v_cur)))) AS e
+                  FROM finance.fn_account_everyday_basis(v_acc.id) e
+                UNION ALL
+                SELECT e.period_end, 1, jsonb_build_object(
+                       'label', core.fn_ui_tpl('finance.app.payments.d_oneoff'),
+                       'value', core.fn_ui_tpl('finance.app.payments.d_oneoff_value', jsonb_build_object(
+                                    'amount', core.fn_ui_money(e.oneoff_out, v_cur),
+                                    'threshold', core.fn_ui_money(e.oneoff_threshold, v_cur))))
+                  FROM finance.fn_account_everyday_basis(v_acc.id) e
+                 WHERE e.oneoff_out < 0) d;
         v_items := v_items || jsonb_build_object(
             'label', core.fn_ui_tpl('finance.app.payments.b_everyday'),
             'sub', core.fn_ui_tpl(CASE WHEN (v_o->>'provisional')::boolean THEN 'finance.app.payments.b_everyday_sub_provisional'
@@ -282,9 +293,9 @@ BEGIN
         SELECT u.due_date, u.amount, u.planned_amount, u.target_account_id, r.name AS rp_name,
                -- IS NOT DISTINCT FROM: ein Haushaltskonto (owner NULL) waere mit "=" NULL statt false, NOT NULL faellt
                -- in einem CASE durch -> Name eines verborgenen Kontos (im Test gefangen)
-               sa.id AS src_id, sa.name AS src_name, sa.currency AS src_cur,
+               sa.id AS src_id, sa.name AS src_name, sa.currency AS src_cur, sa.account_type AS src_type,
                (v_hh OR sa.owner_person_id IS NOT DISTINCT FROM v_pid) AS src_vis,
-               ta.id AS tgt_id, ta.name AS tgt_name, ta.currency AS tgt_cur,
+               ta.id AS tgt_id, ta.name AS tgt_name, ta.currency AS tgt_cur, ta.account_type AS tgt_type,
                (ta.id IS NOT NULL AND (v_hh OR ta.owner_person_id IS NOT DISTINCT FROM v_pid)) AS tgt_vis
           FROM finance.fn_upcoming_payments(v_today, v_until) u
           JOIN finance.recurring_payments r ON r.id = u.recurring_payment_id
@@ -294,6 +305,7 @@ BEGIN
         SELECT u.*,
                CASE WHEN u.src_vis THEN u.src_id ELSE u.tgt_id END AS sec_id,
                CASE WHEN u.src_vis THEN u.src_name ELSE u.tgt_name END AS sec_name,
+               CASE WHEN u.src_vis THEN u.src_type ELSE u.tgt_type END AS sec_type,
                CASE WHEN u.src_vis AND u.target_account_id IS NULL AND u.amount < 0 THEN u.amount END AS out_native
           FROM u
          WHERE u.src_vis OR u.tgt_vis
@@ -309,8 +321,13 @@ BEGIN
                                          THEN core.fn_ui_money(sum(CASE WHEN s2.src_vis THEN s2.amount ELSE abs(s2.planned_amount) END),
                                                                min(s2.src_cur)) END,
                            'empty', core.fn_ui_tpl('finance.app.payments.empty'),
+                           -- Grund: Vorschau gibt es nur fuer cash-Konten (fn_coverage_accounts); ein cash-Konto
+                           -- ohne Vorschau hat noch keinen Kontoauszug (Live-Befund 2026-10-30: P2P mit Auszug)
                            'items', jsonb_build_array(jsonb_build_object(
-                                        'label', core.fn_ui_tpl('finance.app.payments.no_outlook'), 'sub', NULL, 'value', NULL,
+                                        'label', core.fn_ui_tpl(CASE WHEN s2.sec_type::text = 'cash'
+                                                                     THEN 'finance.app.payments.no_outlook'
+                                                                     ELSE 'finance.app.payments.no_outlook_type' END),
+                                        'sub', NULL, 'value', NULL,
                                         'gap', false, 'pill', NULL, 'progress', NULL, 'target', NULL))
                                     || jsonb_agg(jsonb_build_object(
                                'label', CASE WHEN s2.src_vis THEN to_jsonb(s2.rp_name)
@@ -328,7 +345,7 @@ BEGIN
                                ORDER BY s2.due_date, s2.rp_name)) AS sec
                   FROM shown s2
                  WHERE s2.sec_id NOT IN (SELECT cc.id FROM finance.fn_coverage_accounts() cc(id))
-                 GROUP BY s2.sec_id, s2.sec_name) x)
+                 GROUP BY s2.sec_id, s2.sec_name, s2.sec_type) x)
       INTO v_out, v_gap, v_other
       FROM shown s;
 

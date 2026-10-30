@@ -122,6 +122,7 @@ Der Berater-Datenqualitäts-Alarm nennt Kurs-Lücken nur im Text, ohne eigenen L
 
 - `fn_account_outlook.bridge` = Teilsummen derselben Projektion von d0 bis zum Tief (`base + booked + out + in + everyday = min_projected`); Einzelvorkommen aus `fn_account_planned_flows` (dieselbe Quelle wie `fn_account_projection`). Puffer je Konto `accounts.min_balance` vor dem Standard `coverage_buffer_eur` (`buffer_source`).
 - Alltags-Schätzung: `fn_account_everyday_basis` zählt den **frühesten** Auszug eines Kontos nicht, sobald ein späterer existiert (er entsteht meist vor den Daueraufträgen — „Import zuerst" — und enthält ungematchtes Gehalt/Überweisungen); nur er allein → `provisional`. Fenster = 3 gezählte Auszüge.
+- `unmatched_out/_in` zählt nur **nicht erkannte** Zeilen: `blocked[]`/`savings_plan_pending[]` (erkannt, nicht buchbar, z. B. Übertrag an ein später angelegtes Konto) stecken im Rest, nie im Alltag. `bank_statements.oneoff_out` = Teil davon aus Einzelzeilen ab `oneoff_threshold` (`everyday_oneoff_eur`, Stempel je Auszug, weil Einzelumsätze nicht gespeichert werden); zählt nicht in `per_day`, wohl aber in `per_day_net` (Spar-Deckung, vorsichtig).
 
 ## Write-Tools-Katalog
 

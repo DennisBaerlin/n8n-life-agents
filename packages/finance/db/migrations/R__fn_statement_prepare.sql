@@ -25,10 +25,15 @@
 --        gebuchte Stufe-0-Treffer mit Buchungsdatum nach period_end, die apply aufs Zeilendatum verschiebt) = die EINE
 --        Abgleichsbuchung "Alltagsausgaben" (DB-Differenz, nicht Summe der Restzeilen: deckt auch Fremdbuchungen ab).
 --     6. card_lines = die Kartenzeilen als Struktur (core.fn_ui_tpl/money/date; das Gate rendert je Empfaenger).
+--   unmatched_out/_in = Summe der NICHT erkannten Geldzeilen (Alltags-Schaetzung); erkannte, nur nicht buchbare Zeilen
+--   (blocked[], savings_plan_pending[]) zaehlen dort nie (2026-10-30), stecken aber im Rest. oneoff_out = Teil von
+--   unmatched_out aus Einzelzeilen mit |Betrag| >= oneoff_threshold (core.config finance.everyday_oneoff_eur, Default 250,
+--   in Kontowaehrung zum period_end; ohne Kurs NULL und oneoff_out 0).
 --   RUECKGABE: {ok:true, account_id, account_name, currency, period_start, period_end, opening_balance, closing_balance,
 --   cut, stmt_at_cut, drift, gap, matched[], already_booked[], blocked[], savings_plan_pending[], missing[],
 --   unknown_mandates[], plan_adjustments[], learn[], learned_account_number, line_count, matched_count, unmatched_out,
---   unmatched_in, lump, pending_settled, export_gap, card_lines[], fingerprint} | {ok:false, code, reason, ...}
+--   unmatched_in, oneoff_out, oneoff_threshold, lump, pending_settled, export_gap, card_lines[], fingerprint}
+--   | {ok:false, code, reason, ...}
 --   account_unknown (Nummern-Pfad) traegt zusaetzlich balance_verified und - nur wenn die Saldo-Probe stimmt und der
 --   Zeitraum abgeschlossen ist - closing_balance, balance_date (= period_end), currency: Startsaldo fuer ein NEUES Konto
 --   (fn_create_account opening_balance + opening_balance_date; derselbe Auszug ist danach already_covered).
@@ -121,6 +126,9 @@ DECLARE
     v_unknown  JSONB;
     v_out      NUMERIC;
     v_in       NUMERIC;
+    v_oneoff   NUMERIC;                -- einmalige Grossausgaben (Teil von v_out), Abschnitt 3d
+    v_oo_thr   NUMERIC;                -- deren Grenze in Kontowaehrung (NULL = ohne Kurs)
+    v_oo_eur1  NUMERIC;
     v_s_end    NUMERIC;
     v_book_sum NUMERIC := 0;
     v_redate_sum NUMERIC := 0;
@@ -382,8 +390,7 @@ BEGIN
 
     -- ---------- 3. Zuordnung + Anreicherung ----------
     v_match := finance.fn_statement_match(v_acct.id, v_cut, v_pe, v_lines);
-    v_out := (v_match->>'unmatched_out')::numeric;
-    v_in  := (v_match->>'unmatched_in')::numeric;
+    -- unmatched_out/in + oneoff_out rechnet EIN SELECT am Ende (Abschnitt 3d) aus der finalen unmatched-Liste
 
     -- ---------- 3a. Pool-Regel (Anbieter mit Sammelkonto, z. B. Bondora) ----------
     --   Eine noch offene Geldzeile, deren Gegenpart-Name zum counterparty_pattern eines Profils passt. Kandidaten = aktive,
@@ -469,10 +476,8 @@ BEGIN
                'expected', round((x->'line'->>'amount')::numeric, 2),
                'side', CASE WHEN (x->'line'->>'amount')::numeric < 0 THEN 'source' ELSE 'target' END)
                || CASE WHEN (x->'line'->>'pool_fee')::numeric > 0
-                       THEN jsonb_build_object('partner_fee', (x->'line'->>'pool_fee')::numeric) ELSE '{}'::jsonb END), '[]'::jsonb),
-           v_out - COALESCE(sum(LEAST((x->'line'->>'amount')::numeric, 0)), 0),
-           v_in - COALESCE(sum(GREATEST((x->'line'->>'amount')::numeric, 0)), 0)
-    INTO v_pool, v_out, v_in
+                       THEN jsonb_build_object('partner_fee', (x->'line'->>'pool_fee')::numeric) ELSE '{}'::jsonb END), '[]'::jsonb)
+    INTO v_pool
     FROM jsonb_array_elements(v_pool) x;
     v_match := jsonb_set(jsonb_set(v_match, '{matched}', (v_match->'matched') || v_pool), '{unmatched}',
                    COALESCE((SELECT jsonb_agg(u) FROM jsonb_array_elements(v_match->'unmatched') u
@@ -572,8 +577,6 @@ BEGIN
                      FROM ll JOIN judged j ON j.iban = ll.iban AND j.good JOIN finance.accounts a ON a.id = j.acct
                      WHERE ll.open), '[]'::jsonb)
     INTO v_learn_accts, v_learn_amb, v_learn_hits;
-    SELECT v_out - COALESCE(sum(LEAST((h->>'amount')::numeric, 0)), 0), v_in - COALESCE(sum(GREATEST((h->>'amount')::numeric, 0)), 0)
-    INTO v_out, v_in FROM jsonb_array_elements(v_learn_hits) h;
     v_match := jsonb_set(jsonb_set(v_match, '{matched}', (v_match->'matched') || v_learn_hits), '{unmatched}',
                    COALESCE((SELECT jsonb_agg(u) FROM jsonb_array_elements(v_match->'unmatched') u
                              WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_learn_hits) x WHERE (x->>'line_idx')::int = (u #>> '{}')::int)), '[]'::jsonb));
@@ -615,9 +618,9 @@ BEGIN
                      AND v_partner_at - (v_m->>'line_date')::date > 5 THEN 'partner_reconciled'
             END;
             IF v_reason IS NOT NULL THEN
+                -- erkannt, nur nicht buchbar -> Rest, aber nie Alltag (Live-Befund 2026-10-30: Uebertrag an ein spaeter
+                -- angelegtes eigenes Konto blaehte die Alltags-Schaetzung um 700 auf); gilt fuer alle blocked/pending
                 v_blocked := v_blocked || (v_m || jsonb_build_object('reason', v_reason));
-                v_out := v_out + LEAST((v_m->>'amount')::numeric, 0);
-                v_in  := v_in + GREATEST((v_m->>'amount')::numeric, 0);
                 CONTINUE;
             END IF;
             IF finance.fn_reconciled_reason(v_other, (v_m->>'line_date')::date) IS NOT NULL THEN
@@ -652,7 +655,6 @@ BEGIN
                 END IF;
                 IF v_price IS NULL OR v_price <= 0 THEN
                     v_pending := v_pending || v_m;
-                    v_out := v_out + LEAST((v_m->>'amount')::numeric, 0);
                     CONTINUE;
                 END IF;
                 v_shares := trunc(abs((v_m->>'amount')::numeric) / v_price, 8);
@@ -667,7 +669,6 @@ BEGIN
                         'due_date', v_m->>'due_date', 'recurring_payment_id', v_m->>'recurring_payment_id'));
                     IF (v_split->>'ok')::boolean IS DISTINCT FROM true THEN
                         v_blocked := v_blocked || v_m;
-                        v_out := v_out + LEAST((v_m->>'amount')::numeric, 0);
                         CONTINUE;
                     END IF;
                     v_m := v_m || jsonb_build_object('kind', 'loan');
@@ -677,8 +678,6 @@ BEGIN
                 FROM finance.recurring_payments r WHERE r.id = (v_m->>'recurring_payment_id')::int;
                 IF v_other IS NOT NULL AND finance.fn_reconciled_reason(v_other, (v_m->>'line_date')::date) IS NOT NULL THEN
                     v_blocked := v_blocked || v_m;
-                    v_out := v_out + LEAST((v_m->>'amount')::numeric, 0);
-                    v_in  := v_in + GREATEST((v_m->>'amount')::numeric, 0);
                     CONTINUE;
                 END IF;
                 -- Plan-Anpassung: nur einfache Dauerauftraege (Quelle, kein Transfer, keine Besitzer-Entitaet)
@@ -710,10 +709,8 @@ BEGIN
     --   Kleinbetraege (legacy_return): eine Buchung "other" mit dem Profil-Label. Beides nie in unmatched/Rest.
     IF v_printed_file THEN
         SELECT COALESCE(sum((l->>'amount')::numeric) FILTER (WHERE l->>'kind' = 'interest_line'), 0),
-               COALESCE(sum((l->>'amount')::numeric) FILTER (WHERE l->>'kind' = 'legacy_return'), 0),
-               v_in - COALESCE(sum(GREATEST((l->>'amount')::numeric, 0)), 0),
-               v_out - COALESCE(sum(LEAST((l->>'amount')::numeric, 0)), 0)
-        INTO v_int_lines, v_legacy, v_in, v_out
+               COALESCE(sum((l->>'amount')::numeric) FILTER (WHERE l->>'kind' = 'legacy_return'), 0)
+        INTO v_int_lines, v_legacy
         FROM jsonb_array_elements(v_lines) l
         WHERE (l->>'date')::date > v_cut AND l->>'kind' IN ('interest_line', 'legacy_return');
         SELECT COALESCE(sum(t.amount), 0) INTO v_int_booked
@@ -740,10 +737,6 @@ BEGIN
     IF v_file THEN
         FOR v_line, v_idx IN SELECT e, (o)::int FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS x(e, o)
                              WHERE (o)::int IN (SELECT (u)::int FROM jsonb_array_elements_text(v_match->'unmatched') u) LOOP
-            IF v_line->>'kind' IN ('buy', 'sell', 'dividend', 'tax', 'corporate') THEN
-                v_out := v_out - LEAST((v_line->>'amount')::numeric, 0);
-                v_in  := v_in - GREATEST((v_line->>'amount')::numeric, 0);
-            END IF;
             CONTINUE WHEN v_line->>'kind' NOT IN ('buy', 'sell', 'dividend');
 
             SELECT count(*) OVER () AS n, h.id, h.account_id AS depot_id, h.shares, h.name, h.symbol INTO v_hold
@@ -890,6 +883,29 @@ BEGIN
                         AND EXISTS (SELECT 1 FROM finance.transactions o WHERE o.group_id = t.group_id
                                     AND o.account_id = (b->>'other_account_id')::int));
     SELECT v_redate_sum - COALESCE(sum((x->>'amount')::numeric), 0) INTO v_redate_sum FROM jsonb_array_elements(v_moved) x;
+
+    -- ---------- 3d. Alltags-Aggregat: unmatched_out/in + einmalige Grossausgaben (EIN SELECT, eine Zeilenmenge) ----------
+    --   Zeilen = finale unmatched-Liste (Pool-/Lern-Treffer sind dort schon raus; blocked/pending waren nie drin: erkannt,
+    --   nur nicht buchbar -> Rest, aber kein Alltag), ohne Wertpapier-Geldfluesse (Datei) und ohne Zins-/Kleinbetrags-
+    --   Zeilen der gedruckten Datei. Je Zeile auf Cent gerundet (wie fn_statement_match) -> oneoff_out >= unmatched_out.
+    --   Grenze (Owner-Entscheid 2026-10-30): core.config finance.everyday_oneoff_eur (<= 0/leer -> 250), in Kontowaehrung
+    --   zum period_end (reproduzierbar im Apply-Lauf); ohne Kurs keine Grenze (nie den rohen EUR-Wert) -> nichts einmalig.
+    v_oo_thr := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'everyday_oneoff_eur'), '')::numeric, 250);
+    IF v_oo_thr <= 0 THEN v_oo_thr := 250; END IF;
+    IF v_acct.currency <> 'EUR' THEN
+        v_oo_eur1 := finance.fn_to_eur_unrounded(1, v_acct.currency, v_pe);
+        v_oo_thr := CASE WHEN v_oo_eur1 > 0 THEN round(v_oo_thr / v_oo_eur1, 2) END;
+    END IF;
+    SELECT COALESCE(sum(u.amt) FILTER (WHERE u.amt < 0), 0),
+           COALESCE(sum(u.amt) FILTER (WHERE u.amt > 0), 0),
+           COALESCE(sum(u.amt) FILTER (WHERE u.amt < 0 AND v_oo_thr IS NOT NULL AND abs(u.amt) >= v_oo_thr), 0)
+    INTO v_out, v_in, v_oneoff
+    FROM (SELECT round((l->>'amount')::numeric, 2) AS amt
+          FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS x(l, o)
+          WHERE (o)::int IN (SELECT (u)::int FROM jsonb_array_elements_text(v_match->'unmatched') u)
+            AND (l->>'date')::date > v_cut
+            AND NOT (v_file AND COALESCE(l->>'kind', '') IN ('buy', 'sell', 'dividend', 'tax', 'corporate'))
+            AND NOT (v_printed_file AND COALESCE(l->>'kind', '') IN ('interest_line', 'legacy_return'))) u;
 
     -- ---------- 4. fehlende Zahlungen, unbekannte Mandate ----------
     SELECT COALESCE(jsonb_agg(jsonb_build_object('recurring_payment_id', o.recurring_payment_id, 'name', r.name,
@@ -1193,7 +1209,7 @@ BEGIN
         'learned_accounts', v_learn_accts, 'iban_ambiguous', v_learn_amb,
         'line_count', jsonb_array_length(v_lines),
         'matched_count', jsonb_array_length(v_to_book) + jsonb_array_length(v_booked),
-        'unmatched_out', v_out, 'unmatched_in', v_in,
+        'unmatched_out', v_out, 'unmatched_in', v_in, 'oneoff_out', v_oneoff, 'oneoff_threshold', v_oo_thr,
         'lump', v_lump, 'pending_settled', v_settled,
         'export_gap', CASE WHEN v_file AND NOT v_printed_file THEN v_export_gap END,
         'card_lines', v_card, 'fingerprint', v_fp,

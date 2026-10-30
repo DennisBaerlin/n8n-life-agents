@@ -275,4 +275,70 @@ BEGIN
   RAISE NOTICE 'PASS Neues Konto per Auszug: gepruefter Endsaldo, already_covered, Folgeauszug ohne Abweichung';
 END $$;
 
+-- Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out = Summe der UNGEMATCHTEN Abgaenge mit
+-- |Betrag| >= Grenze (finance.everyday_oneoff_eur, Default 250, in Kontowaehrung zum period_end); Stempel
+-- oneoff_threshold; grosse Eingaenge bleiben in unmatched_in. Ohne Kurs: keine Grenze, nichts einmalig.
+DO $$
+DECLARE
+  ps DATE := date_trunc('month', CURRENT_DATE - 60)::date;
+  pe DATE := (date_trunc('month', CURRENT_DATE - 60) + interval '1 month - 1 day')::date;
+  v_eur INT; v_usd INT; v_chf INT; v_res JSONB; v_stmt JSONB; r record;
+BEGIN
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('USD', 2), ('CHF', 2) ON CONFLICT (code) DO NOTHING;
+  DELETE FROM core.config WHERE category = 'finance' AND key = 'everyday_oneoff_eur';
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'USD', 1.25, ps);
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF';
+  v_eur := (finance.fn_create_account(jsonb_build_object('name', '__t_bs_oo_eur__', 'account_type', 'cash', 'currency', 'EUR',
+              'opening_balance', '2000', 'opening_balance_date', to_char(ps - 1, 'YYYY-MM-DD')))->>'account_id')::int;
+  v_usd := (finance.fn_create_account(jsonb_build_object('name', '__t_bs_oo_usd__', 'account_type', 'cash', 'currency', 'USD',
+              'opening_balance', '2000', 'opening_balance_date', to_char(ps - 1, 'YYYY-MM-DD')))->>'account_id')::int;
+  v_chf := (finance.fn_create_account(jsonb_build_object('name', '__t_bs_oo_chf__', 'account_type', 'cash', 'currency', 'CHF',
+              'opening_balance', '2000', 'opening_balance_date', to_char(ps - 1, 'YYYY-MM-DD')))->>'account_id')::int;
+
+  -- EUR: -668 und genau -250 einmalig, -249.99 nicht; +586 bleibt Eingang
+  v_stmt := jsonb_build_object('account_name', '__t_bs_oo_eur__', 'currency', 'EUR', 'period_start', ps, 'period_end', pe,
+              'opening_balance', 2000, 'closing_balance', 2000 - 668 - 250 - 249.99 + 586,
+              'lines', jsonb_build_array(
+                  jsonb_build_object('date', ps + 3, 'amount', -668, 'counterparty', 'Versandhaus'),
+                  jsonb_build_object('date', ps + 4, 'amount', -250, 'counterparty', 'Werkstatt'),
+                  jsonb_build_object('date', ps + 5, 'amount', -249.99, 'counterparty', 'Moebel'),
+                  jsonb_build_object('date', ps + 6, 'amount', 586, 'counterparty', 'Kleinanzeigen')));
+  v_res := finance.fn_statement_prepare(v_stmt);
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'unmatched_out')::numeric IS DISTINCT FROM -1167.99
+     OR (v_res->>'unmatched_in')::numeric IS DISTINCT FROM 586 OR (v_res->>'oneoff_out')::numeric IS DISTINCT FROM -918
+     OR (v_res->>'oneoff_threshold')::numeric IS DISTINCT FROM 250 THEN
+    RAISE EXCEPTION 'FAIL [O1 EUR prepare]: %', v_res; END IF;
+  v_res := finance.fn_apply_bank_statement(v_stmt || jsonb_build_object('fingerprint', v_res->>'fingerprint'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [O1 apply]: %', v_res; END IF;
+  SELECT * INTO r FROM finance.bank_statements WHERE account_id = v_eur;
+  IF r.oneoff_out IS DISTINCT FROM -918.00::numeric OR r.oneoff_threshold IS DISTINCT FROM 250.00::numeric THEN
+    RAISE EXCEPTION 'FAIL [O1 gespeichert]: %', to_jsonb(r); END IF;
+
+  -- USD: Grenze 250 EUR / 0.8 = 312.50 USD -> -320 einmalig, -300 nicht
+  v_res := finance.fn_statement_prepare(jsonb_build_object('account_name', '__t_bs_oo_usd__', 'currency', 'USD',
+              'period_start', ps, 'period_end', pe, 'opening_balance', 2000, 'closing_balance', 2000 - 320 - 300,
+              'lines', jsonb_build_array(jsonb_build_object('date', ps + 3, 'amount', -320, 'counterparty', 'Store'),
+                                         jsonb_build_object('date', ps + 4, 'amount', -300, 'counterparty', 'Shop'))));
+  IF (v_res->>'oneoff_out')::numeric IS DISTINCT FROM -320 OR (v_res->>'oneoff_threshold')::numeric IS DISTINCT FROM 312.50
+     OR (v_res->>'unmatched_out')::numeric IS DISTINCT FROM -620 THEN
+    RAISE EXCEPTION 'FAIL [O2 USD umgerechnet]: %', v_res; END IF;
+
+  -- CHF ohne Kurs: keine Grenze (nie den rohen EUR-Wert), nichts einmalig
+  v_res := finance.fn_statement_prepare(jsonb_build_object('account_name', '__t_bs_oo_chf__', 'currency', 'CHF',
+              'period_start', ps, 'period_end', pe, 'opening_balance', 2000, 'closing_balance', 2000 - 900,
+              'lines', jsonb_build_array(jsonb_build_object('date', ps + 3, 'amount', -900, 'counterparty', 'Laden'))));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'oneoff_out')::numeric IS DISTINCT FROM 0
+     OR v_res->>'oneoff_threshold' IS NOT NULL OR (v_res->>'unmatched_out')::numeric IS DISTINCT FROM -900 THEN
+    RAISE EXCEPTION 'FAIL [O3 ohne Kurs]: %', v_res; END IF;
+
+  -- Grenze aus der Config (Owner aendert sie per CLI): 600 EUR = 750 USD -> -800 einmalig
+  INSERT INTO core.config (package, category, key, value) VALUES ('finance', 'finance', 'everyday_oneoff_eur', '600');
+  v_res := finance.fn_statement_prepare(jsonb_build_object('account_name', '__t_bs_oo_usd__', 'currency', 'USD',
+              'period_start', ps, 'period_end', pe, 'opening_balance', 2000, 'closing_balance', 2000 - 800,
+              'lines', jsonb_build_array(jsonb_build_object('date', ps + 3, 'amount', -800, 'counterparty', 'Store'))));
+  IF (v_res->>'oneoff_out')::numeric IS DISTINCT FROM -800 OR (v_res->>'oneoff_threshold')::numeric IS DISTINCT FROM 750 THEN
+    RAISE EXCEPTION 'FAIL [O4 Config-Grenze 600 EUR = 750 USD]: %', v_res; END IF;
+  RAISE NOTICE 'PASS Einmalige Grossausgaben: Grenze inkl., Fremdwaehrung, ohne Kurs, Config, gespeichert';
+END $$;
+
 ROLLBACK;

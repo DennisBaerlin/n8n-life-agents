@@ -43,7 +43,7 @@
 --   NOTRESERVE (kind = emergency_reserve, 2026-10-30): hoechstens eine aktive (code reserve_exists; Partial-UNIQUE als
 --   Backstop); Ziel = GENAU EINES von target_amount / target_months (Monatsausgaben, Betrag leitet
 --   fn_emergency_reserve_status ab), kein target_date, kein Sparplan, keine Immobilie; Topf nur ein Geld-Konto
---   (fn_emergency_reserve_account_types); Rate nur, wenn genannt (monthly_savings_rate + Abbuchungskonto). name leer ->
+--   (fn_emergency_reserve_account_ok: aktives Geld-Konto, kein Kinderkonto); Rate nur, wenn genannt (monthly_savings_rate + Abbuchungskonto). name leer ->
 --   'Notreserve'. Weitere Konten ordnet tool_book_savings_reservation zu. card_lines: Ziel und Deckung aus
 --   fn_emergency_reserve_status (Post-State nach dem Insert, im Probelauf derselbe Wert).
 --   SPARKONTO-PFLICHT (Audit Paket 3): ohne Topf liefe eine Rate als nackte Abbuchung ins Leere -> Fortschritt 0. Der
@@ -184,10 +184,9 @@ BEGIN
                 'reason', 'An active savings goal named "' || v_name || '" already exists - to turn it into the emergency reserve use '
                        || 'tool_set_savings_goal with kind emergency_reserve, or give the reserve a different name.');
         END IF;
-        IF v_reserve IS NOT NULL AND NOT (SELECT account_type FROM finance.accounts WHERE id = v_reserve)
-                                          = ANY (finance.fn_emergency_reserve_account_types()) THEN
+        IF v_reserve IS NOT NULL AND NOT finance.fn_emergency_reserve_account_ok(v_reserve) THEN
             RETURN jsonb_build_object('ok', false,
-                'reason', 'Emergency reserve money lies on a cash/Tagesgeld account (available at once, deposit-insured) - not on a fixed deposit, P2P or depot.');
+                'reason', 'Emergency reserve money lies on an active cash/Tagesgeld account of the parents (available at once, deposit-insured) - not on a fixed deposit, P2P, depot or a child''s account.');
         END IF;
         p := p || jsonb_build_object('kind', 'emergency_reserve');
     END IF;
@@ -407,7 +406,7 @@ BEGIN
                          'rate_eur_m2', (v_rec->>'rate_eur_m2')::numeric,
                          'band', v_rec->>'band')
                 ELSE '{}'::jsonb END
-        || CASE WHEN v_emerg THEN jsonb_build_object('emergency_reserve', v_es) ELSE '{}'::jsonb END
+        || CASE WHEN v_emerg THEN jsonb_build_object('emergency_reserve', v_es - 'candidates' - 'month_options') ELSE '{}'::jsonb END
         || CASE WHEN v_plan_id IS NOT NULL
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', v_plan_monthly)
                 ELSE '{}'::jsonb END

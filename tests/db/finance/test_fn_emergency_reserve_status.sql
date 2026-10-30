@@ -37,11 +37,22 @@ BEGIN
      OR v_s->'month_options' IS DISTINCT FROM '[{"months": 3, "eur": 3600.00}, {"months": 6, "eur": 7200.00}]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [0a] ohne Notreserve: frische Basis + Monats-Optionen: %', v_s; END IF;
   -- zulaessig: nur Geld-Konten der Eltern (kein P2P, kein Kinderkonto), frei = Saldo nach allen Ziel-Zuordnungen
-  IF v_s->'candidates' IS DISTINCT FROM
-       '[{"name": "__ers_giro__", "free_eur": 5000.00}, {"name": "__ers_tg__", "free_eur": 6500.00}]'::jsonb THEN
+  IF (SELECT jsonb_agg(c ORDER BY c->>'name') FROM jsonb_array_elements(v_s->'candidates') c WHERE c->>'name' LIKE '\_\_ers\_%')
+     IS DISTINCT FROM '[{"name": "__ers_giro__", "free_eur": 5000.00}, {"name": "__ers_tg__", "free_eur": 6500.00}]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [0b] Kandidaten-Konten: %', v_s->'candidates'; END IF;
-  UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = v_g;
-  RAISE NOTICE 'PASS [0] Status ohne Notreserve: Basis, Monats-Optionen, zulaessige Konten';
+  -- Gesetz in der fn (nicht nur im Prompt): Notreserve-Topf auf einem Kinderkonto -> {ok:false}
+  v_res := finance.fn_create_savings_goal(jsonb_build_object('kind', 'emergency_reserve', 'target_months', 3,
+             'reserve_account_id', v_dep));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [0c] Kinderkonto als Topf: %', v_res; END IF;
+  -- Fremdwaehrung ohne Kurs: frei unbekannt (NULL), nie 0
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2) ON CONFLICT (code) DO NOTHING;
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF';
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ers_chf__', 'cash', 'CHF', 'active') RETURNING id INTO v_g;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_g, 300, t - 5, 'other');
+  IF NOT finance.fn_emergency_reserve_status()->'candidates' @? '$[*] ? (@.name == "__ers_chf__" && @.free_eur == null)' THEN
+    RAISE EXCEPTION 'FAIL [0d] ohne Kurs free_eur NULL: %', finance.fn_emergency_reserve_status()->'candidates'; END IF;
+  UPDATE finance.savings_goals SET status = 'cancelled' WHERE name = '__ers_vorab__';
+  RAISE NOTICE 'PASS [0] Status ohne Notreserve: Basis, Monats-Optionen, zulaessige Konten, Kinderkonto abgelehnt';
 
   -- ===== 1) Gesetz =====
   BEGIN
@@ -65,7 +76,8 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'recurring_payment_id') IS NOT NULL
      OR v_res->'emergency_reserve'->>'name' <> 'Notreserve'
      OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_target_months")'
-     OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")' THEN
+     OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")'
+     OR v_res->'emergency_reserve' ? 'candidates' OR v_res->'emergency_reserve' ? 'month_options' THEN
     RAISE EXCEPTION 'FAIL [2c] Notreserve angelegt (Name Default, keine Rate, Karte): %', v_res; END IF;
   v_goal := (v_res->>'goal_id')::int;
   IF (SELECT kind FROM finance.savings_goals WHERE id = v_goal) <> 'emergency_reserve'
@@ -89,6 +101,8 @@ BEGIN
   -- zweites Konto zuordnen; P2P abgelehnt
   v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_p2p, 'amount', 500));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [3b] P2P-Zuordnung angenommen: %', v_res; END IF;
+  v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_dep, 'amount', 100));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [3b2] Kinderkonto-Zuordnung angenommen: %', v_res; END IF;
   v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_giro, 'amount', 1000));
   IF (finance.fn_emergency_reserve_status()->>'covered_eur')::numeric IS DISTINCT FROM 4000.00
      OR finance.fn_emergency_reserve_status()->>'state' <> 'ok' THEN
@@ -150,7 +164,8 @@ BEGIN
   -- ===== 6) Code-Review 2026-10-30: Karte beim Aendern, Kinderkonto zaehlt nie, Umwidmung mit Rate in P2P =====
   v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'target_months', 6));
   IF NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_target_months")'
-     OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")' THEN
+     OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")'
+     OR v_res->'emergency_reserve' ? 'candidates' OR v_res->'emergency_reserve' ? 'month_options' THEN
     RAISE EXCEPTION 'FAIL [6a] set-Karte nennt Ziel in EUR + gedeckt: %', v_res; END IF;
   DECLARE v_kidacc INT; v_before NUMERIC; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)

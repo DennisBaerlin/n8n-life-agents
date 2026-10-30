@@ -11,8 +11,9 @@
 --   Immer (auch ohne Notreserve — Onboarding, Live-Befund 2026-10-30: der Buchhalter wiederholte eine veraltete
 --   Monatsausgabe aus dem Verlauf, rechnete „6 Monatsgehaelter“ selbst und bot Kinderkonten an):
 --   basis (frisch), month_options [{months 3|6, eur}] (fertige Betraege, nur mit Ausgaben-Daten) und candidates
---   [{name, free_eur}] = zulaessige Konten (aktiv, fn_emergency_reserve_account_types, kein Kinderkonto) mit dem Saldo
---   nach ALLEN aktiven Ziel-Zuordnungen (noch zuordenbar), nach Name; ohne Kurs free_eur NULL.
+--   [{name, free_eur}] = zulaessige Konten (fn_emergency_reserve_account_ok) mit dem noch zuordenbaren Betrag
+--   (fn_account_free_balance, derselbe Guard wie die Write-fns, in EUR), nach Name; ohne Kurs free_eur NULL.
+--   Andere Monatszahlen nennt der Buchhalter ohne Betrag — den rechnet die Bestaetigungskarte (Probelauf).
 --   RUECKGABE jsonb: {exists:false, basis, month_options, candidates} | {exists:true, goal_id, name,
 --   target_kind ('amount'|'months'), months, target_eur, basis:{monthly_eur, fixed_eur, everyday_eur, everyday_accounts,
 --   everyday_provisional}, month_options, candidates, covered_eur, accounts:[{name, eur}], gap_eur, state, has_fx_gap}
@@ -44,16 +45,14 @@ BEGIN
     v_opts := CASE WHEN v_month > 0 THEN jsonb_build_array(
                   jsonb_build_object('months', 3, 'eur', round(3 * v_month, 2)),
                   jsonb_build_object('months', 6, 'eur', round(6 * v_month, 2))) ELSE '[]'::jsonb END;
-    -- zulaessige Konten: dieselbe Auswahl wie fn_emergency_reserve_covered (Geld-Konto, aktiv, kein Kinderkonto)
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('name', o.name,
-               'free_eur', round(GREATEST(o.balance_eur - COALESCE(sh.reserved, 0), 0), 2)) ORDER BY o.name), '[]'::jsonb)
+    -- zulaessige Konten (fn_emergency_reserve_account_ok, dieselbe Regel wie Deckung und Write-fns); frei = derselbe
+    -- Freier-Saldo-Guard wie fn_book_savings_reservation (fn_account_free_balance, Kontowaehrung), heute in EUR
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('name', a.name,
+               'free_eur', finance.fn_to_eur(GREATEST(finance.fn_account_free_balance(a.id), 0), a.currency))
+               ORDER BY a.name), '[]'::jsonb)
       INTO v_cands
-      FROM finance.account_overview o
-      LEFT JOIN core.fn_household_persons() hp ON hp.person_id = o.owner_person_id
-      LEFT JOIN LATERAL (SELECT sum(GREATEST(s.share_eur, 0)) AS reserved FROM finance.savings_goal_account_share s
-                          WHERE s.account_id = o.id AND s.goal_status = 'active') sh ON true
-     WHERE o.status = 'active' AND o.account_type = ANY (finance.fn_emergency_reserve_account_types())
-       AND hp.role IS DISTINCT FROM 'child';
+      FROM finance.accounts a
+     WHERE finance.fn_emergency_reserve_account_ok(a.id);
 
     SELECT * INTO v_g FROM finance.savings_goals WHERE kind = 'emergency_reserve' AND status = 'active'
      ORDER BY id LIMIT 1;

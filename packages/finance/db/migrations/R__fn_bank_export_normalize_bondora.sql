@@ -5,7 +5,10 @@
 --   Kopfblock (Bondora-Kontoauszug, Blatt "Data"): Labels Opening / Payments in / Payments out / Closing mit dem Wert
 --   in der naechsten nicht leeren Zelle rechts daneben, Zeitraum M/D/YYYY-M/D/YYYY (US-Format) -> statement
 --   (gedruckter Auszug, balance_source printed). Weitere Zellen (Inhabername) werden nie gelesen oder zurueckgegeben.
---   Zeilen: Datum M/D/YYYY oder ISO (Excel-Datumszelle), Zahlen ungerundet (Float-Artefakte) -> auf Cent gerundet;
+--   Deutsche Export-Variante (gleicher Aufbau, Livebefund 2026-10-30): Kopfzeile ueber header_aliases des Profils,
+--   Labels Zu Beginn / Einzahlungen / Auszahlungen / Ergebnis, Zeitraum und Daten TT.MM.JJJJ, Typen "go & grow zinsen",
+--   "sepa-banküberweisung", "abheben auf bankkonto" (Belege: Portfolio-Performance-Forum, deutsche Bondora-Auszuege).
+--   Zeilen: Datum M/D/YYYY, TT.MM.JJJJ oder ISO (Excel-Datumszelle), Zahlen ungerundet (Float-Artefakte) -> auf Cent gerundet;
 --   cash_amount = In - Out (das Vorzeichen kommt nie aus dem Typ-Text).
 --   Typen (Kleinschreibung): "go & grow returns" -> kind interest; "sepa payment" unter small_inflow_max (Profil) ->
 --   cash/legacy_return (Rueckfluesse alter Bondora-Kredite ausserhalb Go&Grow, Owner-Entscheid 2026-10-29), sonst
@@ -44,6 +47,7 @@ DECLARE
     v_bal     NUMERIC;
     v_prev    NUMERIC;
     v_typ     TEXT;
+    v_key     TEXT;
     v_kind    TEXT;
     v_sub     TEXT;
     v_info    INT := 0;
@@ -60,6 +64,8 @@ BEGIN
     FOR v_row IN SELECT r FROM jsonb_array_elements(COALESCE(p->'preamble', '[]'::jsonb)) r WHERE jsonb_typeof(r) = 'array' LOOP
         FOR v_c IN 0 .. jsonb_array_length(v_row) - 1 LOOP
             v_cell := lower(btrim(v_row->>v_c));
+            v_cell := CASE v_cell WHEN 'zu beginn' THEN 'opening' WHEN 'einzahlungen' THEN 'payments in'
+                                  WHEN 'auszahlungen' THEN 'payments out' WHEN 'ergebnis' THEN 'closing' ELSE v_cell END;
             IF v_cell IN ('opening', 'payments in', 'payments out', 'closing') THEN
                 SELECT btrim(x) INTO v_val FROM jsonb_array_elements_text(v_row) WITH ORDINALITY AS y(x, o)
                 WHERE o > v_c + 1 AND btrim(x) <> '' ORDER BY o LIMIT 1;
@@ -67,7 +73,8 @@ BEGIN
                     v_lbl := v_lbl || jsonb_build_object(v_cell, round(v_val::numeric, 2));
                 END IF;
                 v_val := NULL;
-            ELSIF v_cell ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4} *- *[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$' THEN
+            ELSIF v_cell ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4} *- *[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$'
+               OR v_cell ~ '^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4} *- *[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4}$' THEN
                 v_period := v_cell;
             END IF;
         END LOOP;
@@ -78,8 +85,12 @@ BEGIN
     END IF;
     v_from := btrim(split_part(v_period, '-', 1));
     v_to   := btrim(split_part(v_period, '-', 2));
-    v_ps := make_date(split_part(v_from, '/', 3)::int, split_part(v_from, '/', 1)::int, split_part(v_from, '/', 2)::int);
-    v_pe := make_date(split_part(v_to, '/', 3)::int, split_part(v_to, '/', 1)::int, split_part(v_to, '/', 2)::int);
+    v_ps := CASE WHEN v_from LIKE '%/%'
+                 THEN make_date(split_part(v_from, '/', 3)::int, split_part(v_from, '/', 1)::int, split_part(v_from, '/', 2)::int)
+                 ELSE make_date(split_part(v_from, '.', 3)::int, split_part(v_from, '.', 2)::int, split_part(v_from, '.', 1)::int) END;
+    v_pe := CASE WHEN v_to LIKE '%/%'
+                 THEN make_date(split_part(v_to, '/', 3)::int, split_part(v_to, '/', 1)::int, split_part(v_to, '/', 2)::int)
+                 ELSE make_date(split_part(v_to, '.', 3)::int, split_part(v_to, '.', 2)::int, split_part(v_to, '.', 1)::int) END;
     IF v_ps > v_pe THEN
         RETURN jsonb_build_object('ok', false, 'code', 'export_invalid',
             'reason', 'The printed period of the Bondora statement ends before it starts - export the account statement again.');
@@ -92,7 +103,9 @@ BEGIN
         v_cell := btrim(v_row->>((v_idx->>'date')::int));
         v_d := CASE WHEN v_cell ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN left(v_cell, 10)::date
                     WHEN v_cell ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$'
-                    THEN make_date(split_part(v_cell, '/', 3)::int, split_part(v_cell, '/', 1)::int, split_part(v_cell, '/', 2)::int) END;
+                    THEN make_date(split_part(v_cell, '/', 3)::int, split_part(v_cell, '/', 1)::int, split_part(v_cell, '/', 2)::int)
+                    WHEN v_cell ~ '^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4}$'
+                    THEN make_date(split_part(v_cell, '.', 3)::int, split_part(v_cell, '.', 2)::int, split_part(v_cell, '.', 1)::int) END;
         v_in  := CASE WHEN pg_input_is_valid(btrim(v_row->>((v_idx->>'in')::int)), 'numeric') THEN round(btrim(v_row->>((v_idx->>'in')::int))::numeric, 2) END;
         v_out := CASE WHEN pg_input_is_valid(btrim(v_row->>((v_idx->>'out')::int)), 'numeric') THEN round(btrim(v_row->>((v_idx->>'out')::int))::numeric, 2) END;
         v_bal := CASE WHEN pg_input_is_valid(btrim(v_row->>((v_idx->>'balance')::int)), 'numeric') THEN round(btrim(v_row->>((v_idx->>'balance')::int))::numeric, 2) END;
@@ -109,15 +122,20 @@ BEGIN
         v_in := COALESCE(v_in, 0);
         v_out := COALESCE(v_out, 0);
         v_typ := btrim(v_row->>((v_idx->>'payment type')::int));
+        -- deutsche Export-Variante -> englischer Typ-Schluessel (Text bleibt im Original fuer Karte/name)
+        v_key := CASE lower(v_typ) WHEN 'go & grow zinsen' THEN 'go & grow returns'
+                                   WHEN 'sepa-banküberweisung' THEN 'sepa payment'
+                                   WHEN 'abheben auf bankkonto' THEN 'withdrawal to bank account'
+                                   ELSE lower(v_typ) END;
         v_sub := NULL;
         v_kind := CASE
-            WHEN lower(v_typ) = 'go & grow returns' THEN 'interest'
-            WHEN lower(v_typ) LIKE 'unallocated balance%' THEN 'info'
-            WHEN lower(v_typ) = 'sepa payment' AND v_out = 0 THEN 'cash'
-            WHEN lower(v_typ) = 'withdrawal to bank account' AND v_in = 0 THEN 'cash'
+            WHEN v_key = 'go & grow returns' THEN 'interest'
+            WHEN v_key LIKE 'unallocated balance%' THEN 'info'
+            WHEN v_key = 'sepa payment' AND v_out = 0 THEN 'cash'
+            WHEN v_key = 'withdrawal to bank account' AND v_in = 0 THEN 'cash'
             ELSE 'unknown' END;
         IF v_kind = 'cash' THEN
-            v_sub := CASE WHEN lower(v_typ) = 'withdrawal to bank account' THEN 'withdrawal'
+            v_sub := CASE WHEN v_key = 'withdrawal to bank account' THEN 'withdrawal'
                           WHEN v_in < (v_prof->>'small_inflow_max')::numeric THEN 'legacy_return'
                           ELSE 'deposit' END;
         END IF;

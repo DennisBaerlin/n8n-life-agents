@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 442 fn-Dateien.
+Umfang: 445 fn-Dateien.
 
 ## finance.fn_account_everyday_per_day (READ, STABLE) -- geschaetzte Alltagsausgaben je Tag eines Kontos aus seinen Auszuegen
 - `finance.fn_account_everyday_per_day(p_account_id int) -> TABLE(per_day numeric, per_day_net numeric, has_history boolean)`
@@ -811,6 +811,11 @@ Umfang: 442 fn-Dateien.
 - jsonb-Keys: _, chat_id, found, full_name, role, summary, t
 - core.fn_hitl_texts (read-only, Text-Buendel des HITL-Gates agent.tool_human_approval) Liefert je MOEGLICHEM Empfaenger die Sprache, das Intl-Locale und alle Texte, die der Gate-Renderer ('Compose messages', Get-HitlComposeJs) braucht: die Gate-Chrome-Keys (Hinweis, Knoepfe, Mitglied-Texte, "Teil n/N" langer Karten, Format-Woerter) + jeden key-foermigen String des strukturierten Summary (New-HitlSummary: title, labels, note-/key-/tpl-Werte, Parameter) und bei kind=enum den Wert-Key <enum>.<wert> (Wert lower + Nicht-[a-z0-9_] -> '_', dieselbe Regel im Renderer). Ein Lookup-Pfad: beide Buendel kommen aus agent.fn_ui_texts_for (dieselbe Key-Sammlung + Sprach-Kette wie die Cron-/Gate-Texte), ohne den DEFINER-Wrapper -> das Gate braucht unter core_ro keinen weiteren Grant. owner = Sprache des Owners (agent.fn_person_lang, Kette Person -> Owner -> en) member = nur wenn chat_id numerisch ist UND zu einem Nicht-Owner aufloest (agent.fn_resolve_sender — dieselbe Quelle wie der Gate-Zweig 'Is member?'), sonst null; traegt den Namen fuer die Owner-Texte "Mitglied X beantragt" / "X hat bestaetigt". SICHERHEIT: liefert NIE eine chat_id — Texte entscheiden nie ueber Empfaenger/approverIds (die bleiben im Gate an Resolve sender/$OWNER_CHAT_ID gebunden). Wirft nie bei kaputtem/String-Summary (dann nur die Chrome-Keys); ein DB-Fehler stoppt das Gate fail-closed (kein onError am Knoten). languages = Code -> Eigenname (Zeilen kind=language). p: {summary, chat_id} RUECKGABE: {owner:{lang, locale, t:{key:text}}, member:{lang, locale, name, t}|null, languages:{code:name}} Tests: tests/db/core/test_fn_hitl_texts.sql; core_ro-Perspektive tests/db/cross/test_role_permissions.sql
 
+## finance.fn_holder_tokens (READ, IMMUTABLE) -- Namens-Tokens eines Bank-Drucks bzw. Haushaltsnamens (fn_match_household_holder)
+- `finance.fn_holder_tokens(p text, p_variant int) -> text[]`
+- jsonb-Keys: --
+- Kleinschrift, ss fuer ß, Umlaute je p_variant: 1 = ae/oe/ue ("MUELLER"), 2 = a/o/u ("MULLER"); gaengige Akzente ohne Akzent (é -> e). Alles ausser a-z trennt. Weg fallen Tokens unter 2 Zeichen (Initialen) und Fuellwoerter (und, and, u, oder, or, herr, frau, dr, prof). RUECKGABE: text[] ohne Dubletten, sortiert ('{}' bei NULL/leer).
+
 ## finance.fn_holding_price_status
 - `finance.fn_holding_price_status(p_holding_ids int[] DEFAULT NULL) -> TABLE ( holding_id int, name text, symbol text, isin text, feed_symbol text, account_name text, currency text, avg_price numeric, price numeric, price_currency text, price_as_of date, status text )`
 - jsonb-Keys: --
@@ -840,6 +845,11 @@ Umfang: 442 fn-Dateien.
 - `core.fn_household_plan_domain(p_domain text) -> boolean`
 - jsonb-Keys: --
 - core.fn_household_plan_domain(p_domain) — ist die Domain eine teilbare Haushalts-Plan-Domain? (Plan teilen, 2026-10-28) Die EINE Regel: core.advisors-Zeile mit plan_step=true, Paket aktiv (core.package_registry), Scope des plan_context household (core.context_scopes; ohne Zeile = household). Persoenliche Plaene (per_user, career) -> false. Leser: core.fn_household_plan_active (+ aktive Version) und core.fn_handle_plan_cb (Verben share/explain/wish: "Domain unbekannt" vs. "kein aktiver Plan" unterscheiden). STABLE, SECURITY DEFINER, search_path gepinnt. Tests: tests/db/core/test_fn_handle_plan_cb.sql, tests/db/core/test_fn_plan_share_targets.sql
+
+## finance.fn_iban_strict (READ, IMMUTABLE) -- ist p eine echte, lernbare IBAN? ("Import zuerst", IBAN-Lernen)
+- `finance.fn_iban_strict(p text) -> boolean`
+- jsonb-Keys: --
+- TRUE nur bei IBAN-Form (^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$ nach Grossschrift ohne Leerraum), nicht mit X maskiert und stimmender Pruefziffer (mod 97 = fn_iban_valid). NULL/leer -> FALSE. Abgrenzung: fn_iban_valid (Init-Baseline) laesst Nicht-IBANs bewusst durch (Kopf-Nummer eines Auszugs darf eine Kartennummer sein, eine Depot-/P2P-Nummer ist keine IBAN) und prueft nur die Pruefziffer IBAN-foermiger Werte. Wer eine Gegen-IBAN lernt oder als Schluessel erkennt, braucht diese strenge Form (Plan-Review 2026-10-30).
 
 ## finance.fn_import_allowed_keys (READ, IMMUTABLE) -- die Felder, die eine Import-Zeile je entity_type tragen darf
 - `finance.fn_import_allowed_keys(p_type text) -> text[]`
@@ -1064,6 +1074,11 @@ Umfang: 442 fn-Dateien.
 - `career.fn_market_trend(p_plan_facts jsonb) -> jsonb`
 - jsonb-Keys: target_locations, target_roles, title
 - career.fn_market_trend (WS-4 — deterministischer Stellen-Nachfrage-Trend der primaeren Ziel-Rolle) Rechnet fuer target_roles[0] den Posting-Count-Trend (aktuellste Messung + Delta gegen die vorherige Messung desselben scope) DETERMINISTISCH in der DB (CLAUDE.md "LLM rechnet nicht"). Karriere-Analog von career.fn_skill_gap (DB rechnet, Render liest), liest den datierten Cache career.market_signals (vom Cron befuellt) — NICHT die kuratierten Fakten (arch-challenge D1). Genutzt vom Renderer (fn_render_career_planning) -> Markt-Zeile im Plan. SCHEMA-QUALIFIZIERT durchgehend (career.*/agent.* explizit): der Render-Pfad laeuft via core.fn_fetch_context (DEFINER, search_path pg_catalog,agent,core OHNE career; der Renderer laeuft als dessen Owner = Superuser -> liest career.* trotz context_ro-Binding). KEINE SECURITY DEFINER noetig (plain wie fn_skill_gap); der Render-unter-context_ro-Test (test_fn_render_career_planning) deckt die Rollen-Perspektiv-Pflicht. RAISE-FREI: kein Cast auf Junk, Division durch 0 geguarded, fehlende Rolle/Zahlen/Cache-Zeilen -> NULL. RUECKGABE jsonb (oder NULL, wenn keine Daten): { role, location, count, prev_count, trend_pct, direction, as_of } trend_pct/direction nur bei >= 2 Messungen (sonst trend_pct null, direction 'flat'). Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_market_trend.sql
+
+## finance.fn_match_household_holder (READ, STABLE) -- gehoert ein gedruckter Name (Gegenpart einer Buchung, Kontoinhaber eines
+- `finance.fn_match_household_holder(p_name text) -> jsonb`
+- jsonb-Keys: --
+- Auszugs) zu Haushaltsmitgliedern? ("Import zuerst": IBAN-Lernen, Inhaber aus dem PDF, Dauerauftrags-Erkennung) Die EINE Adresse fuer Bank-Drucke ("ZWEISTEIN, MAXIMILIAN", "Max und Erika Zweistein", "MUELLER"/"MULLER"). Anders als core.fn_resolve_person (ein vom Nutzer genannter Bezug: Vorname/Alias/Selbstbezug, exakt) wird token-weise verglichen: fn_holder_tokens je Variante (1 = ae/oe/ue, 2 = a/o/u; die erste eindeutige gewinnt) gegen core.fn_household_persons().full_name (publiziertes Fenster, Grant an finance_rw/_ro; kein DEFINER noetig). Regeln (konservativ, Plan-Review 2026-10-30): * eine Person trifft, wenn ALLE ihre Tokens im Namen stehen; Personen mit weniger als 2 Tokens (nur Vorname) nie; * eine getroffene Person, deren Tokens echte Teilmenge einer anderen getroffenen sind, faellt weg ("Ida Quell" in "Greta Ida Quell"); * zwei getroffene Personen mit gleichen Tokens -> kein Treffer (mehrdeutig); * bleibt ein Token des Namens, das zu keiner getroffenen Person gehoert ("GmbH", ein fremder Name) -> kein Treffer. RUECKGABE: {matched, person_ids[] (sortiert), owner_person_id (genau eine Person, sonst NULL), joint (>= 2 Personen)}.
 
 ## core.fn_menu_refresh_claim
 - `core.fn_menu_refresh_claim() -> jsonb`

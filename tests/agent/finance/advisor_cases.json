@@ -110,5 +110,25 @@
     "expected_tool": "tool_record_plan_wish",
     "expected_behavior": "Wish mode: the member already stated the wish - the advisor must call tool_record_plan_wish with wish_text carrying the member words (raise the emergency fund to six months of expenses) and must not change or save the plan itself. The test sender is no household partner, so the tool may refuse (ok:false) - then the advisor explains in plain words that only an adult household member can send a plan wish and does NOT claim the wish was sent.",
     "notes": "Plan teilen (2026-10-28): Golden fuer das neue Core-Werkzeug am Finanzberater (domain fix finance). Det-Gate: tool_record_plan_wish gerufen. Das Kommando braucht tool_record_plan_wish in -WriteTools, falls die Default-Erkennung es nicht greift."
+  },
+  {
+    "id": "ac12",
+    "name": "Spar-Deckung: reicht das Geld fuer den Sparplan? -> DB-Rechnung statt eigener Projektion",
+    "task": "Reicht das Geld auf dem Konto, von dem mein VWCE-Sparplan abgebucht wird, auch in den naechsten Monaten? Ich ueberlege, die Rate zu erhoehen.",
+    "chat_id": "test_ac12",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The advisor must ground the answer in the database savings-funding result for the account that pays the VWCE savings plan (VWCE Bestandsplan, paid from the settlement account Trade Republic Cash Girokonto): it names that account and reports the coverage state from the database (covered / runs out on a date / falls below zero soon / not determinable) - or, if the database cannot determine it, says what is missing. It must NOT present its own month-by-month balance projection or invent a run-out date, and must not claim the plan is covered without a database basis. A recommendation on raising the rate (e.g. only together with a higher transfer into that account) is welcome. No write tool call. Judge by the OUTPUT content, not by the read-tool log (the n8n action log does not reliably capture every read call).",
+    "notes": "Berater-Nachruestung 2026-10-30: Spar-Deckung (fn_account_funding/fn_funding_accounts) lesen statt rechnen. Fixture: VWCE Bestandsplan 50/Monat am Trade Republic Depot (Verrechnungskonto Trade Republic Cash Girokonto)."
+  },
+  {
+    "id": "ac13",
+    "name": "Leistbarkeit: freies Geld im Monat ohne Alltagsausgaben benennen",
+    "task": "Kann ich mir ein Auto fuer 25000 Euro leisten? Wie viel bleibt mir pro Monat eigentlich frei?",
+    "chat_id": "test_ac13",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The advisor answers the affordability question from the household data and must state explicitly that the monthly free amount from the recurring payments does NOT include everyday spending (groceries, card payments, cash) - either quoting an estimate from imported bank statements or saying that no such estimate exists yet. Presenting the recurring-payments free amount as the money actually left at the end of the month is a FAIL. No write tool call.",
+    "notes": "Berater-Nachruestung 2026-10-30: monthly_cashflow_summary kennt nur Dauerzahlungen; die Fixtures haben keinen Kontoauszug -> die Schaetzung fehlt, der Berater muss das sagen."
   }
 ]

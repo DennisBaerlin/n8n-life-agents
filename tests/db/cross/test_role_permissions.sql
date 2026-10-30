@@ -150,6 +150,37 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw/finance_ro -> fn_get_account_close_blockers/fn_get_loan_payment_split/fn_recurring_due_open: kein permission denied]';
 
+  -- ===== (2-adv) Berater-Lesepfade (2026-10-30): Spar-Deckung, Dauerauftraege, Alltagsausgaben, Ziel-Ampel, Konto-Vorschau =====
+  -- Fixture als Superuser: ein Deckungs-Konto (Ziel eines Dauerauftrags) + ein knappes Konto mit einer Quelle, damit unter
+  -- finance_ro die echten Pfade laufen: fn_account_funding (Spalten referenziert -> die Projektion wird ausgewertet) und der
+  -- Vorschlags-Zweig von fn_account_outlook (liest core.fn_household_persons fuer den Kinderkonto-Filter).
+  DECLARE v_src INT; v_dst INT; v_short INT; v_res JSONB; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_adv_src__', 'cash', 'EUR', 'active') RETURNING id INTO v_src;
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_adv_dst__', 'cash', 'EUR', 'active') RETURNING id INTO v_dst;
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_adv_short__', 'cash', 'EUR', 'active') RETURNING id INTO v_short;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
+      (v_src, 900000, CURRENT_DATE - 10, 'other'), (v_short, 10, CURRENT_DATE - 10, 'other');
+    INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('rp adv Zubringer', v_src, v_dst, -50, 'month', CURRENT_DATE + 1, CURRENT_DATE + 1);
+    BEGIN
+      SET LOCAL ROLE finance_ro;
+      SELECT count(*) INTO v_cnt FROM (SELECT state, runs_out_on, monthly_in FROM finance.account_funding_overview
+                                       WHERE account_name = '__rp_adv_dst__' AND state IS NOT NULL) q;
+      PERFORM name, from_account, to_account, rhythm, monthly_amount FROM finance.standing_order_overview;
+      PERFORM account_name, everyday_per_day, everyday_per_month FROM finance.account_everyday_spending;
+      PERFORM finance.fn_savings_goal_pace(id) FROM finance.savings_goal_progress WHERE status = 'active';
+      v_res := finance.fn_account_outlook(v_short);
+      RESET ROLE;
+    EXCEPTION WHEN OTHERS THEN
+      RESET ROLE;
+      RAISE EXCEPTION 'FAIL [finance_ro -> Berater-Lesepfade]: %', SQLERRM;
+    END;
+    IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [finance_ro -> account_funding_overview]: % Zeilen statt 1', v_cnt; END IF;
+    IF jsonb_typeof(v_res->'suggestion') IS DISTINCT FROM 'object' THEN
+      RAISE EXCEPTION 'FAIL [finance_ro -> fn_account_outlook]: Vorschlags-Zweig nicht erreicht: %', v_res; END IF;
+  END;
+  RAISE NOTICE 'PASS [finance_ro -> account_funding_overview/standing_order_overview/account_everyday_spending/fn_savings_goal_pace/fn_account_outlook-Vorschlag: kein permission denied]';
+
   -- ===== (2-mr) Instandhaltungsruecklage (2026-10-27): Empfehlung liest core.fn_config_get =====
   -- finance_rw (Tools: create/set_real_estate, create/set_savings_goal), finance_ro (Agent-Frei-SQL) und core_ro
   -- (Monitor-Frei-SQL / Trigger-Auswertung ueber read_surface) lesen die View + die Helfer ohne permission denied.

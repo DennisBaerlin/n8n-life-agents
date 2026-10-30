@@ -145,4 +145,30 @@ BEGIN
   RAISE NOTICE 'PASS outlook: Zu-/Abgang am selben Tag getrennt, Uebertrag EUR -> USD als 110 USD';
 END $$;
 
+-- Berater-Nachruestung 2026-10-30 (Code-Review): der Umbuchungs-Vorschlag nennt nie ein Kinderkonto als Quelle, auch
+-- wenn es den groessten freien Saldo hat (der Vorschlag geht ohne LLM in die Karte/den Alert). Werte erfunden.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_giro INT; v_kid INT; v_adult INT; v_res JSONB;
+BEGIN
+  INSERT INTO agent.persons (person_id, full_name, role) VALUES ('__t_ol_kid__', 'Kind Beispiel', 'child')
+    ON CONFLICT (person_id) DO UPDATE SET role = 'child';
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_ol_short__', 'cash', 'EUR', 'active') RETURNING id INTO v_giro;
+  INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id) VALUES ('__t_ol_kid__', 'cash', 'EUR', 'active', '__t_ol_kid__') RETURNING id INTO v_kid;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_ol_adult__', 'cash', 'EUR', 'active') RETURNING id INTO v_adult;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
+    (v_giro, 100, t - 40, 'other'), (v_kid, 900000, t - 40, 'other'), (v_adult, 800000, t - 40, 'other');
+
+  v_res := finance.fn_account_outlook(v_giro);
+  IF (v_res->>'shortfall')::numeric IS DISTINCT FROM 150 OR v_res->'suggestion'->>'from_account' IS DISTINCT FROM '__t_ol_adult__' THEN
+    RAISE EXCEPTION 'FAIL outlook Vorschlag ohne Kinderkonto: %', v_res; END IF;
+
+  UPDATE finance.accounts SET status = 'closed' WHERE id = v_adult;
+  v_res := finance.fn_account_outlook(v_giro);
+  IF v_res->'suggestion'->>'from_account' = '__t_ol_kid__' THEN
+    RAISE EXCEPTION 'FAIL outlook: einziges Quellkonto ist ein Kinderkonto, trotzdem vorgeschlagen: %', v_res; END IF;
+  RAISE NOTICE 'PASS outlook: Umbuchungs-Vorschlag nie von einem Kinderkonto';
+END $$;
+
 ROLLBACK;

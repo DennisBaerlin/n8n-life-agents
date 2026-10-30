@@ -20,11 +20,14 @@
 --   Aufklappen (details): Ø Kaufkurs, Kaufwert, Gewinn (aus den eigenen Zeilen), dann die letzten 12 Buchungen und
 --   „n aeltere" (finance.fn_app_holding_transactions).
 --   RENDITE JE DEPOT (vor den Depot-Abschnitten): ein Abschnitt aus finance.fn_depot_performance mit derselben Personen-
---     Sicht; je Depot mit Einzahlung eine Zeile (Kinder-Depot „… · nicht in Alle Depots"), „Alle Depots" zuletzt und nur
---     ab zwei Haushalts-Depots. Pille = Rendite pro Jahr (ab 365 Tagen) bzw. seit Beginn (darunter, Untertitel „noch kein
---     ganzes Jahr"), ok/up | alert/down | neutral bei 0,0, warn/clock bei veraltetem Kurs (Zahl bleibt); ohne
---     Kurs/Wechselkurs warn + gap. Aufklappen: Wert heute, Hinweis veralteter Kurs, „Uebernommene Positionen zaehlen ab"
---     (nur wenn verschoben), ein Erklaer-Satz. Depot-Auswahl ueberall = finance.fn_visible_depots.
+--     Sicht; je Depot mit Jahreswert (return_pa_pct) bzw. mit Kurs-/Wechselkurs-Luecke und Beginn vor >= 1 Jahr eine
+--     Zeile (Kinder-Depot „… · nicht in Alle Depots"), „Alle Depots" zuletzt und nur, wenn alle (mindestens zwei)
+--     Haushalts-Depots mit Einzahlung eine Zeile haben; keine Zeile -> kein Abschnitt. EIN Zeitraum auf der
+--     Seite (Owner 2026-10-30): juengere Depots fehlen, statt „seit Beginn" (bei Uebernahme ab Uebernahme-Kurs) neben
+--     „Seit Kauf" (Hero, Positionen) zu stellen; Fonds zeigen unter einem Jahr ebenfalls keine Wertentwicklung (ESMA
+--     Q&A zu Art. 15(4) VO 583/2010). Pille = Rendite pro Jahr, ok/up | alert/down | neutral bei 0,0, warn/clock bei
+--     veraltetem Kurs (Zahl bleibt); ohne Kurs/Wechselkurs warn + gap. Aufklappen: Wert heute, Hinweis veralteter Kurs,
+--     ein Erklaer-Satz. Depot-Auswahl ueberall = finance.fn_visible_depots.
 --   ZERO-TRUST-SICHTBARKEIT (core.fn_app_sees_household): owner/partner sehen alle aktiven Depots, alle anderen nur
 --     Depots mit owner_person_id = ich (dann ohne Kinder-Trennung: der Hero ist die eigene Summe).
 --   params.probe = true -> {ok, empty, banners}: je Depot mit Kurs veraltet/fehlt ein warn-Banner, target = depot.
@@ -169,26 +172,34 @@ BEGIN
       INTO v_depots
       FROM per;
 
-    -- Rendite je Depot (finance.fn_depot_performance, dieselbe Sicht): EIN Abschnitt vor den Depots; Depots ohne
-    -- Einzahlung fehlen, „Alle Depots" erst ab zwei Haushalts-Depots mit Einzahlung
-    WITH r AS (
-        SELECT t.x, t.o,
-               COALESCE((t.x ->> 'return_pa_pct')::numeric, (t.x ->> 'return_since_start_pct')::numeric) AS pct
-          FROM jsonb_array_elements(finance.fn_depot_performance(jsonb_build_object('person_id', v_pid)) -> 'rows')
-               WITH ORDINALITY AS t(x, o)
+    -- Rendite je Depot (finance.fn_depot_performance, dieselbe Sicht): EIN Abschnitt vor den Depots, nur Depots mit
+    -- Jahreswert (die 365-Tage-Regel bleibt in der fn) bzw. mit Luecke und Beginn vor mindestens einem Jahr (ohne Kurs
+    -- fehlt der Endwert-Fluss, period_days waere 0). EIN Zeitraum auf der Seite: darunter beantwortet „seit Kauf" die
+    -- Gewinn-Frage. „Alle Depots" nur, wenn ALLE Haushalts-Depots mit Einzahlung stehen (mindestens zwei): sonst
+    -- poolte die Summe versteckte junge Depots (bei Uebernahme ab Uebernahme-Kurs).
+    WITH perf AS (
+        SELECT finance.fn_depot_performance(jsonb_build_object('person_id', v_pid)) AS j
+    ), a AS (
+        SELECT t.x, t.o, (t.x ->> 'return_pa_pct')::numeric AS pct,
+               NOT (t.x ->> 'is_total')::boolean AND NOT (t.x ->> 'is_child')::boolean AS hh,
+               (t.x ->> 'return_pa_pct' IS NOT NULL
+                OR (t.x ->> 'missing_reason' IS NOT NULL
+                    AND (t.x ->> 'start_date')::date <= (perf.j ->> 'as_of')::date - 365)) AS shown
+          FROM perf, jsonb_array_elements(perf.j -> 'rows') WITH ORDINALITY AS t(x, o)
          WHERE t.x ->> 'missing_reason' IS DISTINCT FROM 'no_flows'
+    ), r AS (
+        SELECT a.x, a.o, a.pct FROM a WHERE a.shown
     ), n AS (
-        SELECT count(*) FILTER (WHERE NOT (r.x ->> 'is_total')::boolean AND NOT (r.x ->> 'is_child')::boolean) AS cnt FROM r
+        SELECT count(*) FILTER (WHERE a.hh AND a.shown) AS cnt, COALESCE(bool_and(a.shown) FILTER (WHERE a.hh), false) AS all_hh
+          FROM a
     )
     SELECT jsonb_agg(jsonb_build_object(
                'label', CASE WHEN (r.x ->> 'is_total')::boolean THEN core.fn_ui_tpl('finance.app.depot.perf_total')
                              WHEN (r.x ->> 'is_child')::boolean
                              THEN core.fn_ui_tpl('finance.app.depot.perf_child', jsonb_build_object('name', r.x ->> 'depot_name'))
                              ELSE r.x -> 'depot_name' END,
-               'sub', CASE WHEN r.x ->> 'start_date' IS NOT NULL THEN core.fn_ui_tpl(
-                          CASE WHEN (r.x ->> 'period_days')::int < 365 THEN 'finance.app.depot.perf_since_short'
-                               ELSE 'finance.app.depot.perf_since' END,
-                          jsonb_build_object('date', core.fn_ui_date((r.x ->> 'start_date')::date))) END,
+               'sub', core.fn_ui_tpl('finance.app.depot.perf_since',
+                          jsonb_build_object('date', core.fn_ui_date((r.x ->> 'start_date')::date))),
                'value', NULL,
                'gap', r.x ->> 'missing_reason' IN ('no_price', 'no_fx'),
                'pill', CASE
@@ -198,8 +209,7 @@ BEGIN
                                      WHEN round(r.pct, 1) > 0 THEN 'ok' WHEN round(r.pct, 1) < 0 THEN 'alert' ELSE 'neutral' END,
                        'icon', CASE WHEN (r.x ->> 'price_stale')::boolean THEN 'clock'
                                     WHEN round(r.pct, 1) > 0 THEN 'up' WHEN round(r.pct, 1) < 0 THEN 'down' ELSE 'info' END,
-                       'text', core.fn_ui_tpl(CASE WHEN r.x ->> 'return_pa_pct' IS NOT NULL THEN 'finance.app.depot.perf_pa'
-                                                   ELSE 'finance.app.depot.perf_total_return' END,
+                       'text', core.fn_ui_tpl('finance.app.depot.perf_pa',
                                               jsonb_build_object('pct', core.fn_ui_num(round(r.pct, 1), 1, true))))
                    WHEN r.x ->> 'missing_reason' = 'no_price' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                        'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
@@ -216,12 +226,9 @@ BEGIN
                                   'value', core.fn_ui_money((r.x ->> 'value_eur')::numeric, 'EUR')) END,
                               CASE WHEN (r.x ->> 'price_stale')::boolean AND r.pct IS NOT NULL THEN jsonb_build_object(
                                   'label', core.fn_ui_tpl('finance.app.depot.d_perf_stale'), 'value', NULL) END,
-                              CASE WHEN r.x ->> 'takeover_start_date' IS NOT NULL THEN jsonb_build_object(
-                                  'label', core.fn_ui_tpl('finance.app.depot.d_perf_takeover'),
-                                  'value', core.fn_ui_date((r.x ->> 'takeover_start_date')::date)) END,
                               jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_how'), 'value', NULL)])
                                   WITH ORDINALITY AS d(e, k)))
-             ORDER BY r.o) FILTER (WHERE NOT (r.x ->> 'is_total')::boolean OR n.cnt >= 2)
+             ORDER BY r.o) FILTER (WHERE NOT (r.x ->> 'is_total')::boolean OR (n.cnt >= 2 AND n.all_hh))
       INTO v_perf
       FROM r CROSS JOIN n;
     IF v_perf IS NOT NULL THEN

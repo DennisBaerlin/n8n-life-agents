@@ -14,7 +14,8 @@
 #       je monitor_acquisition_methods-Methode <pkg>.monitor_method.<m>; Core-Builtins core.monitor_method.{web_search,sql,none}.
 #   (7b) Persona-Liste: Core-Manifest personas.list — Code ^[a-z_]+$, eindeutig, neutral enthalten, ord gesetzt; je Persona
 #       core.persona.name.<code>; die in core:V031 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
-#   (8) SQL-Text-Verweise: jedes Katalog-Key-Literal in packages/*/db/migrations/R__*.sql existiert im Katalog.
+#   (8) SQL-Text-Verweise: jedes Katalog-Key-Literal in packages/*/db/migrations/R__*.sql existiert im Katalog
+#       (ebenso jeder Key im View-Modell-Beispiel tests/fixtures/app_view_model_v1.json).
 #   (9) Mini-App-Laien-Test: keine Fachwoerter ($AppDeniedWords) in App-Texten; Ratchet-Ausnahmen je Key,
 #       eine ueberfluessige Ausnahme ist ein Fehler.
 #   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; Tab-Titel ausgenommen).
@@ -219,6 +220,14 @@ Check 'SQL-Text-Verweise: jedes Katalog-Key-Literal in R__-Funktionen existiert 
             if (@($cat[$pkg]['de'].Keys | Where-Object { $_.StartsWith("$key.") }).Count -gt 0) { continue }
             "$($f.Name): Text-Key '$key' fehlt in packages/$pkg/locales/de.json"
         }
+    }
+    # Form-Beispiel des View-Modells (§3.12): seine tpl-Keys und ui.t-Keys driften sonst still mit dem Katalog
+    $fx = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'tests\fixtures\app_view_model_v1.json'), $Utf8NoBom)
+    $fxKeys = @([regex]::Matches($fx, '"kind":\s*"tpl",\s*"value":\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value }) +
+              @([regex]::Matches($fx, '"([a-z][a-z0-9_]*\.[a-z0-9_]+\.[a-z0-9_.]+)":\s*"') | ForEach-Object { $_.Groups[1].Value })
+    foreach ($key in ($fxKeys | Sort-Object -Unique)) {
+        $pkg = $key.Split('.')[0]
+        if (-not $cat.Contains($pkg) -or -not $cat[$pkg]['de'].Contains($key)) { "app_view_model_v1.json: Text-Key '$key' fehlt in packages/$pkg/locales/de.json" }
     }
 }
 

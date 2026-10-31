@@ -97,7 +97,8 @@ Der Berater-Datenqualitäts-Alarm nennt Kurs-Lücken nur im Text, ohne eigenen L
 | `finance.depot_reserve_status` | je Depot Marktwert (EUR) vs. Σ `share_eur` aktiver Ziele; NULL-Preis → Deckung 0 → breach=TRUE. Bewertung allein über `finance.fn_depot_cover_state` (unknown / dip = Kursdelle unter `finance.depot_cover_warn_pct` / short / ok), die eine Regel für Mini-App und Berater-Alert (2026-10-30: eine kleine Kursdelle ist keine Lücke; der Ziel-Stand bleibt das Gesparte) |
 | `finance.savings_goal_reserve_breakdown` | je (Ziel, Konto) der Anteil, `source` = Kontoart cash/depot (Drill-down) |
 | `finance.depot_holdings_overview` | `book_value` immer gefüllt; Marktwert-Spalten NULL ohne Live-Kurs (kein Buchwert-Fallback); EUR-Konvertierung in der Quote-Währung; filtert `shares > 0` |
-| `finance.networth_by_asset_class` | je `(bucket, asset_class, owner_person_id)` EUR-Wert + `tradeable` (nur `depot`+`cash`); Festgeld = eigene Klasse `tradeable=false`; reine Depot-Konten raus (Doppelzähl-Schutz); drei Sichten auf eine Datenbasis: T1 Gesamt-Familie, T2 Eltern-FIRE-Pool (ohne `role='child'`), T3 pro Kind |
+| `finance.networth_by_asset_class` | je `(bucket, asset_class, owner_person_id)` EUR-Wert + `tradeable` (nur `depot`+`cash`); Festgeld = eigene Klasse `tradeable=false`; reine Depot-Konten raus (Doppelzähl-Schutz); drei Sichten auf eine Datenbasis: T1 Gesamt-Familie, T2 Eltern-FIRE-Pool (ohne `role='child'`), T3 pro Kind; aggregiert aus `finance.networth_items` |
+| `finance.networth_items` | dieselbe Rechnung je Objekt (Konto, Depot-Position, Immobilie, Vorsorge: `item_kind`, `item_id`, `item_name`, unrundes `value_eur`); Quelle des Aufklappens „Vermögen“ in der Mini-App |
 
 ## Sparziel-Reserve (Tag-Envelope + Reserve-Journal)
 

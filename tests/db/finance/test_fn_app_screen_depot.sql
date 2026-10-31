@@ -11,7 +11,10 @@
 --   7) „Depots der Kinder" (nur Haushalt): eine Zeile je Kind-Depot mit Positionen (Wert = Vermoegen-Regel, Inhaber als
 --      Untertitel, trend, Pille Kurs fehlt vor veraltet, Pillen-Zeilen zuerst), Aufklappen = Jahres-Rendite ab einem
 --      Jahr + Positionen (hoechstens 8 Zeilen), Summe ab zwei Kind-Depots ohne gap; Kinder nie im Rendite-Abschnitt;
---      Kind-Sicht ohne Geschwister; entfernte Katalog-Keys tauchen nirgends auf.
+--      Kind-Sicht ohne Geschwister; entfernte Katalog-Keys tauchen nirgends auf; core.fn_app_view_lint = 0 mit Kinder- und
+--      Eltern-Rendite auf einer Seite.
+--   8) Fixture-Haushalt (tests/util/util_app_household.sql): core.fn_app_view_lint = 0 fuer alle Personen, Depot mit einer
+--      Position ohne Summe (B5), beide Kinder in 'Depots der Kinder', Kind-Sicht ohne Fremdes.
 --   3) Kind sieht nur eigene Depots, Hero = eigene Summe, ohne Kinder-Zusatz: Volltextsuche ohne fremde Namen, ohne *id.
 --   4) unbekannte Rolle nur Eigenes, unbekannte Person nichts; probe -> {ok, empty, banners} (Kurs-Banner je Depot).
 --   5) Muell -> bad_request; Frei-SQL-Sitzung -> forbidden, kein EXECUTE fuer *_ro.
@@ -435,6 +438,11 @@ BEGIN
     RAISE EXCEPTION 'FAIL [7i] entfernter Katalog-Key in der View'; END IF;
   IF jsonb_path_exists(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')), 'strict $.**.state ? (@ == "ok")') THEN
     RAISE EXCEPTION 'FAIL [7j] keine ok-Pille'; END IF;
+  IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')), '{}',
+               ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing'])) THEN
+    RAISE EXCEPTION 'FAIL [7k] Gestaltungsregeln (Kinder- und Eltern-Rendite auf einer Seite): %', (SELECT string_agg(l.rule || ' ' || l.path, ', ')
+      FROM core.fn_app_view_lint(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')), '{}',
+             ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing']) l); END IF;
   RAISE NOTICE 'PASS [7] Depots der Kinder: eine Zeile je Depot, Vermoegen-Wert, Pillen zuerst, Rendite + Positionen im Aufklappen, Summe ab zwei ohne gap, keine Geschwister';
 
 
@@ -463,4 +471,36 @@ BEGIN
   RAISE NOTICE 'PASS [5] kein EXECUTE fuer *_ro; Frei-SQL-Sitzung -> forbidden';
 END $$;
 RESET SESSION AUTHORIZATION;
+ROLLBACK;
+
+-- ===== 8) Fixture-Haushalt (tests/util/util_app_household.sql): Gestaltungsregeln fuer alle Personen =====
+BEGIN;
+\ir ../../util/util_app_household.sql
+DO $$
+DECLARE
+  v jsonb; v_pid text; v_sec jsonb; v_txt text;
+BEGIN
+  FOREACH v_pid IN ARRAY ARRAY['fxh_jonas', 'fxh_mira', 'fxh_lea', 'fxh_tom', 'fxh_gast'] LOOP
+    v := finance.fn_app_screen_depot(jsonb_build_object('person_id', v_pid, 'params', '{}'::jsonb));
+    IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(v, '{}', ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing'])) THEN
+      RAISE EXCEPTION 'FAIL [8a] Gestaltungsregeln fuer %: %', v_pid, (SELECT string_agg(l.rule || ' ' || l.path, ', ')
+        FROM core.fn_app_view_lint(v, '{}', ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing']) l); END IF;
+  END LOOP;
+  -- Haushalt: Depot mit einer Position ohne Summe (B5), Kinder-Depots in einem Abschnitt (beide Kinder)
+  v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'fxh_jonas', 'params', '{}'::jsonb));
+  SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
+   WHERE s->'title'->'params'->>'name' = (SELECT name FROM finance.accounts WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_depot_jonas'));
+  IF jsonb_array_length(v_sec->'items') <> 1 OR jsonb_typeof(v_sec->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [8b] Depot mit einer Position: keine Summe (B5), got %', v_sec; END IF;
+  v_sec := v->'sections'->-1;
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.depot.section_kids') OR jsonb_array_length(v_sec->'items') <> 2 THEN
+    RAISE EXCEPTION 'FAIL [8c] „Depots der Kinder" mit beiden Kind-Depots, got %', v_sec; END IF;
+  -- Kind: nur das eigene Depot, kein Kinder-Abschnitt, nichts vom Geschwister
+  v_txt := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'fxh_lea', 'params', '{}'::jsonb))::text;
+  IF v_txt LIKE '%finance.app.depot.section_kids%'
+     OR v_txt LIKE '%' || (SELECT name FROM finance.accounts WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_depot_tom')) || '%'
+     OR v_txt LIKE '%' || (SELECT name FROM finance.accounts WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_depot_jonas')) || '%' THEN
+    RAISE EXCEPTION 'FAIL [8d] Lea sieht Fremdes oder einen Kinder-Abschnitt: %', v_txt; END IF;
+  RAISE NOTICE 'PASS [8] Fixture-Haushalt: Gestaltungsregeln fuer alle Personen, Summenregel, Depots der Kinder, Kind-Sicht';
+END $$;
 ROLLBACK;

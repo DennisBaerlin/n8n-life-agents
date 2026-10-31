@@ -15,6 +15,8 @@
 --   3) probe -> {ok, empty, banners}: Banner nur fuer die bald endende Bindung (mit Restschuld zum Bindungsende), nicht
 --      fuer pausiert/abgelaufen; volle View banners [].
 --   4) Eingabe-Fehler -> bad_request; Frei-SQL -> forbidden; kein EXECUTE fuer *_ro.
+--   5) Fixture-Haushalt (tests/util/util_app_household.sql): core.fn_app_view_lint = 0 fuer alle Personen, Autokredit mit
+--      Schlussrate ohne Hochrechnung (B4), Zinsbindung im Warnfenster. [1] prueft den Lint auch auf den eigenen Daten.
 -- Self-contained (BEGIN..ROLLBACK).
 BEGIN;
 DO $$
@@ -218,7 +220,11 @@ BEGIN
   IF jsonb_typeof(finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_owner'))->'sections'->1->'value') <> 'null' THEN
     RAISE EXCEPTION 'FAIL [1m] ein Kinder-Kredit: keine Abschnitts-Summe'; END IF;
   UPDATE finance.loans SET status = 'active' WHERE id = v_k2;
-  RAISE NOTICE 'PASS [1] Haushalt: Kredite, Hero, Pillen nur als Warnung, Schlussrate ohne Projektion, Kredite der Kinder, keine ok-Pille';
+  IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_owner')),
+                                                  ARRAY['finance.app.loans.paused'])) THEN
+    RAISE EXCEPTION 'FAIL [1n] Gestaltungsregeln (fn_app_view_lint): %', (SELECT string_agg(l.rule || ' ' || l.path, ', ')
+      FROM core.fn_app_view_lint(finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_owner')), ARRAY['finance.app.loans.paused']) l); END IF;
+  RAISE NOTICE 'PASS [1] Haushalt: Kredite, Hero, Pillen nur als Warnung, Schlussrate ohne Projektion, Kredite der Kinder, keine ok-Pille, Gestaltungsregeln';
 
   -- ===== 2) Kind =====
   v := finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_kid', 'params', '{}'::jsonb));
@@ -270,4 +276,31 @@ BEGIN
   RAISE NOTICE 'PASS [4] Muell -> bad_request, kein EXECUTE fuer *_ro, Frei-SQL -> forbidden';
 END $$;
 RESET SESSION AUTHORIZATION;
+ROLLBACK;
+
+-- ===== 5) Fixture-Haushalt (tests/util/util_app_household.sql): Gestaltungsregeln fuer alle Personen, Autokredit B4 =====
+BEGIN;
+\ir ../../util/util_app_household.sql
+DO $$
+DECLARE
+  v jsonb; v_pid text; v_it jsonb;
+BEGIN
+  FOREACH v_pid IN ARRAY ARRAY['fxh_jonas', 'fxh_mira', 'fxh_lea', 'fxh_tom', 'fxh_gast'] LOOP
+    v := finance.fn_app_screen_loans(jsonb_build_object('person_id', v_pid, 'params', '{}'::jsonb));
+    IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(v, ARRAY['finance.app.loans.paused'])) THEN
+      RAISE EXCEPTION 'FAIL [5a] Gestaltungsregeln fuer %: %', v_pid, (SELECT string_agg(l.rule || ' ' || l.path, ', ')
+        FROM core.fn_app_view_lint(v, ARRAY['finance.app.loans.paused']) l); END IF;
+  END LOOP;
+  v := finance.fn_app_screen_loans(jsonb_build_object('person_id', 'fxh_jonas', 'params', '{}'::jsonb));
+  SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i
+   WHERE i->>'label' = (SELECT name FROM finance.loans WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'loan_car'));
+  IF v_it->'sub'->>'value' <> 'finance.app.loans.rate_line_final' OR (v_it->'details')::text LIKE '%finance.app.loans.d_payoff%'
+     OR (v_it->'details')::text LIKE '%finance.app.loans.d_interest_left%' OR (v_it->'details')::text LIKE '%finance.app.loans.d_term%' THEN
+    RAISE EXCEPTION 'FAIL [5b] Autokredit mit Schlussrate (B4): Schlussrate im Untertitel, keine Hochrechnung, got %', v_it; END IF;
+  SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i
+   WHERE i->>'label' = (SELECT name FROM finance.loans WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'loan_house'));
+  IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text'->>'value' <> 'finance.app.loans.fixed_ends' THEN
+    RAISE EXCEPTION 'FAIL [5c] Zinsbindung im Warnfenster: warn „endet", got %', v_it; END IF;
+  RAISE NOTICE 'PASS [5] Fixture-Haushalt: Gestaltungsregeln fuer alle Personen, Autokredit ohne Hochrechnung, Zinsbindung-Warnung';
+END $$;
 ROLLBACK;

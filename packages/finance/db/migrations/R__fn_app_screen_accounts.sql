@@ -15,7 +15,8 @@
 --       wie die Spiegel-Pille am Sparplan): outlook = Stand bis zum Geldeingang, Aufklappen = Bruecke (<= 8 Zeilen:
 --       Stand, gebucht seit Abgleich, feste Ab-/Eingaenge, Alltag geschaetzt, Puffer, naechster Geldeingang,
 --       Umbuchungs-Vorschlag nur Haushalt + alert; die Einzelzeilen je Auszug entfallen); funding = tiefster FREIER Stand
---       ueber den Horizont. Pille nur warn/alert mit Betrag/Datum/Monat; Kurs fehlt -> gap ohne Pille. Ohne Urteil
+--       ueber den Horizont. Pille nur warn/alert mit Betrag/Datum/Monat, gebaut allein von finance.fn_app_low_state_pill
+--       (dieselbe Pille wie am Sparplan); Kurs fehlt -> gap ohne Pille. Ohne Urteil
 --       (Alltagskonto ohne Auszug) statt der Zeile die Abschnitts-Notiz „Noch kein Kontoauszug …“.
 --     3 Gehen ab bis {date} / 4 Kommen rein bis {date} — Summe + Anzahl, Aufklappen = Einzelposten
 --       (finance.fn_app_payment_rows, gedeckelt); nie eine Netto-Summe, kein Abschnittswert.
@@ -54,7 +55,7 @@ DECLARE
     v_rank     int;
     v_n        int;
     v_sum      numeric;
-    v_low      jsonb;
+    v_banner   jsonb;
     v_sugg     jsonb;
     v_secs     jsonb := '[]'::jsonb;    -- [{rank, name, section}]
     v_banners  jsonb := '[]'::jsonb;
@@ -88,28 +89,15 @@ BEGIN
 
         -- Banner (nur probe): outlook warn + alert, Ziel-Geld-Luecke nur alert
         IF v_probe THEN
-            IF v_ls->>'state' = 'alert' OR (v_ls->>'state' = 'warn' AND v_ls->>'verdict' = 'buffer') THEN
-                v_low := jsonb_build_object('min', core.fn_ui_money((v_ls->>'amount')::numeric, v_cur),
-                                            'date', core.fn_ui_date((v_ls->>'low_date')::date));
-                v_sugg := NULL;
-                IF v_hh AND v_ls->>'state' = 'alert' AND v_ls->>'verdict' = 'buffer' THEN
-                    v_sugg := finance.fn_account_outlook(v_acc.id)->'suggestion';
-                END IF;
-                v_banners := v_banners || jsonb_build_array(jsonb_build_object(
-                    'state', v_ls->>'state',
-                    'icon', CASE WHEN v_ls->>'state' = 'warn' THEN 'clock' ELSE 'alert' END,
-                    'text', CASE
-                        WHEN v_ls->>'verdict' = 'goals' THEN core.fn_ui_tpl('finance.app.accounts.banner_gap',
-                            jsonb_build_object('account', v_acc.name, 'date', core.fn_ui_date((v_ls->>'on_date')::date)))
-                        WHEN v_ls->>'state' = 'warn' THEN core.fn_ui_tpl('finance.app.accounts.banner_tight',
-                            jsonb_build_object('account', v_acc.name, 'min', v_low->'min', 'date', v_low->'date'))
-                        WHEN jsonb_typeof(v_sugg) = 'object' THEN core.fn_ui_tpl('finance.app.accounts.banner_short_suggest',
-                            jsonb_build_object('account', v_acc.name, 'min', v_low->'min', 'date', v_low->'date',
-                                'amount', core.fn_ui_money((v_sugg->>'amount')::numeric, v_cur),
-                                'from', v_sugg->>'from_account', 'by', core.fn_ui_date((v_sugg->>'by_date')::date)))
-                        ELSE core.fn_ui_tpl('finance.app.accounts.banner_short',
-                            jsonb_build_object('account', v_acc.name, 'min', v_low->'min', 'date', v_low->'date')) END,
-                    'target', jsonb_build_object('screen', 'accounts', 'params', '{}'::jsonb)));
+            v_sugg := NULL;
+            IF v_hh AND v_ls->>'state' = 'alert' AND v_ls->>'verdict' = 'buffer' THEN
+                v_sugg := finance.fn_account_outlook(v_acc.id)->'suggestion';
+            END IF;
+            -- der EINE Hinweis-Text zum Urteil (auch Kinder-Konten im Ziele-probe)
+            v_banner := finance.fn_app_low_state_banner(v_ls, v_acc.name, v_sugg);
+            IF v_banner IS NOT NULL THEN
+                v_banners := v_banners || jsonb_build_array(
+                    v_banner || jsonb_build_object('target', jsonb_build_object('screen', 'accounts', 'params', '{}'::jsonb)));
             END IF;
             CONTINUE;
         END IF;
@@ -151,20 +139,8 @@ BEGIN
         -- 2 Tiefster Stand (Urteil aus fn_account_low_state): bei Abfluss im Horizont oder wenn es ein Urteil gibt (der
         --   Banner der Startseite zeigt nie auf ein Konto ohne passende Zeile)
         IF v_ls->>'source' <> 'none' AND ((v_ls->>'has_outflow')::boolean OR v_ls->>'state' IN ('warn', 'alert')) THEN
-            v_pill := CASE
-                WHEN (v_ls->>'gap')::boolean OR v_ls->>'state' NOT IN ('warn', 'alert') THEN NULL
-                WHEN v_ls->>'verdict' = 'buffer' AND v_ls->>'state' = 'warn' THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
-                    'text', core.fn_ui_tpl('finance.app.accounts.pill_tight',
-                                jsonb_build_object('buffer', core.fn_ui_money((v_ls->>'buffer')::numeric, v_cur))))
-                WHEN v_ls->>'verdict' = 'buffer' THEN jsonb_build_object('state', 'alert', 'icon', 'alert',
-                    'text', core.fn_ui_tpl('finance.app.accounts.pill_short',
-                                jsonb_build_object('amount', core.fn_ui_money((v_ls->>'buffer')::numeric - (v_ls->>'amount')::numeric, v_cur))))
-                WHEN v_ls->>'state' = 'warn' THEN jsonb_build_object('state', 'warn', 'icon', 'calendar',
-                    'text', core.fn_ui_tpl('finance.app.accounts.pill_until',
-                                jsonb_build_object('month', core.fn_ui_month((v_ls->>'on_date')::date))))
-                ELSE jsonb_build_object('state', 'alert', 'icon', 'alert',
-                    'text', core.fn_ui_tpl('finance.app.accounts.pill_gap',
-                                jsonb_build_object('date', core.fn_ui_date((v_ls->>'on_date')::date)))) END;
+            -- die EINE Pille zum Urteil (auch Spiegel-Pille am Sparplan auf Ziele)
+            v_pill := finance.fn_app_low_state_pill(v_ls);
             IF v_pill IS NOT NULL THEN
                 v_rank := LEAST(v_rank, CASE v_pill->>'state' WHEN 'alert' THEN 1 ELSE 2 END);
             END IF;

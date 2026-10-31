@@ -22,8 +22,9 @@ BEGIN
   IF v->>'source' <> 'funding' OR v->>'state' <> 'warn' OR v->>'verdict' <> 'goals'
      OR (v->>'on_date')::date IS DISTINCT FROM (f->>'runs_out_on')::date OR v->>'month' <> to_char((f->>'runs_out_on')::date, 'YYYY-MM')
      OR (v->>'amount')::numeric <> (f->>'min_free')::numeric OR (v->>'amount')::numeric >= 0
-     OR NOT (v->>'has_outflow')::boolean OR (v->>'gap')::boolean OR (v->>'monthly_out')::numeric >= 0 THEN
-    RAISE EXCEPTION 'FAIL [1] Sparkonto funding warn, got % / %', v, f; END IF;
+     OR NOT (v->>'has_outflow')::boolean OR (v->>'gap')::boolean OR (v->>'monthly_out')::numeric >= 0
+     OR jsonb_typeof(v->'short_by') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [1] Sparkonto funding warn (short_by null ohne Puffer-Urteil), got % / %', v, f; END IF;
   -- Ziel-Geld 26.800 von 40.000, -3.000/Monat raus, +220 Ziel-Raten rein (nicht frei): reicht hoechstens ~5 Monate
   IF (f->>'runs_out_on')::date > core.fn_today() + interval '6 months' THEN
     RAISE EXCEPTION 'FAIL [1b] reicht bis zu spaet (Ziel-Geld als frei gezaehlt?), got %', f; END IF;
@@ -46,7 +47,11 @@ BEGIN
   IF array_position(ARRAY['ok', 'warn', 'alert'], v->>'state') < array_position(ARRAY['ok', 'warn', 'alert'], f->>'state')
      OR (v->>'verdict' = 'goals' AND (v->>'on_date')::date IS DISTINCT FROM (f->>'runs_out_on')::date) THEN
     RAISE EXCEPTION 'FAIL [3b] Giro: schlechteres Urteil, got % / funding %', v, f; END IF;
-  RAISE NOTICE 'PASS [3] Giro: outlook, schlechteres Urteil aus Puffer und Ziel-Geld';
+  -- short_by = Fehlbetrag zum Puffer aus fn_account_outlook (eine Adresse fuer „x unter dem Puffer"), nur bei verdict buffer
+  IF (v->>'verdict' = 'buffer' AND (v->>'short_by')::numeric IS DISTINCT FROM (o->>'shortfall')::numeric)
+     OR (v->>'verdict' IS DISTINCT FROM 'buffer' AND jsonb_typeof(v->'short_by') <> 'null') THEN
+    RAISE EXCEPTION 'FAIL [3c] Giro short_by = outlook.shortfall bei verdict buffer, got % / %', v, o; END IF;
+  RAISE NOTICE 'PASS [3] Giro: outlook, schlechteres Urteil aus Puffer und Ziel-Geld, short_by';
 
   -- [4] Tagesgeld Mira: Auszug, aber nichts geht ab
   v := finance.fn_account_low_state((SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_savings_mira'));

@@ -11,7 +11,7 @@
 --   nutzt; Rueckstand behind_amount), savings_goal_account_share (wo liegt das Geld), finance.fn_depot_cover_state
 --   (Kurswert eines Depots gegen das Ziel-Geld darin), finance.fn_savings_goal_sources (Quelle der Rate),
 --   fn_emergency_reserve_status (Notreserve), maintenance_reserve_status (Instandhaltung + Richtwert nach II. BV),
---   savings_plan_overview (Sparplaene), fn_account_funding (Zustand des Abbuchungskontos), fn_app_order_line
+--   savings_plan_overview (Sparplaene), fn_account_low_state (Zustand des Abbuchungskontos), fn_app_order_line
 --   (Betrag · Rhythmus). Die Seite rechnet nichts.
 --   PILLE = HANDLUNGSBEDARF (§3.12): nur warn/alert mit Betrag, Datum oder Monat; neutral nur „pausiert" bzw. „nicht
 --   messbar: kein Konto zugeordnet" (sagt, was fehlt); NIE ok, auch kein ok-Balken (Balken auf Kurs = neutral/Akzent).
@@ -37,17 +37,21 @@
 --   3 Sparplaene: alert -> warn -> aktiv -> pausiert, je Name. Wert = Monatsbetrag; Untertitel aus dem HEUTE gueltigen
 --     Glied: feste Tage „n× monatlich je x · naechste", eine Ausfuehrung je Monat „naechste", sonst Betrag · Rhythmus.
 --     Summe der aktiven Plaene als section.value (der Renderer setzt „zusammen" davor) nur ab 2 aktiven Plaenen und ohne
---     gap an einer Zeile. Pille = Spiegel des sichtbaren Abbuchungskontos (fn_funding_accounts kind 'plan'; bis zur Zeile
---     „Tiefster Stand" aus Paket B nur Konten ohne Alltag, everyday 'none' — dieselbe Rechnung wie dort): warn „reicht
---     bis <Monat>", alert „Luecke ab <Datum>"; sonst neutral „pausiert". Aufklappen: Wertpapier (Name), Depot,
+--     gap an einer Zeile. Pille = Spiegel des sichtbaren Abbuchungskontos (fn_funding_accounts kind 'plan'): dasselbe
+--     Urteil und dieselbe Pille wie die Konten-Zeile „Tiefster Stand" (fn_account_low_state + fn_app_low_state_pill:
+--     knapp / unter dem Puffer / reicht bis / Luecke ab; Kurs fehlt -> gap); sonst neutral „pausiert".
+--     Aufklappen: Wertpapier (Name), Depot,
 --     Abbuchung von + Fuer (nur Haushalt), Sparziel, geplante Aenderung (Betrag · Rhythmus · ab).
 --   ZERO-TRUST-SICHTBARKEIT (Rolle loest der Handler selbst auf, core.fn_app_sees_household): owner/partner sehen den
 --     Haushalt, alle anderen nur Ziel/Ruecklage mit beneficiary_person_id = ich, Sparplaene mit beneficiary = ich UND
 --     eigenem Depot, Konten/Depots mit owner_person_id = ich (IS NOT DISTINCT FROM: ein Haushaltskonto ohne Besitzer ist
 --     verborgen). Ein fremdes Konto heisst neutral „Haushaltskonto"; ein fremdes Depot gibt keine Pille und keinen Betrag.
 --   params.probe = true -> {ok, empty, banners}: Banner „hinter Plan" je sichtbarem Ziel mit Pille (behind ohne
---     fx-Luecke), target = goals. Kein Notreserve-Banner (Dauerzustand, Owner D3 2026-10-31), kein Konto-Banner (Heimat:
---     probe des Bildschirms Konten). probe laeuft bei jedem App-Start -> nur Ziele + Ampel, Rest per EXISTS.
+--     fx-Luecke), target = goals. Kein Notreserve-Banner (Dauerzustand, Owner D3 2026-10-31). Konto-Hinweise kommen
+--     vom probe des Bildschirms Konten — ausser fuer Deckungs-Konten (fn_funding_accounts), die der Konten-Tab dieser
+--     Person nicht zeigt (finance.fn_app_accounts_listed; Kinder-Konten in der Haushalts-Sicht): fuer sie hier derselbe
+--     Banner wie dort (fn_account_low_state mit p_alert_only, Satz + Umbuchungs-Vorschlag fn_app_low_state_banner),
+--     target = goals. probe laeuft bei jedem App-Start -> nur Ziele + Ampel + dieses alert-Fenster, Rest per EXISTS.
 --   Fehler als Daten, nie RAISE: Frei-SQL-Sitzung -> forbidden, kaputte Eingabe -> bad_request. Keine IDs in der Antwort.
 --   SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC (EXECUTE nur finance_rw/Host, nie *_ro).
 --   Tests: tests/db/finance/test_fn_app_screen_goals.sql
@@ -75,8 +79,8 @@ DECLARE
     v_sections  jsonb := '[]'::jsonb;
     v_es        jsonb;     -- finance.fn_emergency_reserve_status() (Notreserve, nur Haushalts-Sicht)
     v_emerg     jsonb;     -- Zeile Notreserve
-    v_cov       record;
-    v_f         jsonb;
+    v_plan_accts int[];                 -- sichtbare Abbuchungskonten aktiver Sparplaene
+    v_acc_ban   jsonb := '[]'::jsonb;   -- probe: alert-Banner der Kinder-Konten (nicht auf dem Konten-Tab)
     v_fund      jsonb := '{}'::jsonb;   -- je Abbuchungskonto {pill, fx_gap}
     v_dep       jsonb := '{}'::jsonb;   -- je sichtbarem Depot mit Ziel-Geld fn_depot_cover_state + name
     v_rates     jsonb := '{}'::jsonb;   -- je Ziel {lines, none, fx_gap} aus fn_savings_goal_sources
@@ -95,8 +99,24 @@ BEGIN
     -- finance.fn_emergency_reserve_status (Ziel, Basis, Deckung je Konto)
     v_es := CASE WHEN v_hh THEN finance.fn_emergency_reserve_status() ELSE jsonb_build_object('exists', false) END;
 
-    -- probe (jeder App-Start): nur „hinter Plan" (dieselbe Bedingung wie die Pille), Rest per EXISTS, keine Details
+    -- probe (jeder App-Start): „hinter Plan" (dieselbe Bedingung wie die Pille) + Konto-Banner fuer Deckungs-Konten
+    -- (fn_funding_accounts, jede Art), die der Konten-Tab dieser Person NICHT zeigt (Kinder-Konten in der Haushalts-
+    -- Sicht; alle anderen meldet sein probe). Derselbe Satz + Vorschlag wie dort (fn_app_low_state_banner); erst die
+    -- billige Konten-Auswahl, die Deckungs-Regel laeuft nur, wenn es ein ungelistetes Geld-Konto gibt.
     IF v_probe THEN
+        SELECT COALESCE(jsonb_agg(b.banner || jsonb_build_object('target', jsonb_build_object('screen', 'goals', 'params', '{}'::jsonb))
+                                  ORDER BY b.banner ->> 'state' = 'alert' DESC, b.name, b.id), '[]'::jsonb)
+          INTO v_acc_ban
+          FROM (SELECT a.id, a.name, finance.fn_app_low_state_banner(l.ls, a.name,
+                       CASE WHEN v_hh AND l.ls ->> 'state' = 'alert' AND l.ls ->> 'verdict' = 'buffer'
+                            THEN finance.fn_account_outlook(a.id) -> 'suggestion' END) AS banner
+                  FROM finance.accounts a
+                  CROSS JOIN LATERAL (SELECT finance.fn_account_low_state(a.id, true) AS ls) l
+                 WHERE a.status = 'active' AND a.account_type::text IN ('cash', 'fixed_deposit', 'p2p')
+                   AND (v_hh OR a.owner_person_id IS NOT DISTINCT FROM v_pid)
+                   AND a.id NOT IN (SELECT finance.fn_app_accounts_listed(v_pid))
+                   AND a.id IN (SELECT fa.account_id FROM finance.fn_funding_accounts() fa)) b
+         WHERE b.banner IS NOT NULL;
         RETURN (
             WITH g AS (
                 SELECT sg.name, sg.target_date, sg.priority, sg.has_fx_gap, sg.behind_amount,
@@ -120,32 +140,27 @@ BEGIN
                            'text', core.fn_ui_tpl('finance.app.goals.banner_behind', jsonb_build_object('name', g.name)),
                            'target', jsonb_build_object('screen', 'goals', 'params', '{}'::jsonb))
                          ORDER BY g.target_date, g.priority NULLS LAST, g.name)
-                         FILTER (WHERE g.pace = 'behind' AND NOT g.has_fx_gap AND g.behind_amount > 0), '[]'::jsonb))
+                         FILTER (WHERE g.pace = 'behind' AND NOT g.has_fx_gap AND g.behind_amount > 0), '[]'::jsonb)
+                       || v_acc_ban)
               FROM g);
     END IF;
 
-    -- Spiegel-Pille der Sparplaene: Zustand je sichtbarem Abbuchungskonto (die EINE Konten-Regel, kind 'plan').
-    -- Bis Paket B: nur Konten ohne Alltag (everyday 'none'), deren Konten-Zeile dieselbe Rechnung zeigt.
-    FOR v_cov IN
-        SELECT DISTINCT fa.account_id AS id
-          FROM finance.fn_funding_accounts() fa
-          JOIN finance.accounts a ON a.id = fa.account_id
-         WHERE fa.kind = 'plan'
-           AND (v_hh OR (a.owner_person_id IS NOT DISTINCT FROM v_pid
-                         AND fa.beneficiary_person_id = v_pid AND fa.depot_owner_person_id = v_pid))
-    LOOP
-        v_f := finance.fn_account_funding(v_cov.id, false);
-        CONTINUE WHEN (v_f ->> 'ok') IS DISTINCT FROM 'true' OR v_f ->> 'everyday' IS DISTINCT FROM 'none';
-        v_fund := v_fund || jsonb_build_object(v_cov.id::text, jsonb_build_object(
-            'fx_gap', COALESCE((v_f ->> 'fx_gap')::boolean, false),
-            'pill', CASE v_f ->> 'state'
-                WHEN 'warn'  THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
-                                      'text', core.fn_ui_tpl('finance.app.goals.fund_until', jsonb_build_object(
-                                                  'date', core.fn_ui_month((v_f ->> 'runs_out_on')::date))))
-                WHEN 'alert' THEN jsonb_build_object('state', 'alert', 'icon', 'alert',
-                                      'text', core.fn_ui_tpl('finance.app.goals.fund_gap', jsonb_build_object(
-                                                  'date', core.fn_ui_date((v_f ->> 'runs_out_on')::date)))) END));
-    END LOOP;
+    -- Abbuchungskonten sichtbarer Sparplaene (die EINE Konten-Regel fn_funding_accounts, kind 'plan'), nur sichtbare Konten
+    SELECT COALESCE(array_agg(DISTINCT fa.account_id), '{}')
+      INTO v_plan_accts
+      FROM finance.fn_funding_accounts() fa
+      JOIN finance.accounts a ON a.id = fa.account_id
+     WHERE fa.kind = 'plan'
+       AND (v_hh OR (a.owner_person_id IS NOT DISTINCT FROM v_pid
+                     AND fa.beneficiary_person_id = v_pid AND fa.depot_owner_person_id = v_pid));
+
+    -- Spiegel-Pille der Sparplaene: dasselbe Urteil + dieselbe Pille wie die Konten-Zeile „Tiefster Stand"
+    -- (finance.fn_account_low_state + finance.fn_app_low_state_pill); gap = Kurs der Kontowaehrung fehlt
+    SELECT COALESCE(jsonb_object_agg(x.id::text, jsonb_build_object(
+               'fx_gap', COALESCE((x.ls ->> 'gap')::boolean, false),
+               'pill', finance.fn_app_low_state_pill(x.ls))), '{}'::jsonb)
+      INTO v_fund
+      FROM (SELECT u.id, finance.fn_account_low_state(u.id, false) AS ls FROM unnest(v_plan_accts) u(id)) x;
 
     -- Depot-Deckung je fuer den Betrachter sichtbarem Depot mit Ziel-Geld (ein fremdes Depot gibt nichts her)
     SELECT COALESCE(jsonb_object_agg(x.id::text, finance.fn_depot_cover_state(x.id) || jsonb_build_object('name', x.name)), '{}'::jsonb)

@@ -10,7 +10,9 @@
 --      Reihenfolge, Summe; Details ohne ISIN und ohne „Position heute".
 --   2) Kind sieht nur Eigenes: Rate nennt nur eigene Plaene, Eltern-Depot gibt keine Pille her, keine Namen/IDs.
 --   3) unbekannte Rolle sieht nur Eigenes (Haushaltskonto), unbekannte Person nichts.
---   4) probe -> {ok, empty, banners}: nur „hinter Plan" ohne fx-Luecke; kein Notreserve-, kein Konto-Banner.
+--   4) probe -> {ok, empty, banners}: „hinter Plan" ohne fx-Luecke; kein Notreserve-Banner; Konto-Banner (alert) nur fuer
+--      Abbuchungskonten, die der Konten-Tab nicht zeigt (Kinder-Konto in der Haushalts-Sicht). 4b: Spiegel-Pille
+--      „x unter dem Puffer" (verdict buffer, short_by) = Pille der Konten-Zeile (fn_app_low_state_pill).
 --   5) Muell -> bad_request ohne RAISE; Frei-SQL-Sitzung -> forbidden, kein EXECUTE fuer *_ro.
 --   6) Fixture-Haushalt tests/util/util_app_household.sql: core.fn_app_view_lint = 0 fuer Owner, Partnerin, beide
 --      Kinder, Gast; Konzept-Faelle (Rate aus zwei Sparplaenen, Depot-Delle still, Einbruch alert, Notreserve, Kind).
@@ -297,12 +299,15 @@ BEGIN
      OR v_sec->'items'->-1->>'label' <> '__apgl_a_paused__' THEN
     RAISE EXCEPTION 'FAIL [1y] Sparplaene: alert, warn, aktiv, pausiert zuletzt, got %', v_sec->'items'; END IF;
   v_it := v_sec->'items'->0;
+  -- Spiegel-Pille = dasselbe Urteil + dieselbe Pille wie die Konten-Zeile (fn_account_low_state + fn_app_low_state_pill)
   IF v_it->'pill' <> jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl(
-                       'finance.app.goals.fund_gap', jsonb_build_object('date', core.fn_ui_date(current_date + 3)))) THEN
-    RAISE EXCEPTION 'FAIL [1z] leeres Abbuchungskonto: alert „Luecke ab" mit Datum, got %', v_it; END IF;
+                       'finance.app.accounts.pill_gap', jsonb_build_object('date', core.fn_ui_date(current_date + 3))))
+     OR v_it->'pill' <> finance.fn_app_low_state_pill(finance.fn_account_low_state(v_low)) THEN
+    RAISE EXCEPTION 'FAIL [1z] leeres Abbuchungskonto: alert „Luecke ab" mit Datum = Konten-Pille, got %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apgl_days_plan__';
-  IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text'->>'value' <> 'finance.app.goals.fund_until'
-     OR v_it->'pill'->'text'->'params'->'date'->>'kind' <> 'month'
+  IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text'->>'value' <> 'finance.app.accounts.pill_until'
+     OR v_it->'pill'->'text'->'params'->'month'->>'kind' <> 'month'
+     OR v_it->'pill' <> finance.fn_app_low_state_pill(finance.fn_account_low_state(v_broker))
      OR v_it->'value' <> core.fn_ui_money(100, 'EUR')
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.goals.plan_days_next', jsonb_build_object(
                          'n', core.fn_ui_num(4), 'amount', core.fn_ui_money(25, 'EUR'),
@@ -438,6 +443,58 @@ BEGIN
      OR finance.fn_app_screen_goals('{"person_id":"apgl_nobody","params":{"probe":true}}') <> '{"ok":true,"empty":true,"banners":[]}'::jsonb THEN
     RAISE EXCEPTION 'FAIL [4b] probe Kind/unbekannt'; END IF;
   RAISE NOTICE 'PASS [4] probe {ok, empty, banners}';
+
+  -- ===== 4b) Spiegel-Pille verdict buffer + Startseiten-Hinweis fuer ein Kinder-Konto (nicht auf dem Konten-Tab) =====
+  DECLARE v_stmt int; v_kleer int; BEGIN
+    -- Konto MIT Kontoauszug, 300 Stand, Sparplan 400 in 4 Tagen -> tiefster Stand -100 < Puffer -> „x unter dem Puffer"
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__apgl_stmt__', 'cash', 'EUR', 'active') RETURNING id INTO v_stmt;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_stmt, 300, current_date - 40, 'other');
+    UPDATE finance.accounts SET last_reconciled_at = current_date - 5 WHERE id = v_stmt;
+    INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+        line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at, oneoff_out, oneoff_threshold)
+      VALUES (v_stmt, current_date - 34, current_date - 5, 300, 300, 'EUR', 0, 0, 0, 0, NULL, 0, NULL);
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('__apgl_rp_stmt__', v_stmt, -400, 'month', current_date + 4, current_date + 4) RETURNING id INTO v_rp;
+    INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
+      VALUES ('__apgl_stmt_plan__', v_hh_depot, 'APGLS', 'Auszug ETF', v_rp);
+    -- Kinder-Konto ohne Guthaben, eigener Sparplan in 3 Tagen -> alert; steht in der Haushalts-Sicht NICHT auf Konten
+    INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
+      VALUES ('Alpha Leer', 'cash', 'EUR', 'active', 'apgl_kid') RETURNING id INTO v_kleer;
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('Alpha Leer Rate', v_kleer, -20, 'month', current_date + 3, current_date + 3) RETURNING id INTO v_rp;
+    INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id, beneficiary_person_id)
+      VALUES ('Alpha Leerplan', v_kid_depot, 'APGLL', 'Leer Kinder ETF', v_rp, 'apgl_kid');
+    -- Kinder-Konto, das nur per Dauerauftrag etwas fuellt (fn_funding_accounts kind order_source), ohne Guthaben
+    INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
+      VALUES ('Alpha Quelle', 'cash', 'EUR', 'active', 'apgl_kid') RETURNING id INTO v_rp;
+    INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('Alpha Quelle Uebertrag', v_rp, v_kid_cash, -15, 'month', current_date + 3, current_date + 3);
+
+    v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_owner'));
+    SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->2->'items') i WHERE i->>'label' = '__apgl_stmt_plan__';
+    IF v_it->'pill'->>'state' <> 'alert' OR v_it->'pill'->'text'->>'value' <> 'finance.app.accounts.pill_short'
+       OR (v_it->'pill'->'text'->'params'->'amount'->>'value')::numeric
+          IS DISTINCT FROM (finance.fn_account_low_state(v_stmt)->>'short_by')::numeric
+       OR (finance.fn_account_low_state(v_stmt)->>'short_by')::numeric <= 0 THEN
+      RAISE EXCEPTION 'FAIL [4c] Konto mit Auszug: alert „x unter dem Puffer" mit short_by, got % / %', v_it, finance.fn_account_low_state(v_stmt); END IF;
+
+    v := finance.fn_app_screen_goals('{"person_id":"apgl_owner","params":{"probe":true}}');
+    IF NOT (v->'banners' @> jsonb_build_array(jsonb_build_object(
+              'state', 'alert', 'icon', 'alert',
+              'text', core.fn_ui_tpl('finance.app.accounts.banner_gap', jsonb_build_object(
+                          'account', 'Alpha Leer', 'date', core.fn_ui_date(current_date + 3))),
+              'target', jsonb_build_object('screen', 'goals', 'params', '{}'::jsonb))))
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'banners') b
+                       WHERE b->>'state' = 'alert' AND b->'text'->'params'->>'account' = 'Alpha Quelle')
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v->'banners') b
+                   WHERE b->'text'->'params'->>'account' IN ('__apgl_stmt__', '__apgl_low__')) THEN
+      RAISE EXCEPTION 'FAIL [4d] Haushalt: alert-Banner nur fuer Kinder-Konten (Sparplan und Dauerauftrag; gelistete Konten meldet Konten), got %', v; END IF;
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(finance.fn_app_screen_goals(
+                 '{"person_id":"apgl_kid","params":{"probe":true}}')->'banners') b
+                WHERE b->'text'->>'value' LIKE 'finance.app.accounts.%') THEN
+      RAISE EXCEPTION 'FAIL [4e] Kind: eigenes Konto steht auf seinem Konten-Tab -> kein Konto-Banner von Ziele'; END IF;
+    RAISE NOTICE 'PASS [4b] Spiegel-Pille „unter dem Puffer" aus short_by; Kinder-Konto-Banner nur in der Haushalts-Sicht';
+  END;
 
   -- ===== Notreserve voll: keine Pille, kein Balken, „Ziel x erreicht", zuletzt =====
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_emerg, v_giro, 600, 'manual');

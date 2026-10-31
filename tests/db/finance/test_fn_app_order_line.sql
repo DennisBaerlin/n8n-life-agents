@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_app_order_line.sql
--- finance.fn_app_order_line(rp) — „Betrag · Rhythmus[ · ab Datum]" eines Dauerauftrags fuer die Bank-To-do der Mini-App:
--- monatlich am Tag / an festen Tagen / Monatsende / vorletzter Tag / Tag frei (gerechnet); sonst Haeufigkeit +
+-- finance.fn_app_order_line(rp) — „Betrag · Rhythmus[ · ab Datum]" einer Rate fuer die Mini-App:
+-- monatlich am Tag / an festen Tagen / Monatsende / vorletzter Tag / ohne festen Tag nur „monatlich"; sonst Haeufigkeit +
 -- naechster Termin; „ab" nur fuer ein erst kuenftig startendes Glied; Betrag in Waehrung des Quellkontos.
 BEGIN;
 DO $$
@@ -19,14 +19,14 @@ BEGIN
        'amount', core.fn_ui_money(150, 'EUR'),
        'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month_day', jsonb_build_object('day', core.fn_ui_num(15))))) THEN
     RAISE EXCEPTION 'FAIL [1] monatlich am 15., got %', finance.fn_app_order_line(v_rp); END IF;
-  -- erst kuenftig, ohne festen Tag, USD-Quelle -> „ab" + Tag frei (Tag des ersten Termins) + USD
+  -- erst kuenftig, ohne festen Tag, USD-Quelle -> „ab" + nur „monatlich" (kein Rechen-Tag: Laien-Test) + USD
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('ol free', v_usd, -40, 'month', t + 10, t + 10) RETURNING id INTO v_rp;
   IF finance.fn_app_order_line(v_rp) <> core.fn_ui_tpl('finance.app.goals.amount_rhythm_from', jsonb_build_object(
        'amount', core.fn_ui_money(40, 'USD'),
-       'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month_free', jsonb_build_object('day', core.fn_ui_num(extract(day FROM t + 10)))),
+       'rhythm', core.fn_ui_tpl('finance.app.goals.rhythm_month'),
        'date', core.fn_ui_date(t + 10))) THEN
-    RAISE EXCEPTION 'FAIL [2] ab + Tag frei + USD, got %', finance.fn_app_order_line(v_rp); END IF;
+    RAISE EXCEPTION 'FAIL [2] ab + monatlich + USD, got %', finance.fn_app_order_line(v_rp); END IF;
   -- Monatsende / vorletzter Tag / feste Tage
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
     VALUES ('ol -1', v_eur, -10, 'month', -1, t - 60, t - 60) RETURNING id INTO v_rp;

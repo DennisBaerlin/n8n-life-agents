@@ -15,6 +15,9 @@
 #   (7b) Persona-Liste: Core-Manifest personas.list — Code ^[a-z_]+$, eindeutig, neutral enthalten, ord gesetzt; je Persona
 #       core.persona.name.<code>; die in core:V031 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
 #   (8) SQL-Text-Verweise: jedes Katalog-Key-Literal in packages/*/db/migrations/R__*.sql existiert im Katalog.
+#   (9) Mini-App-Laien-Test: keine Fachwoerter ($AppDeniedWords) in App-Texten; Ratchet-Ausnahmen je Key und Bau-Paket,
+#       eine ueberfluessige Ausnahme ist ein Fehler.
+#   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; Tab-Titel ausgenommen).
 # Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs/Workflows/SQL vorkommt (dynamisch zusammengesetzte
 #   Keys — .enum.*, .facts.*, .monitor_method.*, core.persona.name.* — sind ausgenommen).
 # Usage: .\scripts\locale_lint.ps1 [-Verbose]
@@ -219,6 +222,54 @@ Check 'SQL-Text-Verweise: jedes Katalog-Key-Literal in R__-Funktionen existiert 
     }
 }
 
+# (9) Laien-Test der Mini-App (UX-Gesamtkonzept 2026-10-31, P6; docs/package-contract.md §3.12 Design rules „words“):
+#     kein Wort der Liste $AppDeniedWords im de-Text eines *.app.*-Keys oder eines Keys, dessen Praefix eine
+#     R__fn_app_*.sql als Literal nennt (z. B. das Enum finance.enum.asset_bucket der Vermoegens-Seite). Gross/Klein egal,
+#     Leerraum (auch geschuetztes Leerzeichen) normalisiert.
+#     RATCHET: die heute noch alten Texte stehen je EXAKTEM Key in einem Block je Bau-Paket; wer seine Seite umbaut,
+#     streicht seine Zeilen. Eine Ausnahme ohne Verstoss oder fuer einen Key, den es nicht mehr gibt, ist ein FEHLER
+#     („Zeile streichen“) — so bleibt keine Ausnahme still stehen. Neue Ausnahmen nur mit Owner-Freigabe.
+$AppDeniedWords = @('Kursminus', 'ermittelbar', 'Deckung', 'Verrechnungskonto', 'Projektion', 'Liquide', 'nicht in der Summe')
+$AppWordExceptB = @(          # Paket B (Konten + Vermoegen) + geteilte finance.app.common.* (Leitung)
+    'finance.app.common.kids_not_in_sum'
+    'finance.app.overview.section_liquid'
+)
+$AppWordExceptC = @(          # Paket C (Ziele)
+    'finance.app.goals.cover_dip'
+    'finance.app.goals.cover_unknown'
+    'finance.app.goals.emergency_unknown'
+    'finance.app.goals.fund_unknown'
+)
+$AppWordExceptD = @(          # Paket D (Kredite + Depot)
+    'finance.app.depot.section_child'
+)
+$appWordExcept = @($AppWordExceptB + $AppWordExceptC + $AppWordExceptD | Where-Object { $_ })
+Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
+    $prefixes = @()
+    foreach ($f in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_app_*.sql'))) {
+        $sql = [regex]::Replace([System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom), '(?m)--.*$', '')
+        foreach ($m in [regex]::Matches($sql, "'([a-z][a-z0-9_]*\.[a-z0-9_]+\.[a-z0-9_.]+)'")) { $prefixes += $m.Groups[1].Value }
+    }
+    $prefixes = @($prefixes | Sort-Object -Unique)
+    $hit = @{}
+    foreach ($pkg in $cat.Keys) {
+        $de = $cat[$pkg]['de']; if ($null -eq $de) { continue }
+        foreach ($k in $de.Keys) {
+            $inScope = ($k -match '^[a-z0-9_]+\.app\.') -or @($prefixes | Where-Object { $k -eq $_ -or $k.StartsWith("$_.") }).Count -gt 0
+            if (-not $inScope) { continue }
+            $txt = ([regex]::Replace([string]$de[$k], '[\s ]+', ' ')).ToLowerInvariant()
+            $words = @($AppDeniedWords | Where-Object { $txt.Contains($_.ToLowerInvariant()) })
+            if ($words.Count) { $hit[$k] = $words }
+        }
+    }
+    foreach ($k in ($hit.Keys | Sort-Object)) {
+        if ($appWordExcept -notcontains $k) { "Datei packages/$($k.Split('.')[0])/locales/de.json: '$k' enthaelt '$($hit[$k] -join "', '")' (Laien-Test P6; Wort weglassen oder umformulieren)" }
+    }
+    foreach ($k in $appWordExcept) {
+        if (-not $hit.ContainsKey($k)) { "Ausnahme '$k' in scripts/locale_lint.ps1 ist ueberfluessig (kein Verstoss mehr oder Key entfernt) -- Zeile streichen" }
+    }
+}
+
 # Warnung: ungenutzte Keys (Literal kommt nirgends vor). Dynamische Familien ausgenommen.
 $corpus = New-Object System.Text.StringBuilder
 $srcFiles = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object {
@@ -233,6 +284,18 @@ foreach ($pkg in $cat.Keys) {
     foreach ($k in $de.Keys) {
         if ($k -match '\.(enum|facts|monitor_method)\.' -or $k -match '^core\.persona\.(name|frame)\.') { continue }
         if (-not $corpusText.Contains("'$k'") -and -not $corpusText.Contains("""$k""")) { $unused += $k }
+    }
+}
+# (10) Mini-App-Texte (*.app.*) sind ausschliesslich SQL-Literale der Bildschirm-fns -> ein ungenutzter ist verwaist und
+#      ein FEHLER (UX-Gesamtkonzept: wer eine Seite umbaut, raeumt ihre alten Keys ab). Ausgenommen die Tab-Titel
+#      <pkg>.app.screen.<screen> (setzt core.fn_app_nav dynamisch aus dem Manifest zusammen) und Keys, die der Installer
+#      (provisioning/**/*.sh, z. B. der Menue-Knopf core.app.menu_button) nennt.
+Check 'Mini-App-Texte: kein verwaister *.app.*-Key' {
+    $shText = (@(Get-ChildItem (Join-Path $RepoRoot 'provisioning') -Recurse -File -Filter '*.sh') |
+        ForEach-Object { [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom) }) -join "`n"
+    foreach ($k in $unused) {
+        if ($shText.Contains($k)) { continue }
+        if ($k -match '^[a-z0-9_]+\.app\.' -and $k -notmatch '^[a-z0-9_]+\.app\.screen\.') { "Datei packages/$($k.Split('.')[0])/locales/*.json: '$k' wird nirgends genutzt -- in allen Sprachen entfernen" }
     }
 }
 if ($unused.Count) {

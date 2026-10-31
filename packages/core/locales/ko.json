@@ -5,6 +5,8 @@
   "core.app.reload": "새로고침",
   "core.app.nothing": "아직 표시할 내용이 없습니다. 채팅에서 계좌나 목표를 등록하면 여기에 표시됩니다.",
   "core.app.gap": "불완전 – 시세 또는 환율이 없습니다",
+  "core.app.sum": "합계 {sum}",
+  "core.app.all_good": "모두 정상입니다",
   "core.app.error.expired": "개요가 만료되었습니다. 닫은 뒤 버튼으로 다시 열어 주세요.",
   "core.app.error.denied": "이 개요에 대한 접근 권한이 없습니다.",
   "core.app.error.unavailable": "지금은 개요를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",

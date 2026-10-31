@@ -5,7 +5,8 @@
 #   (2) POST Muell (text/plain) -> {ok:false, code:malformed} als JSON, KEIN Fehler-Alert (Mock-Telegram leer);
 #   (3) POST mit gefaelschter initData -> {ok:false, code:bad_signature};
 #   (4) POST mit gueltiger initData des Owners (hier signiert mit dem Substrat-Schluessel aus core.app_secret)
-#       -> Navigation ok:true mit ui.lang + jeder Bildschirm aus core.app_screens ok:true mit view;
+#       -> Navigation ok:true mit ui.lang + jeder Bildschirm aus core.app_screens ok:true mit view; (4b) Startseite:
+#       ok-Banner „Alles in Ordnung“ genau dann, wenn kein alert/warn-Banner da ist (nur mit Daten im Substrat);
 #   (5) Origin: null (opaker Ursprung der Sandkasten-Seite) -> CORS-Antwort-Header vorhanden;
 #   (5b) der Installer-Seed: core.app_screens == app_screens-Bloecke aller Manifeste;
 #   (6) die Repo-Adresse (Platzhalter) ist live nicht registriert (Pfad je Instanz geheim).
@@ -95,6 +96,20 @@ else {
     $j = Get-Json $r
     if ($j.ok -ne $true -or -not $j.ui.lang) { Fail "Navigation: $($j | ConvertTo-Json -Compress -Depth 6)" }
     else { Pass "Navigation ok (Sprache $($j.ui.lang), Bildschirme: $(@($j.screens | ForEach-Object { $_.screen }) -join ', '))" }
+    # (4b) Startseiten-Banner (UX-Gesamtkonzept P4): ok-Banner „Alles in Ordnung“ genau dann, wenn kein alert/warn da ist;
+    #      sein Text kommt als echter Katalog-Text mit. Ohne Bildschirm mit Daten (leeres Substrat) gibt es keine Startseite.
+    if (@($j.screens).Count -gt 0) {
+        if ($null -eq $j.first -or $null -eq $j.first.view) { Fail 'Startseite: first fehlt trotz Bildschirmen (erster Bildschirm wird nicht mitgeliefert)' }
+        else {
+            $bn = @($j.first.view.banners)
+            $okB = @($bn | Where-Object { $_.state -eq 'ok' }); $hint = @($bn | Where-Object { $_.state -in @('alert', 'warn') })
+            if ($hint.Count -eq 0 -and $okB.Count -ne 1) { Fail "Startseite ohne Hinweis: genau ein ok-Banner erwartet, got $($bn | ConvertTo-Json -Compress -Depth 6)" }
+            elseif ($hint.Count -gt 0 -and $okB.Count -ne 0) { Fail "Startseite mit Hinweis: kein ok-Banner erwartet, got $($bn | ConvertTo-Json -Compress -Depth 6)" }
+            elseif ($okB.Count -eq 1 -and ($okB[0].text.value -ne 'core.app.all_good' -or -not $j.ui.t.'core.app.all_good' -or $j.ui.t.'core.app.all_good' -eq 'core.app.all_good')) {
+                Fail "ok-Banner: Text core.app.all_good fehlt oder ohne Katalog-Text ($($okB[0] | ConvertTo-Json -Compress -Depth 6))" }
+            else { Pass "Startseiten-Banner stimmig ($($hint.Count) Hinweis(e), $($okB.Count) ok)" }
+        }
+    } else { Write-Host '    [SKIP] Startseiten-Banner: keine Bildschirme mit Daten im Substrat' -ForegroundColor DarkGray }
     # (5) CORS fuer den opaken Ursprung der Sandkasten-Seite
     $acao = "$($r.Headers['Access-Control-Allow-Origin'])"
     if (-not $acao) { Fail 'Origin: null -> kein Access-Control-Allow-Origin (die Seite im Sandkasten bekaeme keine Daten)' } else { Pass "CORS fuer Origin null: '$acao'" }

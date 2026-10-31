@@ -34,7 +34,7 @@
         "finance.app.overview.empty": "Noch keine Konten angelegt.",
         "finance.app.overview.balance_as_of": "Saldo vom {date}",
         "finance.app.pill.price_missing": "Kurs fehlt",
-        "finance.app.pill.ok": "aktuell",
+        "core.app.sum": "zusammen {sum}",
         "finance.enum.asset_class.cash": "Bargeld & Konten",
         "finance.enum.asset_class.etf": "ETFs"
       }
@@ -68,7 +68,7 @@
               "sub": null,
               "value": { "kind": "money", "value": 36000.00, "currency": "EUR" },
               "gap": false,
-              "pill": { "state": "ok", "icon": "check", "text": { "kind": "tpl", "value": "finance.app.pill.ok", "params": {} } },
+              "pill": null,
               "progress": { "pct": 74.6, "state": "neutral" },
               "target": null
             }
@@ -76,7 +76,7 @@
         },
         {
           "title": { "kind": "tpl", "value": "finance.app.overview.section_accounts", "params": {} },
-          "value": { "kind": "money", "value": 3510.55, "currency": "EUR" },
+          "value": null,
           "note": { "kind": "tpl", "value": "finance.app.payments.no_outlook", "params": {} },
           "empty": { "kind": "tpl", "value": "finance.app.overview.empty", "params": {} },
           "items": [

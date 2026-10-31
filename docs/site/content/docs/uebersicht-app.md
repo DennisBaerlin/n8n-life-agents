@@ -14,7 +14,7 @@ Unten wechselst du über Reiter zwischen den Bildschirmen. Ein Bildschirm, zu de
 
 Steht irgendwo **„unvollständig – ein Kurs oder Wechselkurs fehlt“**, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.
 
-Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeigen mehr Einzelheiten, ein zweiter Tipp klappt sie wieder zu. So bleibt die Liste kurz, und die Details sind trotzdem einen Tipp entfernt. Steht neben einer Überschrift ein Betrag, ist das die Summe dieses Abschnitts.
+Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeigen mehr Einzelheiten, ein zweiter Tipp klappt sie wieder zu. So bleibt die Liste kurz, und die Details sind trotzdem einen Tipp entfernt. Steht neben einer Überschrift „zusammen …“, ist das die Summe dieses Abschnitts.
 
 Überall gilt dieselbe Bildsprache:
 
@@ -94,7 +94,9 @@ Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem grau
 
 ### Hinweise auf der Startseite
 
-Was Aufmerksamkeit braucht, steht als Hinweis oben auf der Startseite, Rotes vor Gelbem. Ein Tipp darauf öffnet den passenden Bildschirm. Ein Beispiel: „Girokonto: Der tiefste Stand (140 € am 27.11.) liegt unter dem Puffer. Vorschlag: 150 € vom Tagesgeld bis 25.11. umbuchen.“ Oder: „Baufinanzierung: Die Zinsbindung endet am 30.06., Restschuld dann etwa 182.400 €.“ Weitere Beispiele: „Urlaub liegt hinter Plan“, „Tagesgeld: Das Geld für Sparpläne und Daueraufträge reicht nur bis 15.12.“ (nur bei einer Lücke in den nächsten drei Monaten) oder „Kurs fehlt oder ist veraltet in Depot X“.
+Was Aufmerksamkeit braucht, steht als Hinweis oben auf der Startseite, Rotes vor Gelbem. Ein Tipp auf einen Hinweis öffnet den passenden Bildschirm. Ein Beispiel: „Girokonto: Der tiefste Stand (140 € am 27.11.) liegt unter dem Puffer. Vorschlag: 150 € vom Tagesgeld bis 25.11. umbuchen.“ Oder: „Baufinanzierung: Die Zinsbindung endet am 30.06., Restschuld dann etwa 182.400 €.“ Weitere Beispiele: „Urlaub liegt hinter Plan“, „Tagesgeld: Das Geld für Sparpläne und Daueraufträge reicht nur bis 15.12.“ (nur bei einer Lücke in den nächsten drei Monaten) oder „Kurs fehlt oder ist veraltet in Depot X“.
+
+Ist nichts zu tun, steht oben genau ein Satz: **„Alles in Ordnung“**. Ein dauerhafter Zustand wie „Notreserve noch nicht voll“ steht nur an seiner Zeile, nicht oben.
 
 Die Übersicht spricht die Sprache, die du mit `/language` eingestellt hast.
 

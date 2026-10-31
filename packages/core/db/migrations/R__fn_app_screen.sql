@@ -14,7 +14,8 @@
 --     Handler lehnt ab -> sein code. Der Handler bekommt {person_id, params} und loest die Rolle SELBST auf.
 --   view.banners setzt immer der Dispatcher: die Startseite (erster Bildschirm der Navigation, auch beim Einzelabruf =
 --     Tab zurueck) bekommt die eingesammelten Banner, jede andere Seite []; Banner der vollen Handler-View zaehlen nie.
---   ui = agent.fn_ui_texts_for fuer die Person mit allen Keys der Antwort + den Shell-Keys (core.app.*, core.fmt.*)
+--   ui = agent.fn_ui_texts_for fuer die Person mit allen Keys der Antwort + den Shell-Keys (core.app.*, core.fmt.*;
+--     core.app.sum = „zusammen {sum}“, mit dem der Renderer jede section.value zeigt)
 --     + date_short = {from, to}: Datums-Kurzform der Mini-App (Mini-App UX 2026-10-30): ein Datum in [heute - 3 Monate,
 --     heute + 9 Monate) zeigt der Renderer ohne Jahr; heute = core.fn_today (Haushalts-Zeitzone, nicht die Geraeteuhr),
 --     asymmetrisch, damit kein „15.11." zwei Jahre meinen kann. Chat/HITL/Cron setzen es nie (dort immer mit Jahr).
@@ -47,7 +48,7 @@ DECLARE
     v_short  jsonb := jsonb_build_object('date_short', jsonb_build_object(
                           'from', to_char(core.fn_today() - interval '3 months', 'YYYY-MM-DD'),
                           'to', to_char(core.fn_today() + interval '9 months', 'YYYY-MM-DD')));
-    v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing',
+    v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing', 'core.app.sum',
                                      'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes',
                                      'core.fmt.no', 'core.fmt.removed']);
 BEGIN

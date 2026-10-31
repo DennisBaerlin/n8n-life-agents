@@ -409,7 +409,10 @@ button.row:active, button.banner:active { opacity: .6; }
     if (s.title || !R.isEmpty(s.value)) {
       const head = el('div', 'sec-head');
       head.appendChild(el('h2', 'sec-title', s.title ? txt(R, s.title) : ''));
-      if (!R.isEmpty(s.value)) head.appendChild(el('span', 'sec-value', R.val(s.value)));
+      // Summe immer als Summe erkennbar: „zusammen {sum}“ (core.app.sum, §3.12 Design rules)
+      if (!R.isEmpty(s.value)) {
+        head.appendChild(el('span', 'sec-value', R.has('core.app.sum') ? R.fill(R.t('core.app.sum'), { sum: s.value }) : R.val(s.value)));
+      }
       box.appendChild(head);
     }
     // section.note (optional): ein grauer Satz zum ganzen Abschnitt, keine Listenzeile

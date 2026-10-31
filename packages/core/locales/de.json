@@ -5,6 +5,8 @@
   "core.app.reload": "Neu laden",
   "core.app.nothing": "Hier gibt es noch nichts zu sehen. Sobald im Chat Konten oder Ziele angelegt sind, erscheinen sie hier.",
   "core.app.gap": "unvollständig – ein Kurs oder Wechselkurs fehlt",
+  "core.app.sum": "zusammen {sum}",
+  "core.app.all_good": "Alles in Ordnung",
   "core.app.error.expired": "Die Übersicht ist abgelaufen. Bitte schließen und über den Knopf neu öffnen.",
   "core.app.error.denied": "Für diese Übersicht hast du keinen Zugriff.",
   "core.app.error.unavailable": "Die Übersicht ist gerade nicht verfügbar. Bitte später noch einmal versuchen.",

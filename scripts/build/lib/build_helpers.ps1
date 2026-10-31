@@ -894,7 +894,7 @@ function New-HitlSummary {
 #   liefert JS-Quelltext einer Funktion uiRender(B, LANGS) fuer Code-Knoten. B = Text-Buendel EINES Empfaengers
 #   ({lang, locale, t} aus core.fn_ui_texts_for bzw. owner/member aus core.fn_hitl_texts), LANGS = Code -> Eigenname.
 #   Rueckgabe { t, has, fill, val, msg, lines, money, date, num, empty, isEmpty, loc }:
-#     val(x)    — ein typisierter Wert {kind: text|money|date|number|enum|bool|language|key|tpl|removed|list}
+#     val(x)    — ein typisierter Wert {kind: text|money|date|month|number|enum|bool|language|key|tpl|removed|list}
 #     msg(arr)  — Saetze (Alert-msg einer fn_advisor_review): null-Elemente (entfallene Teilsaetze) raus, mit ' ' verbunden
 #     lines(arr)— Zeilen (Digest): null = Leerzeile, ein Array = eine Zeile aus Teilen (msg)
 #   Betraege/Daten/Zahlen per Intl im Locale des Empfaengers (Fmt-MoneyJs/Fmt-DateJs, number: feste digits, sign;
@@ -952,6 +952,14 @@ function uiRender(B, LANGS) {
     }
     try { return __DATE__; } catch (e) { return String(v); }
   }
+  // {kind:'month', value:'YYYY-MM'} (core.fn_ui_month): 2-stelliger Monat + Jahr im Locale (de „04.2027“), immer mit Jahr.
+  function month(v) {
+    if (isEmpty(v)) return empty;
+    const m = /^(\d{4})-(\d{2})$/.exec(String(v));
+    if (!m) return String(v);
+    try { return new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleDateString(loc, { timeZone: 'UTC', month: '2-digit', year: 'numeric' }); }
+    catch (e) { return String(v); }
+  }
   // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) "10.00000000" -> 0).
   function decimals(v) {
     const s = String(v).trim();
@@ -977,6 +985,7 @@ function uiRender(B, LANGS) {
     switch (x.kind) {
       case 'money': return money(v, x.currency, x.sign);
       case 'date': return date(v);
+      case 'month': return month(v);
       case 'number': return num(v, x.digits, x.sign);
       case 'enum': {
         if (isEmpty(v)) return empty;

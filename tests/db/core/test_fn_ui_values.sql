@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_ui_values.sql
--- Struktur-Bausteine fester Texte (Textkatalog Phase C): core.fn_ui_tpl / fn_ui_money / fn_ui_num / fn_ui_date
+-- Struktur-Bausteine fester Texte (Textkatalog Phase C): core.fn_ui_tpl / fn_ui_money / fn_ui_num / fn_ui_date / fn_ui_month
 --   liefern die HITL-Form, die der Workflow-Renderer (Get-UiRenderLibJs) in der Empfaenger-Sprache rendert.
 BEGIN;
 
@@ -31,7 +31,11 @@ BEGIN
   IF core.fn_ui_num(7)->>'digits' <> '0' OR (core.fn_ui_num(7)->>'sign')::boolean THEN
     RAISE EXCEPTION 'FAIL ui_num [Default]'; END IF;
   IF core.fn_ui_date(NULL)->'value' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL ui_date [NULL]'; END IF;
-  RAISE NOTICE 'PASS fn_ui_tpl/money/num/date [Form, Rundung, Defaults, NULL]';
+  -- Monat (Mini-App UX 2026-10-31): Tag faellt weg
+  IF core.fn_ui_month('2027-04-30') <> '{"kind":"month","value":"2027-04"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL ui_month [%]', core.fn_ui_month('2027-04-30'); END IF;
+  IF core.fn_ui_month(NULL)->'value' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL ui_month [NULL]'; END IF;
+  RAISE NOTICE 'PASS fn_ui_tpl/money/num/date/month [Form, Rundung, Defaults, NULL]';
 END $$;
 
 ROLLBACK;

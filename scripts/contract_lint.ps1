@@ -88,6 +88,9 @@
 #       Tool-Payloads ($1::jsonb->>'k') direkt nach date — das Feld kann relativ sein ("yesterday"); aufloesen ueber
 #       core.fn_resolve_date bzw. die Write-fn (core.fn_resolve_input_dates). Spiegel des DB-Guards
 #       tests/db/finance/test_fn_relative_dates.sql fuer Inline-SQL. Selbst-Asserts.
+#   (28)/(29) BERATER-INTERVIEW-KATALOG / MINI-APP-BILDSCHIRME — s. die Bloecke unten.
+#   (30) EINE FRAGE JE ABSCHNITT: jede Mini-App-Bildschirm-fn nennt im Kopf je Abschnitt
+#       „-- Abschnitt <Titel-Key>: Frage: …?“ (beidseitig gegen die Titel-Literale); Ratchet-Ausnahmen je Bau-Paket.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -1837,6 +1840,40 @@ foreach ($sf in (Get-ChildItem (Join-Path $pkgDir '*\onboarding\sections.json') 
 #     insertAdjacentHTML/document.write/eval sind in packages/*/build/app/*.html verboten (XSS: die Seite haelt
 #     die initData, ein eingeschleustes Skript koennte Daten abziehen).
 # ---------------------------------------------------------------
+# (30) EINE FRAGE JE ABSCHNITT (UX-Gesamtkonzept 2026-10-31, P1; docs/package-contract.md §3.12 Structure rules): der
+#     Kopf jeder Bildschirm-fn (Handler aus app_screens, s. 29) traegt je Abschnitt eine Zeile
+#       --   Abschnitt <Titel-Key>: Frage: <Satz>?
+#     beidseitig geprueft: jeder Key einer Kopfzeile steht als Literal im SQL, und jedes Literal
+#     'title', core.fn_ui_tpl('<key>' (ausser dem Seitentitel <…>.title) hat seine Kopfzeile; mindestens eine Kopfzeile.
+#     RATCHET: heute noch alte Handler stehen je Bau-Paket in $AppHeadExcept*; wer den Handler umbaut, streicht die Zeile.
+#     Eine Ausnahme fuer einen Handler ohne Verstoss oder ohne app_screens-Eintrag ist ein FEHLER („Zeile streichen“).
+$AppHeadExceptB = @(          # Paket B (Konten + Vermoegen)
+    'finance.fn_app_screen_overview'
+    'finance.fn_app_screen_payments'
+)
+$AppHeadExceptC = @(          # Paket C (Ziele)
+    'finance.fn_app_screen_goals'
+)
+$AppHeadExceptD = @(          # Paket D (Kredite + Depot)
+    'finance.fn_app_screen_depot'
+    'finance.fn_app_screen_loans'
+)
+$appHeadExcept = @($AppHeadExceptB + $AppHeadExceptC + $AppHeadExceptD | Where-Object { $_ })
+$appHeadLineRe = '(?m)^--\s+Abschnitt\s+([a-z0-9_.]+):\s+Frage:\s+.+\?\s*$'
+# Abschnittstitel = Literal hinter 'title', core.fn_ui_tpl(  ODER  jedes App-Key-Literal mit Namensteil section*
+# (faengt auch per CASE gewaehlte Titel); der Seitentitel <…>.title zaehlt nicht.
+$appTitleLitRe = "'title',\s*core\.fn_ui_tpl\('([a-z0-9_.]+)'"
+$appSectionKeyRe = "'([a-z0-9_]+\.app\.[a-z0-9_.]*\.section[a-z0-9_]*)'"
+function Get-AppHeadIssues([string]$Sql) {
+    $heads = @([regex]::Matches($Sql, $appHeadLineRe) | ForEach-Object { $_.Groups[1].Value })
+    $code  = [regex]::Replace($Sql, '(?m)--.*$', '')
+    $titles = @(@([regex]::Matches($code, $appTitleLitRe)) + @([regex]::Matches($code, $appSectionKeyRe)) |
+        ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -notmatch '\.title$' } | Sort-Object -Unique)
+    if ($heads.Count -eq 0) { 'keine Kopfzeile [-- Abschnitt <Titel-Key>: Frage: …?]' }
+    foreach ($h in $heads) { if ($titles -notcontains $h) { "Kopfzeile nennt '$h', der im SQL kein Abschnittstitel ist" } }
+    foreach ($t in $titles) { if ($heads -notcontains $t) { "Abschnitt '$t' ohne Kopfzeile [-- Abschnitt ${t}: Frage: …?]" } }
+}
+$appHeadSeen = @{}
 $appScreenOwner = @{}
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
     $pkg = $pdir.Name
@@ -1858,10 +1895,30 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
         $okSchema = if ($pkg -eq 'core') { $sch -in @('core', 'agent') } else { $sch -eq $pkg }
         if (-not $okSchema) { $errors.Add("${ctx}: handler_fn '$fn' liegt nicht im eigenen Schema (Boundary wie callback_handlers).") }
         elseif (-not (Test-Path (Join-Path $pdir.FullName "db\migrations\R__$fname.sql"))) { $errors.Add("${ctx}: handler_fn '$fn' hat keine Datei packages/$pkg/db/migrations/R__$fname.sql.") }
+        else {
+            $appHeadSeen[$fn] = $true
+            $issues = @(Get-AppHeadIssues ([System.IO.File]::ReadAllText((Join-Path $pdir.FullName "db\migrations\R__$fname.sql"), $Utf8NoBom)))
+            if ($appHeadExcept -contains $fn) {
+                if ($issues.Count -eq 0) { $errors.Add("APP-FRAGE: scripts/contract_lint.ps1 Ausnahme '$fn' ist ueberfluessig (Kopf vollstaendig) -- Zeile streichen.") }
+            } else {
+                foreach ($i in $issues) { $errors.Add("APP-FRAGE: packages/$pkg/db/migrations/R__$fname.sql: $i") }
+            }
+        }
         if ($null -ne $v.ord -and $v.ord -isnot [int] -and $v.ord -isnot [long]) { $errors.Add("${ctx}: ord muss eine ganze Zahl sein.") }
         if ([string]$v.icon -and ([string]$v.icon).Length -gt 16) { $errors.Add("${ctx}: icon laenger als 16 Zeichen.") }
         if ([string]::IsNullOrWhiteSpace([string]$deLc."$pkg.app.screen.$($p.Name)")) { $errors.Add("${ctx}: Tab-Titel '$pkg.app.screen.$($p.Name)' fehlt in packages/$pkg/locales/de.json.") }
     }
+}
+foreach ($fn in $appHeadExcept) {
+    if (-not $appHeadSeen.ContainsKey($fn)) { $errors.Add("APP-FRAGE: scripts/contract_lint.ps1 Ausnahme '$fn' ist ueberfluessig (kein app_screens-Handler mehr) -- Zeile streichen.") }
+}
+$saHead = "--   Abschnitt x.app.s.section_a: Frage: Was?`nSELECT jsonb_build_object('title', core.fn_ui_tpl('x.app.s.section_a'), 'title', core.fn_ui_tpl('x.app.s.title'))"
+foreach ($sa in @(@{ t = $saHead; want = 0 },
+                  @{ t = $saHead + "`n, 'title', core.fn_ui_tpl('x.app.s.section_b')"; want = 1 },
+                  @{ t = "--   Abschnitt x.app.s.gone: Frage: Was?`nSELECT 1"; want = 1 },
+                  @{ t = "--   Abschnitt x.app.s.section_a: Frage: Was`nSELECT core.fn_ui_tpl('x.app.s.section_a')"; want = 2 },
+                  @{ t = "--   Abschnitt x.app.s.pill_a: Frage: Was?`nSELECT 'title', CASE WHEN a THEN core.fn_ui_tpl('x.app.s.section_a') ELSE core.fn_ui_tpl('x.app.s.section_b') END, core.fn_ui_tpl('x.app.s.pill_a')"; want = 3 })) {
+    if (@(Get-AppHeadIssues $sa.t).Count -ne $sa.want) { $errors.Add("APP-FRAGE SELBST-ASSERT: Check 30 ist defekt ($(@(Get-AppHeadIssues $sa.t) -join '; ')).") }
 }
 $htmlParserRe = '\b(innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval)\b'
 foreach ($hf in (Get-ChildItem (Join-Path $pkgDir '*\build\app\*.html') -ErrorAction SilentlyContinue)) {

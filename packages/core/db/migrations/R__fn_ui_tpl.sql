@@ -3,7 +3,7 @@
 --   Baut einen Text-Verweis in der HITL-Form {kind:'tpl', value:<text-key>, params:{…}} — Pakete liefern damit
 --   Struktur statt fertigem (deutschem) Text (Textkatalog Phase C: fn_advisor_review-Alerts/Digest, validate_fn-
 --   display); der Workflow rendert sie in der Sprache des Empfaengers (Get-UiRenderLibJs), Zahlen/Daten per Intl.
---   Parameter sind einfache Werte oder typisierte Werte (core.fn_ui_money / fn_ui_num / fn_ui_date / ein weiterer tpl).
+--   Parameter sind einfache Werte oder typisierte Werte (core.fn_ui_money / fn_ui_num / fn_ui_date / fn_ui_month / ein weiterer tpl).
 --   Der Key MUSS als vollstaendiges Literal im Aufrufer stehen (locale_lint prueft ihn gegen den Katalog).
 --   IMMUTABLE, kein Read -> kein DEFINER/Grant (Default-PUBLIC-EXECUTE wie fn_staleness_alert).
 --   RUECKGABE: {kind:'tpl', value, params}

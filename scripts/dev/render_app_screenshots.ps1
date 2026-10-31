@@ -30,7 +30,7 @@ foreach ($f in 'packages\core\locales\de.json', 'packages\finance\locales\de.jso
     $j = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $f), $Utf8NoBom) | ConvertFrom-Json
     foreach ($p in $j.PSObject.Properties) { $cat[$p.Name] = $p.Value }
 }
-$keys = 'core.app.title', 'core.app.gap', 'core.fmt.empty', 'finance.app.screen.overview', 'finance.app.overview.title',
+$keys = 'core.app.title', 'core.app.gap', 'core.app.sum', 'core.app.all_good', 'core.fmt.empty', 'finance.app.screen.overview', 'finance.app.overview.title',
         'finance.app.overview.hero', 'finance.app.overview.section_liquid', 'finance.app.common.kids_not_in_sum',
         'finance.app.overview.section_accounts', 'finance.app.overview.share', 'finance.app.overview.owner_confirmed',
         'finance.app.overview.empty', 'finance.app.common.joint', 'finance.enum.asset_bucket.cash', 'finance.enum.asset_bucket.depot'
@@ -72,9 +72,10 @@ $view = [ordered]@{
     ok       = $true
     title    = (Tpl 'finance.app.overview.title')
     hero     = [ordered]@{ label = (Tpl 'finance.app.overview.hero'); value = (Money 48250.37); gap = $false; note = $null }
-    banners  = @()
+    banners  = @(, [ordered]@{ state = 'ok'; icon = 'check'; text = (Tpl 'core.app.all_good'); target = $null })   # das eine gruene Signal (core.fn_app_nav)
     sections = @(
-        [ordered]@{ title = (Tpl 'finance.app.overview.section_liquid'); value = (Money 48250.37); empty = $empty; items = $assets },
+        [ordered]@{ title = (Tpl 'finance.app.overview.section_liquid'); value = $null;   # = Hero -> keine Summe (L4)
+        empty = $empty; items = $assets },
         [ordered]@{ title = (Tpl 'finance.app.common.kids_not_in_sum'); value = $null; empty = $empty; items = $kids },
         [ordered]@{ title = (Tpl 'finance.app.overview.section_accounts'); value = $null; empty = $empty; items = $accounts }
     )

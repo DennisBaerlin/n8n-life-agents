@@ -65,7 +65,8 @@ ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata, content = exclude
 
 INSERT INTO core.ui_texts (key, lang, text, package)
 SELECT k, l, upper(l) || ':' || k, 'core'
-FROM unnest(ARRAY['core.app.title', 'core.app.error.denied', 'core.app.error.expired', 'core.app.error.unavailable']) k
+FROM unnest(ARRAY['core.app.title', 'core.app.error.denied', 'core.app.error.expired', 'core.app.error.unavailable',
+                  'core.app.all_good']) k
 CROSS JOIN (VALUES ('de'), ('en'), ('ko')) ls(l)
 ON CONFLICT (key, lang) DO UPDATE SET text = excluded.text;
 
@@ -245,6 +246,94 @@ BEGIN
      OR has_function_privilege('core_ro', 'core.fn_app_nav(text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'FAIL [12] fn_app_nav ausfuehrbar fuer PUBLIC/core_ro'; END IF;
   RAISE NOTICE 'PASS [12] fn_app_nav nicht oeffentlich';
+END $$;
+
+-- ===== [13] ok-Banner (UX-Gesamtkonzept 2026-10-31, P4): genau ein „Alles in Ordnung“, wenn kein Hinweis offen ist =====
+-- und kein Bildschirm einen Fehler hatte (ein verlorener Hinweis darf nie das eine gruene Signal erzeugen).
+CREATE OR REPLACE FUNCTION core.fn_test_app_quiet(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN COALESCE((p->'params'->>'probe')::boolean, false)
+              THEN jsonb_build_object('ok', true, 'empty', false)
+              ELSE core.fn_test_app_view('quiet') END;
+$f$;
+CREATE OR REPLACE FUNCTION core.fn_test_app_bad_alert(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN COALESCE((p->'params'->>'probe')::boolean, false)
+              THEN jsonb_build_object('ok', true, 'empty', false, 'banners', jsonb_build_array(
+                     jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', 'kein tpl', 'target', NULL)))
+              ELSE core.fn_test_app_view('bad') END;
+$f$;
+DELETE FROM core.app_screens WHERE screen IN ('bn1', 'bn2', 'bn3', 'boom');
+INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon) VALUES ('quiet', 'core', 'core.fn_test_app_quiet', 60, '🤫');
+
+DO $$
+DECLARE r jsonb; b jsonb;
+  v_ok jsonb := jsonb_build_array(jsonb_build_object('state', 'ok', 'icon', 'check',
+                  'text', core.fn_ui_tpl('core.app.all_good'), 'target', NULL));
+BEGIN
+  -- [13a] Owner ohne Hinweise: Startseite tst traegt genau das ok-Banner, Text kommt nach ui.t; Einzelabruf gleich;
+  --       Unterseite ohne
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  IF r->'first'->'view'->'banners' IS DISTINCT FROM v_ok THEN RAISE EXCEPTION 'FAIL [13a] ok-Banner erwartet, got %', r->'first'; END IF;
+  IF r->'ui'->'t'->>'core.app.all_good' IS DISTINCT FROM 'DE:core.app.all_good' THEN RAISE EXCEPTION 'FAIL [13a] Text fehlt in ui.t: %', r->'ui'; END IF;
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111), 'screen', 'tst')::text);
+  IF r->'view'->'banners' IS DISTINCT FROM v_ok THEN RAISE EXCEPTION 'FAIL [13a] Einzelabruf Startseite: %', r; END IF;
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111), 'screen', 'quiet')::text);
+  IF jsonb_array_length(r->'view'->'banners') <> 0 THEN RAISE EXCEPTION 'FAIL [13a] Unterseite mit Banner: %', r; END IF;
+  RAISE NOTICE 'PASS [13a] ok-Banner auf der Startseite';
+
+  -- [13b] Kind: tst leer -> Startseite quiet, auch dort ok-Banner
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(333))::text);
+  IF r->'first'->>'screen' IS DISTINCT FROM 'quiet' OR r->'first'->'view'->'banners' IS DISTINCT FROM v_ok THEN
+    RAISE EXCEPTION 'FAIL [13b] Kind: ok-Banner auf quiet erwartet, got %', r->'first'; END IF;
+  RAISE NOTICE 'PASS [13b] Kind ohne Hinweise: ok-Banner';
+END $$;
+
+-- [13c] ein werfender Handler -> kein ok-Banner (Hinweise koennten verloren sein)
+INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon) VALUES ('boom', 'core', 'core.fn_test_app_boom', 18, '💥');
+DO $$
+DECLARE r jsonb;
+BEGIN
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  IF jsonb_array_length(r->'first'->'view'->'banners') <> 0 THEN RAISE EXCEPTION 'FAIL [13c] Handler wirft -> kein ok-Banner, got %', r->'first'; END IF;
+  RAISE NOTICE 'PASS [13c] werfender Handler: kein ok-Banner';
+END $$;
+DELETE FROM core.app_screens WHERE screen = 'boom';
+
+-- [13d] nur ein ungueltiges alert-Element -> verworfen UND kein ok-Banner; [13e] mit gueltigem alert kein ok-Banner
+INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon) VALUES ('bad', 'core', 'core.fn_test_app_bad_alert', 19, '⚠️');
+DO $$
+DECLARE r jsonb;
+BEGIN
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  IF jsonb_array_length(r->'first'->'view'->'banners') <> 0 THEN RAISE EXCEPTION 'FAIL [13d] ungueltiges alert -> weder Banner noch ok, got %', r->'first'; END IF;
+  RAISE NOTICE 'PASS [13d] ungueltiges alert: kein ok-Banner';
+END $$;
+DELETE FROM core.app_screens WHERE screen = 'bad';
+
+-- [13f] probe ok, aber ohne boolesches empty -> Bildschirm (samt moeglicher Hinweise) verloren -> kein ok-Banner
+CREATE OR REPLACE FUNCTION core.fn_test_app_noempty(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN COALESCE((p->'params'->>'probe')::boolean, false)
+              THEN jsonb_build_object('ok', true, 'empty', NULL)
+              ELSE core.fn_test_app_view('noempty') END;
+$f$;
+INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon) VALUES ('noempty', 'core', 'core.fn_test_app_noempty', 19, '❔');
+DO $$
+DECLARE r jsonb;
+BEGIN
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  IF jsonb_array_length(r->'first'->'view'->'banners') <> 0 THEN RAISE EXCEPTION 'FAIL [13f] probe ohne empty -> kein ok-Banner, got %', r->'first'; END IF;
+  RAISE NOTICE 'PASS [13f] probe ohne empty: kein ok-Banner';
+END $$;
+DELETE FROM core.app_screens WHERE screen = 'noempty';
+
+INSERT INTO core.app_screens (screen, package, handler_fn, ord, icon) VALUES ('bn2', 'core', 'core.fn_test_app_bn2', 14, '2️⃣');
+DO $$
+DECLARE r jsonb; b jsonb;
+BEGIN
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  b := r->'first'->'view'->'banners';
+  IF jsonb_array_length(b) <> 1 OR b->0->>'state' IS DISTINCT FROM 'alert' THEN
+    RAISE EXCEPTION 'FAIL [13e] nur das alert-Banner, kein ok, got %', b; END IF;
+  RAISE NOTICE 'PASS [13e] mit Hinweis kein ok-Banner';
 END $$;
 
 ROLLBACK;

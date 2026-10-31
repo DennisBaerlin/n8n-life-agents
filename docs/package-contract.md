@@ -679,7 +679,8 @@ fixed texts.
     monitor, case tasks) loads its texts **in the same statement** as the latch — a failed text read must never mark
     an alert as sent.
   - **Structure instead of text from SQL:** a fn that reports to a user returns typed text references in the HITL form
-    `{kind:'tpl', value:<key>, params}` with raw values (`core.fn_ui_tpl` + `fn_ui_money`/`fn_ui_num`/`fn_ui_date`; keys
+    `{kind:'tpl', value:<key>, params}` with raw values (`core.fn_ui_tpl` + `fn_ui_money`/`fn_ui_num`/`fn_ui_date`/
+    `fn_ui_month` (month + year, „04.2027“); keys
     only as complete literals, `locale_lint` checks them). `fn_advisor_review` alerts carry `msg` (sentences), the digest
     `lines` (null = blank line). The workflow renders them with the ONE renderer `Get-UiRenderLibJs` (also inside the
     HITL gate): amounts/dates/numbers via Intl in the recipient's locale (`Fmt-MoneyJs`/`Fmt-DateJs` require a locale);
@@ -747,9 +748,17 @@ page computes nothing — states, progress and sums come from the DB.
     handler's own screen. The dispatcher (`core.fn_app_nav`) collects them from every non-empty screen (`empty:true`
     drops them), checks each element on its own (bad element → dropped, never the screen), sorts alert before warn,
     then `ord`, and puts them on the home screen (first in navigation, also when it is reloaded on its own); every other
-    screen gets `banners: []` — banners in a full handler view are ignored.
+    screen gets `banners: []` — banners in a full handler view are ignored. When nothing is left and no screen failed
+    (handler raised, answer not an object, `ok` false other than `forbidden`/`unavailable`, `banners` not an array, or an
+    alert/warn element dropped by the check), the dispatcher adds exactly one `ok` banner `core.app.all_good` („Alles in
+    Ordnung“) — the one green signal of the app; a handler never sends `ok` banners itself.
+  - Tests: every `test_fn_app_screen_*` builds on the shared fixture household `tests/util/util_app_household.sql`
+    (`\ir`, keys in `pg_temp.app_fx`) and asserts `core.fn_app_view_lint(view, <neutral keys>, <undated keys>)` = 0 rows
+    for owner, partner, child and guest; the neutral/undated keys the test passes are the handler's only exceptions to
+    L3/L7 below.
   - Every text is a typed reference (`core.fn_ui_tpl`, keys `<pkg>.app.*` as complete literals); amounts
-    `core.fn_ui_money`, dates `core.fn_ui_date`, numbers `core.fn_ui_num`; raw names from data are plain strings.
+    `core.fn_ui_money`, dates `core.fn_ui_date`, months `core.fn_ui_month`, numbers `core.fn_ui_num`; raw names from data
+    are plain strings.
 - **View model v1** (handler output; fixture `tests/fixtures/app_view_model_v1.json`):
 
 ```jsonc
@@ -775,17 +784,35 @@ page computes nothing — states, progress and sums come from the DB.
   sentence about the whole section (not a list row); `item.trend` = a change shown under the value as arrow + text in
   text colour (gain/return is information, not a verdict, so no pill colour). Money may carry `sign: true`
   (`core.fn_ui_money(v, cur, true)`): the renderer puts `+` before a positive amount (gain since purchase, inflows).
-- **Design rules** (one meaning per element on every screen; Mini-App UX 2026-10-30, design review + owner decisions):
+- **Structure rules** (UX-Gesamtkonzept 2026-10-31, `.claude/plans/mini-app-ux-gesamtkonzept-ergebnis.md`):
+  - One question per section, written as a sentence in the handler header (`-- Abschnitt <title key>: Frage: …?`); a
+    row belongs to a section only if it answers that question. contract_lint (30) checks the header lines against the
+    section title literals.
+  - One home per fact across ALL screens: balance → accounts screen, saved amount → goals, remaining debt → loans,
+    market value → depot, asset-class sums → overview. Another screen refers by name, never by number.
+  - Children appear on a screen only in one section titled „… der Kinder“; heroes count the household without them;
+    no footnote.
+  - Section order inside a screen and row order inside a section: alert → warn → everyday before savings → parents
+    before children → name.
+  - A screen shows ≤ ~12 rows without expanding; a list longer than 3 becomes one row (sum + count) with the items
+    in `details`.
+- **Design rules** (one meaning per element):
 
   | Element | Carries | Rule |
   |---|---|---|
-  | `item.value` | the actual amount of the row (balance, saved, remaining debt, monthly amount; a rate as tpl) | always there, never replaced by a pill |
-  | `section.value` | the sum of the row values | only a real sum, else null; null when a part has no FX rate |
-  | `pill` | a verdict | main status of the row also green (on track, reached, complete, sufficient, enough); side findings (coverage) only on deviation; never for facts or measurements; warn/alert name the amount or date when it is known |
-  | `progress` | progress towards an amount target | colour = the row's pill; shares neutral; no bar when reached or without an amount target |
-  | `sub` | „from/whom · when“ | one line; derivations and settings go to `details` |
-  | `details` | derivation, single items | ≈ 8 lines, no fact twice on a screen |
-  | order | alert → warn → normal → done | inside every section |
+  | `item.value` | the actual amount of the row | always there, never replaced by a pill |
+  | `section.value` | the sum of the row values | rendered as „zusammen {sum}“ (renderer, key `core.app.sum`); null with ≤ 1 row, when it equals the hero value or a part has no FX rate; a net sum of in- and outflows is never a section value |
+  | `pill` | **a call to action** | only `warn`/`alert`, naming amount or date; `neutral` only when the text names what is missing and who can fix it (the handler test passes these keys to `core.fn_app_view_lint`); **never `ok`** — the normal state has no pill |
+  | home banner `ok` | the one green signal of the app | exactly one „Alles in Ordnung“ banner on the home screen when no alert/warn banner was collected (`core.fn_app_nav`) |
+  | `progress` | progress towards an amount target | neutral/accent colour on track, warn/alert = the row's pill, never `ok`; shares neutral; no bar when reached or without amount target |
+  | `sub` | one line of „from/whom · when“ or the target („von 40.000 € · bis 03.2040“) | never an explanation, never a second amount of the same kind |
+  | `details` | derivation, single items | ≤ 8 lines; no fact that is a row elsewhere in the app (a name as cross-reference is fine) |
+  | words | layperson test | `locale_lint` (9) denies the jargon list `$AppDeniedWords` in `*.app.*` texts |
+
+  `core.fn_app_view_lint(view, neutral_keys, undated_keys) RETURNS TABLE(rule, path)` checks one view model against
+  these rules (rule list in its header / `docs/fn_catalog.md`); it is the mandatory assertion of every
+  `test_fn_app_screen_*` and the acceptance tool for live view models. Duplicates across screens are checked on the
+  rendered pages before a release.
 
   Dates: inside the Mini App the renderer drops the year for a date in `ui.date_short = {from, to}` = [today − 3
   months, today + 9 months) (DB today in the household time zone, so no "15.11." can mean two years); chat, HITL and

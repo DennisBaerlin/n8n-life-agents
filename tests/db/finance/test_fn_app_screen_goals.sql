@@ -12,7 +12,10 @@
 --   3) unbekannte Rolle sieht nur Eigenes (Haushaltskonto), unbekannte Person nichts.
 --   4) probe -> {ok, empty, banners}: nur „hinter Plan" ohne fx-Luecke; kein Notreserve-, kein Konto-Banner.
 --   5) Muell -> bad_request ohne RAISE; Frei-SQL-Sitzung -> forbidden, kein EXECUTE fuer *_ro.
--- Self-contained (BEGIN..ROLLBACK).
+--   6) Fixture-Haushalt tests/util/util_app_household.sql: core.fn_app_view_lint = 0 fuer Owner, Partnerin, beide
+--      Kinder, Gast; Konzept-Faelle (Rate aus zwei Sparplaenen, Depot-Delle still, Einbruch alert, Notreserve, Kind).
+--   1)–5) laufen auf eigenen Mini-Daten (Randfaelle, die der Haushalt nicht hat).
+-- Self-contained (zwei Transaktionen, je BEGIN..ROLLBACK).
 BEGIN;
 DO $$
 DECLARE
@@ -177,6 +180,9 @@ BEGIN
   IF v_txt LIKE '%APG0000000%' OR v_txt LIKE '%finance.app.goals.d_position%' THEN
     RAISE EXCEPTION 'FAIL [1i] keine ISIN, kein „Position heute"'; END IF;
   IF v_txt LIKE '%__apgl_done__%' THEN RAISE EXCEPTION 'FAIL [1j] abgeschlossenes Ziel sichtbar'; END IF;
+  SELECT string_agg(l.rule || ' ' || l.path, '; ') INTO v_txt
+    FROM core.fn_app_view_lint(v, ARRAY['finance.app.goals.pace.paused', 'finance.app.goals.pace.unmeasurable'], '{}') l;
+  IF v_txt IS NOT NULL THEN RAISE EXCEPTION 'FAIL [1j2] fn_app_view_lint Owner: %', v_txt; END IF;
 
   -- --- Sparziele ---
   v_sec := v->'sections'->1;
@@ -371,6 +377,9 @@ BEGIN
                      'rate', core.fn_ui_money(55, 'EUR'), 'plans', 'Alpha Sparplan'))) THEN
     RAISE EXCEPTION 'FAIL [2g] Kind: Rate zaehlt alle Plaene, nennt nur den eigenen (Mehrzahl nach Gesamtzahl), got %', v_it; END IF;
   IF v_txt LIKE '%finance.app.goals.d_from%' THEN RAISE EXCEPTION 'FAIL [2h] Kind sieht kein Abbuchungskonto'; END IF;
+  SELECT string_agg(l.rule || ' ' || l.path, '; ') INTO v_txt
+    FROM core.fn_app_view_lint(v, ARRAY['finance.app.goals.pace.paused', 'finance.app.goals.pace.unmeasurable'], '{}') l;
+  IF v_txt IS NOT NULL THEN RAISE EXCEPTION 'FAIL [2h2] fn_app_view_lint Kind: %', v_txt; END IF;
   RAISE NOTICE 'PASS [2] Kind sieht nur Eigenes, Eltern-Depot still, Rate ohne fremde Namen, keine IDs';
 
   -- ===== 2b) Review: Ziel ohne Geld mehr im Depot bekommt keine Depot-Pille; fremder Plan ohne Kurs fuer das Kind =====
@@ -462,4 +471,52 @@ BEGIN
   RAISE NOTICE 'PASS [5] kein EXECUTE fuer *_ro; Frei-SQL-Sitzung -> forbidden';
 END $$;
 RESET SESSION AUTHORIZATION;
+ROLLBACK;
+
+-- ===== 6) Fixture-Haushalt (tests/util/util_app_household.sql): Regeln §3.12 fuer alle Personen + Konzept §5.3 =====
+BEGIN;
+\ir ../../util/util_app_household.sql
+DO $$
+DECLARE
+  v jsonb; v_it jsonb; v_pid text; v_lint text;
+  v_neutral text[] := ARRAY['finance.app.goals.pace.paused', 'finance.app.goals.pace.unmeasurable'];
+BEGIN
+  -- core.fn_app_view_lint = 0 Zeilen fuer Owner, Partnerin, beide Kinder, Gast
+  FOR v_pid IN SELECT id FROM pg_temp.app_fx WHERE key IN ('p_owner', 'p_partner', 'p_lea', 'p_tom', 'p_guest') LOOP
+    v := finance.fn_app_screen_goals(jsonb_build_object('person_id', v_pid));
+    IF (v->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [6a] % ok erwartet, got %', v_pid, v; END IF;
+    SELECT string_agg(l.rule || ' ' || l.path, '; ') INTO v_lint FROM core.fn_app_view_lint(v, v_neutral, '{}') l;
+    IF v_lint IS NOT NULL THEN RAISE EXCEPTION 'FAIL [6b] fn_app_view_lint fuer %: %', v_pid, v_lint; END IF;
+  END LOOP;
+
+  v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'fxh_jonas'));
+  -- Kind-Depots: Lea knapp unter dem Ziel-Geld (Delle) -> keine Pille; Tom deutlich darunter -> alert mit Depot-Name
+  SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->1->'items') i WHERE i->>'label' = 'Depot Lea';
+  IF jsonb_typeof(v_it->'pill') <> 'null'
+     OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_rate'),
+          'value', core.fn_ui_tpl('finance.app.goals.d_rate_plans', jsonb_build_object(
+                       'rate', core.fn_ui_money(200, 'EUR'), 'plans', 'ETF World Lea, Einzelaktie Lea'))) THEN
+    RAISE EXCEPTION 'FAIL [6c] Depot Lea: Delle ohne Pille, „Rate: 200 im Monat aus Sparplaenen ETF World Lea, Einzelaktie Lea", got %', v_it; END IF;
+  SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->1->'items') i WHERE i->>'label' = 'Depot Tom';
+  IF v_it->'pill'->>'state' <> 'alert' OR v_it->'pill'->'text'->>'value' <> 'finance.app.goals.cover_short'
+     OR v_it->'pill'->'text'->'params'->>'depot' <> 'Depot Tom' OR v->'sections'->1->'items'->0->>'label' <> 'Depot Tom' THEN
+    RAISE EXCEPTION 'FAIL [6d] Depot Tom: Einbruch ab Schwelle alert mit Depot-Name, zuerst, got %', v->'sections'->1; END IF;
+  -- Dauerauftrags-Ziel nennt Konto + Rhythmus; Notreserve fehlen 5.000; kein Notreserve-/Konto-Banner im probe
+  SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->1->'items') i WHERE i->>'label' = 'Fahrrad Mira';
+  IF v_it->'details'->0->'label' <> core.fn_ui_tpl('finance.app.goals.d_rate_from', jsonb_build_object('account', 'Girokonto Jonas')) THEN
+    RAISE EXCEPTION 'FAIL [6e] Fahrrad Mira: „Rate von Girokonto Jonas", got %', v_it; END IF;
+  SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = 'Notreserve';
+  IF v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl(
+                       'finance.app.goals.missing', jsonb_build_object('gap', core.fn_ui_money(5000, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [6f] Notreserve warn fehlen 5000, got %', v_it; END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(finance.fn_app_screen_goals(jsonb_build_object(
+               'person_id', 'fxh_jonas', 'params', jsonb_build_object('probe', true)))->'banners') b
+              WHERE b->'text'->>'value' <> 'finance.app.goals.banner_behind') THEN
+    RAISE EXCEPTION 'FAIL [6g] probe: nur „hinter Plan"-Banner'; END IF;
+  -- Kinder: Lea sieht ihr Ziel und ihre Plaene, keine Eltern-Namen
+  v := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'fxh_lea'));
+  IF v::text LIKE '%Jonas%' OR v::text LIKE '%Mira%' OR v::text LIKE '%Tom%' OR v::text NOT LIKE '%ETF World Lea%' THEN
+    RAISE EXCEPTION 'FAIL [6h] Lea sieht nur Eigenes, got %', v; END IF;
+  RAISE NOTICE 'PASS [6] Fixture-Haushalt: Lint = 0 fuer alle Personen, Rate-Quellen, Depot-Delle/-Einbruch, Notreserve, Kind-Sicht';
+END $$;
 ROLLBACK;

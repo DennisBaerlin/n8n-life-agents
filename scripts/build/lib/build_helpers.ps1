@@ -953,12 +953,20 @@ function uiRender(B, LANGS) {
     try { return __DATE__; } catch (e) { return String(v); }
   }
   // {kind:'month', value:'YYYY-MM'} (core.fn_ui_month): 2-stelliger Monat + Jahr im Locale (de „04.2027“), immer mit Jahr.
+  // Aus dem vollen Datum des Locales ohne den Tag gebaut: Intl liefert fuer {month, year} allein in de „04/2027“
+  // (Abnahme 2026-10-31); so folgt der Trenner dem gewohnten Datum (de „04.2027“, en-GB „04/2027“, ko „2027. 04.“).
   function month(v) {
     if (isEmpty(v)) return empty;
     const m = /^(\d{4})-(\d{2})$/.exec(String(v));
     if (!m) return String(v);
-    try { return new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleDateString(loc, { timeZone: 'UTC', month: '2-digit', year: 'numeric' }); }
-    catch (e) { return String(v); }
+    try {
+      const parts = new Intl.DateTimeFormat(loc, { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' })
+        .formatToParts(new Date(Date.UTC(+m[1], +m[2] - 1, 1)));
+      const d = parts.findIndex((p) => p.type === 'day');
+      if (d < 0) return String(v);
+      if (d === 0) parts.splice(0, 2); else parts.splice(d - 1, 2);
+      return parts.map((p) => p.value).join('');
+    } catch (e) { return String(v); }
   }
   // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) "10.00000000" -> 0).
   function decimals(v) {

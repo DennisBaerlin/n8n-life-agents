@@ -5,7 +5,8 @@
 --   (wie fn_set_recurring_payment; Status/Ende/Anker geerbt -> ein pausierter Plan bleibt pausiert);
 --   plan.recurring_payment_id zeigt danach auf das neue RP (Kopf-Regel des Helfers). Damit bleibt die Rate-/
 --   Kadenz-Geschichte im RP-Log (Vorgaenger-Kette) erhalten. Audit F2c(4): UEBERFAELLIGE offene Ausfuehrungen der
---   Kette vor dem Stichtag -> {ok:false, open_due_date} (erst buchen/ueberspringen). Eine KUENFTIGE Ausfuehrung vor
+--   Kette vor dem Stichtag -> {ok:false, open_due_date} (erst buchen/ueberspringen; geprueft wird dieselbe Menge, die
+--   Erinnerung und Buchen/Ueberspringen anbieten: fn_recurring_due_open(CURRENT_DATE)). Eine KUENFTIGE Ausfuehrung vor
 --   dem Stichtag ist erlaubt (Audit Paket 2, Punkt 3): sie bleibt auf der alten rp und wird ueber die Kette weiter
 --   als Sparplan-Ausfuehrung erkannt (Erinnerung, fn_savings_plan_next_execution).
 --   REAKTIVIEREN (Audit Paket 2, Punkt 1): status=active auf einem Plan, dessen rp beendet ist (Soft-Close,
@@ -159,10 +160,13 @@ BEGIN
         END IF;
         -- Audit F2c(4): UEBERFAELLIGE offene (weder gebuchte noch uebersprungene) Ausfuehrungen der Kette vor dem
         -- Stichtag -> erst buchen/ueberspringen (Hygiene). Kuenftige Ausfuehrungen vor dem Stichtag bleiben auf der
-        -- alten rp und laufen ueber die Kette weiter als Sparplan (Audit Paket 2, Punkt 3).
+        -- alten rp und laufen ueber die Kette weiter als Sparplan (Audit Paket 2, Punkt 3). Geprueft wird genau, was
+        -- Erinnerung und Buchen/Ueberspringen anbieten (fn_recurring_due_open(CURRENT_DATE)), vor dem Stichtag: ein
+        -- eigenes Fenster ab Stichtag - 1 sperrte an manchen Tagen mit einer Ausfuehrung, die niemand mehr angeboten bekam.
         SELECT min(o.due_date) INTO v_open_due
-        FROM finance.fn_recurring_due_open(LEAST(v_from - 1, CURRENT_DATE)) o
-        WHERE o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp.id));
+        FROM finance.fn_recurring_due_open(CURRENT_DATE) o
+        WHERE o.due_date < v_from
+          AND o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp.id));
         IF v_open_due IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'The savings plan still has an execution due on ' || v_open_due || ' at the old terms. '

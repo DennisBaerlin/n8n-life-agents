@@ -282,6 +282,24 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_savings_plan [Split eines pausierten Plans -> neue Rate bleibt paused]';
   END;
 
+  -- TEST 9b: die Sperre prueft genau die offenen Ausfuehrungen, die Erinnerung und Buchen/Ueberspringen anbieten
+  -- (fn_recurring_due_open(CURRENT_DATE), 90-Tage-Fenster). Woechentlich ab heute - 91: nach dem Ueberspringen aller
+  -- angebotenen bleibt nur die Ausfuehrung von vor 91 Tagen offen, die niemand mehr angeboten bekommt -> sie darf den
+  -- Split nicht sperren (vorher Fenster ab Stichtag - 1, an manchen Tagen ein Tag weiter zurueck).
+  DECLARE v_rp3 INT; BEGIN
+    SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_ssp_plan3__','depot_name','__test_ssp_depot__',
+      'isin','IE00B5BMR087','symbol','CSPX','security_name','iShares Core S&P 500','amount',20,'schedule_interval',1,
+      'schedule_unit','week','first_payment_date',(CURRENT_DATE - 91)::text)) INTO v_result;
+    v_rp3 := (v_result->>'recurring_payment_id')::int;
+    PERFORM finance.fn_skip_recurring_occurrence(jsonb_build_object('recurring_payment_id', o.recurring_payment_id,
+              'due_date', o.due_date::text))
+    FROM finance.fn_recurring_due_open(CURRENT_DATE) o WHERE o.recurring_payment_id = v_rp3 AND o.due_date < CURRENT_DATE;
+    SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_plan3__','new_amount',25)) INTO v_result;
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+      RAISE EXCEPTION 'FAIL fn_set_savings_plan [Sperre = angebotene Vorkommen]: erwartet ok=true, got %', v_result; END IF;
+    RAISE NOTICE 'PASS fn_set_savings_plan [Vorkommen ausserhalb des Erinnerungs-Fensters sperrt den Split nicht]';
+  END;
+
 END $$;
 
 

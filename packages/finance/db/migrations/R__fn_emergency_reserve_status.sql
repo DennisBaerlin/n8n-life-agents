@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_emergency_reserve_status (READ, STABLE) -- Notreserve des Haushalts: Ziel, Basis, Deckung, Konten (2026-10-30)
 --   Die EINE Rechen-Adresse der Notreserve (Ruecklage kind = emergency_reserve, hoechstens eine aktive). Konsumenten:
---   fn_advisor_review (Alert emergency_reserve), fn_plan_gaps, fn_render_plan_facts, fn_app_screen_goals (Abschnitt
---   „Notreserve“ + Banner), fn_create/fn_set_savings_goal (Karte, Post-State). Das LLM rechnet nichts davon nach.
+--   fn_advisor_review (Alert emergency_reserve), fn_plan_gaps, fn_render_plan_facts, fn_app_screen_goals (Zeile
+--   Notreserve im Abschnitt Ruecklagen), fn_create/fn_set_savings_goal (Karte, Post-State). Das LLM rechnet nichts davon nach.
 --   Ziel: target_amount (fest) ODER target_months x Monatsausgaben; Monatsausgaben = fn_liquidity_snapshot
 --   (feste Zahlungen + Kreditraten ohne Sparraten + geschaetzter Alltag) — gespeichert ist nur die Einstellung, der
 --   Betrag wird zur Laufzeit abgeleitet (Ausgaben aendern sich; DB-Gesetz „keine ableitbaren Spalten“).

@@ -234,11 +234,7 @@ $AppWordExceptB = @(          # Paket B (Konten + Vermoegen) + geteilte finance.
     'finance.app.common.kids_not_in_sum'
     'finance.app.overview.section_liquid'
 )
-$AppWordExceptC = @(          # Paket C (Ziele)
-    'finance.app.goals.cover_dip'
-    'finance.app.goals.cover_unknown'
-    'finance.app.goals.emergency_unknown'
-    'finance.app.goals.fund_unknown'
+$AppWordExceptC = @(          # Paket C (Ziele): erledigt
 )
 $AppWordExceptD = @(          # Paket D (Kredite + Depot)
     'finance.app.depot.section_child'

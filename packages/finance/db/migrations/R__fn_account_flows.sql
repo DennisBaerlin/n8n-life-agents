@@ -6,9 +6,9 @@
 --   side 'in'  = Eingang ohne Quellkonto (Gehalt, externe Zuwendung) oder Uebertrag AUF das Konto
 --   side 'out' = Abgang vom Konto (Sparplan, Uebertrag, Lastschrift)
 --   monthly = monthly_equivalent signiert in KONTOwaehrung (Uebertrags-Ziel ueber den Kurs; ohne Kurs NULL).
---   Konsumenten: fn_account_funding (rein/raus je Monat), fn_app_screen_goals („Geld kommt von").
+--   Konsument: fn_account_funding (rein/raus je Monat).
 --   RUECKGABE: (rp_id, side, monthly)
---   Tests: tests/db/finance/test_fn_account_funding.sql, tests/db/finance/test_fn_app_screen_goals.sql
+--   Tests: tests/db/finance/test_fn_account_funding.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_flows(p_account_id int)
 RETURNS TABLE(rp_id int, side text, monthly numeric)

@@ -1851,8 +1851,7 @@ $AppHeadExceptB = @(          # Paket B (Konten + Vermoegen)
     'finance.fn_app_screen_overview'
     'finance.fn_app_screen_payments'
 )
-$AppHeadExceptC = @(          # Paket C (Ziele)
-    'finance.fn_app_screen_goals'
+$AppHeadExceptC = @(          # Paket C (Ziele): erledigt
 )
 $AppHeadExceptD = @(          # Paket D (Kredite + Depot)
     'finance.fn_app_screen_depot'

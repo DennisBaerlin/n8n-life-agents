@@ -39,27 +39,20 @@ Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeig
 
 ### Ziele
 
+Die Seite beantwortet: Kommen wir mit dem Sparen voran, und was läuft automatisch? Eine Markierung steht nur da, wenn du etwas tun kannst; läuft alles nach Plan, ist die Zeile ruhig. Kontostände, freies Geld und Daueraufträge stehen auf der Seite Konten.
+
 - **Zurückgelegt:** was in allen Sparzielen und Rücklagen zusammen steckt, darunter die Aufteilung „Sparziele … · Rücklagen …“.
-- **Rücklagen** (mit Summe neben der Überschrift):
-  - **Notreserve** (nur für Eltern sichtbar): wie viel deiner Notreserve gedeckt ist, darunter das Ziel. Daneben steht „vollständig“ oder gelb „fehlen …“; solange etwas fehlt, zeigt ein Balken den Fortschritt. Aufgeklappt siehst du, wie das Ziel zustande kommt (feste Zahlungen und Kreditraten plus geschätzter Alltag je Monat, mal die gewünschten Monate) und auf welchen Konten wie viel liegt. Gezählt wird nur Geld auf Giro- und Tagesgeldkonten, und nur so viel, wie nach den anderen Sparzielen auf dem Konto wirklich da ist.
-  - **Instandhaltungsrücklage** einer Immobilie: der Stand, darunter die monatliche Rate und die Empfehlung („163 € im Monat · wie empfohlen“ oder „· empfohlen 180 €“). Daneben „ausreichend“ oder gelb „17 € im Monat unter Empfehlung“. Einen Balken gibt es hier bewusst nicht: Eine Rücklage hat keinen Zielbetrag, sie wird für Reparaturen gebraucht und wieder aufgefüllt. Aufgeklappt siehst du, wie die Empfehlung zustande kommt: Wohnfläche, Baujahr und Alter, der Satz je m² und Jahr nach der II. Berechnungsverordnung und daraus der Jahres- und Monatsbetrag.
-- **Sparziele** (mit Summe): jedes Ziel mit dem bisher Gesparten, dem Zielbetrag und der Restzeit („noch 16 J. 5 Mon.“) und einem Balken. Ziele, die hinter dem Plan liegen, stehen oben, erreichte unten. Aufgeklappt siehst du das Zieldatum, die monatliche Sparrate mit dem Konto, von dem sie abgeht, und auf welchen Konten das Gesparte liegt. Daneben steht, wie es läuft:
-  - **im Plan:** du liegst gut in der Zeit.
-  - **„… hinter Plan“** (gelb): so viel fehlt heute zum Plan, wenn du gleichmäßig bis zum Zieldatum sparst. Wie viel du monatlich nachlegen müsstest, sagt dir der Chat.
-  - **erreicht:** der Zielbetrag ist da (ohne Balken).
-  - **pausiert:** die Sparrate oder der Sparplan des Ziels ist angehalten.
-  - **nicht messbar:** die Sparrate geht ohne eigenes Sparkonto ab, dann lässt sich der Stand nicht verfolgen. Abhilfe: dem Ziel im Chat ein Sparkonto zuordnen.
-- **Sparpläne:** was jeder Plan im Monat ausmacht, darunter die nächste Ausführung (und der Betrag je Ausführung, wenn der Plan öfter als einmal im Monat läuft). Neben der Überschrift steht die Summe aller laufenden Pläne. Aufgeklappt siehst du Wertpapier, Depot, Abbuchungskonto, für wen der Plan ist, das Sparziel, eine geplante Änderung und was die Position heute wert ist. Ein angehaltener Plan steht als „pausiert“ da. Reicht das Geld auf dem Abbuchungskonto nicht, steht das am Plan (siehe Konten); ist alles in Ordnung, steht dort nichts.
-- **Konten:** jedes Konto und Depot, auf dem Geld für Ziele liegt, von dem Daueraufträge abgehen oder das Sparpläne bezahlt. Rechts der Kontostand (beim Depot der Kurswert), darunter „für Ziele … · frei …“ bzw. die Daueraufträge im Monat. Eine Markierung erscheint nur, wenn etwas nicht stimmt, Konten mit Problemen stehen oben:
-  - **Lücke ab …** (rot): das Konto fällt in den nächsten drei Monaten unter null.
-  - **fehlen …** (gelb): auf dem Konto liegt weniger, als für die Ziele zurückgelegt sein sollte. Bei einem Depot erst, wenn der Kurswert um mindestens 10 % unter dem Ziel-Geld liegt.
-  - **reicht bis …** (gelb): an diesem Tag ist das Konto leer, wenn nichts dazukommt (in den nächsten zwei Jahren).
-  - **„… Kursminus“** (grau): das Depot liegt nur durch eine kleine Kursschwankung unter dem Ziel-Geld. Das ist normal und kein Grund zum Handeln.
-  - **nicht ermittelbar** (grau): ein Kurs fehlt, oder es fehlen die Alltagsausgaben eines Kontos, von dem auch Miete oder Strom abgehen (dafür braucht es einen Kontoauszug, siehe [Monats-Check](monats-check.html)).
+- **Rücklagen:**
+  - **Notreserve** (nur für Eltern sichtbar): wie viel deiner Notreserve gedeckt ist, darunter das Ziel. Solange etwas fehlt, steht daneben gelb „fehlen …“ und ein Balken zeigt den Fortschritt; ist sie voll, steht darunter „Ziel … erreicht“. Aufgeklappt siehst du, wie das Ziel zustande kommt (feste Zahlungen und Kreditraten plus geschätzter Alltag je Monat, mal die gewünschten Monate) und auf welchen Konten wie viel liegt. Gezählt wird nur Geld auf Giro- und Tagesgeldkonten, und nur so viel, wie nach den anderen Sparzielen auf dem Konto wirklich da ist.
+  - **Instandhaltungsrücklage** einer Immobilie: der Stand, darunter die monatliche Rate („163 € im Monat“). Liegt die Rate unter dem Richtwert, steht daneben gelb „17 € im Monat unter Richtwert“. Einen Balken gibt es hier bewusst nicht: Eine Rücklage hat keinen Zielbetrag, sie wird für Reparaturen gebraucht und wieder aufgefüllt. Aufgeklappt siehst du, von welchem Konto die Rate abgeht und wann, den Richtwert nach der II. Berechnungsverordnung („180 € im Monat (98 m² × 22,04 € je m² im Jahr)“) und die Immobilie.
+- **Sparziele:** jedes Ziel mit dem bisher Gesparten, darunter „von 40.000 € · bis 03.2040“ (erreicht: „2.500 € erreicht · geplant für 01.06.2027“) und ein Balken. Rote und gelbe Ziele stehen oben, erreichte unten. Aufgeklappt siehst du, **woher die Rate kommt** („Rate: 200 € im Monat aus Sparplänen ETF Welt, Aktie“ oder „Rate von Girokonto: 120 € · monatlich am 1.“ oder „keine laufende Rate“), auf welchen Konten das Gesparte liegt und das genaue Zieldatum. Markierungen:
+  - **„hinter Plan · fehlen …“** (gelb): so viel fehlt heute zum Plan, wenn du gleichmäßig bis zum Zieldatum sparst. Wie viel du monatlich nachlegen müsstest, sagt dir der Chat.
+  - **„Depot …: Kurswert … unter dem Zurückgelegten“** (rot): liegt das Geld eines Ziels im Depot und ist der Kurswert um mindestens 10 % unter das dafür Zurückgelegte gefallen. Kleinere Kursschwankungen zeigen nichts an.
+  - **pausiert** (grau): die Sparrate oder der Sparplan des Ziels ist angehalten. Weitersparen oder das Ziel schließen geht im Chat.
+  - **„nicht messbar: kein Konto zugeordnet“** (grau): die Sparrate geht ohne eigenes Sparkonto ab, dann lässt sich der Stand nicht verfolgen. Abhilfe: dem Ziel im Chat ein Sparkonto zuordnen.
+- **Sparpläne:** was jeder Plan im Monat ausmacht, darunter die nächste Ausführung, bei festen Tagen etwa „4× monatlich je 50 € · nächste 02.11.“. Neben der Überschrift steht „zusammen … im Monat“ (ab zwei Plänen). Aufgeklappt siehst du Wertpapier, Depot, Abbuchungskonto, für wen der Plan ist, das Sparziel und eine geplante Änderung. Ein angehaltener Plan steht als „pausiert“ da. Reicht das Geld auf dem Abbuchungskonto nicht, steht das gelb „reicht bis 04.2027“ oder rot „Lücke ab …“ am Plan; ist alles in Ordnung, steht dort nichts.
 
-  Aufgeklappt steht jeder Dauerauftrag zum Abtippen da, etwa „→ Tagesgeld · 150 € · monatlich am 1. · ab 01.11.“. Ist für eine Rate noch kein fester Tag hinterlegt, steht dort „Tag frei (gerechnet: 1.)“: Du wählst den Tag bei der Bank, die Übersicht rechnet bis dahin mit dem genannten. Eine geplante Änderung („Änderung ab …“) steht direkt darunter, Spar-Lastschriften ohne Zielkonto (etwa ein Vorsorge-Beitrag) mit ihrem Namen. Danach **„Geld kommt von …“** für jeden Zufluss (Konto bzw. Name der Zahlung, etwa ein monatliches Geldgeschenk der Großeltern) und zuletzt **„Konto …“** mit Eingängen und Abgängen im Monat und dem tiefsten Stand. Gehen jeden Monat mehr ab als ankommen, ist das kein Fehler, solange das Guthaben reicht.
-
-Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist bis heute schon deutlich mehr Zeit vergangen, als Geld zusammengekommen ist, steht dort etwa „600 € hinter Plan“.
+Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist bis heute schon deutlich mehr Zeit vergangen, als Geld zusammengekommen ist, steht dort etwa „hinter Plan · fehlen 600 €“.
 
 ### Zahlungen
 
@@ -90,7 +83,7 @@ Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem grau
 - **Je Depot** (mit seiner Summe neben dem Namen) jede Position mit ihrem Wert in Euro und der Stückzahl. Bei Wertpapieren in fremder Währung steht der Kurs in dieser Währung klein darunter (z. B. „Kurs 148,60 $“). Unter dem Wert zeigt ein kleiner Pfeil mit Betrag und Prozent, wie viel die Position seit dem Kauf gewonnen (↑) oder verloren (↓) hat. Das ist Information, kein Alarm: Kurse schwanken.
 - **„Kurs veraltet“** heißt: der letzte Kurs ist schon länger nicht mehr aktualisiert worden. **„Kurs fehlt“** heißt: es gibt noch gar keinen. In der Summe zählt dann der Kaufwert, und sie ist als unvollständig markiert.
 - Aufgeklappt siehst du den durchschnittlichen Kaufkurs, den Kaufwert und die letzten zwölf Käufe, Verkäufe und Dividenden mit Datum, Stückzahl und Kurs.
-- Wie viel im Depot für Sparziele zurückgelegt ist, steht auf der Seite Ziele unter „Konten“.
+- Wie viel im Depot für Sparziele zurückgelegt ist, steht auf der Seite Ziele beim jeweiligen Sparziel („liegt auf …“).
 
 ### Hinweise auf der Startseite
 
@@ -111,7 +104,7 @@ Der Knopf „📊 Übersicht“ sitzt an der Stelle, an der vorher der Menü-Kno
 ## Wer was sieht
 
 - **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch die Konten und Depots der Kinder. Sie stehen getrennt und zählen nicht in die Haushalts-Summen.
-- **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name: Liegt Geld für ihr Sparziel auf einem Elternkonto, heißt es bei ihnen nur „Haushaltskonto“. Bei ihrem eigenen Konto oder Depot sieht ein Kind, wie viel darin für Ziele verplant ist. Kommt Geld für ihren Sparplan vom Elternkonto, steht dort „Geld kommt von Haushaltskonto“; ein eigener Dauerauftrag an ein Elternkonto heißt „→ Haushaltskonto“, ohne dessen Stand.
+- **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name: Liegt Geld für ihr Sparziel auf einem Elternkonto, heißt es bei ihnen nur „Haushaltskonto“, und eine Rate von einem Elternkonto heißt „Rate von Haushaltskonto“. Zahlt ein Sparplan der Eltern mit in ihr Ziel, zählt sein Betrag in der Rate mit, sein Name erscheint nicht.
 - Bei den **Zahlungen** sehen Kinder nur Daueraufträge von ihren eigenen Konten und Kredite, die auf ihren Namen laufen. Taschengeld vom Elternkonto erscheint als „Vom Haushalt“, ohne den Namen des Dauerauftrags oder des Elternkontos, und einen Umbuchungs-Vorschlag bekommen Kinder nie.
 - **Fremde Telegram-Nutzer** bekommen den Knopf nie zu sehen.
 
@@ -154,5 +147,5 @@ Wie weit die Liste der kommenden Zahlungen reicht, ab wann ein Konto als knapp g
 | `lifeagents config set finance everyday_oneoff_eur 250` | Ab diesem Einzelbetrag gilt eine Ausgabe im Kontoauszug als einmalig und zählt nicht zu den geschätzten Alltagsausgaben (gilt ab dem nächsten Auszug). |
 | `lifeagents config set finance fixed_rate_warn_months 12` | Hinweis, wenn die Zinsbindung eines Kredits in weniger als so vielen Monaten endet. |
 | `lifeagents config set finance funding_horizon_months 24` | So viele Monate voraus prüft die Seite Ziele, ob das Geld für Sparpläne und Daueraufträge reicht (sonst „reicht bis …“). |
-| `lifeagents config set finance depot_cover_warn_pct 10` | Ab so viel Prozent unter dem Ziel-Geld wird ein Depot auf der Seite Ziele gelb „fehlen …“ (und der Berater meldet es); darunter steht grau „… Kursminus“. |
+| `lifeagents config set finance depot_cover_warn_pct 10` | Ab so viel Prozent unter dem Ziel-Geld bekommt ein Sparziel mit Geld im Depot auf der Seite Ziele die rote Markierung „Kurswert … unter dem Zurückgelegten“ (und der Berater meldet es); darunter zeigt die Seite nichts an. |
 | `lifeagents config set finance funding_alert_months 3` | Rot „Lücke ab …“ und ein Hinweis auf der Startseite, wenn das Geld schon innerhalb so vieler Monate fehlt. |

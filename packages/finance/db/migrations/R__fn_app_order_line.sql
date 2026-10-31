@@ -7,7 +7,7 @@
 --   Haeufigkeit (vierteljaehrlich, alle n Monate, jaehrlich, alle n Jahre, woechentlich, alle n Wochen, alle n Tage)
 --   + den naechsten Termin (fn_schedule_occurrences) -> die Bank-To-do ist ohne Rueckfrage abtippbar.
 --   „ab <valid_from>", solange das Glied erst kuenftig startet.
---   Konsument: fn_app_screen_goals (Bank-To-do, „Geld kommt von", geplante Aenderung).
+--   Konsument: fn_app_screen_goals (Rate eines Ziels, Sparplan-Rhythmus, geplante Aenderung).
 --   RUECKGABE: tpl finance.app.goals.amount_rhythm[_from] | NULL (unbekannte id)
 --   Tests: tests/db/finance/test_fn_app_order_line.sql
 -- ============================================================

@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_depot_cover_state (READ-ONLY Helfer, Mini-App UX 2026-10-30) — deckt der Marktwert eines Depots das Ziel-Geld darin?
---   Die EINE Regel fuer die Depot-Deckung: Mini-App (Ziele, Abschnitt Konten) und Berater-Alert reserve_coverage_depot
+--   Die EINE Regel fuer die Depot-Deckung: Mini-App (Ziele, Pille an der Sparziel-Zeile) und Berater-Alert reserve_coverage_depot
 --   (fn_advisor_review) lesen beide hier. Der Ziel-Stand bleibt das Gesparte (Marktwert = Deckung, nie Reserve,
 --   finance:V008); eine kleine Kursdelle ist keine Luecke (Owner 2026-10-30: „11 EUR ist nicht schlimm, bei heftigen
 --   Kursschwankungen gelb").

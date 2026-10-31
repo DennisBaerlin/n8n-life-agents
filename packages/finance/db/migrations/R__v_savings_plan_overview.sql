@@ -64,7 +64,12 @@ SELECT sp.id,
        CASE WHEN h.id <> c.id THEN abs(h.amount) END AS new_amount_per_execution,
        CASE WHEN h.id <> c.id THEN finance.fn_schedule_label(h.schedule_unit, h.schedule_interval,
                                        h.schedule_day_of_month, h.schedule_days_of_month) END AS new_rhythm,
-       sp.recurring_payment_id
+       sp.recurring_payment_id,
+       -- Mini-App UX 2026-10-31 (ans Ende): heute gueltiges Glied + Kopf der Kette und die festen Tage des Glieds, damit
+       -- der Bildschirm Ziele die Kette nicht ein zweites Mal ablaeuft
+       c.id                                     AS current_rp_id,
+       h.id                                     AS head_rp_id,
+       c.schedule_days_of_month                 AS days_of_month
 FROM finance.savings_plans AS sp
 INNER JOIN chain AS ch                    ON ch.plan_id = sp.id
 INNER JOIN finance.recurring_payments AS h ON h.id = ch.head_id

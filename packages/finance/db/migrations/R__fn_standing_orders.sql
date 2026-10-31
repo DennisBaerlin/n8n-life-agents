@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_standing_orders (READ, STABLE) -- die Dauerauftraege, die der Haushalt bei seiner Bank selbst einrichtet
---   („Bank-To-do" im Ziele-Bildschirm, Abschnitt „Dauerauftraege je Konto"). Je Kette das massgebliche Glied
+--   („Bank-To-do"; Konsumenten fn_funding_accounts, standing_order_overview). Je Kette das massgebliche Glied
 --   (fn_recurring_effective: laufend oder erst kommend), status active, valid_to leer oder kuenftig.
 --   kind 'transfer' = Uebertrag eigenes Konto -> eigenes Konto (target_account_id gesetzt), auch Haushalts-Umbuchungen
 --   kind 'debit'    = Spar-Abfluss ohne Ziel-Konto, der kein Sparplan ist (Vorsorge-Beitrag, Sparziel-Rate ohne Topf)
@@ -9,7 +9,7 @@
 --   Bei uns anders (package-contract §8): die Klassifikation steht hier statt in recurring_cashflow_classified, weil
 --   diese View nur HEUTE laufende Zahlungen kennt und die Bank-To-do gerade die kommenden braucht.
 --   RUECKGABE: (rp_id, head_id, kind)
---   Tests: tests/db/finance/test_fn_app_screen_goals.sql
+--   Tests: tests/db/finance/test_fn_standing_orders.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_standing_orders()
 RETURNS TABLE(rp_id int, head_id int, kind text)

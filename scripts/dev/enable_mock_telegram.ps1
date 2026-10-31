@@ -12,9 +12,14 @@
 #      (`PATCH /api/v1/credentials/{id}`, data={accessToken, baseUrl}). Damit gehen ALLE Telegram-API-
 #      Calls der Workflows an den Mock statt an api.telegram.org — inject_credentials.sh bleibt
 #      byte-identisch (keine Provisioning-Aenderung).
+#   3b) Den Telegram-Relay des LLM-Gateways (Herz-Reaktion + Persona-Sticker, Kopf von provisioning/llm_gateway/server.js)
+#      per eigenem LAUFZEIT-Drop-in (/run/systemd/system/<gateway>.service.d/telegram-mock.conf,
+#      LLM_GATEWAY_TELEGRAM_API=<mock>) + Neustart auf den Mock biegen; geprueft per /__health.telegram.upstream.
+#      Eigener Dateiname: enable_mock_llm.ps1 schreibt mock.conf nur mit seiner eigenen Zeile. /run ist fluechtig ->
+#      nach einem Container-Neustart bzw. bootstrap ohne -Reset dieses Skript erneut laufen lassen.
 #   4) Einen `mock_telegram`-Block ins State-File schreiben (Port/Log/Unit) fuer die Tier-/Verify-Skripte.
 #
-# -Down: Mock-Unit stoppen + baseUrl zurueck auf https://api.telegram.org patchen + State-Block entfernen.
+# -Down: Mock-Unit stoppen + baseUrl zurueck auf https://api.telegram.org patchen + Gateway-Drop-in weg + State-Block entfernen.
 #
 # Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json) + TEST_TELEGRAM_BOT_TOKEN in .env
 # (die Credential muss existieren — inject_credentials legt sie nur bei vorhandenem Token an; der Mock
@@ -95,6 +100,30 @@ function Write-StateMock([object]$state, [object]$mockBlock) {
     [System.IO.File]::WriteAllText($StateFile, ([pscustomobject]$ordered | ConvertTo-Json), $Utf8NoBom)
 }
 
+# --- Gateway-Telegram-Relay per Laufzeit-Drop-in umbiegen ($Api = $null -> Drop-in weg = echtes Telegram) ------------
+$GwUnit   = 'lifeagents-llm-gateway'
+$GwDropIn = "/run/systemd/system/$GwUnit.service.d/telegram-mock.conf"
+function Set-GatewayTelegramApi {
+    param([string]$Api)
+    if ($Api) {
+        $conf = "[Service]`nEnvironment=LLM_GATEWAY_TELEGRAM_API=$Api`n"
+        $r = Invoke-Native docker @('exec',$Container,'sh','-c',"mkdir -p `$(dirname '$GwDropIn') && printf '%s' '$conf' > '$GwDropIn'")
+    } else {
+        $r = Invoke-Native docker @('exec',$Container,'rm','-f',$GwDropIn)
+    }
+    if ($r.Code -ne 0) { throw "Gateway-Drop-in (Telegram) schreiben/entfernen fehlgeschlagen: $($r.Output -join "`n")" }
+    Invoke-Native docker @('exec',$Container,'systemctl','daemon-reload') | Out-Null
+    $r = Invoke-Native docker @('exec',$Container,'systemctl','restart',$GwUnit)
+    if ($r.Code -ne 0) { throw "Neustart $GwUnit fehlgeschlagen (Substrat mit Gateway gebaut? sonst -Reset): $($r.Output -join "`n")" }
+    $want = if ($Api) { $Api } else { 'https://api.telegram.org' }
+    for ($i = 0; $i -lt 20; $i++) {
+        $h = Get-LlmGatewayHealth -Container $Container
+        if ($h -and $h.telegram -and [string]$h.telegram.upstream -eq $want) { return }
+        Start-Sleep -Milliseconds 300
+    }
+    throw "LLM-Gateway meldet nicht den erwarteten Telegram-Upstream '$want' (journalctl -u $GwUnit)."
+}
+
 $credId = Get-TelegramCredId
 if (-not $credId) { throw "Keine telegramApi-Credential gefunden — wurde das Substrat mit TEST_TELEGRAM_BOT_TOKEN gebaut?" }
 
@@ -103,8 +132,9 @@ if ($Down) {
     Invoke-Native docker @('exec',$Container,'systemctl','stop',$Unit) | Out-Null
     Invoke-Native docker @('exec',$Container,'systemctl','reset-failed',$Unit) | Out-Null
     Set-TelegramBaseUrl -CredId $credId -BaseUrl 'https://api.telegram.org' -Token $Token
+    Set-GatewayTelegramApi $null
     if (Test-Path $StateFile) { Write-StateMock (Read-State) $null }
-    Write-Host "Mock-Telegram deaktiviert: Unit gestoppt, baseUrl -> https://api.telegram.org, State-Block entfernt."
+    Write-Host "Mock-Telegram deaktiviert: Unit gestoppt, baseUrl + Gateway-Relay -> https://api.telegram.org, State-Block entfernt."
     return
 }
 
@@ -148,6 +178,8 @@ if (-not $ready) {
 # --- 3) Telegram-baseUrl auf den Mock umbiegen ------------------------------------------------------
 Set-TelegramBaseUrl -CredId $credId -BaseUrl $MockUrl -Token $Token
 Write-Host "Telegram-baseUrl -> $MockUrl (Credential $credId gepatcht)."
+Set-GatewayTelegramApi $MockUrl
+Write-Host "Gateway-Telegram-Relay -> $MockUrl (Drop-in $GwDropIn)."
 
 # --- 4) State-Block schreiben -----------------------------------------------------------------------
 $mockBlock = [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId }

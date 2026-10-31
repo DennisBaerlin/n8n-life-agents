@@ -26,6 +26,22 @@
     "final": "Your DKB Giro balance is 1,234.56 EUR."
   },
   {
+    "_comment": "Bot mit Gesicht (oc41): Standard + Routine-Frage -> Call_agent_finance_ (das Signal FRAME prueft nur der bezahlte Tier; der Mock prueft das Routing).",
+    "match": "aktuelle Stand auf meinem DKB Girokonto",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Wie ist der aktuelle Stand auf meinem DKB Girokonto?" } }
+    ],
+    "final": "Dein DKB Girokonto steht bei 1.234,56 EUR."
+  },
+  {
+    "_comment": "Bot mit Gesicht (oc42): Standard + Mahnung -> Call_agent_finance_ (ernster Moment, NOFRAME prueft der bezahlte Tier).",
+    "match": "Mahnung von den Stadtwerken",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Mahnung Stadtwerke, Abschlag ueberfaellig" } }
+    ],
+    "final": "Lass uns die Mahnung gemeinsam pruefen."
+  },
+  {
     "_comment": "Bot-Persona (oc31): Trauerfall/Erbe -> Call_agent_estate_advisor_ (ernster Moment, kein Rahmensatz; der Mock prueft nur das Routing).",
     "match": "Meine Mutter ist letzte Woche gestorben",
     "calls": [

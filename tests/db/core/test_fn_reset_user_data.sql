@@ -132,7 +132,7 @@ BEGIN
   VALUES ('general', 'zz reset trigger', 'date', 'none', '2027-01-01', INTERVAL '1 day');
   INSERT INTO core.notification_state (source, key) VALUES
     ('finance', 'reserve_breach:1'), ('advisor:finance', 'm'), ('knock', '123'), ('zzskip:pipeline', '5'),
-    ('onboarding', 'household_ready'), ('onboarding_nudge', 'x:1'), ('plan_news', 'x:finance:p1');
+    ('onboarding', 'household_ready'), ('onboarding_nudge', 'x:1'), ('plan_news', 'x:finance:p1'), ('persona_sticker', 'p1');
   CREATE TABLE agent.zz_reset_chat_memory (id serial PRIMARY KEY, session_id text, message jsonb);
   INSERT INTO agent.zz_reset_chat_memory (session_id, message) VALUES ('1', '{"type":"human"}');
 
@@ -203,7 +203,7 @@ BEGIN
      OR EXISTS (SELECT 1 FROM agent.zz_reset_chat_memory) THEN
     RAISE EXCEPTION 'FAIL (iii) Plaene/user-Trigger/Chat-Memory nicht geleert';
   END IF;
-  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('finance', 'advisor:finance', 'onboarding', 'onboarding_nudge', 'plan_news'))
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('finance', 'advisor:finance', 'onboarding', 'onboarding_nudge', 'plan_news', 'persona_sticker'))
      OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'knock')
      OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'zzskip:pipeline') THEN
     RAISE EXCEPTION 'FAIL (iii) notification_state nicht je Quelle behandelt';

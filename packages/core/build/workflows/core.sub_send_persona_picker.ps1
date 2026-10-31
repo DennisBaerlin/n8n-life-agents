@@ -20,7 +20,8 @@ function Build-CoreSubSendPersonaPicker {
     $u8 = New-Object System.Text.UTF8Encoding($false)
     $personas = @((([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\manifest.json'), $u8) | ConvertFrom-Json).personas.list) | Sort-Object ord)
     if ($personas.Count -eq 0) { throw 'core.sub_send_persona_picker: Core-Manifest personas.list ist leer' }
-    $nameKeys = @($personas | ForEach-Object { "core.persona.name.$($_.code)" })
+    # Zurueck auf Standard (neutral) = eigener Knopf-Text core.persona.button.neutral in der letzten Zeile (Bot mit Gesicht)
+    $nameKeys = @($personas | ForEach-Object { if ($_.code -eq 'neutral') { 'core.persona.button.neutral' } else { "core.persona.name.$($_.code)" } })
 
     $trig = Build-Trigger @('person_id')   # chat_id (Empfaenger) ergaenzt Build-Trigger
 
@@ -38,19 +39,20 @@ function Build-CoreSubSendPersonaPicker {
         })
     $load.credentials = @{ postgres = $CRED_PG_RO }
 
-    $buttons = @($personas | ForEach-Object {
-        $key = "core.persona.name.$($_.code)"
-        @{ Text = "={{ (`$json.current === '$($_.code)' ? '✓ ' : '') + $(Get-UiTextJs '$json.t' $key) }}"
-           Data = "={{ 'persona:' + `$('Start').item.json.person_id + ':$($_.code)' }}" }
-    })
+    function New-PersonaButton($Code, [string]$Key) {
+        @{ Text = "={{ (`$json.current === '$Code' ? '✓ ' : '') + $(Get-UiTextJs '$json.t' $Key) }}"
+           Data = "={{ 'persona:' + `$('Start').item.json.person_id + ':$Code' }}" }
+    }
+    $buttons = @($personas | Where-Object { $_.code -ne 'neutral' } | ForEach-Object { New-PersonaButton $_.code "core.persona.name.$($_.code)" })
     $rows = @()
     for ($i = 0; $i -lt $buttons.Count; $i += 2) { $rows += ,@($buttons[$i..([Math]::Min($i + 1, $buttons.Count - 1))]) }
+    $rows += ,@( (New-PersonaButton 'neutral' 'core.persona.button.neutral') )   # Zurueck auf Standard: allein, zuletzt
     $send = New-TelegramInlineKeyboardSendNode 'Send persona picker' @(440, 0) "={{ `$json.text }}" -Rows $rows `
         -ChatIdExpr "={{ `$('Start').item.json.chat_id }}"
 
     $sticky = Build-Sticky 'Doc: Überblick' @(-40, -300) -Header 'Ablauf' `
         'core.sub_send_persona_picker — Bot-Persona je Person per Knopf' `
-        'Deterministisch, kein LLM. Eingang person_id + chat_id. Load picker text holt in der Sprache der Person (agent.fn_person_lang) die Frage core.persona.picker, die Knopf-Namen core.persona.name.<code> als t-Map und die aktuelle Persona (fehlt -> neutral). Send persona picker: ein Knopf je Persona (build-time aus dem Core-Manifest personas.list, 2 je Zeile), die aktuelle mit ✓, callback_data persona:<person_id>:<code>. Gespeichert wird nur der Tipp: generischer Callback-Dispatch -> agent.fn_set_person_persona (Owner jede Person, Mitglied nur sich selbst; neutral = Key entfernt; Toast in der Sprache des Tippenden). Wirkung: der Orchestrator liest die Persona per agent.fn_resolve_sender als Runtime-Flag persona (Rahmen-Regeln persona_styles.md); Fach-Agenten und feste Texte sehen sie nie. Aufrufer: Orchestrator /persona.' 300 520
+        'Deterministisch, kein LLM. Eingang person_id + chat_id. Load picker text holt in der Sprache der Person (agent.fn_person_lang) die Frage core.persona.picker, die Knopf-Namen core.persona.name.<code> als t-Map und die aktuelle Persona (fehlt -> neutral). Send persona picker: ein Knopf je Persona (build-time aus dem Core-Manifest personas.list, 2 je Zeile), zuletzt allein der Zurück-Knopf neutral = core.persona.button.neutral (↩️ Standard), die aktuelle mit ✓, callback_data persona:<person_id>:<code>. Gespeichert wird nur der Tipp: generischer Callback-Dispatch -> agent.fn_set_person_persona (Owner jede Person, Mitglied nur sich selbst; neutral = Key entfernt; Toast in der Sprache des Tippenden). Wirkung: der Orchestrator liest die Persona per agent.fn_resolve_sender als Runtime-Flag persona (Rahmen-Regeln persona_styles.md); Fach-Agenten und feste Texte sehen sie nie. Aufrufer: Orchestrator /persona.' 300 520
 
     $nodes = @($trig, $load, $send, $sticky)
     $conns = [ordered]@{

@@ -526,6 +526,7 @@
   {
     "id": "ri26",
     "expect_texts": ["이 설정은 변경할 수 없습니다."],
+    "forbid_texts": ["_hallo"],
     "name": "Sprach-Picker-Lock: Partnerin Lena tappt lang:owner:ko -> Handler lehnt ab, Owner-Sprache unveraendert",
     "kind": "callback",
     "action": "member_route",
@@ -874,7 +875,7 @@
     "from_uid": 880055200,
     "text": "/persona",
     "expected_node": "Send persona picker",
-    "expect_texts": ["어떤 말투로 대화할까요", "✓ 🙂 기본", "🎩 집사", "persona:lena:sage", "persona:lena:neutral"],
+    "expect_texts": ["어떤 말투로 대화할까요", "✓ ↩️ 기본 (캐릭터 없음)", "🎩 집사", "persona:lena:sage", "persona:lena:neutral"],
     "forbid_texts": ["Wie soll ich mit dir sprechen"],
     "notes": "Command router [persona] -> core.sub_send_persona_picker: Frage + Knopf-Namen in der Sprache der Person (ko), Lena startet neutral (Setup entfernt den Key). Kein LLM."
   },
@@ -889,7 +890,7 @@
     "persona_person": "lena",
     "persona_before": "",
     "expect_persona": "sage",
-    "expect_texts": ["님의 캐릭터: 🧙 도사"],
+    "expect_texts": ["님의 캐릭터: 🧙 도사", "sage_hallo"],
     "notes": "persona:-Prefix ist Registry-Handler (member_permeable=true) -> Mitglied setzt die EIGENE Persona (Write ueber fn_set_context_facts); Toast in Lenas Sprache. Deterministisch, kein LLM."
   },
   {
@@ -904,6 +905,7 @@
     "persona_before": "",
     "expect_persona": "",
     "expect_texts": ["이 설정은 변경할 수 없습니다."],
+    "forbid_texts": ["_hallo"],
     "notes": "Feine Autorisierung im Handler (Mitglied nur sich selbst) -> {ok:false, not_allowed} + Toast, KEIN Write."
   },
   {
@@ -917,7 +919,7 @@
     "persona_person": "owner",
     "persona_before": "",
     "expect_persona": "butler",
-    "expect_texts": ["Charakter für", "🎩 Butler"],
+    "expect_texts": ["Charakter für", "🎩 Butler", "butler_hallo"],
     "notes": "Owner-Tap laeuft ueber den generischen Dispatch (persona ist kein hartkodierter Arm) -> agent.fn_set_person_persona."
   },
   {
@@ -947,7 +949,7 @@
     "expected_node": "Relay compose",
     "expect_texts": ["Sehr wohl", "Dein Sparkonto steht bei 500,00 EUR."],
     "forbid_texts": ["FRAME"],
-    "notes": "Plan lively-cooking-map WP1: der Router antwortet nach dem Tool nur FRAME (Mock final_router); Relay compose haengt die Spezialisten-Antwort aus intermediateSteps woertlich an und setzt bei butler einen core.persona.frame.butler.<n>-Satz (alle de-Varianten beginnen mit 'Sehr wohl') davor."
+    "notes": "Plan lively-cooking-map WP1: der Router antwortet nach dem Tool nur FRAME (Mock final_router); Relay compose haengt die Spezialisten-Antwort aus intermediateSteps woertlich an und setzt bei butler einen core.persona.frame.butler.<n>-Satz (alle de-Varianten enthalten 'Sehr wohl', vorn das Persona-Emoji) davor."
   },
   {
     "id": "ri63",
@@ -1016,5 +1018,98 @@
     "expect_together": ["burst_doc_67", "type=document ext=csv]"],
     "forbid_together": ["Umsaetze_Oktober"],
     "notes": "Live-Befund 2026-10-30 (Werte erfunden): eine CSV ohne Bildunterschrift ging erst an die Vision. Der Marker traegt jetzt die Endung des Dateinamens (der Agent greift sofort zum Datei-Import); der Name selbst ('Umsaetze_Oktober') steht nie im Text."
+  },
+  {
+    "id": "ri68",
+    "name": "Bot mit Gesicht: reines Danke -\u003e nur ein Herz an der Nachricht, kein Router-Lauf, kein Text",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Danke!",
+    "expected_node": "React heart",
+    "expected_not_node": "Orchestrator agent",
+    "expect_texts": ["❤"],
+    "notes": "Herz-Kurzschluss: Resolve sender liefert core.fn_smalltalk_kind = thanks -\u003e Thanks only? -\u003e React heart (Gateway-Relay setMessageReaction an den Mock, Emoji ohne VS16). Kein Agent, keine Thinking-Lease, kein sendMessage."
+  },
+  {
+    "id": "ri69",
+    "name": "Bot mit Gesicht: Danke bei offener Karte -\u003e Herz statt Karte-offen-Hinweis",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Vielen Dank",
+    "hitl_pending": {"own_card":true},
+    "expected_node": "React heart",
+    "expected_not_node": "Reply card open",
+    "notes": "Der Herz-Zweig liegt VOR der Karte-offen-Sperre; die Sperre raeumt der Lauf der Karte selbst."
+  },
+  {
+    "id": "ri70",
+    "name": "Bot mit Gesicht: \"nein danke\" ist eine Antwort, kein Dank -\u003e normaler Router-Lauf, kein Herz",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "nein danke",
+    "expected_node": "Orchestrator agent",
+    "expected_not_node": "React heart",
+    "notes": "Exakter Abgleich in core.fn_smalltalk_kind: jedes weitere Wort -\u003e kein Dank."
+  },
+  {
+    "id": "ri71",
+    "name": "Bot mit Gesicht: reiner Gruss (Standard) -\u003e Roboter-Hallo-Sticker vor der Antwort",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Hallo",
+    "pre_sql": "DELETE FROM core.notification_state WHERE source = 'persona_sticker';",
+    "expected_node": "Send sticker",
+    "expect_texts": ["neutral_hallo"],
+    "notes": "Claim sticker (agent.fn_claim_persona_sticker): Gruss ohne Werkzeug, Persona neutral = Roboter-Set; Bremse vorher geleert. Der Mock loggt den Upload als sticker_file bzw. die file_id mock_fid_\u003cdatei\u003e."
+  },
+  {
+    "id": "ri72",
+    "name": "Bot mit Gesicht: zweiter Gruss in der Bremse -\u003e kein Sticker, Antwort normal",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Hallo",
+    "expected_node": "Relay compose",
+    "expected_not_node": "Send sticker",
+    "notes": "Bremse je Person (core.config persona.sticker_cooldown_hours, Default 4 h) aus ri71."
+  },
+  {
+    "id": "ri73",
+    "name": "Bot mit Gesicht: Butler + FRAME ohne Sticker-Anlass -\u003e Rahmensatz mit Persona-Emoji + Spezialisten-Text, kein Sticker",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Relay-Test Sparkonto: wie ist der Stand?",
+    "persona_person": "owner",
+    "persona_before": "butler",
+    "pre_sql": "DELETE FROM core.notification_state WHERE source = 'persona_sticker';",
+    "expected_node": "Relay compose",
+    "expected_not_node": "Send sticker",
+    "expect_texts": ["🎩 Sehr wohl","Dein Sparkonto steht bei 500,00 EUR."],
+    "notes": "Der Daumen-hoch-Fall (endgueltig bestaetigte Karte dieses Laufs) ist hier nicht nachstellbar: eine vorab angelegte hitl_pending-Zeile loest die Karte-offen-Sperre aus. Abgedeckt in test_fn_claim_persona_sticker.sql + Mark approved im Gate; hier: FRAME allein waehlt keinen Sticker, der Rahmensatz traegt das Persona-Emoji vorn."
+  },
+  {
+    "id": "ri75",
+    "name": "Bot mit Gesicht: Owner waehlt Lenas Persona -\u003e kein Sticker im Owner-Chat",
+    "kind": "callback",
+    "action": "member_route",
+    "sender_uid": 880055071,
+    "callback_data": "persona:lena:butler",
+    "expect_node": "Dispatch callback",
+    "persona_person": "lena",
+    "persona_before": "",
+    "expect_persona": "butler",
+    "forbid_texts": ["_hallo"],
+    "notes": "sticker_event nur bei EIGENER, geaenderter Wahl (agent.fn_set_person_persona) -\u003e Persona sticker? false."
   }
 ]

@@ -9,9 +9,12 @@
 --   (vertrauenswuerdiger Aufruf; die family-owner_only-Pruefung dort uebernimmt diese Autorisierung), genau
 --   {person_id, persona} — 'neutral' loescht dort den Key (neutral wird nie gespeichert).
 --   Toast in der Sprache des TIPPENDEN (die Persona aendert die Sprache nicht), Texte core.persona.*, Persona-Name
---   aus core.persona.name.<code>.
+--   aus core.persona.name.<code>; 'neutral' (Zurueck auf Standard) mit eigenem Toast core.persona.reset.
+--   sticker_event='persona_chosen' nur, wenn die Person ihre EIGENE Persona GEAENDERT hat (Hallo-Sticker des neuen
+--   Sets ueber agent.fn_claim_persona_sticker; ein erneuter Tipp auf dieselbe, auch auf alten Picker-Karten, sendet keinen,
+--   sonst umginge jeder Tipp die Sticker-Bremse).
 --   p: das Callback-Payload {data, chat_id, ...}
---   RUECKGABE: {ok:true, person_id, persona, toast} | {ok:false, reason, toast}  (nie RAISE -> kein Owner-Alert)
+--   RUECKGABE: {ok:true, person_id, persona, toast, sticker_event?} | {ok:false, reason, toast}  (nie RAISE -> kein Owner-Alert)
 --   Tests: tests/db/core/test_fn_set_person_persona.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_person_persona(p jsonb)
@@ -69,10 +72,18 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'person_id', v_pid, 'persona', v_code,
-        'toast', core.fn_ui_text('core.persona.saved', v_lang,
+        'toast', CASE WHEN v_code = 'neutral'
+                      THEN core.fn_ui_text('core.persona.reset', v_lang, jsonb_build_object('name', v_target->>'first_name'))
+                      ELSE core.fn_ui_text('core.persona.saved', v_lang,
                                  jsonb_build_object('name', v_target->>'first_name',
                                                     -- Enum-Prefix + Code (locale_lint 7b sichert je Code den Key)
-                                                    'persona', core.fn_ui_text('core.persona.name' || '.' || v_code, v_lang))));
+                                                    'persona', core.fn_ui_text('core.persona.name' || '.' || v_code, v_lang)))
+                 END)
+        -- nur bei EIGENER Wahl: der Orchestrator fragt agent.fn_claim_persona_sticker nach dem Hallo-Sticker des
+        -- neuen Sets (waehlt der Owner fuer jemand anderen, landete der Sticker sonst im falschen Chat)
+        || CASE WHEN v_sender->>'person_id' = v_pid AND COALESCE(v_target->>'persona', 'neutral') IS DISTINCT FROM v_code
+                THEN jsonb_build_object('sticker_event', 'persona_chosen')
+                ELSE '{}'::jsonb END;
 END;
 $$;
 

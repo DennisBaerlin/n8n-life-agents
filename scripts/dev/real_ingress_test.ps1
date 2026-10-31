@@ -762,6 +762,12 @@ foreach ($tc in $cases) {
             $hp = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "INSERT INTO agent.hitl_pending (chat_id, execution_id, own_card, opened_at, expires_at) VALUES ($hpChat, 'ingress-$($tc.id)', $hpOwn, $hpTimes);")
             if ($hp.Code -ne 0) { Write-Host "    [FAIL] hitl_pending-Seed fehlgeschlagen: $($hp.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
         }
+        # pre_sql (optional): freie Vorbereitung im Substrat VOR dem Update (Bot mit Gesicht: Sticker-Bremse leeren,
+        # endgueltig bestaetigte Karte dieses Laufs seeden). Nur erfundene Testdaten; Aufraeumen per post_sql.
+        if ($tc.pre_sql) {
+            $ps = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.pre_sql)")
+            if ($ps.Code -ne 0) { Write-Host "    [FAIL] pre_sql fehlgeschlagen: $($ps.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
+        }
 
         # WS-3: optionale SUB-Execution-Assertion. Der Core-first-Gate-Redirect ('Core onboarding required')
         # bzw. der durchgelassene 'Finance Agent' laufen in der finance/advisor-SUB, NICHT im Orchestrator-
@@ -791,6 +797,7 @@ foreach ($tc in $cases) {
         }
         $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
         if ($tc.hitl_pending) { Clear-HitlPending -Container $Container }
+        if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
         if (-not $orch) { Write-Host "    [FAIL] Keine Orchestrator-Execution gefunden (Timeout)." -ForegroundColor Red; $failed++; continue }
 
         if ($subWfId) {

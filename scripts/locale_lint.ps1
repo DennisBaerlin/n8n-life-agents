@@ -165,7 +165,7 @@ Check 'Pflicht-Keys: Fakten-Titel je context_validators-Kontext, Bezeichnung je 
 
 # (7b) Bot-Persona: die EINE Liste (Core-Manifest personas.list) ist wohlgeformt, core:V031 legt nur Codes aus ihr an,
 #      und jede Persona hat ihren Knopf-Namen core.persona.name.<code> (die Paritaet je Sprache sichert Check 4).
-Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆ Liste, Knopf-Name je Persona)' {
+Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆ Liste, Knopf-Name + Sticker-Set je Persona)' {
     $pers = @($core.personas.list)
     $pcodes = @($pers | ForEach-Object { [string]$_.code })
     if ($pers.Count -eq 0) { 'Datei packages/core/manifest.json: personas.list fehlt oder ist leer' }
@@ -177,6 +177,10 @@ Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆
         if ($p.code -ne 'neutral' -and $cat['core'] -and $cat['core']['de'] -and
             @($cat['core']['de'].Keys | Where-Object { $_ -like "core.persona.frame.$($p.code).*" }).Count -eq 0) {
             "Datei packages/core/locales: kein core.persona.frame.$($p.code).<n> (fester Rahmensatz im Relay, agent.orchestrator; mindestens einer)"
+        }
+        # Sticker-Set je Persona (Bot mit Gesicht): die vier Ausdruecke, die agent.fn_claim_persona_sticker waehlt und der Gateway sendet
+        foreach ($ex in 'hallo', 'top', 'hmm', 'yay') {
+            if (-not (Test-Path (Join-Path $RepoRoot "packages\core\build\stickers\$($p.code)_$ex.webp"))) { "Datei packages/core/build/stickers/$($p.code)_$ex.webp fehlt (scripts/dev/render_stickers.ps1)" }
         }
     }
     foreach ($d in @($pcodes | Group-Object | Where-Object Count -gt 1)) { "Persona-Code '$($d.Name)' doppelt" }

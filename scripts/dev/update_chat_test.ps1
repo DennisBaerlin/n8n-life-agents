@@ -9,7 +9,7 @@
 # Fall-Runner am Ende zurueck.
 # Voraussetzung: laufendes Substrat (bootstrap_test_n8n.ps1) + .\scripts\dev\enable_mock_telegram.ps1.
 # Usage:  .\scripts\dev\update_chat_test.ps1 [-Port 8086] [-Verbose]   (belegt Port und Port+1; frei neben 8088 mock_llm,
-#         8089 mock_telegram, 8090 llm_gateway, 8092 mock_paperless, 8093/8094 release_fetch, 8095-8099 llm_gateway_test)
+#         8089 mock_telegram, 8090 llm_gateway, 8092 mock_paperless, 8093/8094 release_fetch, 8095-8099 + 8102/8103 llm_gateway_test)
 # Exit-Code = Anzahl Fehler.
 param([int]$Port = 8086, [switch]$Verbose)
 $ErrorActionPreference = 'Stop'

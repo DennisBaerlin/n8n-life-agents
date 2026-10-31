@@ -2,6 +2,60 @@
     "_comment":  "Ratchet-Allowlist von scripts/ui_literal_lint.ps1 (Textkatalog, docs/package-contract.md §3.11): jede verbliebene fest deutsche Text-Stelle mit Begruendung. Seit Phase C gibt es keine Nutzertexte mehr ausserhalb des Katalogs; erlaubt sind nur model:/admin:/data: (kein fester Nutzertext: Modell-Eingabe/-Kontext, Konsolen-RAISE, gespeicherte Inhalte). Nur schrumpfen; neue Nutzertexte kommen in den Katalog.",
     "allow":  [
                   {
+                      "where":  "packages/core/db/migrations/R__fn_claim_persona_sticker.sql",
+                      "literal":  "hallo",
+                      "count":  2,
+                      "reason":  "data:code (Sticker-Ausdruck hallo = Datei-/Code-Name <set>_hallo, kein Nutzertext)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "danke",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "danke dir",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "danke euch",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "danke schön",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "danke sehr",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "dankeschön",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "hallo",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/R__fn_smalltalk_kind.sql",
+                      "literal":  "hallöchen",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine eingehende Nutzernachricht - reiner Dank/Gruss, Bot mit Gesicht; nie ein Bot-Text)"
+                  },
+                  {
                       "where":  "agent.guide / Build Agent Input",
                       "literal":  "\\nDo NOT ask again for the name or birth date of anyone listed here - confirm briefly instead (e.g. Dich kenne ich schon aus der Installation). Ask only for what is still missing (e.g. partner, children, employment).",
                       "count":  1,

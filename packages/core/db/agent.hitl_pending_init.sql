@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS agent.hitl_pending (
     PRIMARY KEY (chat_id, execution_id),
     CONSTRAINT hitl_pending_expiry_after_open CHECK (expires_at > opened_at)
 );
+-- Endgueltig bestaetigt (Bot mit Gesicht, 2026-10-30): setzt das Gate an seinen Erfolgs-Ausgaengen fuer ALLE Zeilen
+-- seiner Execution (agent.fn_set_hitl_pending_approved); NULL = (noch) nicht bestaetigt, auch nach Tipp eines
+-- Mitglieds, wenn der Owner danach ablehnt. Lesepfad: agent.fn_claim_persona_sticker (Daumen-hoch-Sticker).
+ALTER TABLE agent.hitl_pending ADD COLUMN IF NOT EXISTS approved boolean;
 
 CREATE INDEX IF NOT EXISTS hitl_pending_execution_idx ON agent.hitl_pending (execution_id);
 

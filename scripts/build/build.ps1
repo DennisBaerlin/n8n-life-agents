@@ -45,7 +45,8 @@ $CRED_TELEGRAM    = @{ id = '__CRED_TELEGRAM__'; name = 'Telegram account' }
 $CRED_ANTHROPIC   = @{ id = '__CRED_ANTHROPIC__'; name = 'Anthropic account' }
 $CRED_GEMINI      = @{ id = '__CRED_GEMINI__'; name = 'Google Gemini(PaLM) Api account' }
 $CRED_HARNESS     = @{ id = '__CRED_HARNESS__'; name = 'lifeagents test harness auth' }   # nur Test-Harnesses (lib/harness.ps1)
-$HostCredentialVars = @('CRED_POSTGRES', 'CRED_CORE_RO', 'CRED_CONTEXT_RO', 'CRED_TELEGRAM', 'CRED_ANTHROPIC', 'CRED_GEMINI', 'CRED_HARNESS')
+$CRED_TELEGRAM_RELAY = @{ id = '__CRED_TELEGRAM_RELAY__'; name = 'Telegram relay (gateway)' }   # Bot-Token als Header fuer den Gateway-Relay (New-TelegramRelayNode)
+$HostCredentialVars = @('CRED_POSTGRES', 'CRED_CORE_RO', 'CRED_CONTEXT_RO', 'CRED_TELEGRAM', 'CRED_ANTHROPIC', 'CRED_GEMINI', 'CRED_HARNESS', 'CRED_TELEGRAM_RELAY')
 
 # Paket-Credentials (Phase D): aus den Manifesten abgeleitet (lib/credentials.ps1 — Rollen-Konvention
 # <pkg>_rw/_ro + `credentials`-Block, dieselbe Formel wie der Installer). Enge Paket-Rollen (D10): ein

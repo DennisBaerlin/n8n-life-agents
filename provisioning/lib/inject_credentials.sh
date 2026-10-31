@@ -41,6 +41,7 @@ _cred_host_placeholder_names() {
   printf '__CRED_POSTGRES_CORE_RO__\tPostgres core_ro (read-only)\tpostgres\n'
   printf '__CRED_POSTGRES_CONTEXT_RO__\tagent.core_contexts read-only\tpostgres\n'
   printf '__CRED_TELEGRAM__\tTelegram account\ttelegramApi\n'
+  printf '__CRED_TELEGRAM_RELAY__\tTelegram relay (gateway)\thttpHeaderAuth\n'
   printf '__CRED_GEMINI__\tGoogle Gemini(PaLM) Api account\tgooglePalmApi\n'
   printf '__CRED_ANTHROPIC__\tAnthropic account\tanthropicApi\n'
   printf '__CRED_HARNESS__\tlifeagents test harness auth\thttpHeaderAuth\n'
@@ -220,8 +221,13 @@ inject_credentials() {
   if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
     _cred_stage 'Telegram account' 'telegramApi' \
          "$(jq -n --arg t "$TELEGRAM_BOT_TOKEN" --arg b 'https://api.telegram.org' '{accessToken:$t, baseUrl:$b}')"
+    # 4b) Dasselbe Token als Header fuer den Telegram-Relay des LLM-Gateways (Reaktion + Sticker, Kopf von
+    #     llm_gateway/server.js): der telegramApi-Typ hat kein authenticate, ein HTTP-Knoten kaeme sonst nicht an
+    #     das Token. Jeder Lauf setzt beide aus TELEGRAM_BOT_TOKEN -> ein Token-Wechsel (reconfigure/update) zieht mit.
+    _cred_stage 'Telegram relay (gateway)' 'httpHeaderAuth' \
+         "$(jq -n --arg v "$TELEGRAM_BOT_TOKEN" '{name:"x-telegram-bot-token", value:$v, allowedDomains:""}')"
   else
-    note "TELEGRAM_BOT_TOKEN fehlt — Credential 'Telegram account' uebersprungen."
+    note "TELEGRAM_BOT_TOKEN fehlt — Credentials 'Telegram account' + 'Telegram relay (gateway)' uebersprungen."
   fi
 
   # 5) Google Gemini (PaLM).  (allowedDomains Pflicht-Feldform, wie der frueher verifizierte POST.)

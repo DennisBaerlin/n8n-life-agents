@@ -161,6 +161,7 @@ Sammelort fuer ausgeklammerte Items aus aktuellen + vergangenen Sessions. **Beim
 
 ### Bot-Persona (Owner-Entscheid 2026-10-24: v1 = Rahmen nur im Orchestrator)
 - **Persona in Cron-Texten** — das Haiku-Phrasing der Berater-Hinweise (`cron.advisor_common`, `cron.review_register`) bekommt die Persona des Empfängers als Rahmen (gleiche Regeln wie `persona_styles.md`; Zahlen setzt weiter das Programm ein). **Trigger:** Owner wünscht den Charakter auch in Erinnerungen/Berater-Hinweisen.
+- **Bot mit Gesicht — Folgepunkte (2026-10-30):** (a) Jubel-Sticker aus Crons (Sparziel erreicht, Monats-Check grün) über `agent.fn_claim_persona_sticker` mit eigenem Ereignis — hängt am Punkt davor (Persona im Cron-Pfad). (b) 👌-Reaktion an die Ursprungsbitte nach einer bestätigten Buchung (Gateway-Allowlist kennt 👌 schon). (c) Alle Telegram-Sends über den Gateway-Relay (`telegramApi.baseUrl` → Gateway mit Zeitlimit) gegen den bekannten 3-5-Min-Hänger (arch-challenge 2026-10-30, Einwand 3). **Trigger:** (a) mit dem Punkt davor; (b) Owner-Wunsch; (c) nächster Hänger-Vorfall bzw. Memory `telegram-socket-fix-watch`.
 
 ### Backup
 - **Geplanter Auto-Backup als systemd-Timer** (heute `--notify-telegram` + dokumentierte root-crontab-Zeile). systemd-Standard (`.timer`+`.service`, `Persistent=true`) zieht Retention/Rotation + `doctor`-Check + `--purge`-Teardown nach. Bauen bei Owner-Signal.

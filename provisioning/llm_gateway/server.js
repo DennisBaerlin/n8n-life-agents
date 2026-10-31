@@ -39,6 +39,11 @@
 //   Zahlen, Modell, Workflow-Name, Zeit) — Fehler nur als feste Codes (nie err.message: Node-Parse-Fehler zitieren
 //   Eingabe-Stuecke).
 //
+// TELEGRAM-RELAY (zweite Aufgabe, Bot mit Gesicht 2026-10-30): POST /__telegram/<methode> fuer genau die Bot-API-
+//   Aufrufe, die n8n nicht (Reaktion) bzw. nicht mit Zeitlimit (Sticker vor der Antwort) kann. Allowlist, Token je
+//   Anfrage im Header (nie geloggt, nie an Anthropic), 3-s-Zeitlimit, Sticker-Dateien nur aus LLM_GATEWAY_STICKER_DIR.
+//   Details am Abschnitt "Telegram-Relay".
+//
 // Bewusst dependency-frei (nur Node-Core): Node ist durch n8n garantiert, kein npm install, keine Lieferkette.
 'use strict';
 const http = require('http');
@@ -63,8 +68,11 @@ const MAX_USAGE_SCAN = 16 * 1024 * 1024;     // JSON-Antworten nur bis hierhin f
 // Hop-by-hop + von uns neu gesetzte Header (RFC 9110 §7.6.1); accept-encoding → identity, damit usage lesbar bleibt.
 // x-lifeagents-workflow = unsere Workflow-Kennung (nur fuer die Messung, nie an Anthropic).
 const WF_HEADER = 'x-lifeagents-workflow';
+// Telegram-Relay (Bot mit Gesicht 2026-10-30): Bot-Token je Anfrage in diesem Header (n8n-Credential httpHeaderAuth).
+// Er steht in DROP_REQ -> forward() reicht ihn NIE an Anthropic weiter, auch nicht bei einem Routing-Fehler.
+const TG_TOKEN_HEADER = 'x-telegram-bot-token';
 const DROP_REQ = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer',
-  'upgrade', 'host', 'content-length', 'accept-encoding', WF_HEADER]);
+  'upgrade', 'host', 'content-length', 'accept-encoding', WF_HEADER, TG_TOKEN_HEADER]);
 // Mitschrift fuer den Kosten-Report: systemd StateDirectory= setzt STATE_DIRECTORY; fehlt es (Test-Units ohne
 // LLM_GATEWAY_USAGE_DIR), wird nur ins Journal geschrieben. 62 Tage = 30-Tage-Fenster + Vorperiode + Puffer.
 const USAGE_DIR = process.env.LLM_GATEWAY_USAGE_DIR || process.env.STATE_DIRECTORY || '';
@@ -81,6 +89,20 @@ const DROP_RES = new Set(['connection', 'keep-alive', 'proxy-connection', 'trans
 
 const client = UPSTREAM.protocol === 'http:' ? http : https;
 const agent = new client.Agent({ keepAlive: true });
+
+// ---- Telegram-Relay: Konstanten (Abschnitt unten) --------------------------------------------------------------
+const TG_UPSTREAM = new URL(process.env.LLM_GATEWAY_TELEGRAM_API || 'https://api.telegram.org');
+const tgClient = TG_UPSTREAM.protocol === 'http:' ? http : https;
+// Ohne Keep-Alive: jede Anfrage auf frischer Verbindung (der bekannte Haenger sitzt auf wiederverwendeten Sockets).
+const tgAgent = new tgClient.Agent({ keepAlive: false });
+const TG_METHODS = new Set(['setMessageReaction', 'sendSticker']);
+const TG_TOKEN_RE = /^\d{5,15}:[A-Za-z0-9_-]{30,64}$/;
+const TG_CHAT_RE = /^-?\d{1,20}$/;
+const TG_STICKER_RE = /^[a-z_]{1,32}_(hallo|top|hmm|yay)$/;
+const TG_REACTIONS = new Set(['❤', '👌', '🎉']);   // ❤ (ohne VS16, Telegram-Liste), 👌, 🎉
+const TG_MAX_BODY = 4096;
+const TG_TIMEOUT_MS = Math.max(500, Math.min(10000, parseInt(process.env.LLM_GATEWAY_TELEGRAM_TIMEOUT_MS || '3000', 10) || 3000));
+const TG_STICKER_DIR = process.env.LLM_GATEWAY_STICKER_DIR || '';
 
 function emit(obj) {
   try { process.stdout.write(JSON.stringify(Object.assign({ t: new Date().toISOString() }, obj)) + '\n'); }
@@ -459,11 +481,120 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
   }
 }
 
+// ---- Telegram-Relay (Bot mit Gesicht 2026-10-30) ---------------------------------------------------------------
+// WARUM hier: n8n 2.45.4 kann keine Reaktion setzen (kein Node-Op), der telegramApi-Credential hat kein authenticate
+// (Token im URL-Pfad) -> ein HTTP-Knoten kaeme nicht an das Token; Telegram-Node-Sends haben kein Zeitlimit (bekannter
+// 3-5-Min-Haenger) -> ein Sticker VOR der Antwort darf nicht ueber den Node laufen. arch-challenge 2026-10-30.
+// POST /__telegram/<methode>, exakte Allowlist, Token im Header TG_TOKEN_HEADER (Form geprueft, nie geloggt, nie an
+// Anthropic), Body klein + nur die noetigen Felder, Ziel fest TG_UPSTREAM (nur Tests biegen es auf den Mock),
+// Zeitlimit TG_TIMEOUT_MS, keine Wiederholung. Antwort an n8n nur {ok, code?}.
+// sendSticker: n8n schickt {chat_id, sticker:"<set>_<ausdruck>"}; die Datei kommt aus TG_STICKER_DIR (nie aus der
+// Anfrage), erster Versand per Upload, danach die von Telegram vergebene file_id (nur RAM, je Bot-Token getrennt).
+const tgStickerIds = new Map();
+
+function tgReply(res, status, obj) {
+  res.writeHead(status, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(obj));
+}
+
+function tgCall(token, method, body, contentType, cb) {
+  let finished = false;
+  const done = (status, json) => { if (!finished) { finished = true; cb(status, json); } };
+  const target = new URL(TG_UPSTREAM.origin + '/bot' + token + '/' + method);
+  const upReq = tgClient.request(target, { method: 'POST', agent: tgAgent,
+    headers: { 'content-type': contentType, 'content-length': String(body.length) } });
+  upReq.setTimeout(TG_TIMEOUT_MS, () => { diag('tg_timeout'); upReq.destroy(); done(504, null); });
+  upReq.on('response', (up) => {
+    const parts = [];
+    up.on('data', (c) => { if (parts.length < 64) parts.push(c); });
+    up.on('end', () => {
+      let json = null;
+      try { json = JSON.parse(Buffer.concat(parts).toString('utf8')); } catch (e) { /* kein JSON */ }
+      done(up.statusCode || 502, json);
+    });
+    up.on('error', () => { diag('tg_stream_error'); done(502, null); });
+  });
+  upReq.on('error', (e) => { diag(e && e.code ? 'tg_' + e.code : 'tg_upstream_error'); done(502, null); });
+  upReq.end(body);
+}
+
+function tgMultipart(fields, fileField, fileName, fileBytes) {
+  const boundary = '----lifeagents' + crypto.randomBytes(12).toString('hex');
+  const parts = [];
+  for (const k of Object.keys(fields)) {
+    parts.push(Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="' + k + '"\r\n\r\n' + fields[k] + '\r\n', 'utf8'));
+  }
+  parts.push(Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="' + fileField + '"; filename="' + fileName +
+    '"\r\nContent-Type: image/webp\r\n\r\n', 'utf8'), fileBytes, Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8'));
+  return { body: Buffer.concat(parts), contentType: 'multipart/form-data; boundary=' + boundary };
+}
+
+function handleTelegram(req, res) {
+  const m = /^\/__telegram\/([A-Za-z]{1,40})$/.exec(req.url);
+  if (!m || !TG_METHODS.has(m[1])) { diag('tg_unknown_method'); tgReply(res, 404, { ok: false, code: 'unknown_method' }); req.resume(); return; }
+  if (req.method !== 'POST') { tgReply(res, 405, { ok: false, code: 'method_not_allowed' }); req.resume(); return; }
+  const method = m[1];
+  const token = String(req.headers[TG_TOKEN_HEADER] || '');
+  const chunks = [];
+  let size = 0;
+  let tooBig = false;
+  req.on('data', (c) => { size += c.length; if (size > TG_MAX_BODY) tooBig = true; else chunks.push(c); });
+  req.on('end', () => {
+    if (tooBig) { tgReply(res, 413, { ok: false, code: 'too_large' }); return; }
+    if (!TG_TOKEN_RE.test(token)) { diag('tg_bad_token'); tgReply(res, 400, { ok: false, code: 'bad_token' }); return; }
+    let p;
+    try { p = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { p = null; }
+    if (!p || typeof p !== 'object' || !TG_CHAT_RE.test(String(p.chat_id))) { tgReply(res, 400, { ok: false, code: 'bad_request' }); return; }
+    const chatId = String(p.chat_id);
+    const answer = (status, json) => {
+      const ok = status === 200 && !!(json && json.ok);
+      if (!ok) diag('tg_' + method + '_' + status);
+      tgReply(res, ok ? 200 : (status === 504 ? 504 : 502), ok ? { ok: true } : { ok: false, code: status === 504 ? 'timeout' : 'upstream_' + status });
+    };
+
+    if (method === 'setMessageReaction') {
+      const emoji = p.emoji === undefined ? '❤' : String(p.emoji);
+      if (!/^\d{1,12}$/.test(String(p.message_id)) || !TG_REACTIONS.has(emoji)) { tgReply(res, 400, { ok: false, code: 'bad_request' }); return; }
+      const body = Buffer.from(JSON.stringify({ chat_id: chatId, message_id: Number(p.message_id),
+        reaction: [{ type: 'emoji', emoji }] }), 'utf8');
+      tgCall(token, method, body, 'application/json', answer);
+      return;
+    }
+
+    // sendSticker
+    const name = String(p.sticker || '');
+    if (!TG_STICKER_RE.test(name) || !TG_STICKER_DIR) { tgReply(res, 400, { ok: false, code: 'bad_sticker' }); return; }
+    const cacheKey = crypto.createHash('sha256').update(token).digest('hex').slice(0, 16) + ':' + name;
+    // Upload: Datei asynchron lesen (der Dienst reicht parallel Claude-Streams durch -> kein readFileSync).
+    const upload = () => fs.readFile(pathMod.join(TG_STICKER_DIR, name + '.webp'), (err, bytes) => {
+      if (err) { diag('tg_sticker_missing'); tgReply(res, 404, { ok: false, code: 'sticker_missing' }); return; }
+      const mp = tgMultipart({ chat_id: chatId }, 'sticker', name + '.webp', bytes);
+      tgCall(token, method, mp.body, mp.contentType, (status, json) => {
+        const fid = json && json.ok && json.result && json.result.sticker && json.result.sticker.file_id;
+        if (status === 200 && typeof fid === 'string' && fid.length < 256) tgStickerIds.set(cacheKey, fid);
+        answer(status, json);
+      });
+    });
+    const cached = tgStickerIds.get(cacheKey);
+    if (!cached) { upload(); return; }
+    tgCall(token, method, Buffer.from(JSON.stringify({ chat_id: chatId, sticker: cached }), 'utf8'), 'application/json', (status, json) => {
+      // 400 = Telegram kennt die file_id nicht (mehr) -> vergessen und GLEICH als Upload senden. Zeitlimit/Netzfehler:
+      // file_id behalten (Telegram hat evtl. zugestellt), keine Wiederholung (sonst doppelt).
+      if (status === 400) { diag('tg_sticker_fileid_stale'); tgStickerIds.delete(cacheKey); upload(); return; }
+      answer(status, json);
+    });
+  });
+  req.on('error', () => { diag('tg_client_error'); });
+}
+
 const server = http.createServer((req, res) => {
+  // Telegram-Relay ZUERST: ein /__telegram/-Pfad faellt nie bis zur Anthropic-Weiterleitung durch.
+  if (typeof req.url === 'string' && req.url.indexOf('/__telegram/') === 0) { handleTelegram(req, res); return; }
   if (req.method === 'GET' && req.url === '/__health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true, upstream: UPSTREAM.origin, static_ttl: STATIC_TTL,
-      keepalive: { on: KA_ON, hours: KA_HOURS, entries: keepAlive.size }, usage_file: !!USAGE_FILE }));
+      keepalive: { on: KA_ON, hours: KA_HOURS, entries: keepAlive.size }, usage_file: !!USAGE_FILE,
+      telegram: { upstream: TG_UPSTREAM.origin, sticker_dir: !!TG_STICKER_DIR && fs.existsSync(TG_STICKER_DIR) } }));
     return;
   }
   // Abruf der Mitschrift (nur 127.0.0.1, wie /__health) — VOR der Weiterleitung, sonst ginge der GET an Anthropic.

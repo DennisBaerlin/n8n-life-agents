@@ -15,9 +15,12 @@
 --   (Betrag · Rhythmus). Die Seite rechnet nichts.
 --   PILLE = HANDLUNGSBEDARF (§3.12): nur warn/alert mit Betrag, Datum oder Monat; neutral nur „pausiert" bzw. „nicht
 --   messbar: kein Konto zugeordnet" (sagt, was fehlt); NIE ok, auch kein ok-Balken (Balken auf Kurs = neutral/Akzent).
---   Hero „Zurueckgelegt" = Sparziele + Ruecklagen (Notreserve gedeckt + Instandhaltung), Note mit der Aufschluesselung
---     (entfaellt bei fx-Luecke, dann gap). Keine Abschnittssumme bei Ruecklagen/Sparzielen (= Note). Keine Doppelzaehlung:
---     Instandhaltung hat per Form-CHECK keinen Zielbetrag, die Notreserve ist aus der Ziel-Liste ausgeschlossen.
+--   Hero „Zurueckgelegt" = Sparziele + Ruecklagen (Notreserve gedeckt + Instandhaltung); Note „jeden Monat kommen x
+--     dazu" = Summe fn_savings_goal_sources.monthly_eur der sichtbaren aktiven Ziele inkl. Ruecklagen (entfaellt bei 0 oder
+--     fx-Luecke und wenn sie = „zusammen … im Monat" der Sparplaene waere). Ruecklagen und Sparziele tragen ihre Summe als
+--     section.value (Renderer: „zusammen"), nur wenn der andere Abschnitt Geld traegt (sonst = Hero), ab 2 Zeilen und
+--     ohne fx-Luecke (Owner-Abnahme 2026-10-31). Keine
+--     Doppelzaehlung: Instandhaltung hat per Form-CHECK keinen Zielbetrag, die Notreserve ist aus der Ziel-Liste ausgeschlossen.
 --   1 Ruecklagen (Notreserve nur fuer Haushalts-Betrachter, Zero-Trust; Reihenfolge gelb -> uebrige -> volle Notreserve):
 --     Notreserve: Wert gedeckt, „Ziel x" + Balken + warn „fehlen x" solange unvollstaendig; voll -> „Ziel x erreicht",
 --     keine Pille, kein Balken; neutral (Ausgaben unbekannt) ohne Pille. Aufklappen = Herleitung (nur Monats-Ziel) + Geld
@@ -38,8 +41,9 @@
 --     Glied: feste Tage „n× monatlich je x · naechste", eine Ausfuehrung je Monat „naechste", sonst Betrag · Rhythmus.
 --     Summe der aktiven Plaene als section.value (der Renderer setzt „zusammen" davor) nur ab 2 aktiven Plaenen und ohne
 --     gap an einer Zeile. Pille = Spiegel des sichtbaren Abbuchungskontos (fn_funding_accounts kind 'plan'): dasselbe
---     Urteil und dieselbe Pille wie die Konten-Zeile „Tiefster Stand" (fn_account_low_state + fn_app_low_state_pill:
---     knapp / unter dem Puffer / reicht bis / Luecke ab; Kurs fehlt -> gap); sonst neutral „pausiert".
+--     Urteil wie die Konten-Zeile (fn_account_low_state + fn_app_low_state_pill: knapp / unter dem Puffer / reicht bis /
+--     Luecke ab; Kurs fehlt -> gap); die Konten-Zeile „Reicht bis" eines Sparkontos traegt den Monat schon als Wert und
+--     nennt in der Pille den Grund (p_month_row), hier steht der Monat in der Pille; sonst neutral „pausiert".
 --     Aufklappen: Wertpapier (Name), Depot,
 --     Abbuchung von + Fuer (nur Haushalt), Sparziel, geplante Aenderung (Betrag · Rhythmus · ab).
 --   ZERO-TRUST-SICHTBARKEIT (Rolle loest der Handler selbst auf, core.fn_app_sees_household): owner/partner sehen den
@@ -76,6 +80,8 @@ DECLARE
     v_res_warn  int;       -- Instandhaltungs-Zeilen mit gelber Pille (Reihenfolge der Notreserve)
     v_plans     jsonb;
     v_plans_sum numeric;
+    v_monthly   numeric;   -- Hero-Note: je Monat in Ruecklagen + Sparziele (fn_savings_goal_sources.monthly_eur)
+    v_month_gap boolean;
     v_sections  jsonb := '[]'::jsonb;
     v_es        jsonb;     -- finance.fn_emergency_reserve_status() (Notreserve, nur Haushalts-Sicht)
     v_emerg     jsonb;     -- Zeile Notreserve
@@ -471,16 +477,28 @@ BEGIN
       INTO v_plans, v_plans_sum
       FROM sp;
 
-    -- Sparziele immer (mit Leer-Text), alles Weitere nur mit Eintraegen; Summe nur bei den Sparplaenen
+    -- was HEUTE je Monat in Ruecklagen + Sparziele fliesst (Hero-Note), aus der einen Raten-Adresse fn_savings_goal_sources;
+    -- dieselbe Sicht wie die Zeilen (Notreserve nur im Haushalt); ein Kurs fehlt -> keine Note
+    SELECT COALESCE(sum((x.s ->> 'monthly_eur')::numeric), 0), COALESCE(bool_or(x.s -> 'monthly_eur' = 'null'::jsonb), false)
+      INTO v_monthly, v_month_gap
+      FROM (SELECT finance.fn_savings_goal_sources(sg.id) AS s
+              FROM finance.savings_goals sg
+             WHERE sg.status = 'active'
+               AND (v_hh OR (sg.beneficiary_person_id = v_pid AND sg.kind <> 'emergency_reserve'))) x;
+
+    -- Sparziele immer (mit Leer-Text), alles Weitere nur mit Eintraegen. Summe „zusammen“ je Abschnitt (Owner-Abnahme
+    -- 2026-10-31: einheitlich mit den Sparplaenen) nur ab 2 Zeilen, nie gleich dem Hero, nie mit Kurs-Luecke (P5)
     IF jsonb_array_length(v_reserves) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
             'title', core.fn_ui_tpl('finance.app.goals.section_reserves'),
-            'value', NULL,
+            'value', CASE WHEN jsonb_array_length(v_reserves) >= 2 AND v_total <> 0 AND NOT v_res_gap
+                          THEN core.fn_ui_money(v_res_total, 'EUR') END,
             'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', v_reserves);
     END IF;
     v_sections := v_sections || jsonb_build_object(
         'title', core.fn_ui_tpl('finance.app.goals.section_goals'),
-        'value', NULL,
+        'value', CASE WHEN jsonb_array_length(v_goals) >= 2 AND v_res_total <> 0 AND NOT v_gap
+                      THEN core.fn_ui_money(v_total, 'EUR') END,
         'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', v_goals);
     IF jsonb_array_length(v_plans) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
@@ -497,10 +515,11 @@ BEGIN
             'label', core.fn_ui_tpl('finance.app.goals.hero'),
             'value', core.fn_ui_money(v_total + v_res_total, 'EUR'),
             'gap', v_gap OR v_res_gap,
-            -- Aufschluesselung nur mit beiden Teilen und ohne fx-Luecke (sonst waeren die Teile still zu niedrig)
-            'note', CASE WHEN jsonb_array_length(v_reserves) > 0 AND jsonb_array_length(v_goals) > 0 AND NOT (v_gap OR v_res_gap)
-                         THEN core.fn_ui_tpl('finance.app.goals.hero_note', jsonb_build_object(
-                                  'goals', core.fn_ui_money(v_total, 'EUR'), 'reserves', core.fn_ui_money(v_res_total, 'EUR'))) END),
+            -- die Aufteilung steht als „zusammen“ an den Abschnitten; die Note sagt, was je Monat dazukommt
+            -- (nie dieselbe Zahl wie „zusammen … im Monat“ der Sparplaene auf derselben Seite)
+            'note', CASE WHEN v_monthly > 0 AND NOT v_month_gap AND v_monthly IS DISTINCT FROM v_plans_sum
+                         THEN core.fn_ui_tpl('finance.app.goals.hero_note_monthly', jsonb_build_object(
+                                  'amount', core.fn_ui_money(v_monthly, 'EUR'))) END),
         'banners', '[]'::jsonb,
         'sections', v_sections);
 END;

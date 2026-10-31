@@ -22,7 +22,7 @@ Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeig
 - **Eine farbige Markierung heißt: hier gibt es etwas zu tun.** Gelb oder rot nennt immer, wie viel fehlt oder ab wann. Grau sagt, was fehlt und wer es beheben kann. Ist alles in Ordnung, steht gar nichts da; grün ist allein der Satz „Alles in Ordnung“ oben auf der Startseite.
 - **Ein Balken zeigt den Weg zu einem Zielbetrag**, lila ohne Wertung; gelb oder rot nur zusammen mit einer Markierung. Ist das Ziel erreicht, entfällt er.
 - **Ein kleiner Pfeil mit Betrag** (↑/↓) zeigt eine Veränderung, etwa den Gewinn seit dem Kauf. Er ist Information, keine Warnung.
-- **Ein grauer Satz unter einer Überschrift** erklärt den ganzen Abschnitt, etwa warum es keine Vorschau gibt.
+- **Ein grauer Satz unter einer Überschrift** erklärt den ganzen Abschnitt.
 - **Daten in den nächsten Monaten stehen ohne Jahr** („23.11.“); weiter entfernte mit Jahr.
 
 ### Vermögen
@@ -32,28 +32,28 @@ Die Seite beantwortet: Was haben wir, was schulden wir? Kontostände stehen auf 
 - **Vermögen Haushalt:** alles, was dem Haushalt gehört, Kredite schon abgezogen. Darunter steht, wie viel Besitz und wie viel Schulden das sind. Das Vermögen der Kinder zählt hier **nicht** mit.
 - **Schnell verfügbar:** woran du kurzfristig kommst: Konten, P2P und Wertpapiere, jeweils mit dem Anteil am gesamten Besitz als Zahl und Balken.
 - **Langfristig gebunden:** was du nicht kurzfristig zu Geld machen kannst: Immobilien, Altersvorsorge und Festgeld.
+- Aufgeklappt zeigt jede dieser Zeilen, woraus sie besteht: die einzelnen Konten, Depots, Immobilien oder Verträge mit ihrem Wert, der größte zuerst.
 - Neben einer dieser Überschriften steht „zusammen …“, sobald der Abschnitt mehrere Zeilen hat und die Summe nicht schon dieselbe Zahl wie oben ist.
 - **Schulden:** die Kredite als positiver Betrag (dieselbe Zahl wie auf der Seite Kredite). Ein Tipp darauf öffnet die Seite Kredite. Ist ein Konto überzogen, steht es hier als „Überzogene Konten“.
 - **Vermögen der Kinder:** für jedes Kind sein eigenes Vermögen. Aufgeklappt siehst du, woraus es besteht (Konten, Wertpapiere usw.).
 
 ### Konten
 
-Die Seite beantwortet: Steht genug auf jedem Konto, und was bewegt sich in den nächsten 30 Tagen? Jedes Konto des Haushalts hat einen eigenen Abschnitt; Konten mit einem gelben oder roten Hinweis stehen oben, dann Girokonten, dann Sparkonten. Die Konten der Kinder stehen hier nicht (ihr Stand steht unter „Vermögen der Kinder“, ihre Sparpläne auf der Seite Ziele). Ein Konto ohne Geld und ohne Zahlungen erscheint nicht.
+Die Seite beantwortet: Steht genug auf jedem Konto, und was bewegt sich im nächsten Monat? Jedes Konto des Haushalts hat einen eigenen Abschnitt; Konten mit einem gelben oder roten Hinweis stehen oben, dann Girokonten, dann Sparkonten. Die Konten der Kinder stehen hier nicht (ihr Stand steht unter „Vermögen der Kinder“, ihre Sparpläne auf der Seite Ziele). Ein Konto ohne Geld und ohne Zahlungen erscheint nicht.
 
 Je Konto stehen höchstens vier Zeilen:
 
-- **Stand heute:** der Kontostand. Liegt auf dem Konto Geld für Sparziele, steht darunter „davon … frei“. Ist mehr für Ziele verplant, als auf dem Konto liegt, steht daneben gelb „… mehr verplant als vorhanden“. Aufgeklappt: wie viel für Ziele zurückgelegt ist, wem das Konto gehört („Gemeinsam“ für Haushaltskonten) und von wann der letzte Kontoauszug ist.
-- **Tiefster Stand:** nur wenn vom Konto etwas abgeht.
+- **Stand heute:** der Kontostand. Liegt auf dem Konto Geld für Sparziele, steht darunter „davon … frei“. Ist mehr für Ziele verplant, als auf dem Konto liegt, steht daneben gelb „… mehr verplant als vorhanden“. Aufgeklappt: wie viel für Ziele zurückgelegt ist, wem das Konto gehört („Gemeinsam“ für Haushaltskonten) und von wann der letzte Kontoauszug ist. Hat ein Girokonto noch keinen, steht an derselben Stelle „noch keiner – schick einen im Chat“; ohne Kontoauszug gibt es für dieses Konto keine Vorschau.
+- **Tiefster Stand** bzw. **Reicht bis:** nur wenn vom Konto etwas abgeht.
   - Für Konten mit Kontoauszug (siehe [Monats-Check](monats-check.html)): der tiefste Stand vor dem nächsten Geldeingang, etwa „am 18.11., vor dem Geldeingang am 30.11.“. Gelb „knapp über dem Puffer (250 €)“ oder rot „… unter dem Puffer“, sonst nichts. Aufgeklappt steht die Rechnung, die genau den tiefsten Stand ergibt: Stand am …, gebucht seit …, feste Abgänge, feste Eingänge, Alltag geschätzt („≈ 62 € pro Tag × 29 Tage“), der Puffer, der nächste Geldeingang und bei einem roten Konto ein Umbuchungs-Vorschlag. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“
-  - Für Spar- und Verrechnungskonten, von denen Sparpläne oder Daueraufträge abgehen: der tiefste **freie** Stand in den nächsten zwei Jahren, darunter, was im Monat abgeht und reinkommt. Geld, das dort für Sparziele zurückliegt, zählt nicht als frei. Gelb „reicht bis 04.2027“ oder rot „Lücke ab …“, sonst nichts. Dasselbe Urteil steht auf der Seite Ziele am Sparplan, der von diesem Konto abbucht.
-  - Ein Girokonto ohne Kontoauszug zeigt statt dieser Zeile den grauen Satz „Noch kein Kontoauszug – deshalb keine Vorschau. Schick einen Auszug im Chat.“
-- **Gehen ab bis …** und **Kommen rein bis …:** die Summe der Zahlungen der nächsten 30 Tage und wie viele es sind. Aufgeklappt steht jede Zahlung mit Datum und Betrag; wiederholt sich dieselbe Zahlung (etwa ein Sparplan an vier festen Tagen), steht sie einmal da („4× 50 € · 02.11. – 23.11.“). Bei mehr als acht Zahlungen stehen die ersten sieben einzeln und der Rest als „weitere … Zahlungen“. Eine Umbuchung zwischen zwei eigenen Konten steht bei beiden: beim einen als Abgang, beim anderen als Eingang (+).
+  - Für Spar- und Verrechnungskonten, von denen Sparpläne oder Daueraufträge abgehen: **„Reicht bis 04.2027“**, der Monat, in dem das **freie** Geld aufgebraucht ist, darunter, was im Monat abgeht und reinkommt. Geld, das dort für Sparziele zurückliegt, zählt nicht als frei. Daneben gelb (oder rot, wenn es schon in den nächsten Monaten so weit ist), wie viel im Monat mehr abgeht als reinkommt. Reicht das Geld länger als die geprüften zwei Jahre, steht dort „Reicht über 10.2028 hinaus“ ohne Markierung. Dasselbe Urteil steht auf der Seite Ziele am Sparplan, der von diesem Konto abbucht.
+- **Gehen ab im …** und **Kommen rein im …:** die Summe der Zahlungen im nächsten vollen Monat („Gehen ab im November“) und wie viele es sind. So steht jede Monatszahlung genau einmal da, und Ein- und Ausgänge lassen sich vergleichen; die Tage bis dahin deckt „Tiefster Stand“ ab. Aufgeklappt steht jede Zahlung mit Datum und Betrag; wiederholt sich dieselbe Zahlung (etwa ein Sparplan an vier festen Tagen), steht sie einmal da („4× 50 € · 02.11. – 23.11.“). Bei mehr als acht Zahlungen stehen die ersten sieben einzeln und der Rest als „weitere … Zahlungen“. Eine Umbuchung zwischen zwei eigenen Konten steht bei beiden: beim einen als Abgang, beim anderen als Eingang (+).
 
 ### Ziele
 
 Die Seite beantwortet: Kommen wir mit dem Sparen voran, und was läuft automatisch? Eine Markierung steht nur da, wenn du etwas tun kannst; läuft alles nach Plan, ist die Zeile ruhig. Kontostände, freies Geld und Daueraufträge stehen auf der Seite Konten.
 
-- **Zurückgelegt:** was in allen Sparzielen und Rücklagen zusammen steckt, darunter die Aufteilung „Sparziele … · Rücklagen …“.
+- **Zurückgelegt:** was in allen Sparzielen und Rücklagen zusammen steckt, darunter, wie viel jeden Monat dazukommt („jeden Monat kommen 450 € dazu“: alle laufenden Raten und Sparpläne der Ziele und Rücklagen). Neben den Überschriften „Rücklagen“ und „Sparziele“ steht, was darin zusammen steckt.
 - **Rücklagen:**
   - **Notreserve** (nur für Eltern sichtbar): wie viel deiner Notreserve gedeckt ist, darunter das Ziel. Solange etwas fehlt, steht daneben gelb „fehlen …“ und ein Balken zeigt den Fortschritt; ist sie voll, steht darunter „Ziel … erreicht“. Aufgeklappt siehst du, wie das Ziel zustande kommt (feste Zahlungen und Kreditraten plus geschätzter Alltag je Monat, mal die gewünschten Monate) und auf welchen Konten wie viel liegt. Gezählt wird nur Geld auf Giro- und Tagesgeldkonten, und nur so viel, wie nach den anderen Sparzielen auf dem Konto wirklich da ist.
   - **Instandhaltungsrücklage** einer Immobilie: der Stand, darunter die monatliche Rate („163 € im Monat“). Liegt die Rate unter dem Richtwert, steht daneben gelb „17 € im Monat unter Richtwert“. Einen Balken gibt es hier bewusst nicht: Eine Rücklage hat keinen Zielbetrag, sie wird für Reparaturen gebraucht und wieder aufgefüllt. Aufgeklappt siehst du, von welchem Konto die Rate abgeht und wann, den Richtwert nach der II. Berechnungsverordnung („180 € im Monat (98 m² × 22,04 € je m² im Jahr)“) und die Immobilie.
@@ -136,14 +136,13 @@ Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein. Die Knöpfe
 
 Kopplung, Entkoppeln und Sprachwechsel zieht der Server genauso nach. Klappt das wiederholt nicht (etwa weil Telegram nicht erreichbar ist), versucht er es alle zehn Minuten erneut, und `lifeagents doctor` meldet es nach einer halben Stunde.
 
-Wie weit „Gehen ab“ und „Kommen rein“ auf der Seite Konten reichen, ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:
+Ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:
 
 | Befehl | Wirkung |
 |---|---|
-| `lifeagents config set finance app_payments_days 30` | „Gehen ab“ / „Kommen rein“ auf der Seite Konten für so viele Tage im Voraus. |
 | `lifeagents config set finance coverage_warn_factor 2` | Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (`coverage_buffer_eur`). |
 | `lifeagents config set finance everyday_oneoff_eur 250` | Ab diesem Einzelbetrag gilt eine Ausgabe im Kontoauszug als einmalig und zählt nicht zu den geschätzten Alltagsausgaben (gilt ab dem nächsten Auszug). |
 | `lifeagents config set finance fixed_rate_warn_months 12` | Hinweis, wenn die Zinsbindung eines Kredits in weniger als so vielen Monaten endet. |
-| `lifeagents config set finance funding_horizon_months 24` | So viele Monate voraus prüft der Tab Konten, ob das Geld für Sparpläne und Daueraufträge reicht (sonst „reicht bis …“). |
+| `lifeagents config set finance funding_horizon_months 24` | So viele Monate voraus prüft der Tab Konten, ob das Geld für Sparpläne und Daueraufträge reicht („Reicht bis …“ bzw. „Reicht über … hinaus“). |
 | `lifeagents config set finance depot_cover_warn_pct 10` | Ab so viel Prozent unter dem Ziel-Geld bekommt ein Sparziel mit Geld im Depot auf der Seite Ziele die rote Markierung „Kurswert … unter dem Zurückgelegten“ (und der Berater meldet es); darunter zeigt die Seite nichts an. |
 | `lifeagents config set finance funding_alert_months 3` | Rot „Lücke ab …“ und ein Hinweis auf der Startseite, wenn das Geld schon innerhalb so vieler Monate fehlt. |

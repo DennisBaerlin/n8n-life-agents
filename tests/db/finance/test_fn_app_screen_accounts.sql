@@ -3,9 +3,10 @@
 --   Fixture-Haushalt tests/util/util_app_household.sql:
 --   [1] Owner: je Geld-Konto ein Abschnitt, keine Kinder-Konten, kein 0-EUR-Konto ohne Bewegung (B10), kein Hero (B8),
 --       kein Abschnittswert (B6); Reihenfolge Probleme -> Alltagskonten -> uebrige (B7); fn_app_view_lint = 0
---   [2] Zeilen: Sparkonto „Stand heute · davon frei“ + „Tiefster Stand“ warn „reicht bis {Monat}“ (B1/B2); Girokonto mit
---       Bruecke <= 8 Zeilen; Gemeinschaftskonto ohne Auszug -> Notiz statt Tiefster Stand, Einzelposten gedeckelt;
---       Tagesgeld ohne Abfluss -> nur „Stand heute“; Gehen ab / Kommen rein getrennt, nie netto
+--   [2] Zeilen: Sparkonto „Stand heute · davon frei“ + „Reicht bis {Monat}“ mit warn „x im Monat mehr ab als rein“
+--       (B1/B2, Owner-Abnahme 2026-10-31); Girokonto mit Bruecke <= 8 Zeilen und Kontoauszug-Datum im Aufklappen;
+--       Gemeinschaftskonto ohne Auszug -> an derselben Stelle „noch keiner“, kein Tiefster Stand, Einzelposten gedeckelt;
+--       Tagesgeld ohne Abfluss -> nur „Stand heute“; Gehen ab / Kommen rein im naechsten Monat getrennt, nie netto
 --   [3] Partnerin sieht dasselbe wie der Owner
 --   [4] Kind: nur eigenes Konto, kein Haushaltsname (Volltextsuche), Eingang vom Haushalt neutral; Lint = 0
 --   [5] Gast ohne Daten: ein leerer Abschnitt; probe empty
@@ -45,11 +46,14 @@ BEGIN
      OR s->'items'->0->'value' <> core.fn_ui_money(40000, 'EUR')
      OR s->'items'->0->'sub' <> core.fn_ui_tpl('finance.app.accounts.free_of', jsonb_build_object('amount', core.fn_ui_money(13200, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [2a] Sparkonto Stand heute · davon 13200 frei, got %', s->'items'->0; END IF;
+  -- Sparkonto (Quelle funding): „Reicht bis {Monat}“ statt eines (negativen) tiefsten Stands; die Pille sagt, warum:
+  -- 3000 ab, 220 rein -> 2780 im Monat mehr ab als rein (Owner-Abnahme 2026-10-31)
   it := s->'items'->1;
-  IF it->'label' <> core.fn_ui_tpl('finance.app.accounts.low') OR it->'pill'->>'state' <> 'warn'
-     OR it->'pill'->'text'->>'value' <> 'finance.app.accounts.pill_until'
-     OR it->'pill'->'text'->'params'->'month'->>'kind' <> 'month' THEN
-    RAISE EXCEPTION 'FAIL [2b] Sparkonto Tiefster Stand warn reicht bis {Monat}, got %', it; END IF;
+  IF it->'label' <> core.fn_ui_tpl('finance.app.accounts.until') OR it->'value'->>'kind' <> 'month'
+     OR it->'value' <> core.fn_ui_month((finance.fn_account_low_state((SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_p2p'))->>'on_date')::date)
+     OR it->'pill'->>'state' <> 'warn'
+     OR it->'pill'->'text' <> core.fn_ui_tpl('finance.app.accounts.pill_net_out', jsonb_build_object('amount', core.fn_ui_money(2780, 'EUR'))) THEN
+    RAISE EXCEPTION 'FAIL [2b] Sparkonto Reicht bis {Monat}, warn 2780 im Monat mehr ab als rein, got %', it; END IF;
   -- Girokonto: Bruecke <= 8 Zeilen, Gehen ab / Kommen rein
   SELECT x INTO s FROM jsonb_array_elements(v->'sections') x WHERE x->'title'->'params'->>'account' = 'Girokonto Jonas';
   SELECT i INTO it FROM jsonb_array_elements(s->'items') i WHERE i->'label' = core.fn_ui_tpl('finance.app.accounts.low');
@@ -59,21 +63,34 @@ BEGIN
   IF it->'pill' IS DISTINCT FROM finance.fn_app_low_state_pill(finance.fn_account_low_state(
        (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_giro_jonas'))) THEN
     RAISE EXCEPTION 'FAIL [2c2] Girokonto: Pille = fn_app_low_state_pill(fn_account_low_state), got %', it->'pill'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i WHERE i->'label'->>'value' = 'finance.app.accounts.out_until'
-                                                                   AND (i->'value'->>'value')::numeric < 0)
-     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i WHERE i->'label'->>'value' = 'finance.app.accounts.in_until'
-                                                                   AND (i->'value'->>'value')::numeric > 0) THEN
-    RAISE EXCEPTION 'FAIL [2d] Girokonto: Gehen ab (< 0) und Kommen rein (> 0) getrennt, got %', s; END IF;
-  -- Gemeinschaftskonto: Notiz statt Tiefster Stand, Einzelposten gedeckelt
+  -- Gehen ab / Kommen rein: der naechste volle Kalendermonat (Monatsname), getrennt, nie netto
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i
+                  WHERE i->'label' = core.fn_ui_tpl('finance.app.accounts.out_month', jsonb_build_object(
+                                         'month', core.fn_ui_month((date_trunc('month', current_date) + interval '1 month')::date, true)))
+                    AND (i->'value'->>'value')::numeric < 0)
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i
+                     WHERE i->'label' = core.fn_ui_tpl('finance.app.accounts.in_month', jsonb_build_object(
+                                            'month', core.fn_ui_month((date_trunc('month', current_date) + interval '1 month')::date, true)))
+                       AND (i->'value'->>'value')::numeric > 0) THEN
+    RAISE EXCEPTION 'FAIL [2d] Girokonto: Gehen ab (< 0) und Kommen rein (> 0) im naechsten Monat getrennt, got %', s; END IF;
+  -- Kontoauszug bei jedem Konto im Aufklappen von „Stand heute“: Girokonto mit Datum
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items'->0->'details') d
+                  WHERE d->'label' = core.fn_ui_tpl('finance.app.accounts.d_statement') AND d->'value'->>'kind' = 'date') THEN
+    RAISE EXCEPTION 'FAIL [2d2] Girokonto: Kontoauszug-Datum im Aufklappen, got %', s->'items'->0; END IF;
+  -- Gemeinschaftskonto: kein Auszug -> an derselben Stelle „noch keiner – schick einen im Chat“, keine Abschnitts-Notiz,
+  -- kein Tiefster Stand, Einzelposten gedeckelt
   SELECT x INTO s FROM jsonb_array_elements(v->'sections') x WHERE x->'title'->'params'->>'account' = 'Gemeinschaftskonto';
-  IF s->'note' <> core.fn_ui_tpl('finance.app.accounts.no_statement')
+  IF s ? 'note'
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items'->0->'details') d
+                     WHERE d->'label' = core.fn_ui_tpl('finance.app.accounts.d_statement')
+                       AND d->'value' = core.fn_ui_tpl('finance.app.accounts.d_statement_none'))
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i WHERE i->'label' = core.fn_ui_tpl('finance.app.accounts.low'))
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i WHERE jsonb_array_length(COALESCE(i->'details', '[]'::jsonb)) > 8) THEN
-    RAISE EXCEPTION 'FAIL [2e] Gemeinschaftskonto: Notiz, kein Tiefster Stand, Deckel, got %', s; END IF;
+    RAISE EXCEPTION 'FAIL [2e] Gemeinschaftskonto: Kontoauszug „noch keiner“, keine Notiz, kein Tiefster Stand, Deckel, got %', s; END IF;
   -- Tagesgeld Mira: nichts geht ab -> nur Stand heute
   SELECT x INTO s FROM jsonb_array_elements(v->'sections') x WHERE x->'title'->'params'->>'account' = 'Tagesgeld Mira';
   IF jsonb_array_length(s->'items') <> 1 THEN RAISE EXCEPTION 'FAIL [2f] Tagesgeld ohne Abfluss: nur Stand heute, got %', s; END IF;
-  RAISE NOTICE 'PASS [2] Zeilen: frei, reicht bis, Bruecke, Notiz, Deckel, getrennte Ab-/Eingaenge';
+  RAISE NOTICE 'PASS [2] Zeilen: frei, Reicht bis, Bruecke, Kontoauszug, Deckel, getrennte Ab-/Eingaenge';
 
   -- [3] Partnerin = Owner
   v2 := finance.fn_app_screen_accounts(jsonb_build_object('person_id', 'fxh_mira', 'params', '{}'::jsonb));

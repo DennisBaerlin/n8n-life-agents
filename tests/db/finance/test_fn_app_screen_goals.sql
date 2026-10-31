@@ -1,7 +1,8 @@
 -- tests/db/finance/test_fn_app_screen_goals.sql
 -- finance.fn_app_screen_goals(p jsonb) — Mini-App-Bildschirm „Ziele" (docs/package-contract.md §3.12, View-Modell v1;
 -- UX-Gesamtkonzept 2026-10-31 §5.3: Ruecklagen, Sparziele, Sparplaene; kein Abschnitt Konten).
---   1) Owner: drei Abschnitte ohne Summe ausser Sparplaene; nirgends eine ok-Pille oder ein ok-Balken; Hero + gap.
+--   1) Owner: drei Abschnitte, „zusammen“ je Abschnitt (Ruecklagen; Sparziele mit Kurs-Luecke ohne); nirgends eine
+--      ok-Pille oder ein ok-Balken; Hero + gap, Note „jeden Monat kommen x dazu“ (fn_savings_goal_sources.monthly_eur).
 --      Sparziele: Untertitel „von x · bis Monat" / „x erreicht · geplant fuer", hinter Plan mit Betrag, fx-Luecke nur gap,
 --      Quelle der Rate (Sparplaene / Dauerauftrag / beides / keine), Depot-Deckung (ohne Kurs gap, Delle still, Einbruch
 --      alert mit Depot-Name an jedem Ziel des Depots). Ruecklagen: Notreserve warn/voll, Instandhaltung warn mit
@@ -25,7 +26,7 @@ DECLARE
   v_re1 INT; v_re2 INT; v_re3 INT; v_rp INT; v_rp2 INT; v_goal INT; v_mix INT; v_kgoal INT; v_emerg INT;
   v_old timestamptz := now() - interval '100 days';
   v_td  date := current_date + 265;
-  v jsonb; v_sec jsonb; v_it jsonb; v_txt text; v_labels text[]; v_n numeric;
+  v jsonb; v_sec jsonb; v_it jsonb; v_txt text; v_labels text[]; v_n numeric; v_cnt int; v_flag boolean;
 BEGIN
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2) ON CONFLICT (code) DO NOTHING;
   DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF' OR base_currency = 'CHF';
@@ -161,19 +162,32 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1a] View-Modell v1 erwartet, got %', v; END IF;
   IF v->'title' <> core.fn_ui_tpl('finance.app.goals.title') OR v->'hero'->'label' <> core.fn_ui_tpl('finance.app.goals.hero') THEN
     RAISE EXCEPTION 'FAIL [1b] title/hero.label %', v; END IF;
-  -- Hero = alle sichtbaren Ziele + Instandhaltung + Notreserve gedeckt (400); CHF ohne Kurs -> gap, keine Note
+  -- Hero = alle sichtbaren Ziele + Instandhaltung + Notreserve gedeckt (400); CHF ohne Kurs -> gap
   SELECT sum(p.current_amount) INTO v_n FROM finance.savings_goal_progress p
    WHERE p.status = 'active' AND p.target_amount IS NOT NULL AND p.id <> v_emerg;
-  IF v->'hero'->'value' <> core.fn_ui_money(v_n + 400, 'EUR') OR (v->'hero'->>'gap')::boolean IS NOT TRUE
-     OR jsonb_typeof(v->'hero'->'note') <> 'null' THEN
-    RAISE EXCEPTION 'FAIL [1c] Hero % + gap ohne Note erwartet, got %', v_n + 400, v->'hero'; END IF;
+  IF v->'hero'->'value' <> core.fn_ui_money(v_n + 400, 'EUR') OR (v->'hero'->>'gap')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'FAIL [1c] Hero % + gap erwartet, got %', v_n + 400, v->'hero'; END IF;
+  -- Note „jeden Monat kommen x dazu“ = Summe fn_savings_goal_sources.monthly_eur aller aktiven Ziele (Owner sieht alle);
+  -- fehlt ein Kurs in einer Rate -> keine Note
+  SELECT sum((finance.fn_savings_goal_sources(g.id)->>'monthly_eur')::numeric),
+         bool_or(finance.fn_savings_goal_sources(g.id)->'monthly_eur' = 'null'::jsonb)
+    INTO v_n, v_flag FROM finance.savings_goals g WHERE g.status = 'active';
+  IF v->'hero'->'note' IS DISTINCT FROM (CASE WHEN v_n > 0 AND NOT v_flag
+                                             THEN core.fn_ui_tpl('finance.app.goals.hero_note_monthly', jsonb_build_object(
+                                                      'amount', core.fn_ui_money(v_n, 'EUR'))) ELSE 'null'::jsonb END) THEN
+    RAISE EXCEPTION 'FAIL [1c2] Hero-Note je Monat (% / gap %), got %', v_n, v_flag, v->'hero'->'note'; END IF;
   IF jsonb_array_length(v->'banners') <> 0 THEN RAISE EXCEPTION 'FAIL [1d] Banner nur in der probe-Antwort, got %', v->'banners'; END IF;
   SELECT array_agg(s->'title'->>'value' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v->'sections') WITH ORDINALITY AS t(s, o);
   IF v_labels IS DISTINCT FROM ARRAY['finance.app.goals.section_reserves', 'finance.app.goals.section_goals',
                                      'finance.app.goals.section_plans'] THEN
     RAISE EXCEPTION 'FAIL [1e] genau Ruecklagen, Sparziele, Sparplaene (kein Konten-Abschnitt), got %', v_labels; END IF;
-  IF jsonb_typeof(v->'sections'->0->'value') <> 'null' OR jsonb_typeof(v->'sections'->1->'value') <> 'null' THEN
-    RAISE EXCEPTION 'FAIL [1f] keine Summe neben Ruecklagen/Sparziele (steht in der Hero-Note), got %', v->'sections'; END IF;
+  -- „zusammen“ je Abschnitt (Owner-Abnahme 2026-10-31): Ruecklagen = Summe ihrer Zeilen (ab 2, ohne gap); Sparziele mit
+  -- CHF-Ziel ohne Kurs -> keine Summe (L8)
+  SELECT sum((i->'value'->>'value')::numeric), count(*), bool_or((i->>'gap')::boolean) INTO v_n, v_cnt, v_flag
+    FROM jsonb_array_elements(v->'sections'->0->'items') i;
+  IF v->'sections'->0->'value' IS DISTINCT FROM (CASE WHEN v_cnt >= 2 AND NOT v_flag THEN core.fn_ui_money(v_n, 'EUR') ELSE 'null'::jsonb END)
+     OR jsonb_typeof(v->'sections'->1->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [1f] Ruecklagen zusammen %, Sparziele ohne Summe (gap), got %', v_n, v->'sections'; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') i
               WHERE i->'pill'->>'state' = 'ok' OR i->'progress'->>'state' = 'ok') THEN
     RAISE EXCEPTION 'FAIL [1g] keine gruene Pille, kein gruener Balken, got %', v; END IF;

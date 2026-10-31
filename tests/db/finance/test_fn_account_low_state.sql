@@ -23,8 +23,9 @@ BEGIN
      OR (v->>'on_date')::date IS DISTINCT FROM (f->>'runs_out_on')::date OR v->>'month' <> to_char((f->>'runs_out_on')::date, 'YYYY-MM')
      OR (v->>'amount')::numeric <> (f->>'min_free')::numeric OR (v->>'amount')::numeric >= 0
      OR NOT (v->>'has_outflow')::boolean OR (v->>'gap')::boolean OR (v->>'monthly_out')::numeric >= 0
-     OR jsonb_typeof(v->'short_by') <> 'null' THEN
-    RAISE EXCEPTION 'FAIL [1] Sparkonto funding warn (short_by null ohne Puffer-Urteil), got % / %', v, f; END IF;
+     OR jsonb_typeof(v->'short_by') <> 'null'
+     OR (v->>'horizon_end')::date IS DISTINCT FROM (f->>'horizon_end')::date OR v->>'horizon_end' IS NULL THEN
+    RAISE EXCEPTION 'FAIL [1] Sparkonto funding warn (short_by null ohne Puffer-Urteil, horizon_end aus fn_account_funding), got % / %', v, f; END IF;
   -- Ziel-Geld 26.800 von 40.000, -3.000/Monat raus, +220 Ziel-Raten rein (nicht frei): reicht hoechstens ~5 Monate
   IF (f->>'runs_out_on')::date > core.fn_today() + interval '6 months' THEN
     RAISE EXCEPTION 'FAIL [1b] reicht bis zu spaet (Ziel-Geld als frei gezaehlt?), got %', f; END IF;
@@ -32,8 +33,9 @@ BEGIN
 
   -- [2] Broker-Cash
   v := finance.fn_account_low_state((SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_broker_cash'));
-  IF v->>'source' <> 'funding' OR v->>'state' <> 'ok' OR NOT (v->>'has_outflow')::boolean THEN
-    RAISE EXCEPTION 'FAIL [2] Broker-Cash funding ok, got %', v; END IF;
+  IF v->>'source' <> 'funding' OR v->>'state' <> 'ok' OR NOT (v->>'has_outflow')::boolean
+     OR v->>'on_date' IS NOT NULL OR v->>'horizon_end' IS NULL THEN
+    RAISE EXCEPTION 'FAIL [2] Broker-Cash funding ok (kein Lauf-Ende, horizon_end fuer „ueber <Monat> hinaus“), got %', v; END IF;
   RAISE NOTICE 'PASS [2] Broker-Cash gedeckt';
 
   -- [3] Girokonto: outlook; Urteil = schlechter aus outlook-Zustand und fn_account_funding

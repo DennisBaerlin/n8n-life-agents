@@ -238,6 +238,34 @@ BEGIN
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s CROSS JOIN LATERAL jsonb_array_elements(s->'items') i
                  WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_debts') AND (i->'value'->>'value')::numeric < 0) THEN
     RAISE EXCEPTION 'FAIL [8b] Fixture: Kinder-Abschnitt (2) + Schulden positiv, got %', v; END IF;
-  RAISE NOTICE 'PASS [8] Fixture-Haushalt: Lint = 0 fuer alle Personen';
+  -- Aufklappen je Anlageart (Owner-Abnahme 2026-10-31): die Konten/Depots/Objekte aus networth_items, die Teile ergeben
+  -- die Zeile (Cent-Rundung je Teil), keine Kinder-Konten, groesste zuerst
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s CROSS JOIN LATERAL jsonb_array_elements(s->'items') i
+              WHERE s->'title' IN (core.fn_ui_tpl('finance.app.overview.section_liquid'), core.fn_ui_tpl('finance.app.overview.section_bound'))
+                AND (jsonb_array_length(i->'details') = 0
+                     OR abs((SELECT sum((d->'value'->>'value')::numeric) FROM jsonb_array_elements(i->'details') d)
+                            - (i->'value'->>'value')::numeric) > 0.01 * jsonb_array_length(i->'details')))
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s CROSS JOIN LATERAL jsonb_array_elements(s->'items') i
+                     CROSS JOIN LATERAL jsonb_array_elements(i->'details') d
+                     WHERE i->'label'->>'value' = 'cash' AND d->>'label' = 'Girokonto Jonas')
+     OR v::text LIKE '%Taschengeld Lea%' OR v::text LIKE '%Taschengeld Tom%'
+     -- ein leeres Konto (Verrechnungskonto Krypto, 0 EUR) steht nicht im Aufklappen
+     OR v::text LIKE '%Verrechnungskonto Krypto%'
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s CROSS JOIN LATERAL jsonb_array_elements(s->'items') i
+                 CROSS JOIN LATERAL jsonb_array_elements(i->'details') WITH ORDINALITY d(e, o)
+                 JOIN LATERAL jsonb_array_elements(i->'details') WITH ORDINALITY d2(e, o) ON d2.o = d.o + 1
+                 WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_liquid')
+                   AND (d.e->'value'->>'value')::numeric < (d2.e->'value'->>'value')::numeric
+                   AND d2.e->'label'->>'kind' IS NULL) THEN
+    RAISE EXCEPTION 'FAIL [8c] Fixture: Anlageart aufklappbar in ihre Konten (Summe = Zeile, keine Kinder, groesste zuerst), got %', v; END IF;
+  -- die View-Ebenen sind EINE Rechnung: networth_by_asset_class = Summe networth_items
+  -- (EXCEPT in beide Richtungen: NULL-Besitzer = Haushalt gilt dort als gleich)
+  IF EXISTS ((SELECT bucket, asset_class, owner_person_id, value_eur FROM finance.networth_by_asset_class
+              EXCEPT SELECT bucket, asset_class, owner_person_id, round(sum(value_eur), 2) FROM finance.networth_items GROUP BY 1, 2, 3)
+             UNION ALL
+             (SELECT bucket, asset_class, owner_person_id, round(sum(value_eur), 2) FROM finance.networth_items GROUP BY 1, 2, 3
+              EXCEPT SELECT bucket, asset_class, owner_person_id, value_eur FROM finance.networth_by_asset_class)) THEN
+    RAISE EXCEPTION 'FAIL [8d] networth_by_asset_class <> Summe networth_items'; END IF;
+  RAISE NOTICE 'PASS [8] Fixture-Haushalt: Lint = 0 fuer alle Personen, Anlagearten aufklappbar, View-Paritaet';
 END $$;
 ROLLBACK;

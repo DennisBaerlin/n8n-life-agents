@@ -4,8 +4,10 @@
 --   {person_id, params} NACH der initData-Pruefung. Liefert Struktur + typisierte Werte (core.fn_ui_tpl/_money/_date),
 --   nie Text; die Seite rendert per Get-UiRenderLibJs und rechnet nichts (Summen, Anteile, gap kommen von hier).
 --   Frage der Seite (UX-Gesamtkonzept 2026-10-31, 5.1): Was haben wir, was schulden wir? (Die Hinweise oben setzt der
---   Dispatcher.) Quelle: networth_by_asset_class (je bucket summiert, has_fx_gap). Kontostaende stehen NICHT hier
---   (Heimat: Tab Konten, P2).
+--   Dispatcher.) Quelle: networth_by_asset_class (je bucket summiert, has_fx_gap). Kontostaende stehen nicht als
+--   Zeilen hier (Heimat: Tab Konten, P2); im Aufklappen einer Anlageart stehen ihre Konten, Depots und Objekte mit Wert
+--   (finance.networth_items, dieselbe Rechnung, die Teile ergeben die Zeile; groesste zuerst, ohne leere Konten, mehr
+--   als acht -> sieben + „weitere n“; Owner-Abnahme 2026-10-31: im Aufklappen ist die Doppelung gewollt).
 --   Abschnitt finance.app.overview.section_liquid: Frage: Woran kommen wir kurzfristig?
 --   Abschnitt finance.app.overview.section_bound: Frage: Was steckt langfristig fest?
 --   Abschnitt finance.app.overview.section_debts: Frage: Was schulden wir?
@@ -86,6 +88,32 @@ BEGIN
         SELECT b.*, array_position(ARRAY['cash', 'p2p', 'depot', 'fixed_deposit', 'real_estate', 'pension', 'loan'],
                                    b.bucket) AS o
           FROM b
+    ), d0 AS (
+        -- Aufklappen je Anlageart: ihre Konten/Depots/Objekte aus DERSELBEN Quelle (networth_items), gleiche Sicht-Regel
+        SELECT i.bucket, i.item_kind, i.item_id, i.item_name, sum(i.value_eur) AS val,
+               bool_or(i.value_native <> 0 AND i.value_eur IS NULL) AS gap
+          FROM finance.networth_items i
+          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = i.owner_person_id
+         WHERE (v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND i.owner_person_id = v_pid)
+         GROUP BY i.bucket, i.item_kind, i.item_id, i.item_name
+        -- ein leeres Konto (Verrechnungskonto 0) sagt nichts; ohne Kurs bleibt es (gap)
+        HAVING COALESCE(sum(i.value_eur), 0) <> 0 OR bool_or(i.value_native <> 0 AND i.value_eur IS NULL)
+    ), d1 AS (
+        SELECT d0.*, row_number() OVER (PARTITION BY d0.bucket ORDER BY d0.val DESC NULLS LAST, d0.item_name, d0.item_id) AS rn,
+               count(*) OVER (PARTITION BY d0.bucket) AS cnt
+          FROM d0
+    ), dd AS (
+        -- groesste zuerst; mehr als acht -> sieben + „weitere n“ mit dem Rest (L5)
+        SELECT d1.bucket,
+               COALESCE(jsonb_agg(jsonb_build_object('label', d1.item_name, 'value', core.fn_ui_money(round(d1.val, 2), 'EUR'))
+                                  ORDER BY d1.rn) FILTER (WHERE d1.cnt <= 8 OR d1.rn <= 7), '[]'::jsonb)
+               || CASE WHEN max(d1.cnt) > 8 THEN jsonb_build_array(jsonb_build_object(
+                      'label', core.fn_ui_tpl('finance.app.overview.d_more', jsonb_build_object('n', core.fn_ui_num(max(d1.cnt) - 7))),
+                      'value', CASE WHEN NOT bool_or(d1.gap) FILTER (WHERE d1.rn > 7)
+                                    THEN core.fn_ui_money(round(sum(d1.val) FILTER (WHERE d1.rn > 7), 2), 'EUR') END))
+                       ELSE '[]'::jsonb END AS details
+          FROM d1
+         GROUP BY d1.bucket
     ), it AS (
         SELECT ord.o, ord.bucket, ord.liquid, ord.is_debt, jsonb_build_object(
                'label', jsonb_build_object('kind', 'enum', 'enum', 'finance.enum.asset_bucket', 'value', ord.bucket),
@@ -97,8 +125,10 @@ BEGIN
                'pill', NULL,
                'progress', CASE WHEN ord.val > 0 AND g.assets > 0
                                 THEN jsonb_build_object('pct', round(100 * ord.val / g.assets, 1), 'state', 'neutral') END,
-               'target', NULL) AS item
+               'target', NULL,
+               'details', COALESCE(dd.details, '[]'::jsonb)) AS item
           FROM ord CROSS JOIN g
+          LEFT JOIN dd ON dd.bucket = ord.bucket
          WHERE ord.bucket IS NOT NULL AND NOT ord.is_debt
     )
     SELECT COALESCE((SELECT jsonb_agg(it.item ORDER BY it.o, it.bucket) FROM it WHERE it.liquid), '[]'::jsonb),

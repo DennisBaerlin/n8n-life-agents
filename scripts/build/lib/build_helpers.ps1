@@ -955,10 +955,17 @@ function uiRender(B, LANGS) {
   // {kind:'month', value:'YYYY-MM'} (core.fn_ui_month): 2-stelliger Monat + Jahr im Locale (de „04.2027“), immer mit Jahr.
   // Aus dem vollen Datum des Locales ohne den Tag gebaut: Intl liefert fuer {month, year} allein in de „04/2027“
   // (Abnahme 2026-10-31); so folgt der Trenner dem gewohnten Datum (de „04.2027“, en-GB „04/2027“, ko „2027. 04.“).
-  function month(v) {
+  // style 'long' (core.fn_ui_month(d, true)): Monatsname, das Jahr nur ausserhalb des Kurz-Fensters wie bei date()
+  // („Gehen ab im November“ / „… im November 2027“).
+  function month(v, style) {
     if (isEmpty(v)) return empty;
     const m = /^(\d{4})-(\d{2})$/.exec(String(v));
     if (!m) return String(v);
+    if (style === 'long') {
+      const short = DS && String(v) >= DS.from.slice(0, 7) && String(v) < DS.to.slice(0, 7);
+      try { return new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleDateString(loc, short ? { timeZone: 'UTC', month: 'long' } : { timeZone: 'UTC', month: 'long', year: 'numeric' }); }
+      catch (e) { return String(v); }
+    }
     try {
       const parts = new Intl.DateTimeFormat(loc, { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' })
         .formatToParts(new Date(Date.UTC(+m[1], +m[2] - 1, 1)));
@@ -993,7 +1000,7 @@ function uiRender(B, LANGS) {
     switch (x.kind) {
       case 'money': return money(v, x.currency, x.sign);
       case 'date': return date(v);
-      case 'month': return month(v);
+      case 'month': return month(v, x.style);
       case 'number': return num(v, x.digits, x.sign);
       case 'enum': {
         if (isEmpty(v)) return empty;

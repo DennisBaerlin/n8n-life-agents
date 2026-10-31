@@ -60,6 +60,8 @@ BEGIN
        jsonb_build_object('name', '__sgs_plan_b__', 'depot_owner_person_id', NULL, 'beneficiary_person_id', NULL)) THEN
     RAISE EXCEPTION 'FAIL [1e] aktive Plaene nach Monatsbetrag absteigend, pausierter fehlt, got %', v->'plans'; END IF;
   IF jsonb_typeof(v->'transfer') <> 'null' THEN RAISE EXCEPTION 'FAIL [1f] keine Raten-Kette, got %', v; END IF;
+  -- monthly_eur zaehlt nur, was heute schon laeuft: Plan A (160, ab heute), nicht Plan B (40, startet in 3 Tagen)
+  IF (v->>'monthly_eur')::numeric IS DISTINCT FROM 160 THEN RAISE EXCEPTION 'FAIL [1g] monthly_eur = laufender Plan A 160, got %', v; END IF;
   RAISE NOTICE 'PASS [1] Paritaet zu fn_savings_goal_funding, pausiert zaehlt nicht, Reihenfolge';
 
   -- ===== 2) Raten-Kette =====
@@ -72,10 +74,12 @@ BEGIN
   IF v->'transfer' <> jsonb_build_object('rp_id', v_rp2, 'account_name', '__sgs_giro__', 'account_owner_person_id', NULL)
      OR v->'plans' <> '[]'::jsonb OR jsonb_typeof(v->'plans_monthly_eur') <> 'null' THEN
     RAISE EXCEPTION 'FAIL [2a] laufende Rate -> transfer, keine Plaene, got %', v; END IF;
-  -- kuenftig startend zaehlt (Pace-Regel 5: nicht pausiert)
+  IF (v->>'monthly_eur')::numeric IS DISTINCT FROM 120 THEN RAISE EXCEPTION 'FAIL [2a2] monthly_eur = laufende Rate 120, got %', v; END IF;
+  -- kuenftig startend zaehlt als Quelle (Pace-Regel 5: nicht pausiert), fliesst heute aber noch nicht (monthly_eur 0)
   UPDATE finance.recurring_payments SET first_payment_date = current_date + 10, valid_from = current_date + 10 WHERE id = v_rp2;
-  IF (finance.fn_savings_goal_sources(v_g2)->'transfer'->>'rp_id')::int IS DISTINCT FROM v_rp2 THEN
-    RAISE EXCEPTION 'FAIL [2b] kuenftig startende Rate zaehlt als Quelle'; END IF;
+  IF (finance.fn_savings_goal_sources(v_g2)->'transfer'->>'rp_id')::int IS DISTINCT FROM v_rp2
+     OR (finance.fn_savings_goal_sources(v_g2)->>'monthly_eur')::numeric IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [2b] kuenftig startende Rate: Quelle, aber monthly_eur 0, got %', finance.fn_savings_goal_sources(v_g2); END IF;
   -- beendet -> keine Quelle
   UPDATE finance.recurring_payments SET first_payment_date = current_date - 90, valid_from = current_date - 90,
                                         valid_to = current_date - 5 WHERE id = v_rp2;
@@ -92,8 +96,9 @@ BEGIN
   UPDATE finance.savings_goals SET recurring_payment_id = NULL WHERE id = v_g2;   -- eine Kette gehoert einem Ziel (UNIQUE)
   UPDATE finance.savings_goals SET recurring_payment_id = v_rp2 WHERE id = v_g;
   v := finance.fn_savings_goal_sources(v_g);
-  IF jsonb_array_length(v->'plans') <> 2 OR (v->'transfer'->>'rp_id')::int IS DISTINCT FROM v_rp2 THEN
-    RAISE EXCEPTION 'FAIL [3a] Plaene und Kette zusammen, got %', v; END IF;
+  IF jsonb_array_length(v->'plans') <> 2 OR (v->'transfer'->>'rp_id')::int IS DISTINCT FROM v_rp2
+     OR (v->>'monthly_eur')::numeric IS DISTINCT FROM 280 THEN
+    RAISE EXCEPTION 'FAIL [3a] Plaene und Kette zusammen, monthly_eur 160 (Plan A) + 120, got %', v; END IF;
   UPDATE finance.savings_goals SET recurring_payment_id = NULL WHERE id = v_g;
   UPDATE finance.savings_plans SET savings_goal_id = NULL WHERE name IN ('__sgs_plan_a__', '__sgs_plan_b__');
   v := finance.fn_savings_goal_sources(v_g);
@@ -110,7 +115,7 @@ BEGIN
   UPDATE finance.savings_plans SET savings_goal_id = v_g WHERE name = '__sgs_plan_b__';
   v := finance.fn_savings_goal_sources(v_g);
   IF (v->>'plans_fx_gap')::boolean IS NOT TRUE OR jsonb_typeof(v->'plans_monthly_eur') <> 'null'
-     OR jsonb_array_length(v->'plans') <> 2 THEN
+     OR jsonb_typeof(v->'monthly_eur') <> 'null' OR jsonb_array_length(v->'plans') <> 2 THEN
     RAISE EXCEPTION 'FAIL [4] CHF ohne Kurs -> fx-Luecke, Betrag null, beide Plaene benannt, got %', v; END IF;
   RAISE NOTICE 'PASS [4] fx-Luecke statt still zu niedrig';
 

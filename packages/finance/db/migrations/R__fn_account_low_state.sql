@@ -16,8 +16,10 @@
 --   p_alert_only = true (probe beim App-Start): fn_account_funding rechnet nur das alert-Fenster.
 --   Liefert keine Namen (next_income_name, Vorschlag): die Sichtbarkeit je Person bleibt im Handler.
 --   RUECKGABE: {ok, account_id, currency, source, state, verdict, amount, low_date, on_date, month, buffer,
---   has_outflow, gap, monthly_in, monthly_out, short_by} | {ok:false} (unbekannt, Kredit-/Depotkonto)
+--   has_outflow, gap, monthly_in, monthly_out, short_by, horizon_end} | {ok:false} (unbekannt, Kredit-/Depotkonto)
 --   on_date = Datum zum Urteil (buffer: Tag des Tiefs, goals: erster Tag unter dem Ziel-Geld), month = dessen Monat.
+--   horizon_end = letzter gerechneter Tag der Spar-Deckung (nur source funding): die Konten-Zeile „Reicht bis" sagt
+--   ohne Lauf-Ende „ueber <Monat> hinaus".
 --   short_by = so viel fehlt bis zum Puffer (fn_account_outlook.shortfall, >= 0) bei verdict buffer, sonst null: die
 --   Pille „{amount} unter dem Puffer" lesen Konten-Zeile und Spiegel-Pille am Sparplan (Ziele) nur hier, keiner rechnet nach.
 --   Tests: tests/db/finance/test_fn_account_low_state.sql
@@ -93,6 +95,7 @@ BEGIN
         'amount', round(v_amount, 2), 'low_date', v_low, 'on_date', v_on,
         'month', to_char(v_on, 'YYYY-MM'), 'buffer', round(v_buffer, 2),
         'has_outflow', v_out, 'gap', v_gap, 'monthly_in', v_in_m, 'monthly_out', v_out_m,
-        'short_by', CASE WHEN v_verdict = 'buffer' THEN (v_o->>'shortfall')::numeric END);
+        'short_by', CASE WHEN v_verdict = 'buffer' THEN (v_o->>'shortfall')::numeric END,
+        'horizon_end', CASE WHEN v_src = 'funding' THEN (v_f->>'horizon_end')::date END);
 END;
 $$;

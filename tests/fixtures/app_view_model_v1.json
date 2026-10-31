@@ -38,7 +38,7 @@
         "finance.app.overview.empty": "Noch nichts erfasst.",
         "finance.app.accounts.section": "{account}",
         "finance.app.accounts.empty": "Noch keine Konten angelegt.",
-        "finance.app.accounts.no_statement": "Noch kein Kontoauszug – deshalb keine Vorschau. Schick einen Auszug im Chat.",
+        "finance.app.accounts.d_statement": "Kontoauszug",
         "finance.app.accounts.balance_today": "Stand heute",
         "finance.app.accounts.free_of": "davon {amount} frei",
         "finance.app.accounts.d_reserved": "Zurückgelegt für Ziele",
@@ -94,7 +94,6 @@
         {
           "title": { "kind": "tpl", "value": "finance.app.accounts.section", "params": { "account": "Girokonto Beispielbank" } },
           "value": null,
-          "note": { "kind": "tpl", "value": "finance.app.accounts.no_statement", "params": {} },
           "empty": { "kind": "tpl", "value": "finance.app.accounts.empty", "params": {} },
           "items": [
             {
@@ -108,6 +107,8 @@
               "details": [
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.d_reserved", "params": {} },
                   "value": { "kind": "money", "value": 1000.00, "currency": "EUR" } },
+                { "label": { "kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {} },
+                  "value": { "kind": "date", "value": "2026-10-29" } },
                 { "label": "Rohname aus Import", "value": null }
               ]
             },

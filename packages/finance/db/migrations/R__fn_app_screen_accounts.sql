@@ -5,21 +5,24 @@
 --   Abschnitt finance.app.accounts.section: Frage: Was steht heute auf diesem Konto, reicht es bis zum naechsten Geldeingang, und was geht ab oder kommt rein?
 --   Abschnitt finance.app.accounts.section_none: Frage: Welche Konten gibt es?
 --   Konten = finance.fn_app_accounts_listed (die eine Regel: Haushalt ohne Kinder-Konten, sonst nur eigene); ein Konto
---   ohne Saldo und ohne Bewegung im Fenster [heute, heute + finance.app_payments_days] entfaellt (Verrechnungskonto 0).
+--   ohne Saldo und ohne Bewegung im naechsten Kalendermonat entfaellt (Verrechnungskonto 0).
 --   Kein Hero (die Frage ist je Konto; ein Haushalts-„Abgaenge“ mischt Sparen mit Rechnungen).
 --   Zeilen je Konto (hoechstens vier):
 --     1 Stand heute — Saldo; sub „davon x frei“, wenn Ziel-Geld darauf liegt (finance.fn_account_free_balance); liegt mehr
 --       Ziel-Geld darauf als Saldo -> warn „x mehr verplant als vorhanden“. Aufklappen: Zurueckgelegt fuer Ziele,
---       Besitzer (Haushalts-Sicht), Kontoauszug vom.
---     2 Tiefster Stand — nur mit Abfluss im Horizont; Urteil allein aus finance.fn_account_low_state (dieselbe Rechnung
---       wie die Spiegel-Pille am Sparplan): outlook = Stand bis zum Geldeingang, Aufklappen = Bruecke (<= 8 Zeilen:
---       Stand, gebucht seit Abgleich, feste Ab-/Eingaenge, Alltag geschaetzt, Puffer, naechster Geldeingang,
---       Umbuchungs-Vorschlag nur Haushalt + alert; die Einzelzeilen je Auszug entfallen); funding = tiefster FREIER Stand
---       ueber den Horizont. Pille nur warn/alert mit Betrag/Datum/Monat, gebaut allein von finance.fn_app_low_state_pill
---       (dieselbe Pille wie am Sparplan); Kurs fehlt -> gap ohne Pille. Ohne Urteil
---       (Alltagskonto ohne Auszug) statt der Zeile die Abschnitts-Notiz „Noch kein Kontoauszug …“.
---     3 Gehen ab bis {date} / 4 Kommen rein bis {date} — Summe + Anzahl, Aufklappen = Einzelposten
---       (finance.fn_app_payment_rows, gedeckelt); nie eine Netto-Summe, kein Abschnittswert.
+--       Besitzer (Haushalts-Sicht), Kontoauszug (Datum; ein Geld-Konto ohne Auszug und darum ohne Vorschau: „noch
+--       keiner – schick einen im Chat“ — dieselbe Stelle bei jedem Konto, Owner-Abnahme 2026-10-31).
+--     2 Urteil allein aus finance.fn_account_low_state (dieselbe Rechnung wie die Spiegel-Pille am Sparplan), nur mit
+--       Abfluss im Horizont: outlook = „Tiefster Stand“ bis zum Geldeingang, Aufklappen = Bruecke (<= 8 Zeilen: Stand,
+--       gebucht seit Abgleich, feste Ab-/Eingaenge, Alltag geschaetzt, Puffer, naechster Geldeingang, Umbuchungs-
+--       Vorschlag nur Haushalt + alert); funding = „Reicht bis“ mit dem Monat, in dem das FREIE Geld aufgebraucht ist
+--       (ohne Lauf-Ende „ueber <Monat> hinaus“; nie ein negativer Kontostand, Owner-Abnahme 2026-10-31). Pille nur
+--       warn/alert, gebaut allein von finance.fn_app_low_state_pill (Konten-Zeile funding mit p_month_row: „x im Monat
+--       mehr ab als rein“); Kurs fehlt -> gap ohne Pille.
+--     3 Gehen ab im <Monat> / 4 Kommen rein im <Monat> — naechster voller Kalendermonat (Owner-Entscheid 2026-10-31: jede
+--       Monatszahlung genau einmal, Ein- und Ausgaenge vergleichbar; die restlichen Tage dieses Monats stehen nur in der
+--       Bruecke von Zeile 2, wo es sie gibt), Summe + Anzahl, Aufklappen = Einzelposten (finance.fn_app_payment_rows,
+--       gedeckelt); nie eine Netto-Summe, kein Abschnittswert.
 --   Reihenfolge: alert -> warn -> Alltagskonto (cash) -> uebrige -> Name.
 --   ZERO-TRUST (core.fn_app_sees_household): eine Zahlung von einem verborgenen Konto erscheint als „Vom Haushalt“, ein
 --   Geldeingang aus verborgener Quelle ohne Namen, der Umbuchungs-Vorschlag (nennt ein Haushaltskonto) nur im Haushalt.
@@ -40,7 +43,8 @@ DECLARE
     v_hh       boolean;
     v_probe    boolean := COALESCE(p -> 'params' -> 'probe' = 'true'::jsonb, false);
     v_today    date := CURRENT_DATE;
-    v_until    date;
+    v_from     date := (date_trunc('month', CURRENT_DATE) + interval '1 month')::date;
+    v_until    date := (date_trunc('month', CURRENT_DATE) + interval '2 months' - interval '1 day')::date;
     v_acc      record;
     v_ls       jsonb;
     v_o        jsonb;
@@ -69,7 +73,6 @@ BEGIN
     END IF;
     v_pid   := p ->> 'person_id';
     v_hh    := core.fn_app_sees_household(v_pid);
-    v_until := v_today + COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'app_payments_days'), '')::int, 30);
 
     FOR v_acc IN
         SELECT a.id, a.name, a.currency, a.account_type::text AS account_type, a.last_reconciled_at,
@@ -81,7 +84,7 @@ BEGIN
          ORDER BY a.name, a.id
     LOOP
         v_cur := v_acc.currency;
-        v_occ := finance.fn_app_payment_occurrences(v_acc.id, v_today, v_until, v_hh, v_pid);
+        v_occ := finance.fn_app_payment_occurrences(v_acc.id, v_from, v_until, v_hh, v_pid);
         v_ls := finance.fn_account_low_state(v_acc.id, v_probe);
         -- leeres Konto ohne Bewegung entfaellt (B10) — ausser es traegt schon eine Warnung (Sparplan ab naechstem Monat)
         CONTINUE WHEN v_acc.balance = 0 AND jsonb_array_length(v_occ->'rows') = 0 AND v_ls->>'state' NOT IN ('warn', 'alert');
@@ -123,9 +126,13 @@ BEGIN
             v_det := v_det || jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_owner'),
                                                  'value', COALESCE(to_jsonb(v_acc.owner_name), core.fn_ui_tpl('finance.app.common.joint')));
         END IF;
-        IF v_acc.last_reconciled_at IS NOT NULL THEN
+        -- Kontoauszug bei jedem Konto an derselben Stelle; ein Geld-Konto, dem ohne Auszug die Vorschau fehlt (kein Urteil),
+        -- sagt dort, was fehlt und wer es behebt (ein Sparkonto mit „Reicht bis“ braucht keinen)
+        IF v_acc.last_reconciled_at IS NOT NULL OR (v_acc.account_type = 'cash' AND v_ls->>'source' = 'none') THEN
             v_det := v_det || jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_statement'),
-                                                 'value', core.fn_ui_date(v_acc.last_reconciled_at));
+                                                 'value', CASE WHEN v_acc.last_reconciled_at IS NOT NULL
+                                                               THEN core.fn_ui_date(v_acc.last_reconciled_at)
+                                                               ELSE core.fn_ui_tpl('finance.app.accounts.d_statement_none') END);
         END IF;
         v_items := jsonb_build_array(jsonb_build_object(
             'label', core.fn_ui_tpl('finance.app.accounts.balance_today'),
@@ -139,8 +146,9 @@ BEGIN
         -- 2 Tiefster Stand (Urteil aus fn_account_low_state): bei Abfluss im Horizont oder wenn es ein Urteil gibt (der
         --   Banner der Startseite zeigt nie auf ein Konto ohne passende Zeile)
         IF v_ls->>'source' <> 'none' AND ((v_ls->>'has_outflow')::boolean OR v_ls->>'state' IN ('warn', 'alert')) THEN
-            -- die EINE Pille zum Urteil (auch Spiegel-Pille am Sparplan auf Ziele)
-            v_pill := finance.fn_app_low_state_pill(v_ls);
+            -- die EINE Pille zum Urteil (auch Spiegel-Pille am Sparplan auf Ziele); die Zeile „Reicht bis“ traegt den
+            -- Monat schon als Wert, ihre Pille sagt deshalb, warum (p_month_row)
+            v_pill := finance.fn_app_low_state_pill(v_ls, v_ls->>'source' = 'funding');
             IF v_pill IS NOT NULL THEN
                 v_rank := LEAST(v_rank, CASE v_pill->>'state' WHEN 'alert' THEN 1 ELSE 2 END);
             END IF;
@@ -216,12 +224,17 @@ BEGIN
                     'gap', (v_ls->>'gap')::boolean, 'pill', v_pill, 'progress', NULL, 'target', NULL,
                     'details', v_det);
             ELSE
+                -- Spar-/Deckungskonto: bis wann reicht das FREIE Geld (nie ein negativer Kontostand in 24 Monaten)
                 v_items := v_items || jsonb_build_object(
-                    'label', core.fn_ui_tpl('finance.app.accounts.low'),
+                    'label', core.fn_ui_tpl(CASE WHEN v_ls->>'on_date' IS NOT NULL THEN 'finance.app.accounts.until'
+                                                 ELSE 'finance.app.accounts.lasts' END),
                     'sub', core.fn_ui_tpl('finance.app.accounts.low_funding_sub', jsonb_build_object(
                                'out', core.fn_ui_money(abs(COALESCE((v_ls->>'monthly_out')::numeric, 0)), v_cur),
                                'in', core.fn_ui_money(COALESCE((v_ls->>'monthly_in')::numeric, 0), v_cur))),
-                    'value', core.fn_ui_money((v_ls->>'amount')::numeric, v_cur),
+                    'value', CASE WHEN v_ls->>'on_date' IS NOT NULL THEN core.fn_ui_month((v_ls->>'on_date')::date)
+                                  WHEN v_ls->>'horizon_end' IS NOT NULL
+                                  THEN core.fn_ui_tpl('finance.app.accounts.until_beyond', jsonb_build_object(
+                                           'month', core.fn_ui_month((v_ls->>'horizon_end')::date))) END,
                     'gap', (v_ls->>'gap')::boolean, 'pill', v_pill, 'progress', NULL, 'target', NULL);
             END IF;
         END IF;
@@ -233,8 +246,8 @@ BEGIN
              WHERE CASE WHEN v_n = 0 THEN (x->>'amount')::numeric < 0 ELSE (x->>'amount')::numeric > 0 END;
             CONTINUE WHEN jsonb_array_length(v_det) = 0;
             v_items := v_items || jsonb_build_object(
-                'label', core.fn_ui_tpl(CASE WHEN v_n = 0 THEN 'finance.app.accounts.out_until' ELSE 'finance.app.accounts.in_until' END,
-                             jsonb_build_object('date', core.fn_ui_date(v_until))),
+                'label', core.fn_ui_tpl(CASE WHEN v_n = 0 THEN 'finance.app.accounts.out_month' ELSE 'finance.app.accounts.in_month' END,
+                             jsonb_build_object('month', core.fn_ui_month(v_from, true))),
                 'sub', core.fn_ui_tpl(CASE WHEN v_n = 0 AND jsonb_array_length(v_det) = 1 THEN 'finance.app.accounts.n_payment_one'
                                            WHEN v_n = 0 THEN 'finance.app.accounts.n_payments'
                                            WHEN jsonb_array_length(v_det) = 1 THEN 'finance.app.accounts.n_incoming_one'
@@ -248,10 +261,6 @@ BEGIN
         v_secs := v_secs || jsonb_build_object('rank', v_rank, 'name', v_acc.name, 'section', jsonb_build_object(
             'title', core.fn_ui_tpl('finance.app.accounts.section', jsonb_build_object('account', v_acc.name)),
             'value', NULL,
-            -- Alltagskonto ohne Auszug (kein Urteil, aber Abgaenge): Ursache + Loesung statt einer Zahl
-            'note', CASE WHEN v_ls->>'source' = 'none' AND v_acc.account_type = 'cash'
-                              AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_occ->'rows') x WHERE (x->>'amount')::numeric < 0)
-                         THEN core.fn_ui_tpl('finance.app.accounts.no_statement') END,
             'empty', core.fn_ui_tpl('finance.app.accounts.empty'),
             'items', v_items));
     END LOOP;

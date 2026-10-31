@@ -35,6 +35,10 @@ BEGIN
   IF core.fn_ui_month('2027-04-30') <> '{"kind":"month","value":"2027-04"}'::jsonb THEN
     RAISE EXCEPTION 'FAIL ui_month [%]', core.fn_ui_month('2027-04-30'); END IF;
   IF core.fn_ui_month(NULL)->'value' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL ui_month [NULL]'; END IF;
+  -- Monatsname („Gehen ab im November“): style long, sonst unveraendert
+  IF core.fn_ui_month('2027-04-30', true) <> '{"kind":"month","value":"2027-04","style":"long"}'::jsonb
+     OR core.fn_ui_month('2027-04-30', false) ? 'style' THEN
+    RAISE EXCEPTION 'FAIL ui_month [long] %', core.fn_ui_month('2027-04-30', true); END IF;
   RAISE NOTICE 'PASS fn_ui_tpl/money/num/date/month [Form, Rundung, Defaults, NULL]';
 END $$;
 

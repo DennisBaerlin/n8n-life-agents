@@ -21,6 +21,7 @@
 DROP VIEW IF EXISTS finance.savings_goal_reserve_breakdown CASCADE;
 DROP VIEW IF EXISTS finance.depot_reserve_status CASCADE;   -- haengt an depot_holdings_overview
 DROP VIEW IF EXISTS finance.networth_by_asset_class CASCADE;
+DROP VIEW IF EXISTS finance.networth_items CASCADE;   -- networth_by_asset_class aggregiert daraus
 DROP VIEW IF EXISTS finance.loan_summary CASCADE;
 DROP VIEW IF EXISTS finance.parent_cashflow_summary CASCADE;
 DROP VIEW IF EXISTS finance.monthly_cashflow_summary CASCADE;   -- haengt (Paket 3) an cashflow_summary_by_scope
@@ -886,8 +887,12 @@ WHERE finance.fn_loan_is_outstanding(status);
 --   kollabiert, additiv) · T2 Eltern-/FIRE-Pool (Konsument schliesst role='child' via core.fn_household_persons()
 --   aus) · T3 Pro-Kind (WHERE owner_person_id = Kind-Slug). owner_person_id ist roher Slug (kein Window-Join in
 --   der View -> finance_ro liest sie unveraendert); die Rollen-Aufloesung macht der Konsument.
+-- Zwei Ebenen EINER Rechnung: finance.networth_items = je Objekt (Konto/Depot-Position/Immobilie/Vorsorge; item_kind,
+--   item_id, item_name, value_eur unrund, value_native) — die Mini-App klappt eine Anlageart damit in ihre Konten,
+--   Depots und Objekte auf (Owner-Abnahme 2026-10-31), die Teile ergeben die Zeile. networth_by_asset_class
+--   aggregiert daraus (Ausgabe unveraendert).
 -- ============================================================
-CREATE VIEW finance.networth_by_asset_class AS
+CREATE VIEW finance.networth_items AS
 WITH latest_price AS (
     SELECT DISTINCT ON (mp.symbol) mp.symbol, mp.price, mp.currency, mp.as_of
     FROM finance.market_prices mp
@@ -908,7 +913,8 @@ parts AS (
                 ELSE finance.fn_to_eur(h.shares * h.average_purchase_price, h.currency)
            END AS value_eur,
            -- Nativwert (fuer has_fx_gap): Kurs-Wert, sonst Buchwert; ohne beides keine FX-Luecke (fehlende Daten).
-           COALESCE(h.shares * lp.price, h.shares * h.average_purchase_price) AS value_native
+           COALESCE(h.shares * lp.price, h.shares * h.average_purchase_price) AS value_native,
+           'account'::text AS item_kind, da.id AS item_id, da.name::text AS item_name
     FROM finance.depot_holdings h
     JOIN finance.accounts da ON da.id = h.account_id
     LEFT JOIN latest_price lp ON lp.symbol = h.symbol
@@ -925,7 +931,8 @@ parts AS (
            -- der Kredit eines Kindes gehoert in dessen Vermoegen, nicht in den Haushalts-Pool).
            COALESCE(a.owner_person_id, ln.borrower_person_id) AS owner_person_id,
            finance.fn_to_eur(b.balance, a.currency) AS value_eur,  -- cash/fixed_deposit brutto, p2p (Nennwert), loan (negativ)
-           b.balance AS value_native
+           b.balance AS value_native,
+           'account'::text, a.id, a.name::text
     FROM finance.accounts a
     JOIN finance.account_balances b ON b.account_id = a.id
     LEFT JOIN LATERAL (
@@ -938,16 +945,22 @@ parts AS (
 
     UNION ALL
     -- Immobilie (Brutto-Wert; gilt als EUR)
-    SELECT 'real_estate', 'real_estate', re.owner_person_id, re.current_value, re.current_value
+    SELECT 'real_estate', 'real_estate', re.owner_person_id, re.current_value, re.current_value,
+           'real_estate', re.id, re.name::text
     FROM finance.real_estate re
     WHERE re.status = 'active' AND re.current_value IS NOT NULL
 
     UNION ALL
     -- Altersvorsorge (akkumulierter Wert; NULL bei unbekannt -> raus)
-    SELECT 'pension', 'pension', p.owner_person_id, p.current_value, p.current_value
+    SELECT 'pension', 'pension', p.owner_person_id, p.current_value, p.current_value,
+           'pension', p.id, p.name::text
     FROM finance.pension p
     WHERE p.status = 'active' AND p.current_value IS NOT NULL
 )
+SELECT bucket, asset_class, owner_person_id, value_eur, value_native, item_kind, item_id, item_name
+FROM parts;
+
+CREATE VIEW finance.networth_by_asset_class AS
 SELECT bucket,
        asset_class,
        owner_person_id,
@@ -956,7 +969,7 @@ SELECT bucket,
        -- Audit Paket 2 (Punkt 11): ein Wert ohne Wechselkurs faellt sonst STILL als 0 aus value_eur (sum ignoriert
        -- NULL) -> als Luecke melden. Ein fehlender Marktpreis ist keine Luecke (Buchwert-Fallback oben).
        COALESCE(bool_or(value_native <> 0 AND value_eur IS NULL), false) AS has_fx_gap
-FROM parts
+FROM finance.networth_items
 GROUP BY bucket, asset_class, owner_person_id;
 
 -- ============================================================

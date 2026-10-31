@@ -55,6 +55,10 @@ BEGIN
   SELECT i INTO it FROM jsonb_array_elements(s->'items') i WHERE i->'label' = core.fn_ui_tpl('finance.app.accounts.low');
   IF it IS NULL OR jsonb_array_length(it->'details') > 8 OR jsonb_array_length(it->'details') < 3 THEN
     RAISE EXCEPTION 'FAIL [2c] Girokonto: Tiefster Stand mit Bruecke (3..8 Zeilen), got %', it; END IF;
+  -- die Pille kommt allein aus fn_app_low_state_pill (dieselbe wie am Sparplan; „x unter dem Puffer" = short_by)
+  IF it->'pill' IS DISTINCT FROM finance.fn_app_low_state_pill(finance.fn_account_low_state(
+       (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_giro_jonas'))) THEN
+    RAISE EXCEPTION 'FAIL [2c2] Girokonto: Pille = fn_app_low_state_pill(fn_account_low_state), got %', it->'pill'; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i WHERE i->'label'->>'value' = 'finance.app.accounts.out_until'
                                                                    AND (i->'value'->>'value')::numeric < 0)
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i WHERE i->'label'->>'value' = 'finance.app.accounts.in_until'

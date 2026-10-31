@@ -1,11 +1,11 @@
 -- ============================================================
--- fn_app_order_line (READ, STABLE) -- Anzeige-Wert eines Dauerauftrags fuer die Mini-App: „Betrag · Rhythmus[ · ab Datum]"
+-- fn_app_order_line (READ, STABLE) -- Anzeige-Wert einer Rate fuer die Mini-App: „Betrag · Rhythmus[ · ab Datum]"
 --   als typisierter Text-Verweis (View-Modell v1, docs/package-contract.md §3.12; die Seite rechnet nichts).
 --   Betrag = abs(amount) je Ausfuehrung in Waehrung des Quellkontos. Rhythmus (fn_schedule_label ist Modell-Text und
 --   wird nie angezeigt): monatlich am Tag / an festen Tagen / zum Monatsende (-1) / am vorletzten Tag (-2) / ohne festen
---   Tag „Tag frei (gerechnet: Tag des ersten Termins)" (die Bank braucht einen Tag); jeder andere Rhythmus nennt die
+--   Tag nur „monatlich" (kein gerechneter Tag: Laien-Test, Abnahme 2026-10-31); jeder andere Rhythmus nennt die
 --   Haeufigkeit (vierteljaehrlich, alle n Monate, jaehrlich, alle n Jahre, woechentlich, alle n Wochen, alle n Tage)
---   + den naechsten Termin (fn_schedule_occurrences) -> die Bank-To-do ist ohne Rueckfrage abtippbar.
+--   + den naechsten Termin (fn_schedule_occurrences).
 --   „ab <valid_from>", solange das Glied erst kuenftig startet.
 --   Konsument: fn_app_screen_goals (Rate eines Ziels, Sparplan-Rhythmus, geplante Aenderung).
 --   RUECKGABE: tpl finance.app.goals.amount_rhythm[_from] | NULL (unbekannte id)
@@ -39,8 +39,7 @@ BEGIN
         v_rhythm := core.fn_ui_tpl('finance.app.goals.rhythm_month_day',
                         jsonb_build_object('day', core.fn_ui_num(r.schedule_day_of_month)));
     ELSIF r.schedule_unit = 'month' AND v_n = 1 THEN
-        v_rhythm := core.fn_ui_tpl('finance.app.goals.rhythm_month_free',
-                        jsonb_build_object('day', core.fn_ui_num(extract(day FROM r.first_payment_date))));
+        v_rhythm := core.fn_ui_tpl('finance.app.goals.rhythm_month');
     ELSE
         v_from := GREATEST(current_date, r.valid_from);
         SELECT min(o.d) INTO v_next

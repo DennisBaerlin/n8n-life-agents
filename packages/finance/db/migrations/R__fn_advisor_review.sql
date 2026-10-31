@@ -323,6 +323,9 @@ BEGIN
                  ON e.account_id = d.account_id
             JOIN finance.savings_goal_progress g ON g.id = e.savings_goal_id
             WHERE d.breach AND g.status = 'active'
+              -- Mini-App UX 2026-10-30: eine Kursdelle unter finance.depot_cover_warn_pct ist keine Luecke -- dieselbe
+              -- Regel wie die App (finance.fn_depot_cover_state); nicht ermittelbar meldet sich weiter (fail-loud)
+              AND finance.fn_depot_cover_state(d.account_id)->>'state' <> 'dip'
         ),
         marked AS (
             -- Audit Paket 3: ein nicht messbares Ziel (laufende Rate ohne Topf -> catchup/projected NULL) gilt NIE als

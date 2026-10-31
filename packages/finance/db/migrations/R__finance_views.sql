@@ -453,7 +453,14 @@ SELECT
     b.measurable                                        AS progress_measurable,  -- Audit Paket 3 (ans Ende angehaengt)
     b.saved - b.paced                                   AS earmarked_amount,     -- davon Hand-Zuordnung (EUR; 2026-10-27)
     b.real_estate_id,                                   -- gesetzt = Instandhaltungsruecklage (ohne Ziel/Datum -> Prozent/Rest/Pace NULL)
-    b.fx_gap                                            AS has_fx_gap            -- ein Ziel-Anteil ohne Wechselkurs: current_amount zu niedrig (2026-10-28)
+    b.fx_gap                                            AS has_fx_gap,           -- ein Ziel-Anteil ohne Wechselkurs: current_amount zu niedrig (2026-10-28)
+    -- Rueckstand in EUR = Soll-Stand heute (linearer Zeit-Pace wie pace_drift_pp, UNGERUNDET) minus Gespartes, >= 0;
+    -- NULL ohne Messbarkeit oder bei fx-Luecke (der Stand waere zu niedrig, der Rueckstand zu hoch). Mini-App 2026-10-30.
+    CASE WHEN b.target_date > b.created_at::date AND b.target_amount > 0 AND b.measurable AND NOT b.fx_gap
+         THEN round(GREATEST(LEAST(GREATEST((current_date - b.created_at::date)::numeric
+                                            / (b.target_date - b.created_at::date), 0), 1) * b.target_amount
+                             - b.saved, 0), 2)
+         ELSE NULL END                                  AS behind_amount
 FROM base b;
 
 -- ============================================================

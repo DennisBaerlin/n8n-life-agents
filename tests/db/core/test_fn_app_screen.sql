@@ -94,7 +94,12 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [2] Bildschirm: %', r; END IF;
   IF r->'view'->'sections'->0->'items'->0->>'label' IS DISTINCT FROM 'owner' THEN RAISE EXCEPTION 'FAIL [2] Person aus dem Body uebernommen: %', r; END IF;
   IF r->'ui'->'t'->>'core.app.title' IS DISTINCT FROM 'DE:core.app.title' THEN RAISE EXCEPTION 'FAIL [2] Texte aus dem View fehlen in ui.t: %', r; END IF;
-  RAISE NOTICE 'PASS [2] Bildschirm Owner, Zero-Trust person_id';
+  -- Datums-Kurzform (Mini-App UX 2026-10-30): Fenster [heute - 3 Monate, heute + 9 Monate) aus der DB, nie Geraeteuhr
+  IF r->'ui'->'date_short' IS DISTINCT FROM jsonb_build_object(
+       'from', to_char(core.fn_today() - interval '3 months', 'YYYY-MM-DD'),
+       'to', to_char(core.fn_today() + interval '9 months', 'YYYY-MM-DD')) THEN
+    RAISE EXCEPTION 'FAIL [2] ui.date_short-Fenster: %', r->'ui'; END IF;
+  RAISE NOTICE 'PASS [2] Bildschirm Owner, Zero-Trust person_id, Datums-Fenster';
 
   -- [3] audience=owner: Partner abgewiesen, Text in seiner Sprache (ko)
   r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(222, 'ko'))::text);

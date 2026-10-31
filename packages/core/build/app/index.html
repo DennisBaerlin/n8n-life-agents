@@ -95,6 +95,7 @@ body.loading #app { opacity: .45; }
   color: var(--head); margin: 0; min-width: 0;
 }
 .sec-value { color: var(--head); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sec-note { color: var(--hint); font-size: 13px; margin: -4px 4px 8px; }
 .card { background: var(--card); border-radius: var(--radius); }
 .sec-empty { margin: 0; padding: 14px 16px; color: var(--hint); }
 .list { list-style: none; margin: 0; padding: 0; }
@@ -127,6 +128,9 @@ button.row:active, button.banner:active { opacity: .6; }
 .bar-fill { height: 100%; border-radius: inherit; background: var(--st); }
 
 .gap { display: flex; align-items: center; gap: 4px; color: var(--hint); font-size: 12.5px; margin-top: 4px; }
+/* Veraenderung (Gewinn/Rendite) ist Information, kein Urteil: Pfeil + Text in Textfarbe, keine Pille */
+.trend { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.trend .ic { width: 13px; height: 13px; }
 
 .center { display: flex; flex-direction: column; align-items: center; gap: 18px; margin-top: 30vh; text-align: center; }
 .big { font-size: 40px; line-height: 1; }
@@ -408,6 +412,8 @@ button.row:active, button.banner:active { opacity: .6; }
       if (!R.isEmpty(s.value)) head.appendChild(el('span', 'sec-value', R.val(s.value)));
       box.appendChild(head);
     }
+    // section.note (optional): ein grauer Satz zum ganzen Abschnitt, keine Listenzeile
+    if (s.note) box.appendChild(el('p', 'sec-note', txt(R, s.note)));
     const items = Array.isArray(s.items) ? s.items : [];
     if (!items.length) {
       box.appendChild(el('p', 'card sec-empty', s.empty ? txt(R, s.empty) : R.empty));
@@ -455,6 +461,7 @@ button.row:active, button.banner:active { opacity: .6; }
     if (it.gap === true) left.appendChild(gapNote(R));
     const right = el('div', 'right');
     if (it.value !== null && it.value !== undefined) right.appendChild(el('div', 'value', R.val(it.value)));
+    if (it.trend && typeof it.trend === 'object') right.appendChild(trend(it.trend, R));
     if (it.pill && typeof it.pill === 'object') right.appendChild(pill(it.pill, R));
     row.appendChild(left);
     if (right.firstChild) row.appendChild(right);
@@ -469,6 +476,14 @@ button.row:active, button.banner:active { opacity: .6; }
     const ic = icon(p.icon);
     if (ic) s.appendChild(ic);
     if (p.text) s.appendChild(el('span', null, txt(R, p.text)));
+    return s;
+  }
+  // item.trend (optional) {direction: up|down|flat, text}: Pfeil nur aus der Whitelist, Text wie jeder andere Wert
+  function trend(tr, R) {
+    const s = el('span', 'trend');
+    const ic = icon(tr.direction === 'up' || tr.direction === 'down' ? tr.direction : null);
+    if (ic) s.appendChild(ic);
+    if (tr.text) s.appendChild(el('span', null, txt(R, tr.text)));
     return s;
   }
   function bar(p) {

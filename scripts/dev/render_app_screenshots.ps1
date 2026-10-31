@@ -31,7 +31,7 @@ foreach ($f in 'packages\core\locales\de.json', 'packages\finance\locales\de.jso
     foreach ($p in $j.PSObject.Properties) { $cat[$p.Name] = $p.Value }
 }
 $keys = 'core.app.title', 'core.app.gap', 'core.fmt.empty', 'finance.app.screen.overview', 'finance.app.overview.title',
-        'finance.app.overview.hero', 'finance.app.overview.section_liquid', 'finance.app.overview.section_kids',
+        'finance.app.overview.hero', 'finance.app.overview.section_liquid', 'finance.app.common.kids_not_in_sum',
         'finance.app.overview.section_accounts', 'finance.app.overview.share', 'finance.app.overview.owner_confirmed',
         'finance.app.overview.empty', 'finance.app.common.joint', 'finance.enum.asset_bucket.cash', 'finance.enum.asset_bucket.depot'
 $t = [ordered]@{}
@@ -75,13 +75,16 @@ $view = [ordered]@{
     banners  = @()
     sections = @(
         [ordered]@{ title = (Tpl 'finance.app.overview.section_liquid'); value = (Money 48250.37); empty = $empty; items = $assets },
-        [ordered]@{ title = (Tpl 'finance.app.overview.section_kids'); value = $null; empty = $empty; items = $kids },
+        [ordered]@{ title = (Tpl 'finance.app.common.kids_not_in_sum'); value = $null; empty = $empty; items = $kids },
         [ordered]@{ title = (Tpl 'finance.app.overview.section_accounts'); value = $null; empty = $empty; items = $accounts }
     )
 }
 $nav = [ordered]@{
     ok = $true
-    ui = [ordered]@{ lang = 'de'; locale = 'de-DE'; t = $t }
+    # Datums-Kurzform wie core.fn_app_screen (Fenster [heute - 3 Monate, heute + 9 Monate)), sonst zeigte das Bild Jahre,
+    # die die App nicht zeigt
+    ui = [ordered]@{ lang = 'de'; locale = 'de-DE'; t = $t
+                     date_short = [ordered]@{ from = (Get-Date).AddMonths(-3).ToString('yyyy-MM-dd'); to = (Get-Date).AddMonths(9).ToString('yyyy-MM-dd') } }
     screens = @([ordered]@{ screen = 'overview'; title = (Tpl 'finance.app.screen.overview'); icon = '💶' })
     first = [ordered]@{ screen = 'overview'; view = $view }
 }

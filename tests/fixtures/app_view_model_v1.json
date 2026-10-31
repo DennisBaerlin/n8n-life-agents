@@ -11,7 +11,8 @@
         "core.app.gap": "unvollständig – ein Kurs fehlt",
         "core.fmt.empty": "—",
         "finance.app.screen.overview": "Vermögen"
-      }
+      },
+      "date_short": { "from": "2026-07-30", "to": "2027-07-30" }
     },
     "screens": [
       { "screen": "overview", "title": { "kind": "tpl", "value": "finance.app.screen.overview", "params": {} }, "icon": "💶" }
@@ -76,6 +77,7 @@
         {
           "title": { "kind": "tpl", "value": "finance.app.overview.section_accounts", "params": {} },
           "value": { "kind": "money", "value": 3510.55, "currency": "EUR" },
+          "note": { "kind": "tpl", "value": "finance.app.payments.no_outlook", "params": {} },
           "empty": { "kind": "tpl", "value": "finance.app.overview.empty", "params": {} },
           "items": [
             {
@@ -98,6 +100,16 @@
               "value": { "kind": "money", "value": 1200.00, "currency": "USD" },
               "gap": true,
               "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.pill.price_missing", "params": {} } },
+              "progress": null,
+              "target": null
+            },
+            {
+              "label": "Welt ETF",
+              "sub": null,
+              "value": { "kind": "money", "value": 1200.00, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "trend": { "direction": "up", "text": { "kind": "tpl", "value": "finance.app.depot.gain", "params": { "amount": { "kind": "money", "value": 200.00, "currency": "EUR", "sign": true }, "pct": { "kind": "number", "value": 20.0, "digits": 1, "sign": true } } } },
               "progress": null,
               "target": null
             },

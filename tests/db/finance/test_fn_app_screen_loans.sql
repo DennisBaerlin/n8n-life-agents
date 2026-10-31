@@ -71,36 +71,37 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1b3] Vermoegen „Kredite" muss = Kredit-Hero (-12800) sein'; END IF;
   IF jsonb_array_length(v->'sections'->0->'items') <> 6 OR v::text LIKE '%__apl_bezahlt__%' THEN
     RAISE EXCEPTION 'FAIL [1c] 6 ausstehende Haushalts-Kredite erwartet: %', v->'sections'; END IF;
-  IF v->'sections'->1->'title' <> core.fn_ui_tpl('finance.app.loans.section_kids')
+  IF v->'sections'->1->'title' <> core.fn_ui_tpl('finance.app.common.kids_not_in_sum')
      OR v->'sections'->1->'value' <> core.fn_ui_money(500, 'EUR')
      OR v->'sections'->1->'items'->0->>'label' <> '__apl_kid_kredit__' THEN
     RAISE EXCEPTION 'FAIL [1c2] Kinder-Abschnitt mit Summe 500: %', v->'sections'->1; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_haus__';
   IF v_it->'value' <> core.fn_ui_money(8000, 'EUR') OR (v_it->'progress'->>'pct')::numeric IS DISTINCT FROM 20.0
-     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.loans.rate_line_lender', jsonb_build_object(
-          'lender', 'Bank', 'rate', core.fn_ui_money(300, 'EUR'), 'interest', core.fn_ui_num(3.5, 2)))
+     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.loans.rate_line_payoff', jsonb_build_object(
+          'rate', core.fn_ui_money(300, 'EUR'), 'interest', core.fn_ui_num(3.5, 2),
+          'year', (SELECT to_char(payoff_date_projected, 'YYYY') FROM finance.loan_overview WHERE id = v_l1)))
      OR v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->>'icon' <> 'calendar'
      OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.fixed_ends',
           jsonb_build_object('date', core.fn_ui_date((t + interval '12 months')::date - 1))) THEN
-    RAISE EXCEPTION 'FAIL [1d] Haus-Kredit (Rest, 20 %% getilgt, Bank/Zins/Rate, warn 1 Tag vor 12 Monaten): %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [1d] Haus-Kredit (Rest, 20 %% getilgt, Zins/Rate/schuldenfrei im Untertitel, warn 1 Tag vor 12 Monaten): %', v_it; END IF;
   SELECT array_agg(d->'label'->>'value' ORDER BY o) INTO v_keys FROM jsonb_array_elements(v_it->'details') WITH ORDINALITY AS t(d, o);
-  IF v_keys IS DISTINCT FROM ARRAY['finance.app.loans.d_borrower', 'finance.app.loans.d_amount', 'finance.app.loans.d_repaid',
+  IF v_keys IS DISTINCT FROM ARRAY['finance.app.loans.d_lender', 'finance.app.loans.d_borrower', 'finance.app.loans.d_amount', 'finance.app.loans.d_repaid',
                                    'finance.app.loans.d_split', 'finance.app.loans.d_fixed', 'finance.app.loans.d_payoff',
                                    'finance.app.loans.d_interest_left'] THEN
     RAISE EXCEPTION 'FAIL [1d2] Details in fester Reihenfolge, NULL-Zeilen entfallen (kein Laufzeitende), got %', v_keys; END IF;
-  IF v_it->'details'->0->'value' <> core.fn_ui_tpl('finance.app.common.joint')
-     OR v_it->'details'->2->'value' <> core.fn_ui_tpl('finance.app.loans.d_repaid_value', jsonb_build_object(
+  IF v_it->'details'->0->'value' <> to_jsonb('Bank'::text) OR v_it->'details'->1->'value' <> core.fn_ui_tpl('finance.app.common.joint')
+     OR v_it->'details'->3->'value' <> core.fn_ui_tpl('finance.app.loans.d_repaid_value', jsonb_build_object(
           'pct', core.fn_ui_num(20.0, 1), 'amount', core.fn_ui_money(2000, 'EUR')))
-     OR v_it->'details'->3->'value' <> core.fn_ui_tpl('finance.app.loans.d_split_value', jsonb_build_object(
+     OR v_it->'details'->4->'value' <> core.fn_ui_tpl('finance.app.loans.d_split_value', jsonb_build_object(
           'interest', core.fn_ui_money(23.33, 'EUR'), 'principal', core.fn_ui_money(276.67, 'EUR')))
-     OR v_it->'details'->5->'value' <> (SELECT core.fn_ui_date(payoff_date_projected) FROM finance.loan_overview WHERE id = v_l1) THEN
-    RAISE EXCEPTION 'FAIL [1d3] Details: Gemeinsam, getilgt 20 %% · 2000, Zins 23.33 + Tilgung 276.67, schuldenfrei-Datum, got %', v_it->'details'; END IF;
+     OR v_it->'details'->6->'value' <> (SELECT core.fn_ui_date(payoff_date_projected) FROM finance.loan_overview WHERE id = v_l1) THEN
+    RAISE EXCEPTION 'FAIL [1d3] Details: Bank, Gemeinsam, getilgt 20 %% · 2000, Zins 23.33 + Tilgung 276.67, schuldenfrei-Datum, got %', v_it->'details'; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->'label' = to_jsonb('<img src=x onerror=alert(1)>'::text);
   IF v_it IS NULL OR jsonb_typeof(v_it->'progress') <> 'null'
-     OR v_it->'pill' <> jsonb_build_object('state', 'neutral', 'icon', 'calendar', 'text', core.fn_ui_tpl('finance.app.loans.payoff_year',
-          jsonb_build_object('year', (SELECT to_char(payoff_date_projected, 'YYYY') FROM finance.loan_overview WHERE id = v_l2))))
-     OR v_it->'details'->0->'value' <> to_jsonb('Partner Beispiel'::text) THEN
-    RAISE EXCEPTION 'FAIL [1e] Partner-Kredit: Rohname, Pille „schuldenfrei Jahr" (Bindung in 3 Jahren), kein Balken ohne Kreditbetrag, Kreditnehmer: %', v_it; END IF;
+     OR jsonb_typeof(v_it->'pill') <> 'null'
+     OR v_it->'sub'->'params'->>'year' <> (SELECT to_char(payoff_date_projected, 'YYYY') FROM finance.loan_overview WHERE id = v_l2)
+     OR v_it->'details'->1->'value' <> to_jsonb('Partner Beispiel'::text) THEN
+    RAISE EXCEPTION 'FAIL [1e] Partner-Kredit: Rohname, keine Pille, schuldenfrei-Jahr im Untertitel statt Pille „schuldenfrei Jahr" (Bindung in 3 Jahren), kein Balken ohne Kreditbetrag, Kreditnehmer: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_pausiert__';
   IF v_it->'pill'->>'state' <> 'warn' THEN RAISE EXCEPTION 'FAIL [1f] pausiert + Bindung bald -> warn: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_pause_frei__';
@@ -111,13 +112,27 @@ BEGIN
        jsonb_build_object('date', core.fn_ui_date(t - 30))) THEN
     RAISE EXCEPTION 'FAIL [1g] abgelaufene Bindung -> warn „endete“: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_grenze__';
-  IF v_it->'pill'->'text'->>'value' <> 'finance.app.loans.payoff_year' THEN
-    RAISE EXCEPTION 'FAIL [1h] genau 12 Monate -> keine Bindungs-Warnung (nur schuldenfrei): %', v_it; END IF;
+  IF jsonb_typeof(v_it->'pill') <> 'null' OR v_it->'sub'->>'value' <> 'finance.app.loans.rate_line_payoff' THEN
+    RAISE EXCEPTION 'FAIL [1h] genau 12 Monate -> keine Bindungs-Warnung (nur schuldenfrei im Untertitel): %', v_it; END IF;
   IF v::text ~ '"[a-z_]*id"\s*:' OR v::text LIKE '%__apl_giro__%' THEN
     RAISE EXCEPTION 'FAIL [1i] Antwort traegt ein *id-Feld oder einen Kontonamen'; END IF;
   IF finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_partner', 'params', '{}'::jsonb)) <> v THEN
     RAISE EXCEPTION 'FAIL [1j] Partner = Haushalts-Sicht'; END IF;
-  RAISE NOTICE 'PASS [1] Haushalt: Kredite, Hero, Pillen-Prioritaet, 12-Monats-Grenze';
+  -- Schlussrate (Mini-App UX 2026-10-30): zum Laufzeitende bleibt Restschuld -> Untertitel „Schlussrate {Datum}", keine Pille
+  DECLARE v_l9 int; BEGIN
+    v_l9 := (finance.fn_create_loan(jsonb_build_object('name', '__apl_schluss__', 'lender', 'Bank', 'current_balance', 10000,
+              'interest_rate', 2, 'monthly_annuity', 100, 'first_payment_date', (t + 5)::text, 'debit_account_id', v_giro,
+              'term_end_date', (t + interval '2 years')::date::text))->>'loan_id')::int;
+    SELECT i INTO v_it FROM jsonb_array_elements(finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_owner'))->'sections'->0->'items') i
+     WHERE i->>'label' = '__apl_schluss__';
+    IF v_it->'sub' <> core.fn_ui_tpl('finance.app.loans.rate_line_final', jsonb_build_object(
+         'interest', core.fn_ui_num(2, 2), 'rate', core.fn_ui_money(100, 'EUR'),
+         'date', (SELECT core.fn_ui_date(term_end_date) FROM finance.loan_overview WHERE id = v_l9)))
+       OR jsonb_typeof(v_it->'pill') <> 'null' THEN
+      RAISE EXCEPTION 'FAIL [1k] Schlussrate im Untertitel, keine Pille: %', v_it; END IF;
+    UPDATE finance.loans SET status = 'paid_off' WHERE id = v_l9;   -- nicht mehr ausstehend (Buchungen halten die Zeile)
+  END;
+  RAISE NOTICE 'PASS [1] Haushalt: Kredite, Hero, Pillen nur als Warnung, schuldenfrei/Schlussrate im Untertitel, 12-Monats-Grenze';
 
   -- ===== 2) Kind =====
   v := finance.fn_app_screen_loans(jsonb_build_object('person_id', 'apl_kid', 'params', '{}'::jsonb));

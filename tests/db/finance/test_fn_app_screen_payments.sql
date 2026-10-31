@@ -61,6 +61,8 @@ BEGIN
   PERFORM finance.fn_add_recurring_payment(v_giro, -15, '<img src=x onerror=alert(1)>', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 1, t + 1, NULL, NULL, NULL);
   PERFORM finance.fn_add_recurring_payment(v_p, -40, '__apy_p_abo__', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 5, t + 5, NULL, NULL, NULL);
   PERFORM finance.fn_add_recurring_payment(v_kid, -5, '__apy_kid_abo__', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 4, t + 4, NULL, NULL, NULL);
+  -- offene Zahlung vor heute (nach dem Abgleich): zaehlt in die Bruecke und muss beim zugeklappten ok-Konto in der Liste stehen
+  PERFORM finance.fn_add_recurring_payment(v_ok, -10, '__apy_ok_offen__', 30::smallint, 'day'::finance.schedule_unit, NULL, t - 2, t - 2, NULL, NULL, NULL);
   PERFORM finance.fn_add_recurring_payment(v_giro, -60, '__apy_spaet__', 30::smallint, 'day'::finance.schedule_unit, NULL, t + 31, t + 31, NULL, NULL, NULL);
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
                                           first_payment_date, valid_from)
@@ -74,21 +76,22 @@ BEGIN
   IF (v->>'ok')::boolean IS NOT TRUE OR NOT (v ? 'title' AND v ? 'hero' AND v ? 'banners' AND v ? 'sections') THEN
     RAISE EXCEPTION 'FAIL [1a] View-Modell v1: %', v; END IF;
   IF v->'title' <> core.fn_ui_tpl('finance.app.payments.title') OR jsonb_array_length(v->'banners') <> 0
-     OR jsonb_array_length(v->'sections') <> 7 THEN
-    RAISE EXCEPTION 'FAIL [1b] Titel / volle View ohne Banner / 7 Abschnitte (5 Vorschau + P2P + Partnerkonto): %', v; END IF;
-  -- Hero: Abgaenge ohne Uebertraege in 30 Tagen: Miete -800, XSS -15, Partner-Abo -40, Kind-Abo -5, P2P -30 (spaet t+31 draussen)
-  IF v->'hero'->'value' <> core.fn_ui_money(-890, 'EUR') OR (v->'hero'->>'gap')::boolean THEN
-    RAISE EXCEPTION 'FAIL [1c] Hero -890 EUR ohne gap erwartet: %', v->'hero'; END IF;
+     OR jsonb_array_length(v->'sections') <> 8 THEN
+    RAISE EXCEPTION 'FAIL [1b] Titel / volle View ohne Banner / 8 Abschnitte (5 Vorschau + P2P + Tagesgeld mit Eingang + Partnerkonto): %', v; END IF;
+  -- Hero: Abgaenge ohne Uebertraege in 30 Tagen: Miete -800, XSS -15, Partner-Abo -40, Kind-Abo -5, P2P -30 (spaet t+31 draussen),
+  -- + der naechste Termin der offenen ok-Zahlung (t+28, -10); positiv (das Label sagt Abgaenge)
+  IF v->'hero'->'value' <> core.fn_ui_money(900, 'EUR') OR (v->'hero'->>'gap')::boolean THEN
+    RAISE EXCEPTION 'FAIL [1c] Hero 900 EUR ohne gap erwartet: %', v->'hero'; END IF;
   IF ARRAY(SELECT s->'title'->'params'->>'account' FROM jsonb_array_elements(v->'sections') s)
-     <> ARRAY['__apy_hh_giro__', '__apy_kid_cash__', '__apy_hh_warn__', '__apy_hh_ok__', '__apy_hh_chf__', '__apy_hh_p2p__', '__apy_p_cash__'] THEN
+     <> ARRAY['__apy_hh_giro__', '__apy_kid_cash__', '__apy_hh_warn__', '__apy_hh_ok__', '__apy_hh_chf__', '__apy_hh_p2p__', '__apy_hh_tg__', '__apy_p_cash__'] THEN
     RAISE EXCEPTION 'FAIL [1d] Reihenfolge alert (Name) -> warn -> ok -> neutral -> ohne Auszug: %', v->'sections'; END IF;
 
   -- Giro: Stand 1000 (bestaetigt t-5), feste Abgaenge bis zum Tief t+9: XSS -15, Taschengeld -20, Miete -800;
   -- Alltag 10/Tag x 14 Tage = -140 (fruehester Auszug zaehlt nicht); Tief 25; Geldeingang Gehalt +2000 am t+10
   v_sec := v->'sections'->0;
   IF v_sec->'title' <> core.fn_ui_tpl('finance.app.payments.section_account', jsonb_build_object('account', '__apy_hh_giro__'))
-     OR v_sec->'value' <> core.fn_ui_money(25, 'EUR') THEN
-    RAISE EXCEPTION 'FAIL [1e] Giro-Abschnitt: Titel + Tief als Abschnittswert: %', v_sec; END IF;
+     OR jsonb_typeof(v_sec->'value') <> 'null' OR v_sec->'items'->0->'label' <> core.fn_ui_tpl('finance.app.payments.b_low') THEN
+    RAISE EXCEPTION 'FAIL [1e] Giro-Abschnitt: Titel, kein Abschnittswert, Tief als erste Zeile: %', v_sec; END IF;
   SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_start';
   IF v_b->'value' <> core.fn_ui_money(1000, 'EUR') THEN RAISE EXCEPTION 'FAIL [1f] Startstand 1000: %', v_b; END IF;
   SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_out';
@@ -116,7 +119,7 @@ BEGIN
   IF v_b->'value' <> core.fn_ui_money(250, 'EUR') OR v_b->'sub'->>'value' <> 'finance.app.payments.b_buffer_default' THEN
     RAISE EXCEPTION 'FAIL [1j] Puffer 250 (Standard): %', v_b; END IF;
   SELECT i INTO v_b FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'finance.app.payments.b_income';
-  IF v_b->'label'->'params'->>'name' <> '__apy_gehalt__' OR v_b->'value' <> core.fn_ui_money(2000, 'EUR') THEN
+  IF v_b->'label'->'params'->>'name' <> '__apy_gehalt__' OR v_b->'value' <> core.fn_ui_money(2000, 'EUR', true) THEN
     RAISE EXCEPTION 'FAIL [1k] Geldeingang mit Name (Haushalt) und Betrag: %', v_b; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->'label'->>'value' = 'finance.app.payments.b_suggest' AND i->'label'->'params'->>'from' = '__apy_hh_tg__') THEN
@@ -127,12 +130,27 @@ BEGIN
      OR v->'sections'->2->'items' @? '$[*] ? (@.label.value == "finance.app.payments.b_low" && @.pill.state != "warn")'
      OR v->'sections'->3->'items' @? '$[*] ? (@.label.value == "finance.app.payments.b_low" && @.pill.state != "ok")' THEN
     RAISE EXCEPTION 'FAIL [1m] Ampel warn/ok/neutral+gap: %', v->'sections'; END IF;
+  -- Konto ok: nur das Ergebnis (+ ggf. Zahlungen bis Fensterende), die Bruecke steckt im Aufklappen der Tief-Zeile
+  v_sec := v->'sections'->3;
+  IF jsonb_array_length(v_sec->'items') > 2 OR v_sec->'items'->0->'label' <> core.fn_ui_tpl('finance.app.payments.b_low')
+     OR NOT (v_sec->'items'->0->'details' @? '$[*] ? (@.label.value == "finance.app.payments.b_start")')
+     OR NOT (v_sec->'items'->0->'details' @? '$[*] ? (@.label.value == "finance.app.payments.b_buffer_kv")') THEN
+    RAISE EXCEPTION 'FAIL [1m2] ok-Konto zugeklappt (Tief + Bruecke im Aufklappen): %', v_sec; END IF;
+  IF v_sec->'items'->1->'label'->>'value' <> 'finance.app.payments.b_window'
+     OR NOT (v_sec->'items'->1->'details' @? '$[*] ? (@.label == "__apy_ok_offen__")') THEN
+    RAISE EXCEPTION 'FAIL [1m3] offene Zahlung vor heute steht in der Liste des ok-Kontos: %', v_sec; END IF;
   v_sec := v->'sections'->5;
-  IF v_sec->'items'->0->'label' <> core.fn_ui_tpl('finance.app.payments.no_outlook_type')
+  IF v_sec->'note' <> core.fn_ui_tpl('finance.app.payments.no_outlook_type')
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_p2p_gebuehr__') THEN
     RAISE EXCEPTION 'FAIL [1n0] P2P mit Auszug: Grund Kontoart statt "kein Auszug": %', v_sec; END IF;
+  -- Bugfix 2026-10-30: eigener Uebertrag Kind -> Tagesgeld erscheint beim Ziel als Eingang (+10), nicht nur bei der Quelle
   v_sec := v->'sections'->6;
-  IF v_sec->'items'->0->'label' <> core.fn_ui_tpl('finance.app.payments.no_outlook') OR v_sec->'value' <> core.fn_ui_money(-40, 'EUR')
+  IF v_sec->'note' <> core.fn_ui_tpl('finance.app.payments.no_outlook') OR v_sec->'value' <> core.fn_ui_money(10, 'EUR', true)
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_kid_spart__'
+                      AND i->'value' = core.fn_ui_money(10, 'EUR', true)) THEN
+    RAISE EXCEPTION 'FAIL [1n1] Tagesgeld: Eingang aus eigenem Uebertrag: %', v_sec; END IF;
+  v_sec := v->'sections'->7;
+  IF v_sec->'note' <> core.fn_ui_tpl('finance.app.payments.no_outlook') OR v_sec->'value' <> core.fn_ui_money(-40, 'EUR')
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apy_p_abo__'
                       AND i->'sub' = core.fn_ui_tpl('finance.app.payments.due_on', jsonb_build_object('date', core.fn_ui_date(t + 5)))) THEN
     RAISE EXCEPTION 'FAIL [1n] Konto ohne Auszug: Hinweis + Zahlungen + Summe: %', v_sec; END IF;
@@ -149,7 +167,7 @@ BEGIN
      OR strpos(v_txt, '__apy_gehalt__') > 0 THEN
     RAISE EXCEPTION 'FAIL [2a] Kind-Antwort leckt Haushalt/Partner/Vorschlag: %', v_txt; END IF;
   IF v_txt ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [2a2] Kind-Antwort traegt ein *id-Feld: %', v_txt; END IF;
-  IF v->'hero'->'value' <> core.fn_ui_money(-5, 'EUR') THEN RAISE EXCEPTION 'FAIL [2b] Kind-Hero -5: %', v->'hero'; END IF;
+  IF v->'hero'->'value' <> core.fn_ui_money(5, 'EUR') THEN RAISE EXCEPTION 'FAIL [2b] Kind-Hero 5: %', v->'hero'; END IF;
   IF jsonb_array_length(v->'sections') <> 1 OR v->'sections'->0->'title'->'params'->>'account' <> '__apy_kid_cash__' THEN
     RAISE EXCEPTION 'FAIL [2c] Kind: nur der eigene Konto-Abschnitt: %', v->'sections'; END IF;
   -- alle Zeilen + aufgeklappten Details des Abschnitts
@@ -160,7 +178,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec) e
                   WHERE e->'label' = core.fn_ui_tpl('finance.app.payments.from_household')
                     AND e->'value' = core.fn_ui_tpl('finance.app.payments.d_payment',
-                          jsonb_build_object('date', core.fn_ui_date(t + 2), 'amount', core.fn_ui_money(20, 'EUR')))) THEN
+                          jsonb_build_object('date', core.fn_ui_date(t + 2), 'amount', core.fn_ui_money(20, 'EUR', true)))) THEN
     RAISE EXCEPTION 'FAIL [2d] Taschengeld muss neutral „vom Haushalt“ +20 erscheinen: %', v_sec; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec) e WHERE e->>'label' = '__apy_kid_spart__') THEN
     RAISE EXCEPTION 'FAIL [2e] eigener Uebertrag des Kindes erscheint: %', v_sec; END IF;

@@ -940,8 +940,16 @@ function uiRender(B, LANGS) {
     const cur = c.toUpperCase();
     try { return plus + __MONEY__; } catch (e) { return plus + String(v) + ' ' + cur; }
   }
+  // B.date_short = {from, to} (nur die Mini-App, core.fn_app_screen): ein ISO-Datum im Fenster [from, to) ohne Jahr
+  // (String-Vergleich, die App rechnet kein Datum); Chat/HITL/Cron setzen es nie -> dort immer mit Jahr.
+  const DS = (B.date_short && typeof B.date_short.from === 'string' && typeof B.date_short.to === 'string') ? B.date_short : null;
   function date(v) {
     if (isEmpty(v)) return empty;
+    const m = DS ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v)) : null;
+    if (m && String(v) >= DS.from && String(v) < DS.to) {
+      try { return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, { timeZone: 'UTC', month: '2-digit', day: '2-digit' }); }
+      catch (e) { /* weiter mit Jahr */ }
+    }
     try { return __DATE__; } catch (e) { return String(v); }
   }
   // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) "10.00000000" -> 0).

@@ -3,21 +3,26 @@
 --   Handler der Registry app_screens (docs/package-contract.md §3.12): core.fn_app_screen ruft ihn mit
 --   {person_id, params} NACH der initData-Pruefung. Liefert Struktur + typisierte Werte (core.fn_ui_tpl/_money/_date),
 --   nie Text; die Seite rendert per Get-UiRenderLibJs und rechnet nichts (Summen, Anteile, gap kommen von hier).
---   Quellen: networth_by_asset_class (je bucket summiert, has_fx_gap) + accounts/account_balances (cash, Festgeld, P2P;
---   Kredit- und Depot-Konten nicht, deren Wert steht in den Anlagearten bzw. im Bildschirm Kredite/Depot).
+--   Frage der Seite (UX-Gesamtkonzept 2026-10-31, 5.1): Was haben wir, was schulden wir? (Die Hinweise oben setzt der
+--   Dispatcher.) Quelle: networth_by_asset_class (je bucket summiert, has_fx_gap). Kontostaende stehen NICHT hier
+--   (Heimat: Tab Konten, P2).
+--   Abschnitt finance.app.overview.section_liquid: Frage: Woran kommen wir kurzfristig?
+--   Abschnitt finance.app.overview.section_bound: Frage: Was steckt langfristig fest?
+--   Abschnitt finance.app.overview.section_debts: Frage: Was schulden wir?
+--   Abschnitt finance.app.overview.section_kids: Frage: Was gehoert den Kindern?
 --   ZERO-TRUST-SICHTBARKEIT: die Rolle loest der Handler selbst auf (core.fn_app_sees_household), nie der Aufrufer.
 --     Allow-List: owner/partner sehen den Haushalt; jede andere oder unbekannte Rolle nur owner_person_id = ich
 --     (Haushaltszeilen mit NULL bleiben fuer Kinder unsichtbar). Die Antwort traegt keine IDs.
 --   KINDER (Uebersicht R3, Owner 2026-10-28): fuer Haushalts-Betrachter zaehlen Zeilen eines Kindes (role = 'child' via
---     core.fn_household_persons, T2-Muster wie fn_advisor_review) NICHT in Hero/Besitz/Schulden/Konten, sondern stehen im
---     Abschnitt „Kinder" (je Kind Netto, aufklappbar je Anlageart aus DERSELBEN Quelle -> die Details ergeben die Summe).
---     Ein Kind (oder jede andere Rolle) sieht wie bisher nur Eigenes; der Hero heisst dann „Mein Vermoegen".
---   Schulden = Kredite (immer, auch bei 0 oder ohne Kurs) + jede negative Anlageart (ueberzogenes Konto), Besitz = der
---     Rest -> Besitz + Schulden = Netto (Hero). Anteils-Balken = Anteil am Besitz. „Kredite" fuehrt zum Bildschirm Kredite.
---   Besitz in zwei Abschnitten (Liquiditaets-Leiter, Owner 2026-10-29), je mit Summe: „Liquide" = Konten (fester Wert),
---     P2P (fester Wert, Auszahlung nicht garantiert: keine Einlagensicherung) und Depot (Wert schwankt); „Gebunden" =
---     Festgeld (fester Wert bis Faelligkeit), Immobilien, Vorsorge. Der Untertitel nennt Anteil + Wertverhalten.
---   Konten: Untertitel mit Besitzer (Name bzw. „Gemeinsam") nur fuer Haushalts-Betrachter.
+--     core.fn_household_persons, T2-Muster wie fn_advisor_review) NICHT in Hero/Besitz/Schulden, sondern stehen im
+--     Abschnitt „Vermoegen der Kinder" (je Kind Netto, aufklappbar je Anlageart aus DERSELBEN Quelle -> die Details
+--     ergeben die Summe; keine Fussnote, P10). Ein Kind (oder jede andere Rolle) sieht nur Eigenes; Hero „Mein Vermoegen".
+--   Schulden = Kredite (immer, auch bei 0 oder ohne Kurs) + jede negative Anlageart (ueberzogenes Konto, eigenes Label),
+--     Besitz = der Rest -> Besitz - Schulden = Netto (Hero). Schulden stehen POSITIV und ohne Summe (die Zahl steht schon
+--     in der Hero-Note). Anteils-Balken = Anteil am Besitz. „Kredite" fuehrt zum Bildschirm Kredite.
+--   Besitz in zwei Abschnitten (Liquiditaets-Leiter, Owner 2026-10-29; Woerter Owner-Entscheid D5): „Schnell verfuegbar"
+--     = Konten, P2P, Depot; „Langfristig gebunden" = Festgeld, Immobilien, Vorsorge. Untertitel nur „x % des Besitzes"
+--     (P7: keine Erklaer-Zusaetze). Abschnittssumme nur ab 2 Zeilen und nie gleich dem Hero (P5).
 --   params.probe = true -> nur {ok, empty} (Navigation zeigt nur nicht-leere Bildschirme).
 --   Fehler als Daten, nie RAISE: Frei-SQL-Sitzung -> forbidden, kaputte Eingabe -> bad_request.
 --   SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC (Muster career.fn_read_job_matches); der INVOKER-Bulk-
@@ -43,7 +48,6 @@ DECLARE
     v_classes  jsonb;
     v_debt_it  jsonb;
     v_kids     jsonb;
-    v_accts    jsonb;
     v_sections jsonb;
     v_empty    jsonb := core.fn_ui_tpl('finance.app.overview.empty');
     v_bookval  boolean;   -- eine sichtbare Depot-Position ohne Kurs zaehlt zum Kaufwert (Transparenz 2026-10-30)
@@ -80,19 +84,13 @@ BEGIN
                COALESCE(sum(val), 0) AS total, COALESCE(bool_or(gap), false) AS gap FROM b
     ), ord AS (
         SELECT b.*, array_position(ARRAY['cash', 'p2p', 'depot', 'fixed_deposit', 'real_estate', 'pension', 'loan'],
-                                   b.bucket) AS o,
-               -- Wertverhalten im Untertitel: fester Wert / ohne Einlagensicherung / schwankt; Immobilie + Vorsorge nur Anteil
-               CASE b.bucket WHEN 'cash' THEN 'finance.app.overview.share_stable'
-                             WHEN 'fixed_deposit' THEN 'finance.app.overview.share_stable'
-                             WHEN 'p2p' THEN 'finance.app.overview.share_p2p'
-                             WHEN 'depot' THEN 'finance.app.overview.share_volatile'
-                             ELSE 'finance.app.overview.share' END AS share_key
+                                   b.bucket) AS o
           FROM b
     ), it AS (
         SELECT ord.o, ord.bucket, ord.liquid, ord.is_debt, jsonb_build_object(
                'label', jsonb_build_object('kind', 'enum', 'enum', 'finance.enum.asset_bucket', 'value', ord.bucket),
                'sub', CASE WHEN ord.val > 0 AND g.assets > 0
-                           THEN core.fn_ui_tpl(ord.share_key, jsonb_build_object(
+                           THEN core.fn_ui_tpl('finance.app.overview.share', jsonb_build_object(
                                     'pct', core.fn_ui_num(round(100 * ord.val / g.assets, 1), 1))) END,
                'value', core.fn_ui_money(ord.val, 'EUR'),
                'gap', ord.gap,
@@ -106,9 +104,12 @@ BEGIN
     SELECT COALESCE((SELECT jsonb_agg(it.item ORDER BY it.o, it.bucket) FROM it WHERE it.liquid), '[]'::jsonb),
            COALESCE((SELECT jsonb_agg(it.item ORDER BY it.o, it.bucket) FROM it WHERE NOT it.liquid), '[]'::jsonb),
            COALESCE(jsonb_agg(jsonb_build_object(
-               'label', jsonb_build_object('kind', 'enum', 'enum', 'finance.enum.asset_bucket', 'value', ord.bucket),
+               -- ein ueberzogenes Konto ist keine „Konten & Tagesgeld“-Zeile unter Schulden, sondern sagt es
+               'label', CASE WHEN ord.bucket = 'loan'
+                             THEN jsonb_build_object('kind', 'enum', 'enum', 'finance.enum.asset_bucket', 'value', ord.bucket)
+                             ELSE core.fn_ui_tpl('finance.app.overview.overdrawn') END,
                'sub', NULL,
-               'value', core.fn_ui_money(ord.val, 'EUR'),
+               'value', core.fn_ui_money(-ord.val, 'EUR'),
                'gap', ord.gap,
                'pill', NULL,
                'progress', NULL,
@@ -163,66 +164,37 @@ BEGIN
         v_kids := '[]'::jsonb;
     END IF;
 
-    -- Konten (ohne Kinder): Saldo in Kontowaehrung, gap = Saldo ohne Wechselkurs, Besitzer nur fuer den Haushalt.
-    -- (Was davon fuer Sparziele verplant ist, zeigt EIN Ort: Bildschirm Ziele, Abschnitt „Fuer Ziele verplant".)
-    SELECT COALESCE(jsonb_agg(jsonb_build_object(
-               'label', a.name,
-               'sub', CASE
-                   WHEN v_hh AND a.last_reconciled_at IS NOT NULL
-                   THEN core.fn_ui_tpl('finance.app.overview.owner_confirmed', jsonb_build_object(
-                            'owner', COALESCE(to_jsonb(hp.full_name), core.fn_ui_tpl('finance.app.common.joint')),
-                            'date', core.fn_ui_date(a.last_reconciled_at)))
-                   WHEN v_hh
-                   THEN core.fn_ui_tpl('finance.app.overview.owner', jsonb_build_object(
-                            'owner', COALESCE(to_jsonb(hp.full_name), core.fn_ui_tpl('finance.app.common.joint'))))
-                   WHEN a.last_reconciled_at IS NOT NULL
-                   THEN core.fn_ui_tpl('finance.app.overview.confirmed_on',
-                                       jsonb_build_object('date', core.fn_ui_date(a.last_reconciled_at))) END,
-               'value', core.fn_ui_money(ab.balance, a.currency),
-               'gap', COALESCE(ab.balance <> 0 AND finance.fn_to_eur(ab.balance, a.currency) IS NULL, false),
-               'pill', NULL,
-               'progress', NULL,
-               'target', NULL)
-             ORDER BY finance.fn_to_eur(ab.balance, a.currency) DESC NULLS LAST, a.name), '[]'::jsonb)
-      INTO v_accts
-      FROM finance.accounts a
-      JOIN finance.account_balances ab ON ab.account_id = a.id
-      LEFT JOIN core.fn_household_persons() hp ON hp.person_id = a.owner_person_id
-     WHERE a.status = 'active'
-       AND a.account_type IN ('cash', 'fixed_deposit', 'p2p')
-       AND ((v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND a.owner_person_id = v_pid));
-
-    -- Liquide mit Eintraegen oder als Leer-Zustand (wenn es auch nichts Gebundenes gibt), Gebunden/Schulden/Kinder nur mit
-    -- Eintraegen, Konten immer (ein leeres „Liquide" ueber einem vollen „Gebunden" saehe aus, als fehle alles)
+    -- Schnell verfuegbar mit Eintraegen oder als Leer-Zustand (wenn es auch nichts Gebundenes gibt), die uebrigen nur mit
+    -- Eintraegen. Summe nur ab 2 Zeilen, nie gleich dem Hero, nie mit Wechselkurs-Luecke (§3.12, P5); Schulden ohne Summe.
     v_sections := '[]'::jsonb;
     IF jsonb_array_length(v_classes) > 0 OR jsonb_array_length(v_bound_it) = 0 THEN
         v_sections := v_sections || jsonb_build_object(
             'title', core.fn_ui_tpl('finance.app.overview.section_liquid'),
-            'value', CASE WHEN jsonb_array_length(v_classes) > 0 THEN core.fn_ui_money(v_liquid, 'EUR') END,
+            'value', CASE WHEN jsonb_array_length(v_classes) >= 2 AND v_liquid <> v_total
+                               AND NOT jsonb_path_exists(v_classes, 'strict $[*] ? (@.gap == true)')
+                          THEN core.fn_ui_money(v_liquid, 'EUR') END,
             'empty', v_empty, 'items', v_classes);
     END IF;
     IF jsonb_array_length(v_bound_it) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
             'title', core.fn_ui_tpl('finance.app.overview.section_bound'),
-            'value', core.fn_ui_money(v_bound, 'EUR'),
+            'value', CASE WHEN jsonb_array_length(v_bound_it) >= 2 AND v_bound <> v_total
+                               AND NOT jsonb_path_exists(v_bound_it, 'strict $[*] ? (@.gap == true)')
+                          THEN core.fn_ui_money(v_bound, 'EUR') END,
             'empty', v_empty, 'items', v_bound_it);
     END IF;
     IF jsonb_array_length(v_debt_it) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
             'title', core.fn_ui_tpl('finance.app.overview.section_debts'),
-            'value', core.fn_ui_money(v_debts, 'EUR'),
+            'value', NULL,
             'empty', v_empty, 'items', v_debt_it);
     END IF;
     IF jsonb_array_length(v_kids) > 0 THEN
         v_sections := v_sections || jsonb_build_object(
-            'title', core.fn_ui_tpl('finance.app.common.kids_not_in_sum'),
+            'title', core.fn_ui_tpl('finance.app.overview.section_kids'),
             'value', NULL,
             'empty', v_empty, 'items', v_kids);
     END IF;
-    v_sections := v_sections || jsonb_build_object(
-        'title', core.fn_ui_tpl('finance.app.overview.section_accounts'),
-        'value', NULL,
-        'empty', v_empty, 'items', v_accts);
 
     RETURN jsonb_build_object(
         'ok', true,

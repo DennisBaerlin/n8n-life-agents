@@ -15,7 +15,7 @@
 #   (7b) Persona-Liste: Core-Manifest personas.list — Code ^[a-z_]+$, eindeutig, neutral enthalten, ord gesetzt; je Persona
 #       core.persona.name.<code>; die in core:V031 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
 #   (8) SQL-Text-Verweise: jedes Katalog-Key-Literal in packages/*/db/migrations/R__*.sql existiert im Katalog.
-#   (9) Mini-App-Laien-Test: keine Fachwoerter ($AppDeniedWords) in App-Texten; Ratchet-Ausnahmen je Key und Bau-Paket,
+#   (9) Mini-App-Laien-Test: keine Fachwoerter ($AppDeniedWords) in App-Texten; Ratchet-Ausnahmen je Key,
 #       eine ueberfluessige Ausnahme ist ein Fehler.
 #   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; Tab-Titel ausgenommen).
 # Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs/Workflows/SQL vorkommt (dynamisch zusammengesetzte
@@ -226,19 +226,12 @@ Check 'SQL-Text-Verweise: jedes Katalog-Key-Literal in R__-Funktionen existiert 
 #     kein Wort der Liste $AppDeniedWords im de-Text eines *.app.*-Keys oder eines Keys, dessen Praefix eine
 #     R__fn_app_*.sql als Literal nennt (z. B. das Enum finance.enum.asset_bucket der Vermoegens-Seite). Gross/Klein egal,
 #     Leerraum (auch geschuetztes Leerzeichen) normalisiert.
-#     RATCHET: die heute noch alten Texte stehen je EXAKTEM Key in einem Block je Bau-Paket; wer seine Seite umbaut,
+#     RATCHET: Ausnahmen stehen je EXAKTEM Key in $appWordExcept (seit dem UX-Umbau leer); wer eine Seite umbaut,
 #     streicht seine Zeilen. Eine Ausnahme ohne Verstoss oder fuer einen Key, den es nicht mehr gibt, ist ein FEHLER
 #     („Zeile streichen“) — so bleibt keine Ausnahme still stehen. Neue Ausnahmen nur mit Owner-Freigabe.
 $AppDeniedWords = @('Kursminus', 'ermittelbar', 'Deckung', 'Verrechnungskonto', 'Projektion', 'Liquide', 'nicht in der Summe')
-$AppWordExceptB = @(          # Paket B (Konten + Vermoegen) + geteilte finance.app.common.* (Leitung)
-    'finance.app.common.kids_not_in_sum'
-    'finance.app.overview.section_liquid'
+$appWordExcept = @(           # leer seit dem Umbau aller Bildschirme (UX-Gesamtkonzept B/C/D); neue Zeile = Owner-Freigabe
 )
-$AppWordExceptC = @(          # Paket C (Ziele): erledigt
-)
-$AppWordExceptD = @(          # Paket D (Kredite + Depot)
-)
-$appWordExcept = @($AppWordExceptB + $AppWordExceptC + $AppWordExceptD | Where-Object { $_ })
 Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
     $prefixes = @()
     foreach ($f in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_app_*.sql'))) {

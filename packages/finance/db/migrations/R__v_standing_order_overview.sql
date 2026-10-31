@@ -1,7 +1,7 @@
 -- ============================================================
 -- finance.standing_order_overview (Lese-View, Berater-Nachruestung 2026-10-30)
 --   Die Dauerauftraege, die der Haushalt bei seiner Bank selbst einrichtet (finance.fn_standing_orders, dieselbe Auswahl
---   wie die Bank-To-do der Seite Ziele: laufend oder erst kommend), mit Konto-NAMEN statt ids, Betrag je Ausfuehrung,
+--   wie die Absender-Regel von fn_funding_accounts: laufend oder erst kommend), mit Konto-NAMEN statt ids, Betrag je Ausfuehrung,
 --   Rhythmus in Klartext (fn_schedule_label) und Monatsbetrag (recurring_payments.monthly_equivalent).
 --   kind transfer = eigenes Konto -> eigenes Konto; debit = Spar-Abfluss ohne Ziel-Konto (Vorsorge-Beitrag,
 --   Sparziel-Rate ohne Topf). starts_on = erst kuenftiger Start (sonst NULL).

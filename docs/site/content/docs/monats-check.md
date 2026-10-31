@@ -48,7 +48,7 @@ Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen *
 ## Was der Finanzberater daraus macht
 
 - **Konto knapp:** Fällt ein Konto voraussichtlich unter deinen Puffer, warnt er dich und nennt die Umbuchung. Die Warnung sagt, mit wie viel Alltagsausgaben pro Tag gerechnet wurde und ob der Puffer der Standard ist. Den Puffer stellst du je Konto im Chat ein („Auf dem Girokonto sollen immer mindestens 400 € bleiben“); der Standard für alle anderen Konten ist 250 € (`lifeagents config set finance coverage_buffer_eur 400`). Beim ersten Monats-Check fragt der Buchhalter danach.
-- **Alltagsausgaben:** geschätzt aus deinen letzten Kontoauszügen. Der allererste Auszug eines Kontos zählt nicht mehr, sobald ein zweiter da ist, weil er meist entstanden ist, bevor deine Daueraufträge erfasst waren. Einzelne Ausgaben ab 250 € zählen als einmalig nicht mit, Überweisungen auf eigene Konten nie. Die Zahlen je Auszug siehst du in der [Übersicht](uebersicht-app.html) unter Zahlungen.
+- **Alltagsausgaben:** geschätzt aus deinen letzten Kontoauszügen. Der allererste Auszug eines Kontos zählt nicht mehr, sobald ein zweiter da ist, weil er meist entstanden ist, bevor deine Daueraufträge erfasst waren. Einzelne Ausgaben ab 250 € zählen als einmalig nicht mit, Überweisungen auf eigene Konten nie. Die Schätzung je Tag siehst du in der [Übersicht](uebersicht-app.html) unter Konten beim tiefsten Stand.
 - **Zahlung fehlt:** Kam ein Dauerauftrag zweimal in Folge nicht vom Konto, fragt er, ob du ihn gekündigt hast.
 
 ## CSV-Export statt Kontoauszug (Trade Republic, N26)

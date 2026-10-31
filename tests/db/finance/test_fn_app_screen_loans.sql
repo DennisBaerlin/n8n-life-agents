@@ -78,11 +78,11 @@ BEGIN
   IF v->'hero'->'note' <> core.fn_ui_tpl('finance.app.loans.hero_note', jsonb_build_object(
        'rate', core.fn_ui_money(550, 'EUR'), 'interest', core.fn_ui_money(31.99, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [1b2] Hero-Note Raten 550 · Zins 31.99, got %', v->'hero'->'note'; END IF;
-  -- dieselbe Zahl wie die Vermoegen-Seite (Schulden -> Kredite)
+  -- dieselbe Zahl wie die Vermoegen-Seite (Schulden -> Kredite, dort positiv: UX-Gesamtkonzept 2026-10-31)
   IF (SELECT (s->'items'->0->'value'->>'value')::numeric
         FROM jsonb_array_elements(finance.fn_app_screen_overview(jsonb_build_object('person_id', 'apl_owner'))->'sections') s
-       WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_debts')) IS DISTINCT FROM -12800 THEN
-    RAISE EXCEPTION 'FAIL [1b3] Vermoegen „Kredite" muss = Kredit-Hero (-12800) sein'; END IF;
+       WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_debts')) IS DISTINCT FROM 12800 THEN
+    RAISE EXCEPTION 'FAIL [1b3] Vermoegen „Kredite" muss = Kredit-Hero (12800) sein'; END IF;
   IF jsonb_array_length(v->'sections'->0->'items') <> 6 OR v::text LIKE '%__apl_bezahlt__%' THEN
     RAISE EXCEPTION 'FAIL [1c] 6 ausstehende Haushalts-Kredite erwartet: %', v->'sections'; END IF;
   -- zwei Kinder-Kredite (500 + 300): Abschnitt „Kredite der Kinder" mit Summe, groesster zuerst

@@ -29,7 +29,8 @@
 --   acc_p2p          Sparkonto P2P (p2p, Jonas) mit Ziel-Geld (3 erreichte Ziele + Fahrrad + Hausruecklage); fuellt per
 --                    Dauerauftrag acc_broker_cash -> frei < 6 Monatsraten: Regression B1 (Schwelle = Ziel-Geld) + B2
 --                    (Absender des Dauerauftrags ist das gefaehrdete Konto, nicht der Empfaenger)
---   acc_broker_cash  Broker-Cash Jonas (cash) mit Notreserve-Geld; von hier bucht plan_jonas an 4 festen Tagen ab
+--   acc_broker_cash  Broker-Cash Jonas (cash) mit Notreserve-Geld; von hier bucht plan_jonas an 4 festen Tagen ab (freies
+--                    Geld 5.000 > eine Monatsrate 3.000 -> Ergebnis unabhaengig davon, ob der Zubringer am 1. schon kam)
 --   acc_depot_jonas  Depot Jonas (EINE Position: Summenregel B5) · acc_crypto Krypto-Depot Jonas (ZWEI Positionen, ETH-Kurs
 --                    veraltet) · acc_clearing Verrechnungskonto Krypto 0 EUR ohne Bewegung (B10)
 --   acc_cash_lea / acc_depot_lea   Lea: Eingang Eltern + externe Zuwendung, Depot mit genau einem Ziel, 2 Sparplaene,
@@ -95,7 +96,7 @@ BEGIN
 
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
     (v_giro, 2800, t - 40, 'other'), (v_joint, 4100, t - 40, 'other'), (v_p2p, 40000, t - 40, 'other'),
-    (v_bcash, 12400, t - 40, 'other'), (v_lea, 400, t - 40, 'other'), (v_tom, 150, t - 40, 'other'),
+    (v_bcash, 15000, t - 40, 'other'), (v_lea, 400, t - 40, 'other'), (v_tom, 150, t - 40, 'other'),
     (v_mira, 8000, t - 40, 'other');
 
   -- Auszuege: Giro Jonas zwei (Alltag geschaetzt aus dem juengeren), Tagesgeld Mira zwei ohne offene Zeilen

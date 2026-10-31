@@ -54,7 +54,7 @@ Drei Begriffe, die oft verwechselt werden: Der **Puffer** ist, was auf einem Zah
 
 ## Reicht das Geld für deine Sparpläne?
 
-Fragst du, ob du einen Sparplan erhöhen kannst oder ob das Geld auf einem Konto reicht, liest der Berater dieselbe Vorausschau, die auch die [Übersicht](uebersicht-app.html) auf der Seite Ziele zeigt. Für jedes Konto, von dem ein Sparplan abgeht oder auf das ein Dauerauftrag läuft, rechnet die Datenbank voraus (standardmäßig zwei Jahre): gedeckt, reicht bis zu einem bestimmten Tag, oder wird in den nächsten Monaten knapp. Der Berater rechnet das nie selbst nach. Wo die Datenbank es nicht weiß (etwa ohne Kontoauszug), sagt er, was fehlt. Ob ein Sparziel hinter Plan liegt, entscheidet ebenfalls dieselbe Regel wie in der Übersicht, damit Bot und App nie Verschiedenes sagen.
+Fragst du, ob du einen Sparplan erhöhen kannst oder ob das Geld auf einem Konto reicht, liest der Berater dieselbe Vorausschau, die auch die [Übersicht](uebersicht-app.html) im Tab Konten zeigt. Für jedes Konto, von dem ein Sparplan oder ein Dauerauftrag abgeht, rechnet die Datenbank voraus; Geld, das dort für Sparziele zurückliegt, zählt nicht als frei (standardmäßig zwei Jahre): gedeckt, reicht bis zu einem bestimmten Tag, oder wird in den nächsten Monaten knapp. Der Berater rechnet das nie selbst nach. Wo die Datenbank es nicht weiß (etwa ohne Kontoauszug), sagt er, was fehlt. Ob ein Sparziel hinter Plan liegt, entscheidet ebenfalls dieselbe Regel wie in der Übersicht, damit Bot und App nie Verschiedenes sagen.
 
 ## Abweichung vom Zielmix
 

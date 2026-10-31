@@ -1089,7 +1089,7 @@
         "task":  "Der VWCE Bestandsplan darf ruhig aus dem Guthaben auf dem Trade Republic Cash Girokonto laufen, bis es aufgebraucht ist. Da kommt nichts mehr dazu.",
         "chat_id":  "test_tc93",
         "expected_tool":  null,
-        "expected_behavior":  "Ruft KEIN Write-Tool auf (kein Dauerauftrag, keine Einnahme, keine Sparplan-Aenderung). Bestaetigt kurz in Alltagssprache, dass nichts angelegt wird; darf sagen, dass die Uebersicht (Seite Ziele) zeigt, bis wann das Geld reicht, und darf das Datum per Datenbank-Abfrage nennen, rechnet es aber nicht selbst aus.",
+        "expected_behavior":  "Ruft KEIN Write-Tool auf (kein Dauerauftrag, keine Einnahme, keine Sparplan-Aenderung). Bestaetigt kurz in Alltagssprache, dass nichts angelegt wird; darf sagen, dass die Uebersicht (Tab Konten) zeigt, bis wann das Geld reicht, und darf das Datum per Datenbank-Abfrage nennen, rechnet es aber nicht selbst aus.",
         "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 3: gewollter Abbau ist keine Luecke und wird nicht markiert (arch-challenge 2026-10-29)."
     },
     {

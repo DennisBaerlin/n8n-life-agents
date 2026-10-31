@@ -1,6 +1,7 @@
 -- tests/db/finance/test_fn_account_funding.sql
 -- finance.fn_account_funding(acct) — Spar-Deckung eines Kontos: reicht das Geld fuer seine Dauerauftraege und Sparplaene?
---   Tagesreihe aus fn_account_projection (nur Dauerauftraege + Buchungen, keine Alltags-Hochrechnung), Schwelle 0,
+--   Tagesreihe aus fn_account_projection (nur Dauerauftraege + Buchungen, keine Alltags-Hochrechnung), Schwelle =
+--   Ziel-Geld des Kontos je Tag ([l]-[o]; ohne Ziel-Geld 0),
 --   Auswertung ab heute ueber finance.funding_horizon_months (24). Ampel: alert = unter 0 innerhalb von
 --   funding_alert_months (3), warn = innerhalb des Horizonts, ok sonst; fehlender Kurs -> neutral + fx_gap.
 --   monthly_in/out je Kette ueber das massgebliche Glied (fn_recurring_effective), Kette zaehlt nicht doppelt.
@@ -148,6 +149,63 @@ BEGIN
   IF (v->>'state') <> 'ok' OR (v->>'everyday') <> 'estimated' OR (v->>'everyday_per_day')::numeric <> -10 THEN
     RAISE EXCEPTION 'FAIL [k2] Ausgabenkonto mit Auszug -> netto -10 je Tag eingerechnet, got %', v; END IF;
   RAISE NOTICE 'PASS [k] Alltagsausgaben: unbekannt -> neutral, mit Auszug netto eingerechnet';
+
+  -- ===== Schwelle = Ziel-Geld des Kontos (UX-Gesamtkonzept 2026-10-31 Bug B1: Ziel-Geld ist nicht frei), je Tag =====
+  -- [l] 10000 Saldo, 6000 fuer ein Ziel zurueckgelegt, Sparplan -1000/Monat ab t+3 (nicht ziel-verknuepft): frei 4000 ->
+  --     der 5. Abzug (t+3 + 4 Monate) geht unter das Ziel-Geld -> warn; frueher (Schwelle 0) erst der 11.
+  DECLARE v_res INT; v_g INT; v_pot INT; v_over INT; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_fu_res__', 'p2p', 'EUR', 'active') RETURNING id INTO v_res;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_res, 10000, t - 40, 'other');
+    INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('fu Ziel res', 6000, t + 300) RETURNING id INTO v_g;
+    INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_res, 6000, 'manual');
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('fu Plan res', v_res, -1000, 'month', t + 3, t + 3) RETURNING id INTO v_rp;
+    INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id) VALUES ('fu Plan res', v_depot, 'FUR1', 'Welt ETF', v_rp);
+    v := finance.fn_account_funding(v_res);
+    IF (v->>'state') <> 'warn' OR (v->>'runs_out_on')::date <> (t + 3 + interval '4 months')::date
+       OR (v->>'reserved')::numeric <> 6000 OR (v->>'balance')::numeric <> 10000 THEN
+      RAISE EXCEPTION 'FAIL [l] Ziel-Geld als Schwelle, got %', v; END IF;
+    -- min_free = tiefster Stand minus Schwelle (am Horizont-Ende: 10000 - n*1000 - 6000)
+    IF (v->>'min_free')::numeric <> (v->>'min_projected')::numeric - 6000 THEN
+      RAISE EXCEPTION 'FAIL [l2] min_free = min_projected - Ziel-Geld, got %', v; END IF;
+    RAISE NOTICE 'PASS [l] Ziel-Geld ist nicht frei: reicht bis ~4 Monate statt ~10';
+
+    -- [m] ein ziel-verknuepfter Sparplan verbraucht sein EIGENES Ziel-Geld (3000 reserviert, 100/Monat ueber 24 Monate)
+    --     -> die Schwelle sinkt mit jeder Ausfuehrung, nie unter das Ziel-Geld -> ok
+    UPDATE finance.savings_plans SET savings_goal_id = v_g WHERE recurring_payment_id = v_rp;
+    UPDATE finance.recurring_payments SET amount = -100 WHERE id = v_rp;
+    DELETE FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_g;
+    INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_res, 10000, 'manual');
+    v := finance.fn_account_funding(v_res);
+    IF (v->>'state') <> 'ok' OR jsonb_typeof(v->'runs_out_on') <> 'null' THEN
+      RAISE EXCEPTION 'FAIL [m] Ziel-Sparplan aus Ziel-Geld ist gedeckt, got %', v; END IF;
+    RAISE NOTICE 'PASS [m] Ziel-Sparplan verbraucht eigenes Ziel-Geld -> ok';
+
+    -- [n] eine Ziel-Rate HINEIN zaehlt nicht als frei: Topf 1000 frei, +200 Ziel-Rate am t+1, -250 Sparplan am t+2
+    --     -> frei sinkt 250 je Monat -> der 5. Abzug (t+2 + 4 Monate) unterschreitet; als frei gezaehlt erst nach 20 Monaten
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_fu_pot__', 'p2p', 'EUR', 'active') RETURNING id INTO v_pot;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_pot, 1000, t - 40, 'other');
+    INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('fu Ziel-Rate', v_giro, v_pot, -200, 'month', t + 1, t + 1) RETURNING id INTO v_rp;
+    INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id) VALUES ('fu Ziel Rate', 9000, t + 900, v_rp);
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('fu Plan pot', v_pot, -250, 'month', t + 2, t + 2) RETURNING id INTO v_rp;
+    INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id) VALUES ('fu Plan pot', v_depot, 'FUP1', 'Welt ETF', v_rp);
+    v := finance.fn_account_funding(v_pot);
+    IF (v->>'state') <> 'warn' OR (v->>'runs_out_on')::date <> (t + 2 + interval '4 months')::date THEN
+      RAISE EXCEPTION 'FAIL [n] Ziel-Rate hinein ist nicht frei, got %', v; END IF;
+    RAISE NOTICE 'PASS [n] Ziel-Rate hinein zaehlt nicht als frei';
+
+    -- [o] schon heute mehr verplant als vorhanden (800 fuer Ziele auf 500), keine Abfluesse -> ok (die Luecke traegt die
+    --     Pille „mehr verplant“ am Stand, kein Dauer-alert mit taeglich neuem Datum)
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_fu_over__', 'cash', 'EUR', 'active') RETURNING id INTO v_over;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_over, 500, t - 40, 'other');
+    INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_over, 800, 'manual');
+    v := finance.fn_account_funding(v_over);
+    IF (v->>'state') <> 'ok' OR jsonb_typeof(v->'runs_out_on') <> 'null' OR (v->>'reserved')::numeric <> 500 THEN
+      RAISE EXCEPTION 'FAIL [o] Ueber-Zuordnung ohne Abfluss -> ok, Schwelle auf den Saldo gedeckelt, got %', v; END IF;
+    RAISE NOTICE 'PASS [o] Ueber-Zuordnung: kein Dauer-alert';
+  END;
 
   -- [j] Kreditkonto / unbekannt -> ok:false
   IF (finance.fn_account_funding(v_loan)->>'ok')::boolean OR (finance.fn_account_funding(-1)->>'ok')::boolean THEN

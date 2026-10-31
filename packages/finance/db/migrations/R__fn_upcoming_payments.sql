@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_upcoming_payments (READ, STABLE) -- offene Dauerauftrags-Vorkommen eines Zeitraums mit ihrem Buchungsbetrag
 --   Die EINE Quelle fuer „was geht wann von welchem Konto ab / auf welches Konto ein“: Kontovorschau
---   (finance.fn_account_outlook) und Mini-App-Bildschirm „Zahlungen“ (finance.fn_app_screen_payments).
+--   (finance.fn_account_outlook) und Mini-App-Bildschirm „Konten“ (ueber finance.fn_account_planned_flows).
 --   Vorkommen = finance.fn_recurring_due_open(p_from, p_until) (Status, Gueltigkeit, gebucht/uebersprungen); p_from wird
 --   nie auf heute hochgesetzt (die Vorschau startet am Tag nach dem bestaetigten Stand).
 --   amount         = Betrag, den die Buchung nehmen wuerde (fn_recurring_occurrence_amount; Kredit-Schlussrate =

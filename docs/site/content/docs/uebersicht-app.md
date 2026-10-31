@@ -4,7 +4,7 @@ title: "Übersicht (Mini-App)"
 
 Links neben dem Eingabefeld im Chat mit dem Bot sitzt der Knopf **„📊 Übersicht“**. Ein Tipp darauf öffnet direkt in Telegram eine kleine App (Telegram-Mini-App), die deine Finanzen auf einen Blick zeigt: ohne Frage an den Bot, ohne Warten auf eine Antwort.
 
-![Die Übersicht im hellen Telegram-Design: Vermögen des Haushalts, Besitz nach Anlageart, ein aufgeklapptes Kind und die Konten (Beispielwerte)](/img/app-uebersicht-hell.png) ![Dieselbe Übersicht im dunklen Telegram-Design (Beispielwerte)](/img/app-uebersicht-dunkel.png)
+![Die Übersicht im hellen Telegram-Design: Vermögen des Haushalts, Besitz nach Anlageart, Schulden und ein aufgeklapptes Kind (Beispielwerte)](/img/app-uebersicht-hell.png) ![Dieselbe Übersicht im dunklen Telegram-Design (Beispielwerte)](/img/app-uebersicht-dunkel.png)
 
 *Beispielbilder mit erfundenen Werten. Hell oder dunkel folgt deiner Telegram-Einstellung.*
 
@@ -19,23 +19,35 @@ Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeig
 Überall gilt dieselbe Bildsprache:
 
 - **Rechts steht immer der Betrag**, um den es in der Zeile geht (Kontostand, Gespartes, Restschuld, Monatsbetrag).
-- **Eine farbige Markierung ist ein Urteil.** Grün beantwortet die Hauptfrage der Zeile („im Plan“, „erreicht“, „reicht“). Gelb oder rot nennt, wie viel fehlt oder ab wann. Ist bei einer Nebenfrage alles in Ordnung, steht gar nichts da.
-- **Ein Balken zeigt den Weg zu einem Zielbetrag**, in der Farbe der Markierung. Bei Anteilen (etwa am Besitz) ist er lila ohne Wertung; ist das Ziel erreicht, entfällt er.
+- **Eine farbige Markierung heißt: hier gibt es etwas zu tun.** Gelb oder rot nennt immer, wie viel fehlt oder ab wann. Grau sagt, was fehlt und wer es beheben kann. Ist alles in Ordnung, steht gar nichts da; grün ist allein der Satz „Alles in Ordnung“ oben auf der Startseite.
+- **Ein Balken zeigt den Weg zu einem Zielbetrag**, lila ohne Wertung; gelb oder rot nur zusammen mit einer Markierung. Ist das Ziel erreicht, entfällt er.
 - **Ein kleiner Pfeil mit Betrag** (↑/↓) zeigt eine Veränderung, etwa den Gewinn seit dem Kauf. Er ist Information, keine Warnung.
 - **Ein grauer Satz unter einer Überschrift** erklärt den ganzen Abschnitt, etwa warum es keine Vorschau gibt.
 - **Daten in den nächsten Monaten stehen ohne Jahr** („23.11.“); weiter entfernte mit Jahr.
 
 ### Vermögen
 
+Die Seite beantwortet: Was haben wir, was schulden wir? Kontostände stehen auf der Seite Konten.
+
 - **Vermögen Haushalt:** alles, was dem Haushalt gehört, Kredite schon abgezogen. Darunter steht, wie viel Besitz und wie viel Schulden das sind. Das Vermögen der Kinder zählt hier **nicht** mit.
-- **Liquide:** woran du schnell kommst, mit der Summe neben der Überschrift. Darin stehen Konten, P2P und Wertpapiere, jeweils mit dem Anteil am gesamten Besitz als Zahl und Balken. Darunter steht, wie sich der Wert verhält:
-  - **fester Wert:** Kontoguthaben.
-  - **fester Wert, Auszahlung nicht garantiert:** P2P. Der Betrag schwankt nicht mit der Börse, es gibt aber keine Einlagensicherung, und die Plattform kann Auszahlungen verzögern.
-  - **Wert schwankt:** Wertpapiere und Krypto. Der heutige Wert kann morgen höher oder niedriger sein.
-- **Gebunden:** was du nicht kurzfristig zu Geld machen kannst, mit Summe: Immobilien, Altersvorsorge und Festgeld (fester Wert, aber bis zur Fälligkeit festgelegt).
-- **Schulden:** die Kredite als Minus-Betrag. Ein Tipp darauf öffnet die Seite Kredite.
-- **Kinder · nicht in der Summe:** für jedes Kind sein eigenes Vermögen. Aufgeklappt siehst du, woraus es besteht (Konten, Wertpapiere usw.).
-- **Konten:** jedes Konto des Haushalts mit Kontostand in der eigenen Währung, wem es gehört („Gemeinsam“ für Haushaltskonten) und dem Datum, an dem du den letzten Kontoauszug bestätigt hast (siehe [Monats-Check](monats-check.html)).
+- **Schnell verfügbar:** woran du kurzfristig kommst: Konten, P2P und Wertpapiere, jeweils mit dem Anteil am gesamten Besitz als Zahl und Balken.
+- **Langfristig gebunden:** was du nicht kurzfristig zu Geld machen kannst: Immobilien, Altersvorsorge und Festgeld.
+- Neben einer dieser Überschriften steht „zusammen …“, sobald der Abschnitt mehrere Zeilen hat und die Summe nicht schon dieselbe Zahl wie oben ist.
+- **Schulden:** die Kredite als positiver Betrag (dieselbe Zahl wie auf der Seite Kredite). Ein Tipp darauf öffnet die Seite Kredite. Ist ein Konto überzogen, steht es hier als „Überzogene Konten“.
+- **Vermögen der Kinder:** für jedes Kind sein eigenes Vermögen. Aufgeklappt siehst du, woraus es besteht (Konten, Wertpapiere usw.).
+
+### Konten
+
+Die Seite beantwortet: Steht genug auf jedem Konto, und was bewegt sich in den nächsten 30 Tagen? Jedes Konto des Haushalts hat einen eigenen Abschnitt; Konten mit einem gelben oder roten Hinweis stehen oben, dann Girokonten, dann Sparkonten. Die Konten der Kinder stehen hier nicht (ihr Stand steht unter „Vermögen der Kinder“, ihre Sparpläne auf der Seite Ziele). Ein Konto ohne Geld und ohne Zahlungen erscheint nicht.
+
+Je Konto stehen höchstens vier Zeilen:
+
+- **Stand heute:** der Kontostand. Liegt auf dem Konto Geld für Sparziele, steht darunter „davon … frei“. Ist mehr für Ziele verplant, als auf dem Konto liegt, steht daneben gelb „… mehr verplant als vorhanden“. Aufgeklappt: wie viel für Ziele zurückgelegt ist, wem das Konto gehört („Gemeinsam“ für Haushaltskonten) und von wann der letzte Kontoauszug ist.
+- **Tiefster Stand:** nur wenn vom Konto etwas abgeht.
+  - Für Konten mit Kontoauszug (siehe [Monats-Check](monats-check.html)): der tiefste Stand vor dem nächsten Geldeingang, etwa „am 18.11., vor dem Geldeingang am 30.11.“. Gelb „knapp über dem Puffer (250 €)“ oder rot „… unter dem Puffer“, sonst nichts. Aufgeklappt steht die Rechnung, die genau den tiefsten Stand ergibt: Stand am …, gebucht seit …, feste Abgänge, feste Eingänge, Alltag geschätzt („≈ 62 € pro Tag × 29 Tage“), der Puffer, der nächste Geldeingang und bei einem roten Konto ein Umbuchungs-Vorschlag. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“
+  - Für Spar- und Verrechnungskonten, von denen Sparpläne oder Daueraufträge abgehen: der tiefste **freie** Stand in den nächsten zwei Jahren, darunter, was im Monat abgeht und reinkommt. Geld, das dort für Sparziele zurückliegt, zählt nicht als frei. Gelb „reicht bis 04.2027“ oder rot „Lücke ab …“, sonst nichts. Dasselbe Urteil steht auf der Seite Ziele am Sparplan, der von diesem Konto abbucht.
+  - Ein Girokonto ohne Kontoauszug zeigt statt dieser Zeile den grauen Satz „Noch kein Kontoauszug – deshalb keine Vorschau. Schick einen Auszug im Chat.“
+- **Gehen ab bis …** und **Kommen rein bis …:** die Summe der Zahlungen der nächsten 30 Tage und wie viele es sind. Aufgeklappt steht jede Zahlung mit Datum und Betrag; wiederholt sich dieselbe Zahlung (etwa ein Sparplan an vier festen Tagen), steht sie einmal da („4× 50 € · 02.11. – 23.11.“). Bei mehr als acht Zahlungen stehen die ersten sieben einzeln und der Rest als „weitere … Zahlungen“. Eine Umbuchung zwischen zwei eigenen Konten steht bei beiden: beim einen als Abgang, beim anderen als Eingang (+).
 
 ### Ziele
 
@@ -53,21 +65,6 @@ Die Seite beantwortet: Kommen wir mit dem Sparen voran, und was läuft automatis
 - **Sparpläne:** was jeder Plan im Monat ausmacht, darunter die nächste Ausführung, bei festen Tagen etwa „4× monatlich je 50 € · nächste 02.11.“. Neben der Überschrift steht „zusammen … im Monat“ (ab zwei Plänen). Aufgeklappt siehst du Wertpapier, Depot, Abbuchungskonto, für wen der Plan ist, das Sparziel und eine geplante Änderung. Ein angehaltener Plan steht als „pausiert“ da. Reicht das Geld auf dem Abbuchungskonto nicht, steht das gelb „reicht bis 04.2027“ oder rot „Lücke ab …“ am Plan; ist alles in Ordnung, steht dort nichts.
 
 Ein Beispiel: Ziel „Urlaub“ über 3.000 € bis Juni, gespart sind 1.200 €. Ist bis heute schon deutlich mehr Zeit vergangen, als Geld zusammengekommen ist, steht dort etwa „hinter Plan · fehlen 600 €“.
-
-### Zahlungen
-
-Oben steht die Summe dessen, was in den nächsten 30 Tagen abgeht (ohne Umbuchungen zwischen eigenen Konten). Darunter hat **jedes Konto einen eigenen Abschnitt**, Konten mit Problemen zuerst.
-
-Für jedes Konto, zu dem du schon einen Kontoauszug eingespielt hast (siehe [Monats-Check](monats-check.html)), steht ganz oben der **tiefste Stand** vor dem nächsten Geldeingang mit Ampel. Reicht das Geld (grün), stehen darunter nur noch **„Zahlungen bis …“** (alle Zahlungen der nächsten 30 Tage zum Aufklappen); die Rechnung zum tiefsten Stand klappt beim Antippen der ersten Zeile auf. Ist es knapp oder rot, bleibt die Rechnung offen stehen. Jede Zeile kannst du nachrechnen, sie ergeben zusammen genau den tiefsten Stand:
-
-- **Stand am …:** der bestätigte Stand aus dem letzten Kontoauszug oder Abgleich (und, falls seitdem gebucht wurde, „Gebucht seit …“).
-- **Feste Abgänge / feste Eingänge bis …:** die Daueraufträge bis zum Tief. Antippen zeigt jede einzelne Zahlung mit Datum und Betrag.
-- **Alltagsausgaben (geschätzt):** Einkauf, Karte und Bargeld, geschätzt aus deinen Kontoauszügen, etwa „≈ 62 € pro Tag × 29 Tage“. Antippen zeigt den Wert je Auszug. Dein **erster** Kontoauszug zählt nicht mehr, sobald ein zweiter da ist: Er stammt meist aus der Zeit, bevor deine Daueraufträge erfasst waren, und würde Gehalt oder Überweisungen als „Alltag“ mitzählen. Gibt es erst einen Auszug, steht „vorläufig“ dabei. Einzelne Ausgaben ab 250 € (etwa ein größerer Online-Einkauf) gelten als **einmalig** und zählen nicht zum Tageswert; aufgeklappt steht je Auszug „davon einmalig, zählt nicht“ mit der Summe. Überweisungen auf deine eigenen Konten zählen nie als Alltag, auch wenn sie sich nicht als Umbuchung verbuchen ließen.
-- **Tiefster Stand** mit Datum und Ampel: **rot „unter Puffer“**, **gelb „knapp“** (über dem Puffer, aber unter dem Doppelten), **grün „reicht“**. Fehlt für ein Konto in Fremdwährung der Wechselkurs, steht dort grau „Kurs fehlt“.
-- **Puffer:** wie viel mindestens auf dem Konto bleiben soll, mit dem Hinweis „Standardwert (nicht selbst festgelegt)“ (250 €) oder „für dieses Konto festgelegt“ und ab welchem Stand das Konto gelb wird. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“
-- **Nächster Geldeingang**, bei rotem Konto ein **Umbuchungs-Vorschlag**, und darunter **weitere Zahlungen** bis zum Ende der 30 Tage.
-
-Konten ohne Kontoauszug zeigen ihre Zahlungen der nächsten 30 Tage mit dem grauen Hinweis „Keine Vorschau – für dieses Konto gibt es noch keinen Kontoauszug“; neben der Überschrift steht die Summe dieser Zahlungen. P2P-Konten, Festgeld und Depots haben nie eine Vorschau („die gibt es nur für Giro- und Tagesgeldkonten“), ihre Zahlungen stehen trotzdem da. Eine Umbuchung zwischen zwei eigenen Konten steht bei beiden: beim einen als Abgang, beim anderen als Eingang (+). Wiederholt sich dieselbe Zahlung im Monat (etwa ein Sparplan an vier festen Tagen), steht sie einmal da, zum Beispiel „4× · 02.11. – 23.11.“ mit der Summe; aufgeklappt stehen die einzelnen Termine.
 
 ### Kredite
 
@@ -104,9 +101,9 @@ Der Knopf „📊 Übersicht“ sitzt an der Stelle, an der vorher der Menü-Kno
 
 ## Wer was sieht
 
-- **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch die Konten und Depots der Kinder. Sie stehen getrennt und zählen nicht in die Haushalts-Summen.
+- **Du als Owner und dein Partner bzw. deine Partnerin** seht den ganzen Haushalt, auch das Vermögen und die Depots der Kinder. Sie stehen je Seite in einem eigenen Abschnitt „… der Kinder“ und zählen nicht in die Haushalts-Summen.
 - **Kinder** sehen nur, was ihnen gehört: eigene Konten, das eigene Depot, Sparziele für sie selbst und Sparpläne für sie auf ihrem eigenen Depot. Gemeinsame Haushaltskonten und -ziele und die Konten der Eltern tauchen bei ihnen nicht auf, auch nicht als Name: Liegt Geld für ihr Sparziel auf einem Elternkonto, heißt es bei ihnen nur „Haushaltskonto“, und eine Rate von einem Elternkonto heißt „Rate von Haushaltskonto“. Zahlt ein Sparplan der Eltern mit in ihr Ziel, zählt sein Betrag in der Rate mit, sein Name erscheint nicht.
-- Bei den **Zahlungen** sehen Kinder nur Daueraufträge von ihren eigenen Konten und Kredite, die auf ihren Namen laufen. Taschengeld vom Elternkonto erscheint als „Vom Haushalt“, ohne den Namen des Dauerauftrags oder des Elternkontos, und einen Umbuchungs-Vorschlag bekommen Kinder nie.
+- Auf der Seite **Konten** sehen Kinder nur ihre eigenen Konten mit deren Zahlungen. Taschengeld vom Elternkonto erscheint als „Vom Haushalt“, ohne den Namen des Dauerauftrags oder des Elternkontos, und einen Umbuchungs-Vorschlag bekommen Kinder nie.
 - **Fremde Telegram-Nutzer** bekommen den Knopf nie zu sehen.
 
 Alle gekoppelten Haushaltsmitglieder bekommen den Knopf. Wer neu gekoppelt wird, entkoppelt wird oder die Sprache wechselt, sieht den Knopf bzw. die neue Beschriftung nach etwa einer Minute, ohne Update. Soll ihn nur der Owner haben, stellt der Admin das um (siehe unten).
@@ -139,14 +136,14 @@ Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein. Die Knöpfe
 
 Kopplung, Entkoppeln und Sprachwechsel zieht der Server genauso nach. Klappt das wiederholt nicht (etwa weil Telegram nicht erreichbar ist), versucht er es alle zehn Minuten erneut, und `lifeagents doctor` meldet es nach einer halben Stunde.
 
-Wie weit die Liste der kommenden Zahlungen reicht, ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:
+Wie weit „Gehen ab“ und „Kommen rein“ auf der Seite Konten reichen, ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:
 
 | Befehl | Wirkung |
 |---|---|
-| `lifeagents config set finance app_payments_days 30` | Kommende Zahlungen für so viele Tage im Voraus. |
+| `lifeagents config set finance app_payments_days 30` | „Gehen ab“ / „Kommen rein“ auf der Seite Konten für so viele Tage im Voraus. |
 | `lifeagents config set finance coverage_warn_factor 2` | Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (`coverage_buffer_eur`). |
 | `lifeagents config set finance everyday_oneoff_eur 250` | Ab diesem Einzelbetrag gilt eine Ausgabe im Kontoauszug als einmalig und zählt nicht zu den geschätzten Alltagsausgaben (gilt ab dem nächsten Auszug). |
 | `lifeagents config set finance fixed_rate_warn_months 12` | Hinweis, wenn die Zinsbindung eines Kredits in weniger als so vielen Monaten endet. |
-| `lifeagents config set finance funding_horizon_months 24` | So viele Monate voraus prüft die Seite Ziele, ob das Geld für Sparpläne und Daueraufträge reicht (sonst „reicht bis …“). |
+| `lifeagents config set finance funding_horizon_months 24` | So viele Monate voraus prüft der Tab Konten, ob das Geld für Sparpläne und Daueraufträge reicht (sonst „reicht bis …“). |
 | `lifeagents config set finance depot_cover_warn_pct 10` | Ab so viel Prozent unter dem Ziel-Geld bekommt ein Sparziel mit Geld im Depot auf der Seite Ziele die rote Markierung „Kurswert … unter dem Zurückgelegten“ (und der Berater meldet es); darunter zeigt die Seite nichts an. |
 | `lifeagents config set finance funding_alert_months 3` | Rot „Lücke ab …“ und ein Hinweis auf der Startseite, wenn das Geld schon innerhalb so vieler Monate fehlt. |

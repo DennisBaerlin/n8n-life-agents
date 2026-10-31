@@ -10,7 +10,7 @@
 --   Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out (<= 0, Teil von unmatched_out, Grenze
 --   oneoff_threshold in Kontowaehrung, NULL = Auszug von vor der Regel bzw. ohne Kurs) zaehlen nicht zum Tageswert.
 --   per_day = round((unmatched_out - oneoff_out) / days, 2) (nur Abgaenge) — Anzeige je Auszug (Mini-App-Details).
---   Konsumenten: fn_account_everyday_per_day (Summe der gezaehlten), fn_app_screen_payments (Details-Zeilen).
+--   Konsumenten: fn_account_everyday_per_day (Summe der gezaehlten), fn_account_outlook (Kontovorschau).
 --   RUECKGABE: (period_start, period_end, days, unmatched_out, unmatched_in, per_day, counted, reason, oneoff_out,
 --   oneoff_threshold), juengster zuerst, hoechstens die 3 gezaehlten + der fruehste (nur solange er ohne die Regel im
 --   Fenster laege); ohne Auszug leer.

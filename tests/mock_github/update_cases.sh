@@ -25,14 +25,26 @@ DB="$(grep -E '^DB_POSTGRESDB_DATABASE=' /etc/n8n/n8n.env | tail -n1 | cut -d= -
 sql() { runuser -u postgres -- psql -X -tA -q -v ON_ERROR_STOP=1 -d "$DB" -c "$1"; }
 
 ORIG_VER="$(cat "$VER" 2>/dev/null || printf dev)"
-MOCK_PID=''
+MOCK_PID=''; STOPPED_TIMERS=()
 # shellcheck disable=SC2329  # aufgerufen ueber trap EXIT
 cleanup() {
   [ -n "$MOCK_PID" ] && kill "$MOCK_PID" 2>/dev/null
   printf '%s\n' "$ORIG_VER" > "$VER"
   sql "DELETE FROM core.update_requests; DELETE FROM core.notification_state WHERE source = 'release_update';" >/dev/null 2>&1
+  for t in "${STOPPED_TIMERS[@]}"; do systemctl start "$t" 2>/dev/null; done
 }
 trap cleanup EXIT
+
+# Die echten Update-Timer des Substrats ruhen waehrend der Faelle: der minuetliche Runner uebernahm sonst einen
+# Test-Auftrag vor dem Fall (mit dem echten GitHub statt dem Mock -> "superseded", Flake sig_missing_refused 2026-10-31)
+# oder hielt zur vollen Minute die Update-Sperre (Flakes run_lock_busy 2026-10-26, run_interrupted 2026-10-30).
+for t in lifeagents-update-run.timer lifeagents-update-check.timer; do
+  if systemctl is-active --quiet "$t"; then systemctl stop "$t"; STOPPED_TIMERS+=("$t"); fi
+done
+for _ in $(seq 1 150); do
+  systemctl is-active --quiet lifeagents-update-run.service || systemctl is-active --quiet lifeagents-update-check.service || break
+  sleep 0.2
+done
 
 # --- Fake-Releases ---------------------------------------------------------------------------------------------
 rm -rf "$W"; mkdir -p "$REL" "$BODIES" "$GNUPGHOME"; chmod 700 "$GNUPGHOME"
@@ -94,15 +106,7 @@ curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null || { echo "FAIL setup
 RUNENV=(LIFEAGENTS_RELEASE_KEYRING="$W/kr.gpg"
         PROVISION_GH_API="$API" PROVISION_REPO_SLUG="$SLUG" LIFEAGENTS_TELEGRAM_API="http://127.0.0.1:${TGPORT}"
         TELEGRAM_BOT_TOKEN=mock-token OWNER_CHAT_ID=4242 N8N_DB_NAME="$DB")
-# Der minuetliche Runner des Substrats haelt die Update-Sperre zur vollen Minute kurz; trifft ein Fall genau diesen
-# Moment, meldet der Runner "Update-Sperre belegt" und der Fall scheitert zufaellig (Flake run_interrupted 2026-10-30,
-# zuvor run_lock_busy 2026-10-26). Deshalb: auf die freie Sperre warten und genau einmal wiederholen - ausser im Fall,
-# der die belegte Sperre selbst prueft (cli_raw).
-cli_raw() { OUT="$(env "${RUNENV[@]}" ${EXTRA_ENV:+$EXTRA_ENV} lifeagents update "$@" 2>&1 </dev/null)"; RC=$?; }
-cli() {
-  cli_raw "$@"
-  case "$OUT" in *"Update-Sperre belegt"*) flock -w 15 /run/lifeagents-update.lock true; cli_raw "$@" ;; esac
-}
+cli() { OUT="$(env "${RUNENV[@]}" ${EXTRA_ENV:+$EXTRA_ENV} lifeagents update "$@" 2>&1 </dev/null)"; RC=$?; }
 installed() { printf '%s\n' "$1" > "$VER"; }
 scenario() { printf '%s' "$1" > "$W/scenario"; }
 reset_db() { sql "DELETE FROM core.update_requests;" >/dev/null; }
@@ -187,12 +191,11 @@ if [ "${o%%|*}" = succeeded ] && [ "$(cat "$VER")" = v9.9.10 ]; then pass run_re
 # 10 Sperre belegt (anderes Update laeuft) -> Auftrag bleibt unangetastet
 installed v9.9.8; reset_db; tg_clear; id="$(request v9.9.10)"
 # Halter laeuft von selbst ab (kill traefe nur flock, das Kind `sleep` hielte die Sperre weiter).
-# Erst weiter, wenn UNSER Halter die Sperre hat (Marker aus dem Kind): eine Probe "Sperre belegt" sah sonst den
-# minuetlichen Runner, der sie zur vollen Minute kurz haelt -> cli startete vor dem Halter und uebernahm (Flake 2026-10-26).
+# Erst weiter, wenn UNSER Halter die Sperre hat (Marker aus dem Kind): sonst startet cli vor dem Hintergrund-Halter.
 LKMARK="/tmp/upd_lock_held.$$"; rm -f "$LKMARK"
 flock /run/lifeagents-update.lock sh -c "touch '$LKMARK'; sleep 6" & LOCKER=$!
 for _ in $(seq 1 100); do [ -e "$LKMARK" ] && break; sleep 0.1; done
-cli_raw --run-requested
+cli --run-requested
 rm -f "$LKMARK"
 claimed="$(sql "SELECT claimed_at IS NOT NULL FROM core.update_requests WHERE id = $id")"
 wait "$LOCKER" 2>/dev/null

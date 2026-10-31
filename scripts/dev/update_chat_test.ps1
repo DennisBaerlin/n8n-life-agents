@@ -5,8 +5,8 @@
 # Ablauf: den Provisioning-Baum DIESES Checkouts in die Runtime des Containers spiegeln (/usr/local/lib/lifeagents/
 # provisioning + die CLI /usr/local/bin/lifeagents neu rendern — genau das, was install_cli tut), den GitHub-Mock dazu
 # kopieren und tests/mock_github/update_cases.sh fahren: Fake-Releases mit Stub-provision.sh (Ergebnis je Szenario),
-# Telegram ueber den Mock (Aufzeichnung /tmp/mock_telegram.jsonl). VERSION und die Auftrags-/Latch-Zeilen stellt der
-# Fall-Runner am Ende zurueck.
+# Telegram ueber den Mock (Aufzeichnung /tmp/mock_telegram.jsonl). Die echten Update-Timer des Substrats ruhen waehrend
+# der Faelle; VERSION, Auftrags-/Latch-Zeilen und die Timer stellt der Fall-Runner am Ende zurueck.
 # Voraussetzung: laufendes Substrat (bootstrap_test_n8n.ps1) + .\scripts\dev\enable_mock_telegram.ps1.
 # Usage:  .\scripts\dev\update_chat_test.ps1 [-Port 8086] [-Verbose]   (belegt Port und Port+1; frei neben 8088 mock_llm,
 #         8089 mock_telegram, 8090 llm_gateway, 8092 mock_paperless, 8093/8094 release_fetch, 8095-8099 + 8102/8103 llm_gateway_test)

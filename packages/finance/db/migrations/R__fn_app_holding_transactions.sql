@@ -1,10 +1,11 @@
 -- ============================================================
 -- finance.fn_app_holding_transactions(p_holding_id int) — Buchungs-Zeilen einer Depot-Position fuer das Aufklappen in
 --   der Mini-App (READ, Baustein von finance.fn_app_screen_depot; View-Modell v1 item.details, docs/package-contract.md
---   §3.12). Liefert [{label:<tpl>, value:<money>}]: die letzten 12 Buchungen der Position (Kauf/Verkauf/Dividende,
---   neueste zuerst; Stueckpreis = unit_price bzw. |Betrag| / Stueck inkl. Gebuehr, Broker-Konvention; Betrag positiv in
---   der Waehrung des Buchungskontos) und „n aeltere Buchungen", wenn es mehr gibt. Die Kennzahlen davor (Ø Kaufkurs,
---   Kaufwert, Gewinn) baut der Handler aus seinen eigenen Zeilen (kein zweiter Lauf ueber depot_holdings_overview).
+--   §3.12). Liefert [{label:<tpl>, value:<money>}] mit hoechstens 5 Zeilen, damit das Aufklappen der Position mit den
+--   drei Kennzahlen davor (Bestand, Ø Kaufkurs, Kaufwert; baut der Handler aus seinen eigenen Zeilen) bei hoechstens 8
+--   bleibt (Mini-App-UX-Gesamtkonzept §8 details): bis 5 Buchungen alle, sonst die 4 neuesten und „n aeltere
+--   Buchungen". Buchungen = Kauf/Verkauf/Dividende, neueste zuerst; Stueckpreis = unit_price bzw. |Betrag| / Stueck inkl.
+--   Gebuehr (Broker-Konvention); Betrag positiv in der Waehrung des Buchungskontos.
 --   Keine IDs, keine Kontonamen. Die Sichtbarkeit prueft der aufrufende Handler (er ruft nur fuer sichtbare
 --   Positionen); deshalb REVOKE PUBLIC, der DEFINER-Handler ruft als Eigentuemer.
 --   Tests: tests/db/finance/test_fn_app_holding_transactions.sql
@@ -38,12 +39,12 @@ BEGIN
                                                               tx.currency))) END,
                    'value', core.fn_ui_money(abs(tx.amount), tx.currency)) AS d
           FROM tx
-         WHERE tx.rn <= 12
+         WHERE tx.rn <= CASE WHEN tx.cnt <= 5 THEN 5 ELSE 4 END
         UNION ALL
         SELECT 1000, jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.tx_more', jsonb_build_object(
-                         'count', core.fn_ui_num(max(tx.cnt) - 12, 0))), 'value', NULL)
+                         'count', core.fn_ui_num(max(tx.cnt) - 4, 0))), 'value', NULL)
           FROM tx
-        HAVING max(tx.cnt) > 12
+        HAVING max(tx.cnt) > 5
     )
     SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) INTO v_out FROM x;
     RETURN v_out;

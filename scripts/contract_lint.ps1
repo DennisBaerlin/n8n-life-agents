@@ -1854,8 +1854,6 @@ $AppHeadExceptB = @(          # Paket B (Konten + Vermoegen)
 $AppHeadExceptC = @(          # Paket C (Ziele): erledigt
 )
 $AppHeadExceptD = @(          # Paket D (Kredite + Depot)
-    'finance.fn_app_screen_depot'
-    'finance.fn_app_screen_loans'
 )
 $appHeadExcept = @($AppHeadExceptB + $AppHeadExceptC + $AppHeadExceptD | Where-Object { $_ })
 $appHeadLineRe = '(?m)^--\s+Abschnitt\s+([a-z0-9_.]+):\s+Frage:\s+.+\?\s*$'

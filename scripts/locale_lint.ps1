@@ -237,7 +237,6 @@ $AppWordExceptB = @(          # Paket B (Konten + Vermoegen) + geteilte finance.
 $AppWordExceptC = @(          # Paket C (Ziele): erledigt
 )
 $AppWordExceptD = @(          # Paket D (Kredite + Depot)
-    'finance.app.depot.section_child'
 )
 $appWordExcept = @($AppWordExceptB + $AppWordExceptC + $AppWordExceptD | Where-Object { $_ })
 Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {

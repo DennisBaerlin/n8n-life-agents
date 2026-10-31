@@ -1,7 +1,8 @@
 -- tests/db/finance/test_fn_app_holding_transactions.sql
 -- finance.fn_app_holding_transactions(holding_id) — Buchungs-Zeilen einer Depot-Position fuer das Aufklappen der Mini-App.
---   1) die 12 neuesten Buchungen zuerst, Stueckpreis = |Betrag| / Stueck (inkl. Gebuehr), Betrag positiv in der
---      Waehrung des Buchungskontos; danach „2 aeltere Buchungen".
+--   1) hoechstens 5 Zeilen (das Aufklappen der Position bleibt <= 8): bei mehr als 5 Buchungen die 4 neuesten
+--      zuerst, dann „n aeltere Buchungen"; Grenzen 14 -> 4 + „10", 6 -> 4 + „2", 5 -> alle 5 ohne „aeltere".
+--      Stueckpreis = |Betrag| / Stueck (inkl. Gebuehr), Betrag positiv in der Waehrung des Buchungskontos.
 --   2) Verkauf und Dividende (eigene Texte), Bestandsuebernahme mit unit_price nimmt den genannten Stueckpreis.
 --   3) ohne Buchungen -> [] (keine „aeltere"-Zeile); keine IDs, keine Kontonamen.
 -- Self-contained (BEGIN..ROLLBACK).
@@ -22,20 +23,31 @@ BEGIN
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares, group_id)
     SELECT v_giro, -25.00, current_date - (20 - k), 'buy', v_h, 2, gen_random_uuid() FROM generate_series(1, 14) k;
 
-  -- ===== 1) 12 neueste + „aeltere" =====
+  -- ===== 1) hoechstens 5 Zeilen: 4 neueste + „aeltere" =====
   v := finance.fn_app_holding_transactions(v_h);
   SELECT array_agg(d->'label'->>'value' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v) WITH ORDINALITY AS t(d, o);
-  IF cardinality(v_labels) <> 13 OR v_labels[13] <> 'finance.app.depot.tx_more' THEN
-    RAISE EXCEPTION 'FAIL [1a] 12 Buchungen + „aeltere", got %', v_labels; END IF;
+  IF cardinality(v_labels) <> 5 OR v_labels[5] <> 'finance.app.depot.tx_more' THEN
+    RAISE EXCEPTION 'FAIL [1a] 14 Buchungen -> 4 + „aeltere", got %', v_labels; END IF;
   IF v->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.tx_buy', jsonb_build_object(
           'date', core.fn_ui_date(current_date - 6), 'shares', core.fn_ui_num(2, 0), 'price', core.fn_ui_money(12.50, 'EUR'))),
         'value', core.fn_ui_money(25, 'EUR')) THEN
     RAISE EXCEPTION 'FAIL [1b] neueste Buchung zuerst, Stueckpreis = |Betrag| / Stueck, got %', v->0; END IF;
-  IF v->11->'label'->'params'->'date' <> core.fn_ui_date(current_date - 17) THEN
-    RAISE EXCEPTION 'FAIL [1c] 12. Zeile = 12. neueste Buchung, got %', v->11; END IF;
-  IF v->12 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.tx_more', jsonb_build_object('count', core.fn_ui_num(2, 0))), 'value', NULL) THEN
-    RAISE EXCEPTION 'FAIL [1d] „2 aeltere Buchungen", got %', v->12; END IF;
-  RAISE NOTICE 'PASS [1] 12 neueste Buchungen (Stueckpreis aus Betrag) + „2 aeltere"';
+  IF v->3->'label'->'params'->'date' <> core.fn_ui_date(current_date - 9) THEN
+    RAISE EXCEPTION 'FAIL [1c] 4. Zeile = 4. neueste Buchung, got %', v->3; END IF;
+  IF v->4 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.tx_more', jsonb_build_object('count', core.fn_ui_num(10, 0))), 'value', NULL) THEN
+    RAISE EXCEPTION 'FAIL [1d] „10 aeltere Buchungen", got %', v->4; END IF;
+  -- Grenze: 6 Buchungen -> 4 + „2 aeltere"; 5 Buchungen -> alle 5, keine „aeltere"-Zeile
+  DELETE FROM finance.transactions WHERE holding_id = v_h AND transaction_date < current_date - 11;
+  v := finance.fn_app_holding_transactions(v_h);
+  IF jsonb_array_length(v) <> 5 OR v->4 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.tx_more',
+       jsonb_build_object('count', core.fn_ui_num(2, 0))), 'value', NULL) THEN
+    RAISE EXCEPTION 'FAIL [1e] 6 Buchungen -> 4 + „2 aeltere", got %', v; END IF;
+  DELETE FROM finance.transactions WHERE holding_id = v_h AND transaction_date = current_date - 11;
+  v := finance.fn_app_holding_transactions(v_h);
+  IF jsonb_array_length(v) <> 5 OR v::text LIKE '%finance.app.depot.tx_more%'
+     OR v->4->'label'->'params'->'date' <> core.fn_ui_date(current_date - 10) THEN
+    RAISE EXCEPTION 'FAIL [1f] 5 Buchungen -> alle 5 ohne „aeltere", got %', v; END IF;
+  RAISE NOTICE 'PASS [1] hoechstens 5 Zeilen: 4 neueste + „n aeltere" (14, 6), 5 Buchungen vollstaendig';
 
   -- ===== 2) Verkauf, Dividende, Bestandsuebernahme mit unit_price =====
   DELETE FROM finance.transactions WHERE holding_id = v_h;

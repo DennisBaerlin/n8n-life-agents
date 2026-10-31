@@ -3,11 +3,18 @@
 --   1) Owner/Partner sehen alle aktiven Depots. Hero = Anlageart depot aus networth_by_asset_class ohne Kinder (= dieselbe
 --      Zahl wie „Wertpapiere & Krypto" auf der Vermoegen-Seite; ohne Kurs zaehlt der Kaufwert) + gap (Position ohne Kurs
 --      oder ohne Wechselkurs); Note Gewinn seit Kauf (nur aktuelle Kurse mit Kaufwert) + Kurs-Datum. Ein Abschnitt je
---      Depot mit Summe (Haushalt nach Wert, ohne Wert zuletzt, Kinder-Depot hinten „nicht im Depotwert"), Positionen
---      nach Wert, Wert in EUR (nur ohne Wechselkurs nativ + gap), Untertitel mit Fremdwaehrungs-Kurs / abweichendem
---      Kurs-Datum, Pille Kurs veraltet/fehlt vor Gewinn (ok/up, alert/down); geschlossenes Depot fehlt.
---   2) Aufklappen: Ø Kaufkurs, Kaufwert, Gewinn (nur mit aktuellem Kurs); die Buchungs-Zeilen danach testet
---      test_fn_app_holding_transactions.sql.
+--      Eltern-Depot (nach Wert, ohne Wert zuletzt), Summe nur ab zwei Positionen, ohne gap und nur bei mindestens zwei
+--      Eltern-Depots (sonst ~ Hero); Positionen nach Wert, Wert in EUR (nur ohne Wechselkurs nativ + gap), KEIN
+--      Untertitel, Pille Kurs fehlt / Kurs veraltet ({date}), Gewinn als trend; geschlossenes Depot fehlt.
+--   2) Aufklappen: Bestand (Stueck · Kurs, Kurs-Datum nur wenn abweichend und nicht veraltet), Ø Kaufkurs, Kaufwert; kein
+--      „Seit Kauf" (= trend); die Buchungs-Zeilen danach testet test_fn_app_holding_transactions.sql.
+--   7) „Depots der Kinder" (nur Haushalt): eine Zeile je Kind-Depot mit Positionen (Wert = Vermoegen-Regel, Inhaber als
+--      Untertitel, trend, Pille Kurs fehlt vor veraltet, Pillen-Zeilen zuerst), Aufklappen = Jahres-Rendite ab einem
+--      Jahr + Positionen (hoechstens 8 Zeilen), Summe ab zwei Kind-Depots ohne gap; Kinder nie im Rendite-Abschnitt;
+--      Kind-Sicht ohne Geschwister; entfernte Katalog-Keys tauchen nirgends auf; core.fn_app_view_lint = 0 mit Kinder- und
+--      Eltern-Rendite auf einer Seite.
+--   8) Fixture-Haushalt (tests/util/util_app_household.sql): core.fn_app_view_lint = 0 fuer alle Personen, Depot mit einer
+--      Position ohne Summe (B5), beide Kinder in 'Depots der Kinder', Kind-Sicht ohne Fremdes.
 --   3) Kind sieht nur eigene Depots, Hero = eigene Summe, ohne Kinder-Zusatz: Volltextsuche ohne fremde Namen, ohne *id.
 --   4) unbekannte Rolle nur Eigenes, unbekannte Person nichts; probe -> {ok, empty, banners} (Kurs-Banner je Depot).
 --   5) Muell -> bad_request; Frei-SQL-Sitzung -> forbidden, kein EXECUTE fuer *_ro.
@@ -58,7 +65,7 @@ BEGIN
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES
     ('APDP1', 120, 'EUR', current_date), ('APDP2', 60, 'EUR', current_date - 30),
     ('APDPP', 1000, 'EUR', current_date), ('APDPK', 100, 'EUR', current_date),
-    ('APDPG', 50, 'EUR', current_date), ('APDPC', 10, 'EUR', current_date),
+    ('APDPG', 50, 'EUR', current_date - 1), ('APDPC', 10, 'EUR', current_date),
     ('APDPBTC', 40000, 'CHF', current_date);
 
   -- ===== 1) Owner =====
@@ -85,48 +92,76 @@ BEGIN
   IF v::text LIKE '%__apdp_closed%' THEN RAISE EXCEPTION 'FAIL [1e] geschlossenes Depot sichtbar'; END IF;
   IF v::text LIKE '%section_reserved%' THEN RAISE EXCEPTION 'FAIL [1e2] Reserve-Abschnitt gehoert auf den Bildschirm Ziele'; END IF;
 
-  SELECT array_agg((s->'title'->>'value') || ':' || (s->'title'->'params'->>'name') ORDER BY o) INTO v_labels
+  SELECT array_agg((s->'title'->>'value') || ':' || COALESCE(s->'title'->'params'->>'name', '') ORDER BY o) INTO v_labels
     FROM jsonb_array_elements(v->'sections') WITH ORDINALITY AS t(s, o);
   IF v_labels IS DISTINCT FROM ARRAY['finance.app.depot.section:__apdp_hh_depot__', 'finance.app.depot.section:__apdp_p_depot__',
                                      'finance.app.depot.section:__apdp_g_depot__', 'finance.app.depot.section:__apdp_hh_crypto__',
-                                     'finance.app.depot.section_child:Alpha Depot'] THEN
-    RAISE EXCEPTION 'FAIL [1f] Haushalt nach Wert (ohne Wert zuletzt), Kinder-Depot hinten, got %', v_labels; END IF;
+                                     'finance.app.depot.section_kids:'] THEN
+    RAISE EXCEPTION 'FAIL [1f] Haushalt nach Wert (ohne Wert zuletzt), „Depots der Kinder" hinten, got %', v_labels; END IF;
   v_sec := v->'sections'->0;
-  IF jsonb_typeof(v_sec->'value') <> 'null' OR v->'sections'->1->'value' <> core.fn_ui_money(1000, 'EUR') THEN
-    RAISE EXCEPTION 'FAIL [1g] Depot-Summe: entfaellt bei Position ohne Kurs (statt still zu niedrig), sonst 1000, got %', v->'sections'; END IF;
+  -- Depot-Summe: entfaellt bei Position ohne Kurs (statt still zu niedrig) und ueber einer einzigen Position
+  IF jsonb_typeof(v_sec->'value') <> 'null' OR jsonb_typeof(v->'sections'->1->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [1g] Depot-Summe: entfaellt bei gap und bei einer Position, got %', v->'sections'; END IF;
+  IF jsonb_path_exists(v, 'strict $.sections[0 to 3].items[*] ? (@.sub != null)') THEN
+    RAISE EXCEPTION 'FAIL [1g2] keine Untertitel an Positionen: %', v; END IF;
   SELECT array_agg(i->>'label' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v_sec->'items') WITH ORDINALITY AS t(i, o);
   IF v_labels IS DISTINCT FROM ARRAY['__apdp_etf_ok__', '__apdp_etf_stale__', '__apdp_etf_missing__'] THEN
     RAISE EXCEPTION 'FAIL [1h] Positionen nach Wert, got %', v_labels; END IF;
   v_it := v_sec->'items'->0;
   IF v_it->'value' <> core.fn_ui_money(1200, 'EUR') OR (v_it->>'gap')::boolean
-     OR v_it->'sub'->>'value' <> 'finance.app.depot.shares' OR v_it->'sub'->'params'->'shares' <> core.fn_ui_num(10, 0)
+     OR jsonb_typeof(v_it->'sub') <> 'null'
      OR jsonb_typeof(v_it->'pill') <> 'null'
      OR v_it->'trend' <> jsonb_build_object('direction', 'up', 'text', core.fn_ui_tpl('finance.app.depot.gain',
           jsonb_build_object('amount', core.fn_ui_money(200, 'EUR', true), 'pct', core.fn_ui_num(20.0, 1, true)))) THEN
-    RAISE EXCEPTION 'FAIL [1i] Position mit aktuellem Kurs: EUR, Stueck ohne Datum, Gewinn als trend up (keine Pille), got %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [1i] Position mit aktuellem Kurs: EUR, kein Untertitel, Gewinn als trend up (keine Pille), got %', v_it; END IF;
   v_it := v_sec->'items'->1;
-  IF v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.depot.price_stale'))
-     OR (v_it->>'gap')::boolean OR v_it->'sub'->>'value' <> 'finance.app.depot.shares_date'
-     OR v_it->'sub'->'params'->'date' <> core.fn_ui_date(current_date - 30) THEN
-    RAISE EXCEPTION 'FAIL [1j] veralteter Kurs: warn clock vor Gewinn, abweichendes Kurs-Datum im Untertitel, got %', v_it; END IF;
+  IF v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.depot.price_stale_date',
+                         jsonb_build_object('date', core.fn_ui_date(current_date - 30))))
+     OR (v_it->>'gap')::boolean OR jsonb_typeof(v_it->'sub') <> 'null'
+     OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_holding'),
+          'value', core.fn_ui_tpl('finance.app.depot.d_holding_value', jsonb_build_object(
+              'shares', core.fn_ui_num(5, 0), 'price', core.fn_ui_money(60, 'EUR')))) THEN
+    RAISE EXCEPTION 'FAIL [1j] veralteter Kurs: warn mit Kurs-Datum, Bestand ohne zweites Datum, got %', v_it; END IF;
   v_it := v_sec->'items'->2;
   IF v_it->'value' <> 'null'::jsonb OR (v_it->>'gap')::boolean IS NOT TRUE
-     OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing')) THEN
-    RAISE EXCEPTION 'FAIL [1k] Position ohne Kurs: kein Wert, gap, Pill, got %', v_it; END IF;
+     OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
+     OR v_it->'details'->0->'value' <> core.fn_ui_tpl('finance.app.depot.d_holding_shares', jsonb_build_object('shares', core.fn_ui_num(2, 0))) THEN
+    RAISE EXCEPTION 'FAIL [1k] Position ohne Kurs: kein Wert, gap, Pille, Bestand nur Stueck, got %', v_it; END IF;
   SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
    WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', '__apdp_g_depot__'));
   IF jsonb_typeof(v_sec->'items'->0->'pill') <> 'null' OR v_sec->'items'->0->'trend'->>'direction' <> 'down'
      OR v_sec->'items'->0->'trend'->'text'->'params'->'amount' <> core.fn_ui_money(-10, 'EUR', true) THEN
     RAISE EXCEPTION 'FAIL [1k2] Verlust: trend down -10, kein roter Alarm, got %', v_sec; END IF;
+  -- Kurs vom Vortag (nicht veraltet, weicht vom Hero-Datum ab): das Datum steht im Bestand
+  IF v_sec->'items'->0->'details'->0->'value' <> core.fn_ui_tpl('finance.app.depot.d_holding_value_date', jsonb_build_object(
+       'shares', core.fn_ui_num(1, 0), 'price', core.fn_ui_money(50, 'EUR'), 'date', core.fn_ui_date(current_date - 1))) THEN
+    RAISE EXCEPTION 'FAIL [1k3] abweichendes Kurs-Datum im Bestand, got %', v_sec->'items'->0->'details'; END IF;
   SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
    WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', '__apdp_hh_crypto__'));
   IF v_sec->'items'->0->'value' <> core.fn_ui_money(20000, 'CHF') OR (v_sec->'items'->0->>'gap')::boolean IS NOT TRUE
      OR jsonb_typeof(v_sec->'items'->0->'pill') <> 'null' OR jsonb_typeof(v_sec->'value') <> 'null'
-     OR v_sec->'items'->0->'sub'->>'value' <> 'finance.app.depot.shares_price'
-     OR v_sec->'items'->0->'sub'->'params'->'price' <> core.fn_ui_money(40000, 'CHF')
-     OR v_sec->'items'->0->'sub'->'params'->'shares' <> core.fn_ui_num(0.5, 1) THEN
-    RAISE EXCEPTION 'FAIL [1l] Kurs ohne Wechselkurs: nativer Wert + gap, Fremdwaehrungs-Kurs, Bruchteil-Stueck, got %', v_sec; END IF;
-  RAISE NOTICE 'PASS [1] Owner: Hero 2710 (= Vermoegen) + Note, Depots sortiert + Summe, EUR-Werte, Kurs-/Gewinn-Pillen';
+     OR v_sec->'items'->0->'details'->0->'value' <> core.fn_ui_tpl('finance.app.depot.d_holding_value', jsonb_build_object(
+          'shares', core.fn_ui_num(0.5, 1), 'price', core.fn_ui_money(40000, 'CHF'))) THEN
+    RAISE EXCEPTION 'FAIL [1l] Kurs ohne Wechselkurs: nativer Wert + gap, Fremdwaehrungs-Kurs + Bruchteil-Stueck im Bestand, got %', v_sec; END IF;
+  -- zwei Positionen im Partner-Depot (ohne gap) bei mehreren Eltern-Depots: Summe 1000 + 100
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
+    VALUES (v_p, 'APD00000008', 'APDPP2', '__apdp_p_etf2__', 2, 40, 'EUR');
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPP2', 50, 'EUR', current_date);
+  SELECT s INTO v_sec FROM jsonb_array_elements(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections') s
+   WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', '__apdp_p_depot__'));
+  IF v_sec->'value' <> core.fn_ui_money(1100, 'EUR') THEN
+    RAISE EXCEPTION 'FAIL [1l2] zwei Positionen ohne gap -> Depot-Summe 1100, got %', v_sec; END IF;
+  -- einziges sichtbares Depot (Gast) mit zwei Positionen: die Summe waere der Hero -> keine
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
+    VALUES (v_g, 'APD00000009', 'APDPG2', '__apdp_g_etf2__', 1, 40, 'EUR');
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPG2', 50, 'EUR', current_date);
+  v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_guest'));
+  IF jsonb_array_length(v->'sections') <> 1 OR jsonb_array_length(v->'sections'->0->'items') <> 2
+     OR jsonb_typeof(v->'sections'->0->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [1l3] ein Depot mit zwei Positionen: keine Summe (= Hero), got %', v->'sections'; END IF;
+  DELETE FROM finance.market_prices WHERE symbol IN ('APDPP2', 'APDPG2');
+  DELETE FROM finance.depot_holdings WHERE symbol IN ('APDPP2', 'APDPG2');
+  RAISE NOTICE 'PASS [1] Owner: Hero 2710 (= Vermoegen) + Note, Depots sortiert, Summe nur ab zwei Positionen, kein Untertitel, datierte Kurs-Pille';
 
   -- USD-Kurs MIT Wechselkurs (Anlass SpaceX 2026-10-28): Wert in EUR, Dollar-Kurs nur im Untertitel
   INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'CHF', 0.8, current_date);
@@ -134,10 +169,10 @@ BEGIN
   SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
    WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', '__apdp_hh_crypto__'));
   IF v_sec->'items'->0->>'gap' <> 'false' OR v_sec->'items'->0->'value'->>'currency' <> 'EUR'
-     OR v_sec->'items'->0->'sub'->'params'->'price' <> core.fn_ui_money(40000, 'CHF') THEN
-    RAISE EXCEPTION 'FAIL [1m] Fremdwaehrung mit Wechselkurs: Wert in EUR, Kurs nativ im Untertitel, got %', v_sec; END IF;
+     OR v_sec->'items'->0->'details'->0->'value'->'params'->'price' <> core.fn_ui_money(40000, 'CHF') THEN
+    RAISE EXCEPTION 'FAIL [1m] Fremdwaehrung mit Wechselkurs: Wert in EUR, Kurs nativ im Bestand, got %', v_sec; END IF;
   DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF' OR base_currency = 'CHF';
-  RAISE NOTICE 'PASS [1m] Fremdwaehrungs-Position in EUR, Kurs in Kurs-Waehrung nur im Untertitel';
+  RAISE NOTICE 'PASS [1m] Fremdwaehrungs-Position in EUR, Kurs in Kurs-Waehrung nur im Bestand';
 
   IF finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_partner')) <> finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')) THEN
     RAISE EXCEPTION 'FAIL [1n] Partner = Haushalts-Sicht'; END IF;
@@ -146,15 +181,14 @@ BEGIN
   v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'));
   v_it := v->'sections'->0->'items'->0;
   IF v_it->'details' <> jsonb_build_array(
+       jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_holding'), 'value', core.fn_ui_tpl('finance.app.depot.d_holding_value',
+           jsonb_build_object('shares', core.fn_ui_num(10, 0), 'price', core.fn_ui_money(120, 'EUR')))),
        jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_avg_price'), 'value', core.fn_ui_money(100, 'EUR')),
-       jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_book_value'), 'value', core.fn_ui_money(1000, 'EUR')),
-       jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_gain'), 'value', core.fn_ui_tpl('finance.app.depot.gain',
-           jsonb_build_object('amount', core.fn_ui_money(200, 'EUR', true), 'pct', core.fn_ui_num(20.0, 1, true))))) THEN
-    RAISE EXCEPTION 'FAIL [2a] Details: Ø Kaufkurs, Kaufwert, Gewinn (ohne Buchungen), got %', v_it->'details'; END IF;
-  -- veralteter Kurs: kein Gewinn in den Details (wie die Pille)
-  IF (v->'sections'->0->'items'->1->'details')::text LIKE '%finance.app.depot.d_gain%' THEN
-    RAISE EXCEPTION 'FAIL [2b] veralteter Kurs: kein Gewinn in den Details, got %', v->'sections'->0->'items'->1; END IF;
-  RAISE NOTICE 'PASS [2] Aufklappen: Ø Kaufkurs, Kaufwert, Gewinn nur mit aktuellem Kurs';
+       jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_book_value'), 'value', core.fn_ui_money(1000, 'EUR'))) THEN
+    RAISE EXCEPTION 'FAIL [2a] Details: Bestand, Ø Kaufkurs, Kaufwert, kein „Seit Kauf" (ohne Buchungen), got %', v_it->'details'; END IF;
+  IF jsonb_path_exists(v, 'strict $.sections[*].items[*] ? (@.details.size() > 8)') THEN
+    RAISE EXCEPTION 'FAIL [2b] hoechstens 8 Detail-Zeilen'; END IF;
+  RAISE NOTICE 'PASS [2] Aufklappen: Bestand, Ø Kaufkurs, Kaufwert, kein „Seit Kauf"';
 
   -- ===== 3) Kind =====
   v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid', 'params', '{}'::jsonb));
@@ -164,8 +198,9 @@ BEGIN
   IF v_txt LIKE '%__apdp_%' THEN RAISE EXCEPTION 'FAIL [3b] Kind-Antwort enthaelt fremde Namen: %', v_txt; END IF;
   IF v_txt ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [3c] *id-Feld: %', v_txt; END IF;
   IF jsonb_array_length(v->'sections') <> 1 OR v_txt NOT LIKE '%Alpha ETF%'
-     OR v->'sections'->0->'title' <> core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', 'Alpha Depot')) THEN
-    RAISE EXCEPTION 'FAIL [3d] Kind: eigenes Depot ohne „nicht im Depotwert", got %', v->'sections'; END IF;
+     OR v->'sections'->0->'title' <> core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', 'Alpha Depot'))
+     OR v_txt LIKE '%finance.app.depot.section_kids%' OR jsonb_typeof(v->'sections'->0->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [3d] Kind: eigenes Depot als normaler Abschnitt (eine Position, keine Summe), kein Kinder-Abschnitt, got %', v->'sections'; END IF;
   RAISE NOTICE 'PASS [3] Kind sieht nur das eigene Depot (Hero = eigene Summe), keine IDs';
 
   -- ===== 4) Allow-List + probe =====
@@ -260,9 +295,8 @@ BEGIN
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.perf_since', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 365)))
      OR jsonb_typeof(v_it->'pill') <> 'null'
      OR v_it->'value' <> core.fn_ui_tpl('finance.app.depot.perf_pa', jsonb_build_object('pct', core.fn_ui_num(10.0, 1, true)))
-     OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_value'), 'value', core.fn_ui_money(1100, 'EUR'))
-     OR v_it->'details'->-1 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_how'), 'value', NULL) THEN
-    RAISE EXCEPTION 'FAIL [6c] Depot ab 1 Jahr: +10,0 %% pro Jahr als Wert (keine Pille), seit-Datum, Wert heute + Erklaerung, got %', v_it; END IF;
+     OR v_it->'details' <> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_how'), 'value', NULL)) THEN
+    RAISE EXCEPTION 'FAIL [6c] Depot ab 1 Jahr: +10,0 %% pro Jahr als Wert (keine Pille), seit-Datum, nur die Erklaerung (kein „Wert heute"), got %', v_it; END IF;
   v_it := v_sec->'items'->1;
   IF v_it->'label' <> '"__apdp_perf3__"'::jsonb
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.perf_since', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 400)))
@@ -276,9 +310,14 @@ BEGIN
   UPDATE finance.market_prices SET as_of = core.fn_today() - 30 WHERE symbol = 'APDPR1';
   v_it := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0->'items'->0;
   IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->>'icon' <> 'clock'
-     OR v_it->'pill'->'text'->>'value' <> 'finance.app.depot.price_stale' OR v_it->'value'->>'value' <> 'finance.app.depot.perf_pa'
+     OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.depot.price_stale_date', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 30)))
+     OR v_it->'value'->>'value' <> 'finance.app.depot.perf_pa'
      OR NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_stale')))) THEN
-    RAISE EXCEPTION 'FAIL [6f2] veralteter Kurs: warn/clock mit Zahl + Hinweis, got %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [6f2] veralteter Kurs: warn/clock mit Kurs-Datum, Zahl + Hinweis, got %', v_it; END IF;
+  -- jede „veraltet"-Pille der Seite (auch „Alle Depots") traegt ein Datum
+  IF jsonb_path_exists(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')),
+       'strict $.**.text ? (@.value == "finance.app.depot.price_stale_date" && !exists(@.params.date))') THEN
+    RAISE EXCEPTION 'FAIL [6f2b] veraltet-Pille ohne Datum'; END IF;
   UPDATE finance.market_prices SET as_of = core.fn_today() WHERE symbol = 'APDPR1';
   -- altes Depot ohne Kurs: ohne Endwert-Fluss ist period_days 0, die Zeile bleibt trotzdem (Beginn vor 400 Tagen) mit
   -- „Kurs fehlt" + gap, statt still zu verschwinden
@@ -294,6 +333,118 @@ BEGIN
   IF finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid'))::text LIKE '%section_perf%' THEN
     RAISE EXCEPTION 'FAIL [6g] Kind sieht fremde Rendite'; END IF;
   RAISE NOTICE 'PASS [6] Rendite je Depot: nur ab 1 Jahr (p.a.), junge Depots fehlen, Alle Depots nur wenn alle stehen, altes Depot ohne Kurs bleibt, keine IDs';
+
+  -- ===== 7) Depots der Kinder =====
+  -- [7a] ein Kind-Depot: eine Zeile, keine Abschnitts-Summe; Wert = Vermoegen-Seite (networth_by_asset_class)
+  v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'));
+  v_sec := v->'sections'->-1;
+  v_it := v_sec->'items'->0;
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.depot.section_kids') OR jsonb_array_length(v_sec->'items') <> 1
+     OR jsonb_typeof(v_sec->'value') <> 'null'
+     OR v_it->'label' <> '"Alpha Depot"'::jsonb
+     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.kid_owner', jsonb_build_object('name', 'Kind Beispiel'))
+     OR v_it->'value' <> core.fn_ui_money(300, 'EUR') OR (v_it->>'gap')::boolean OR jsonb_typeof(v_it->'pill') <> 'null'
+     OR v_it->'trend' <> jsonb_build_object('direction', 'up', 'text', core.fn_ui_tpl('finance.app.depot.gain',
+          jsonb_build_object('amount', core.fn_ui_money(30, 'EUR', true), 'pct', core.fn_ui_num(11.1, 1, true))))
+     OR v_it->'details' <> jsonb_build_array(jsonb_build_object('label', 'Alpha ETF',
+          'value', core.fn_ui_tpl('finance.app.depot.kid_position', jsonb_build_object('value', core.fn_ui_money(300, 'EUR'),
+              'gain', core.fn_ui_tpl('finance.app.depot.gain', jsonb_build_object('amount', core.fn_ui_money(30, 'EUR', true),
+                                                                                   'pct', core.fn_ui_num(11.1, 1, true))))))) THEN
+    RAISE EXCEPTION 'FAIL [7a] ein Kind-Depot: Zeile mit Inhaber, Wert, trend, Position im Aufklappen, keine Summe, got %', v_sec; END IF;
+  IF (v_it->'value'->>'value')::numeric IS DISTINCT FROM
+     (SELECT round(sum(n.value_eur), 2) FROM finance.networth_by_asset_class n WHERE n.owner_person_id = 'apdp_kid' AND n.bucket = 'depot') THEN
+    RAISE EXCEPTION 'FAIL [7a2] Kind-Depot-Wert muss = Vermoegen-Seite sein, got %', v_it->'value'; END IF;
+
+  -- [7b] zweites Kind: Depot mit 9 Positionen (eine ohne Kurs), Rendite-Depot (1 Jahr), Depot ohne Positionen
+  DECLARE
+    v_b INT; v_d INT; v_e INT; h_d INT;
+  BEGIN
+    INSERT INTO agent.persons (person_id, full_name, role) VALUES ('apdp_kid2', 'Beta Kind', 'child');
+    INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
+      VALUES ('Beta Konto', 'cash', 'EUR', 'active', 'apdp_kid2') RETURNING id INTO v_e;
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, owner_person_id)
+      VALUES ('Beta Depot', 'stocks_depot', 'EUR', 'active', v_e, 'apdp_kid2') RETURNING id INTO v_b;
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, owner_person_id)
+      VALUES ('Delta Depot', 'stocks_depot', 'EUR', 'active', v_e, 'apdp_kid2') RETURNING id INTO v_d;
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, owner_person_id)
+      VALUES ('Gamma Depot', 'stocks_depot', 'EUR', 'active', v_e, 'apdp_kid2');
+    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
+      SELECT v_b, 'APDB0000000' || k, 'APDB' || k, 'Beta Pos ' || k, 1, 10 * k, 'EUR' FROM generate_series(1, 9) k;
+    INSERT INTO finance.market_prices (symbol, price, currency, as_of)
+      SELECT 'APDB' || k, 10 * k, 'EUR', current_date FROM generate_series(1, 8) k;   -- APDB9 ohne Kurs
+    INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency)
+      VALUES (v_d, 'APDD0000001', 'APDD1', 'Delta Pos', 'EUR') RETURNING id INTO h_d;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares) VALUES
+      (v_e, -1000, core.fn_today() - 365, 'buy', h_d, 10);
+    INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDD1', 110, 'EUR', core.fn_today());
+
+    v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'));
+    v_sec := v->'sections'->-1;
+    SELECT array_agg(i->>'label' ORDER BY o) INTO v_labels FROM jsonb_array_elements(v_sec->'items') WITH ORDINALITY AS t(i, o);
+    IF v_labels IS DISTINCT FROM ARRAY['Beta Depot', 'Delta Depot', 'Alpha Depot'] OR jsonb_typeof(v_sec->'value') <> 'null' THEN
+      RAISE EXCEPTION 'FAIL [7b] Pillen-Zeile zuerst, dann nach Wert; Depot ohne Positionen fehlt; Summe entfaellt bei gap, got % / %', v_labels, v_sec->'value'; END IF;
+    v_it := v_sec->'items'->0;
+    -- Wert nach der Vermoegen-Regel: ohne Kurs zaehlt der Kaufwert (360 + 90), gap weil eine Position keinen Kurs hat
+    IF v_it->'value' <> core.fn_ui_money(450, 'EUR') OR (v_it->>'gap')::boolean IS NOT TRUE
+       OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
+       OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.kid_owner', jsonb_build_object('name', 'Beta Kind'))
+       OR jsonb_array_length(v_it->'details') <> 8
+       OR v_it->'details'->-1 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.more_positions',
+            jsonb_build_object('count', core.fn_ui_num(2, 0))), 'value', NULL) THEN
+      RAISE EXCEPTION 'FAIL [7c] Kind-Depot mit Kurs-Luecke: Wert 450 + gap, Pille Kurs fehlt, 7 Positionen + „2 weitere", got %', v_it; END IF;
+    IF (v_it->'value'->>'value')::numeric + 300 + 1100 IS DISTINCT FROM
+       (SELECT round(sum(n.value_eur), 2) FROM finance.networth_by_asset_class n
+         WHERE n.owner_person_id IN ('apdp_kid', 'apdp_kid2') AND n.bucket = 'depot') THEN
+      RAISE EXCEPTION 'FAIL [7c2] Kind-Depot-Werte muessen = Vermoegen-Seite sein'; END IF;
+    v_it := v_sec->'items'->1;
+    IF v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.kid_perf', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 365))),
+         'value', core.fn_ui_tpl('finance.app.depot.perf_pa', jsonb_build_object('pct', core.fn_ui_num(10.0, 1, true))))
+       OR v_it->'details'->1->'label' <> '"Delta Pos"'::jsonb THEN
+      RAISE EXCEPTION 'FAIL [7d] Kind-Depot ab einem Jahr: Rendite pro Jahr als erste Detail-Zeile, dann Positionen, got %', v_it->'details'; END IF;
+    SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section_perf');
+    IF v_sec::text LIKE '%Delta Depot%' OR v_sec::text LIKE '%Alpha Depot%' THEN
+      RAISE EXCEPTION 'FAIL [7e] Kinder stehen nicht im Rendite-Abschnitt, got %', v_sec; END IF;
+
+    -- Kurs nachgetragen: keine Luecke mehr -> Summe der drei Kind-Depots
+    INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDB9', 90, 'EUR', current_date);
+    v_sec := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->-1;
+    IF v_sec->'value' <> core.fn_ui_money(450 + 1100 + 300, 'EUR') THEN
+      RAISE EXCEPTION 'FAIL [7f] drei Kind-Depots ohne gap -> Abschnitts-Summe, got %', v_sec; END IF;
+
+    -- veralteter Kurs im Kind-Depot mit Jahres-Rendite: Pille mit Datum, Rendite + Hinweis „vorlaeufig" wie bei den Eltern
+    UPDATE finance.market_prices SET as_of = core.fn_today() - 30 WHERE symbol = 'APDD1';
+    v_it := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->-1->'items'->0;
+    IF v_it->'label' <> '"Delta Depot"'::jsonb
+       OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.depot.price_stale_date', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 30)))
+       OR v_it->'details'->0->'label'->>'value' <> 'finance.app.depot.kid_perf'
+       OR v_it->'details'->1 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_stale'), 'value', NULL)
+       OR v_it->'details'->2->'label' <> '"Delta Pos"'::jsonb THEN
+      RAISE EXCEPTION 'FAIL [7f2] Kind-Depot mit veraltetem Kurs: zuerst, Pille mit Datum, Rendite + vorlaeufig, got %', v_it; END IF;
+    UPDATE finance.market_prices SET as_of = core.fn_today() WHERE symbol = 'APDD1';
+
+    -- Kind-Sicht: nur Eigenes, nie Geschwister
+    v_txt := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid'))::text;
+    IF v_txt LIKE '%Beta%' OR v_txt LIKE '%Delta%' THEN RAISE EXCEPTION 'FAIL [7g] Kind sieht Geschwister-Depots'; END IF;
+    v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid2'));
+    v_txt := v::text;
+    IF v_txt LIKE '%Alpha%' OR v_txt LIKE '%Kind Beispiel%' OR v_txt LIKE '%__apdp_%' OR v_txt LIKE '%finance.app.depot.section_kids%' THEN
+      RAISE EXCEPTION 'FAIL [7h] Zweitkind sieht Fremdes oder einen Kinder-Abschnitt: %', v_txt; END IF;
+  END;
+
+  -- [7i] entfernte Katalog-Keys tauchen in keiner Sicht mehr auf
+  v_txt := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))::text
+        || finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid2'))::text;
+  IF v_txt ~ 'finance\.app\.depot\.(section_child|shares|shares_price|shares_date|shares_price_date|d_gain|price_stale|perf_child|perf_none|d_perf_value)"' THEN
+    RAISE EXCEPTION 'FAIL [7i] entfernter Katalog-Key in der View'; END IF;
+  IF jsonb_path_exists(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')), 'strict $.**.state ? (@ == "ok")') THEN
+    RAISE EXCEPTION 'FAIL [7j] keine ok-Pille'; END IF;
+  IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')), '{}',
+               ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing'])) THEN
+    RAISE EXCEPTION 'FAIL [7k] Gestaltungsregeln (Kinder- und Eltern-Rendite auf einer Seite): %', (SELECT string_agg(l.rule || ' ' || l.path, ', ')
+      FROM core.fn_app_view_lint(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')), '{}',
+             ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing']) l); END IF;
+  RAISE NOTICE 'PASS [7] Depots der Kinder: eine Zeile je Depot, Vermoegen-Wert, Pillen zuerst, Rendite + Positionen im Aufklappen, Summe ab zwei ohne gap, keine Geschwister';
+
 
   -- ===== 5) Muell =====
   IF finance.fn_app_screen_depot('{}') <> '{"ok":false,"code":"bad_request"}'::jsonb
@@ -320,4 +471,36 @@ BEGIN
   RAISE NOTICE 'PASS [5] kein EXECUTE fuer *_ro; Frei-SQL-Sitzung -> forbidden';
 END $$;
 RESET SESSION AUTHORIZATION;
+ROLLBACK;
+
+-- ===== 8) Fixture-Haushalt (tests/util/util_app_household.sql): Gestaltungsregeln fuer alle Personen =====
+BEGIN;
+\ir ../../util/util_app_household.sql
+DO $$
+DECLARE
+  v jsonb; v_pid text; v_sec jsonb; v_txt text;
+BEGIN
+  FOREACH v_pid IN ARRAY ARRAY['fxh_jonas', 'fxh_mira', 'fxh_lea', 'fxh_tom', 'fxh_gast'] LOOP
+    v := finance.fn_app_screen_depot(jsonb_build_object('person_id', v_pid, 'params', '{}'::jsonb));
+    IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(v, '{}', ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing'])) THEN
+      RAISE EXCEPTION 'FAIL [8a] Gestaltungsregeln fuer %: %', v_pid, (SELECT string_agg(l.rule || ' ' || l.path, ', ')
+        FROM core.fn_app_view_lint(v, '{}', ARRAY['finance.app.depot.price_missing', 'finance.app.depot.perf_fx_missing']) l); END IF;
+  END LOOP;
+  -- Haushalt: Depot mit einer Position ohne Summe (B5), Kinder-Depots in einem Abschnitt (beide Kinder)
+  v := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'fxh_jonas', 'params', '{}'::jsonb));
+  SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
+   WHERE s->'title'->'params'->>'name' = (SELECT name FROM finance.accounts WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_depot_jonas'));
+  IF jsonb_array_length(v_sec->'items') <> 1 OR jsonb_typeof(v_sec->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [8b] Depot mit einer Position: keine Summe (B5), got %', v_sec; END IF;
+  v_sec := v->'sections'->-1;
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.depot.section_kids') OR jsonb_array_length(v_sec->'items') <> 2 THEN
+    RAISE EXCEPTION 'FAIL [8c] „Depots der Kinder" mit beiden Kind-Depots, got %', v_sec; END IF;
+  -- Kind: nur das eigene Depot, kein Kinder-Abschnitt, nichts vom Geschwister
+  v_txt := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'fxh_lea', 'params', '{}'::jsonb))::text;
+  IF v_txt LIKE '%finance.app.depot.section_kids%'
+     OR v_txt LIKE '%' || (SELECT name FROM finance.accounts WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_depot_tom')) || '%'
+     OR v_txt LIKE '%' || (SELECT name FROM finance.accounts WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_depot_jonas')) || '%' THEN
+    RAISE EXCEPTION 'FAIL [8d] Lea sieht Fremdes oder einen Kinder-Abschnitt: %', v_txt; END IF;
+  RAISE NOTICE 'PASS [8] Fixture-Haushalt: Gestaltungsregeln fuer alle Personen, Summenregel, Depots der Kinder, Kind-Sicht';
+END $$;
 ROLLBACK;

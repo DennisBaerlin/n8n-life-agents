@@ -33,7 +33,7 @@ Buchhalter (`agent.finance`, CQRS) + Berater (`agent.finance_advisor`, bucht nie
 - **Void** nur für den jüngsten Auszug eines Kontos (`last_reconciled_at = period_end`), stellt `prev_*`, Skips und gelernte Schlüssel wieder her.
 - **Bank-Import-Modul:** Leser -> `fn_bank_export_normalize` -> Profil-fn je Bank -> kanonische Zeile -> Prepare/Apply; Transfers zwischen eigenen Konten in beiden Import-Reihenfolgen. Mechanik + Entscheidungen -> `docs/reference/packages.md` *Bank-Import-Modul*.
 - **Vorschau/Warnung:** `fn_account_outlook` ist die eine Rechen-Adresse für Tool-Antwort und Advisor-Alert `account_coverage:<konto>` (nur Konten mit Auszug); `recurring_missing:<kopf>` = jüngste zwei Termine der Kette übersprungen.
-- **Projektions-Kern:** jede Kontostands-Vorschau rechnet über `fn_account_projection` (Kontovorschau mit Alltagsausgaben, Spar-Deckung `fn_account_funding` ohne, Schwelle 0, 24 Monate); keine zweite Tagesreihe bauen. Bei uns anders (arch-challenge 2026-10-29): kein Zahler-/Anteils-Feld je Sparplan (externe Zahler sind Eingangs-rps ohne Quellkonto) und keine Sichtbarkeits-Stufen je Konto (es bleibt `core.fn_app_sees_household`); gewollter Abbau aus Guthaben ist ohne Markierung keine Lücke.
+- **Projektions-Kern:** jede Kontostands-Vorschau rechnet über `fn_account_projection` (Kontovorschau mit Alltag, Spar-Deckung `fn_account_funding` ohne, Schwelle = Ziel-Geld je Tag); keine zweite Tagesreihe. Bei uns anders (arch-challenge 2026-10-29): kein Zahler-/Anteils-Feld je Sparplan (externe Zahler sind Eingangs-rps ohne Quellkonto) und keine Sichtbarkeits-Stufen je Konto (es bleibt `core.fn_app_sees_household`); gewollter Abbau aus Guthaben ist ohne Markierung keine Lücke.
 
 ## DB-Hard-Guarantees
 

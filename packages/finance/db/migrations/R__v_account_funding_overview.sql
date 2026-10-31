@@ -1,8 +1,8 @@
 -- ============================================================
 -- finance.account_funding_overview (Lese-View, Berater-Nachruestung 2026-10-30)
 --   „Reicht das Geld fuer meine Sparplaene?" — EINE Zeile je Deckungs-Konto (finance.fn_funding_accounts, dieselbe
---   Regel wie die Seite Ziele der Uebersicht) mit der Spar-Deckung aus finance.fn_account_funding (die eine Rechnung, Horizont
---   finance.funding_horizon_months, Ende = horizon_end). roles = die Rollen des Kontos als Liste (plan = zahlt einen Sparplan, transfer = Ziel eines
+--   Regel wie der Konten-Tab der Uebersicht) mit der Spar-Deckung aus finance.fn_account_funding (die eine Rechnung, Horizont
+--   finance.funding_horizon_months, Ende = horizon_end). roles = die Rollen des Kontos als Liste (plan = zahlt einen Sparplan, order_source = Absender eines
 --   Dauerauftrags): ein Konto mit beiden Rollen steht EINMAL da (sonst lief die Projektion doppelt und der Berater
 --   meldete dasselbe Konto zweimal). Haushalts-Sicht ohne Personen-Filter (die Sichtbarkeit je Person macht nur die App).
 --   Der Berater liest die Deckung hier und projiziert nie selbst.

@@ -2,9 +2,9 @@
 -- fn_coverage_accounts (READ, STABLE) -- die Konten, fuer die eine Deckungs-Vorschau (fn_account_outlook) bewertet wird
 --   Regel an EINER Stelle: aktives cash-Konto mit mindestens einem eingespielten Kontoauszug. Ohne Auszug fehlt die
 --   Schaetzung der Alltagsausgaben -> keine Ampel auf Halbwissen (ein Kinderkonto mit 50 stuende sonst dauerhaft rot).
---   Konsumenten: fn_advisor_review (Warnung account_coverage), fn_app_screen_payments (Kontovorschau der Mini-App).
+--   Konsumenten: fn_advisor_review (Warnung account_coverage), fn_account_low_state (Konten-Tab der Mini-App).
 --   RUECKGABE: SETOF account_id
---   Tests: tests/db/finance/test_fn_account_outlook.sql (Berater), tests/db/finance/test_fn_app_screen_payments.sql
+--   Tests: tests/db/finance/test_fn_account_outlook.sql (Berater), tests/db/finance/test_fn_account_low_state.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_coverage_accounts()
 RETURNS SETOF int

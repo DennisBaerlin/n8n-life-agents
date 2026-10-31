@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_funding_accounts.sql
--- finance.fn_funding_accounts() — die EINE Regel, welche Konten eine Spar-Deckungs-Ampel haben (Seite Ziele + Karten-
---   Hinweis savings_funding): Abbuchungskonto eines aktiven Sparplans (Glied fn_recurring_current) oder Ziel eines
---   Dauerauftrags (fn_standing_orders kind transfer); nur aktive Nicht-Kredit-Konten. Werte erfunden.
+-- finance.fn_funding_accounts() — die EINE Regel, welche Konten eine Spar-Deckungs-Ampel haben (Konten-Tab + Karten-
+--   Hinweis savings_funding): Abbuchungskonto eines aktiven Sparplans (Glied fn_recurring_current) oder ABSENDER eines
+--   Dauerauftrags (fn_standing_orders kind transfer|debit); nur aktive Nicht-Kredit-Konten. Werte erfunden.
 BEGIN;
 DO $$
 DECLARE
@@ -39,19 +39,29 @@ BEGIN
     RAISE EXCEPTION 'FAIL [b] pausierter Plan zaehlt'; END IF;
   RAISE NOTICE 'PASS [b] nur aktive Plaene';
 
-  -- [c] Ziel eines Dauerauftrags (kommend) -> kind transfer; die Quelle ist kein Deckungs-Konto
+  -- [c] Dauerauftrag (kommend): der ABSENDER ist Deckungs-Konto (kind order_source), das Ziel nicht (UX-Gesamtkonzept
+  --     2026-10-31 P12 / Bug B2: die Warnung gehoert ans Konto, das ausfuehrt)
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('fa Uebertrag', v_giro, v_pause, -100, 'month', t + 1, t + 1);
-  IF NOT EXISTS (SELECT 1 FROM finance.fn_funding_accounts() f WHERE f.account_id = v_pause AND f.kind = 'transfer')
-     OR EXISTS (SELECT 1 FROM finance.fn_funding_accounts() f WHERE f.account_id = v_giro) THEN
-    RAISE EXCEPTION 'FAIL [c] Dauerauftrags-Ziel'; END IF;
-  RAISE NOTICE 'PASS [c] Ziel eines Dauerauftrags';
+  IF NOT EXISTS (SELECT 1 FROM finance.fn_funding_accounts() f WHERE f.account_id = v_giro AND f.kind = 'order_source')
+     OR EXISTS (SELECT 1 FROM finance.fn_funding_accounts() f WHERE f.account_id = v_pause) THEN
+    RAISE EXCEPTION 'FAIL [c] Dauerauftrags-Absender statt Ziel'; END IF;
+  RAISE NOTICE 'PASS [c] Absender eines Dauerauftrags';
 
-  -- [d] geschlossenes Konto als Ziel zaehlt nicht
+  -- [d] geschlossenes Konto als Absender zaehlt nicht
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
-    VALUES ('fa Uebertrag zu', v_giro, v_closed, -100, 'month', t + 1, t + 1);
+    VALUES ('fa Uebertrag zu', v_closed, v_giro, -100, 'month', t + 1, t + 1);
   IF EXISTS (SELECT 1 FROM finance.fn_funding_accounts() f WHERE f.account_id = v_closed) THEN
     RAISE EXCEPTION 'FAIL [d] geschlossenes Konto'; END IF;
   RAISE NOTICE 'PASS [d] nur aktive Konten';
+
+  -- [e] Spar-Abfluss ohne Ziel-Konto (Sparziel-Rate ohne Topf = fn_standing_orders kind debit): Absender zaehlt
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('fa Ziel-Rate', v_kid, -30, 'month', t + 3, t + 3) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id)
+    VALUES ('fa Ziel', 1000, t + 400, v_rp);
+  IF NOT EXISTS (SELECT 1 FROM finance.fn_funding_accounts() f WHERE f.account_id = v_kid AND f.kind = 'order_source') THEN
+    RAISE EXCEPTION 'FAIL [e] Ziel-Rate ohne Topf: Absender fehlt'; END IF;
+  RAISE NOTICE 'PASS [e] debit-Dauerauftrag: Absender';
 END $$;
 ROLLBACK;

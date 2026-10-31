@@ -62,7 +62,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [b] Latch: keine zweite Frage, got %', v; END IF;
   RAISE NOTICE 'PASS [b] Frage nur einmal je Konto';
 
-  -- [c] Zubringer 200 vom Giro aufs Kind-Konto -> Bericht (ask=false): gedeckt; Giro ist kein Deckungs-Konto -> keine Zeile
+  -- [c] Zubringer 200 vom Giro aufs Kind-Konto -> Bericht (ask=false): gedeckt; das Giro ist als Absender zwar ein
+  --     Deckungs-Konto, aber gedeckt und ohne Geldeingang (nicht in p_report_ok) -> keine Zeile
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('sf Zubr Kind', v_giro, v_kid, -200, 'month', t + 1, t + 1);
   v := finance.fn_savings_funding_fold(ARRAY[v_giro, v_kid], false, false, ARRAY[v_kid]);
@@ -73,10 +74,11 @@ BEGIN
      OR v->'savings_funding'->>'note' LIKE '%ASK%' OR v->'savings_funding'->>'note' NOT LIKE '%covered%' THEN
     RAISE EXCEPTION 'FAIL [c] Zubringer -> gedeckt, got %', v; END IF;
   RAISE NOTICE 'PASS [c] Zubringer-Bericht: gedeckt, Quellkonto ohne Zeile';
-  -- [c2] „gedeckt" ohne p_report_ok (z. B. eine Abbuchung, die die Deckung nicht bricht) -> Kartenzeile, aber keine Note
+  -- [c2] „gedeckt" ohne p_report_ok und ohne Frage (z. B. eine Abbuchung, die die Deckung nicht bricht) -> nichts
+  --      (UX-Gesamtkonzept 2026-10-31: sonst stuende bei jedem Dauerauftrag eine gedeckt-Zeile zum Absender)
   v := finance.fn_savings_funding_fold(ARRAY[v_kid], false);
-  IF v->'card_lines'->0->>'value' <> 'finance.note.funding_ok' OR v ? 'savings_funding' THEN
-    RAISE EXCEPTION 'FAIL [c2] gedeckt ohne Bericht, got %', v; END IF;
+  IF v <> '{}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [c2] gedeckt ohne Bericht -> {}, got %', v; END IF;
   RAISE NOTICE 'PASS [c2] gedeckt meldet nur fuer Geldeingaenge';
 
   -- [d] neue Lage: ein weiterer Plan verschiebt das „reicht bis"-Datum -> neuer Latch-Schluessel, fragt wieder
@@ -118,11 +120,15 @@ BEGIN
     RAISE EXCEPTION 'FAIL [g] Fehlbetrag mit Alltagsausgaben, got %', v; END IF;
   RAISE NOTICE 'PASS [g] Alltagsausgaben im Fehlbetrag';
 
-  -- [h] neutral (Ziel ohne Kurs) -> nichts; kein Deckungs-Konto (Giro) -> nichts
+  -- [h] neutral (Ziel ohne Kurs) -> nichts; kein Deckungs-Konto (fut: noch ohne Abfluss) -> nichts; das Giro ist als
+  --     Absender der Zubringer Deckungs-Konto -> bei einer Sparplan-Frage eine gedeckt-Zeile, keine Frage
   IF finance.fn_savings_funding_fold(ARRAY[v_chf], true) <> '{}'::jsonb THEN RAISE EXCEPTION 'FAIL [h] neutral'; END IF;
-  v := finance.fn_savings_funding_fold(ARRAY[v_giro], true);
+  v := finance.fn_savings_funding_fold(ARRAY[v_fut], true);
   IF v <> '{}'::jsonb THEN RAISE EXCEPTION 'FAIL [h2] kein Deckungs-Konto -> {}, got %', v; END IF;
-  RAISE NOTICE 'PASS [h] neutral / kein Deckungs-Konto -> nichts';
+  v := finance.fn_savings_funding_fold(ARRAY[v_giro], true);
+  IF v->'card_lines'->0->>'value' NOT IN ('finance.note.funding_ok', 'finance.note.funding_ok_drain') OR v ? 'savings_funding' THEN
+    RAISE EXCEPTION 'FAIL [h2b] Absender-Giro: gedeckt-Zeile ohne Frage, got %', v; END IF;
+  RAISE NOTICE 'PASS [h] neutral / kein Deckungs-Konto -> nichts, Absender gedeckt';
 
   -- [h3] Lage auf einem Weg ohne Fold geaendert (Einmal-Einzahlung, wie ein per set_recurring_payment erhoehter
   --      Zubringer): neues „reicht bis"-Datum -> der naechste Sparplan-Write fragt wieder, ohne Re-Arm-Pfad
@@ -159,6 +165,24 @@ BEGIN
   IF NOT (v->'savings_funding'->'accounts'->0->>'asked')::boolean THEN
     RAISE EXCEPTION 'FAIL [j] Probelauf verbraucht den Latch, got %', v; END IF;
   RAISE NOTICE 'PASS [j] Probelauf verbraucht den Latch nicht';
+
+  -- [k] Ziel-Geld ist nicht frei: Konto 10000, davon 6000 fuer ein Ziel, Sparplan -1000/Monat ab t+2 -> warn; die Note
+  --     nennt den FREIEN Stand 4000 + das Ziel-Geld, die Zahlen im Bericht tragen reserved/min_free
+  DECLARE v_res INT; v_g INT; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_sf_res__', 'p2p', 'EUR', 'active') RETURNING id INTO v_res;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_res, 10000, t - 40, 'other');
+    INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('sf Ziel', 6000, t + 300) RETURNING id INTO v_g;
+    INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_res, 6000, 'manual');
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+      VALUES ('sf Plan res', v_res, -1000, 'month', t + 2, t + 2) RETURNING id INTO v_rp;
+    INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id) VALUES ('sf Plan res', v_depot, 'SFR', 'Welt ETF', v_rp);
+    v := finance.fn_savings_funding_fold(ARRAY[v_res], true);
+    a := v->'savings_funding'->'accounts'->0;
+    IF a->>'state' <> 'warn' OR (a->>'reserved')::numeric <> 6000 OR (a->>'runs_out_on')::date <> (t + 2 + interval '4 months')::date
+       OR v->'savings_funding'->>'note' NOT LIKE '%the balance of 4000.00 EUR (free money, after 6000.00 EUR reserved for goals) lasts until%' THEN
+      RAISE EXCEPTION 'FAIL [k] freies Geld in der Note, got %', v; END IF;
+  END;
+  RAISE NOTICE 'PASS [k] Note nennt das freie Geld nach dem Ziel-Geld';
 
   -- [m] fn_merge_fold: eigene Kartenzeilen bleiben vorn, Fold-Zeilen dahinter, uebrige Fold-Schluessel angehaengt;
   --     card_lines als JSON null / fehlend zaehlt als leer

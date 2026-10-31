@@ -1,17 +1,17 @@
 -- tests/db/finance/test_fn_app_screen_overview.sql
 -- finance.fn_app_screen_overview(p jsonb) — Mini-App-Bildschirm „Vermögen" (docs/package-contract.md §3.12, View-Modell v1).
 --   1) Owner + Partner (Allow-List) sehen den Haushalt OHNE Kinder (Uebersicht R3): Hero = Netto, Note Besitz/Schulden,
---      Abschnitte Besitz (Anteils-Balken) / Schulden (Kredit -> Bildschirm Kredite) / Kinder (je Kind Netto, Details je
---      Anlageart = Summe) / Konten (ohne Kredit-, Depot- und Kinderkonten, Untertitel mit Besitzer), Rohname (auch
---      <img …>) unveraendert als String.
+--      Abschnitte Schnell verfuegbar (Anteils-Balken) / Schulden (Kredit positiv, ohne Summe -> Bildschirm Kredite) /
+--      Vermoegen der Kinder (je Kind Netto, Details je Anlageart = Summe); KEINE Konten-Liste (Heimat: Tab Konten);
+--      fn_app_view_lint = 0 (UX-Gesamtkonzept 2026-10-31).
 --   2) Kind sieht NUR eigene Zeilen (owner_person_id = ich): Volltextsuche ueber die GANZE Antwort findet keinen Namen
---      eines Haushalts-/Eltern-/Fremdkontos und ueberhaupt kein *id-Feld.
+--      eines Haushalts-/Eltern-/Fremdkontos und ueberhaupt kein *id-Feld; Summe = Hero -> keine Abschnittssumme.
 --   3) Unbekannte Rolle (Allow-List, nicht Deny-List) und unbekannte Person sehen nur Eigenes bzw. nichts.
 --   4) params.probe -> nur {ok, empty}; fehlende person_id / Muell -> {ok:false, code:'bad_request'} ohne RAISE.
---   5) Waehrung ohne Kurs -> gap im Hero, in der Anlageart und am Konto.
+--   5) Waehrung ohne Kurs -> gap im Hero und in der Anlageart; der Abschnitt traegt dann keine Summe.
 --   6) Frei-SQL-Sitzung (finance_ro, selbst MIT EXECUTE) -> {ok:false, code:'forbidden'}; ohne Test-Grant kein EXECUTE.
---   7) Besitz als Liquiditaets-Leiter: Liquide (Konten, P2P, Depot) / Gebunden (Immobilie) mit Summen, Untertitel mit
---      Wertverhalten (fester Wert / Auszahlung nicht garantiert / schwankt).
+--   7) Besitz als Liquiditaets-Leiter: Schnell verfuegbar (Konten, P2P, Depot) / Langfristig gebunden (Festgeld,
+--      Immobilie); Summe nur ab 2 Zeilen ohne gap, Untertitel nur der Anteil.
 -- Self-contained (BEGIN..ROLLBACK).
 BEGIN;
 DO $$
@@ -66,8 +66,8 @@ BEGIN
   IF NOT (v ? 'title' AND v ? 'hero' AND v ? 'banners' AND v ? 'sections') THEN
     RAISE EXCEPTION 'FAIL [1b] View-Modell-v1-Felder fehlen: %', v; END IF;
   IF v->'title' <> core.fn_ui_tpl('finance.app.overview.title') THEN RAISE EXCEPTION 'FAIL [1c] title %', v->'title'; END IF;
-  IF jsonb_array_length(v->'banners') <> 0 OR jsonb_array_length(v->'sections') <> 4 THEN
-    RAISE EXCEPTION 'FAIL [1d] erwartet 0 Banner + 4 Abschnitte (Besitz, Schulden, Kinder, Konten), got %', v; END IF;
+  IF jsonb_array_length(v->'banners') <> 0 OR jsonb_array_length(v->'sections') <> 3 THEN
+    RAISE EXCEPTION 'FAIL [1d] erwartet 0 Banner + 3 Abschnitte (Schnell verfuegbar, Schulden, Kinder; keine Konten-Liste), got %', v; END IF;
   -- Hero: 10000 + 4000 + 500 (HH-Depot, Kaufwert ohne Kurs) - 2000 (Kredit) + 50 (Gast); Kind (300 + 1000) NICHT;
   -- CHF ohne Kurs faellt aus -> gap
   v_n := (v->'hero'->'value'->>'value')::numeric;
@@ -79,59 +79,38 @@ BEGIN
   IF v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note_bookval', jsonb_build_object(
        'assets', core.fn_ui_money(14550, 'EUR'), 'debts', core.fn_ui_money(2000, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [1f2] Note Besitz 14550 · Schulden 2000 (Besitz - Schulden = Hero), got %', v->'hero'->'note'; END IF;
-  -- Besitz (hier nur liquide): Enum-Verweis je bucket, Summe im Titel, Anteile am Besitz aus der DB, kein Kredit
+  -- Besitz (hier nur schnell verfuegbar): Enum-Verweis je bucket, Anteile am Besitz aus der DB, kein Kredit; KEINE Summe,
+  -- weil eine Anlageart eine Wechselkurs-Luecke hat (§3.12: Summe trotz gap waere unvollstaendig)
   v_sec := v->'sections'->0;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_liquid') OR v_sec->'value' <> core.fn_ui_money(14550, 'EUR') THEN
-    RAISE EXCEPTION 'FAIL [1g] Abschnitt Liquide + Summe 14550, got %', v_sec; END IF;
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_liquid') OR jsonb_typeof(v_sec->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [1g] Abschnitt Schnell verfuegbar ohne Summe (gap), got %', v_sec; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'loan') THEN
     RAISE EXCEPTION 'FAIL [1i] Kredit gehoert nicht in den Besitz'; END IF;
   SELECT (i->'value'->>'value')::numeric INTO v_n FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'depot';
   IF v_n IS DISTINCT FROM 500 THEN RAISE EXCEPTION 'FAIL [1j] Depot-Anlageart 500 (ohne Kinderdepot), got %', v_n; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label'->>'value' = 'depot';
   IF (v_it->'progress'->>'pct')::numeric IS DISTINCT FROM 3.4
-     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.overview.share_volatile', jsonb_build_object('pct', core.fn_ui_num(3.4, 1))) THEN
-    RAISE EXCEPTION 'FAIL [1k] Depot-Anteil 500/14550 = 3.4 %% + „Wert schwankt" (Balken + Untertitel), got %', v_it; END IF;
+     OR v_it->'sub' <> core.fn_ui_tpl('finance.app.overview.share', jsonb_build_object('pct', core.fn_ui_num(3.4, 1))) THEN
+    RAISE EXCEPTION 'FAIL [1k] Depot-Anteil 500/14550 = 3.4 %% (Balken + Untertitel ohne Erklaer-Zusatz), got %', v_it; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
                   WHERE i->'label'->>'value' = 'cash' AND (i->>'gap')::boolean) THEN
     RAISE EXCEPTION 'FAIL [5b] gap an der Anlageart cash (CHF-Konto) fehlt'; END IF;
-  -- Schulden: Kredit negativ, Summe im Titel, Sprung zum Bildschirm Kredite
+  -- Schulden: Kredit POSITIV, ohne Summe (steht schon in der Hero-Note), Sprung zum Bildschirm Kredite
   v_sec := v->'sections'->1;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_debts') OR v_sec->'value' <> core.fn_ui_money(-2000, 'EUR')
-     OR v_sec->'items'->0->'value' <> core.fn_ui_money(-2000, 'EUR')
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_debts') OR jsonb_typeof(v_sec->'value') <> 'null'
+     OR v_sec->'items'->0->'value' <> core.fn_ui_money(2000, 'EUR')
      OR v_sec->'items'->0->'target' <> '{"screen":"loans","params":{}}'::jsonb THEN
-    RAISE EXCEPTION 'FAIL [1h] Schulden: Kredit -2000 mit Sprung nach loans, got %', v_sec; END IF;
-  -- Kinder: je Kind Netto, Details je Anlageart ergeben die Summe
+    RAISE EXCEPTION 'FAIL [1h] Schulden: Kredit 2000 positiv, keine Summe, Sprung nach loans, got %', v_sec; END IF;
+  -- Kinder: je Kind Netto, Details je Anlageart ergeben die Summe; Titel ohne Fussnote
   v_sec := v->'sections'->2;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.common.kids_not_in_sum') OR jsonb_array_length(v_sec->'items') <> 1
+  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_kids') OR jsonb_array_length(v_sec->'items') <> 1
      OR v_sec->'items'->0->>'label' <> 'Kind Beispiel' OR v_sec->'items'->0->'value' <> core.fn_ui_money(1300, 'EUR') THEN
     RAISE EXCEPTION 'FAIL [1q] Kinder-Abschnitt: Kind Beispiel 1300, got %', v_sec; END IF;
   SELECT sum((d->'value'->>'value')::numeric) INTO v_n FROM jsonb_array_elements(v_sec->'items'->0->'details') d;
   IF v_n IS DISTINCT FROM 1300 OR jsonb_array_length(v_sec->'items'->0->'details') <> 2 THEN
     RAISE EXCEPTION 'FAIL [1r] Kinder-Details (Konten 300 + Depot 1000) muessen die Summe ergeben, got %', v_sec->'items'->0->'details'; END IF;
-  -- Konten: ohne Kredit/Depot/Kind, Rohname als String, Saldo nativ, Besitzer + Bestaetigungs-Datum typisiert
-  v_sec := v->'sections'->3;
-  IF v_sec->'title' <> core.fn_ui_tpl('finance.app.overview.section_accounts') THEN RAISE EXCEPTION 'FAIL [1l] Abschnitt Konten'; END IF;
-  v_txt := v_sec::text;
-  IF v_txt LIKE '%__appo_hh_loan__%' OR v_txt LIKE '%__appo_hh_depot__%' OR v_txt LIKE '%__appo_kid_%' THEN
-    RAISE EXCEPTION 'FAIL [1m] Kredit-/Depot-/Kinderkonto in der Konten-Liste: %', v_txt; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
-                  WHERE i->>'label' = '__appo_p_cash__'
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.overview.owner', jsonb_build_object('owner', 'Partner Beispiel'))) THEN
-    RAISE EXCEPTION 'FAIL [1s] Partnerkonto mit Besitzer-Untertitel fehlt: %', v_sec; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i WHERE i->'label' = to_jsonb('<img src=x onerror=alert(1)>'::text)) THEN
-    RAISE EXCEPTION 'FAIL [1n] Rohname muss unveraendert als String kommen (XSS-Fixture)'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
-                  WHERE i->>'label' = '__appo_hh_cash__'
-                    AND i->'value' = core.fn_ui_money(10000, 'EUR')
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.overview.owner_confirmed', jsonb_build_object(
-                                     'owner', core.fn_ui_tpl('finance.app.common.joint'),
-                                     'date', core.fn_ui_date(DATE '2026-10-01')))) THEN
-    RAISE EXCEPTION 'FAIL [1o] Haushaltskonto mit Saldo + „Gemeinsam · Auszug bestaetigt" fehlt: %', v_sec; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sec->'items') i
-                  WHERE i->>'label' = '__appo_hh_chf__' AND (i->>'gap')::boolean
-                    AND i->'value' = core.fn_ui_money(700, 'CHF')) THEN
-    RAISE EXCEPTION 'FAIL [5c] CHF-Konto: nativer Betrag + gap erwartet'; END IF;
-  RAISE NOTICE 'PASS [1+5] Owner sieht den Haushalt ohne Kind (Hero 12550 + gap, Besitz/Schulden/Kinder/Konten, Rohname)';
+  IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(v)) THEN RAISE EXCEPTION 'FAIL [1z] fn_app_view_lint Owner: %', (SELECT string_agg(rule || '@' || path, ' ') FROM core.fn_app_view_lint(v)); END IF;
+  RAISE NOTICE 'PASS [1+5] Owner sieht den Haushalt ohne Kind (Hero 12550 + gap, Schnell verfuegbar/Schulden/Kinder, keine Konten-Liste, Lint = 0)';
 
   -- Partner = Allow-List Haushalt -> identische Antwort
   IF finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_partner')) <> v THEN
@@ -147,12 +126,13 @@ BEGIN
   IF v_txt LIKE '%__appo_hh_%' OR v_txt LIKE '%__appo_p_%' OR v_txt LIKE '%__appo_g_%' OR v_txt LIKE '%onerror%' THEN
     RAISE EXCEPTION 'FAIL [2b] Kind-Antwort enthaelt fremde Namen: %', v_txt; END IF;
   IF v_txt ~ '"[a-z_]*id"\s*:' THEN RAISE EXCEPTION 'FAIL [2c] Antwort traegt ein *id-Feld: %', v_txt; END IF;
-  IF v_txt NOT LIKE '%__appo_kid_cash__%' THEN RAISE EXCEPTION 'FAIL [2d] eigenes Konto fehlt: %', v_txt; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->'label'->>'value' = 'loan') THEN
     RAISE EXCEPTION 'FAIL [2e] Haushalts-Kredit in der Kind-Sicht'; END IF;
-  IF v->'hero'->'label' <> core.fn_ui_tpl('finance.app.overview.hero_own') OR jsonb_array_length(v->'sections') <> 2
-     OR v_txt LIKE '%finance.app.common.kids_not_in_sum%' OR v_txt LIKE '%finance.app.overview.owner%' THEN
-    RAISE EXCEPTION 'FAIL [2f] Kind: „Mein Vermoegen", nur Besitz + Konten, kein Kinder-Abschnitt/Besitzer, got %', v; END IF;
+  -- Kind: nur „Schnell verfuegbar" (Konto 300 + Depot 1000 = Hero 1300 -> keine Summe, sie waere = Hero)
+  IF v->'hero'->'label' <> core.fn_ui_tpl('finance.app.overview.hero_own') OR jsonb_array_length(v->'sections') <> 1
+     OR jsonb_typeof(v->'sections'->0->'value') <> 'null' OR v_txt LIKE '%finance.app.overview.section_kids%' THEN
+    RAISE EXCEPTION 'FAIL [2f] Kind: „Mein Vermoegen", nur Schnell verfuegbar ohne Summe = Hero, kein Kinder-Abschnitt, got %', v; END IF;
+  IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(v)) THEN RAISE EXCEPTION 'FAIL [2g] Lint Kind-Sicht'; END IF;
   RAISE NOTICE 'PASS [2] Kind sieht nur Eigenes (1300), keine fremden Namen/IDs in der ganzen Antwort';
 
   -- ===== 3) Allow-List: unbekannte Rolle -> nur Eigenes; unbekannte Person -> nichts =====
@@ -161,7 +141,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3a] unbekannte Rolle muss nur Eigenes sehen (50), got %', v; END IF;
   v := finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_nobody'));
   IF (v->>'ok')::boolean IS NOT TRUE OR (v->'hero'->'value'->>'value')::numeric IS DISTINCT FROM 0
-     OR jsonb_array_length(v->'sections'->0->'items') <> 0 OR jsonb_array_length(v->'sections'->1->'items') <> 0 THEN
+     OR jsonb_array_length(v->'sections') <> 1 OR jsonb_array_length(v->'sections'->0->'items') <> 0 THEN
     RAISE EXCEPTION 'FAIL [3b] unbekannte Person muss einen leeren Bildschirm bekommen, got %', v; END IF;
   RAISE NOTICE 'PASS [3] Allow-List: unbekannte Rolle nur Eigenes, unbekannte Person nichts';
 
@@ -177,39 +157,36 @@ BEGIN
     RAISE EXCEPTION 'FAIL [4b] Muell-Eingaben muessen bad_request (bzw. kein probe) ohne RAISE liefern'; END IF;
   RAISE NOTICE 'PASS [4] probe {ok, empty}; Muell -> bad_request ohne RAISE';
 
-  -- ===== 7) Liquiditaets-Leiter: Liquide (Konten/P2P/Depot) vs. Gebunden (Immobilie), Wertverhalten im Untertitel =====
+  -- ===== 7) Liquiditaets-Leiter: Schnell verfuegbar (Konten/P2P/Depot) vs. Langfristig gebunden (Festgeld/Immobilie) =====
   INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
     VALUES ('__appo_hh_p2p__', 'p2p', 'EUR', 'active', NULL) RETURNING id INTO v_g_cash;
   UPDATE finance.account_balances SET balance = 1000 WHERE account_id = v_g_cash;
+  INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id, fixed_deposit_maturity_date)
+    VALUES ('__appo_hh_fd__', 'fixed_deposit', 'EUR', 'active', NULL, CURRENT_DATE + 365) RETURNING id INTO v_g_cash;
+  UPDATE finance.account_balances SET balance = 5000 WHERE account_id = v_g_cash;
   INSERT INTO finance.real_estate (name, current_value) VALUES ('__appo_hh_re__', 100000);
   v := finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_owner'));
-  -- Besitz = 14550 + 1000 + 100000 = 115550; liquide 15550, gebunden 100000
+  -- Besitz = 14550 + 1000 + 5000 + 100000 = 120550; gebunden 105000 aus 2 Zeilen -> Summe; schnell verfuegbar mit gap -> keine
   IF v->'sections'->0->'title' <> core.fn_ui_tpl('finance.app.overview.section_liquid')
-     OR v->'sections'->0->'value' <> core.fn_ui_money(15550, 'EUR')
+     OR jsonb_typeof(v->'sections'->0->'value') <> 'null'
      OR v->'sections'->1->'title' <> core.fn_ui_tpl('finance.app.overview.section_bound')
-     OR v->'sections'->1->'value' <> core.fn_ui_money(100000, 'EUR')
+     OR v->'sections'->1->'value' <> core.fn_ui_money(105000, 'EUR')
      OR v->'hero'->'note' <> core.fn_ui_tpl('finance.app.overview.hero_note_bookval', jsonb_build_object(
-          'assets', core.fn_ui_money(115550, 'EUR'), 'debts', core.fn_ui_money(2000, 'EUR'))) THEN
-    RAISE EXCEPTION 'FAIL [7a] Liquide 15550 / Gebunden 100000, Note Besitz 115550, got %', v; END IF;
+          'assets', core.fn_ui_money(120550, 'EUR'), 'debts', core.fn_ui_money(2000, 'EUR'))) THEN
+    RAISE EXCEPTION 'FAIL [7a] Gebunden 105000 (2 Zeilen), Schnell verfuegbar ohne Summe (gap), Note Besitz 120550, got %', v; END IF;
   SELECT array_agg(i->'label'->>'value' ORDER BY o) INTO v_txt FROM jsonb_array_elements(v->'sections'->0->'items') WITH ORDINALITY AS t(i, o);
-  IF v_txt IS DISTINCT FROM '{cash,p2p,depot}' THEN RAISE EXCEPTION 'FAIL [7b] Reihenfolge liquide cash/p2p/depot, got %', v_txt; END IF;
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i
-                  WHERE i->'label'->>'value' = 'p2p'
-                    AND i->'sub' = core.fn_ui_tpl('finance.app.overview.share_p2p', jsonb_build_object('pct', core.fn_ui_num(0.9, 1))))
-     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->0->'items') i
-                     WHERE i->'label'->>'value' = 'cash' AND i->'sub'->>'value' = 'finance.app.overview.share_stable')
-     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections'->1->'items') i
-                     WHERE i->'label'->>'value' = 'real_estate'
-                       AND i->'sub' = core.fn_ui_tpl('finance.app.overview.share', jsonb_build_object('pct', core.fn_ui_num(86.5, 1)))) THEN
-    RAISE EXCEPTION 'FAIL [7c] Untertitel: Konten fester Wert, P2P Auszahlung nicht garantiert, Immobilie nur Anteil, got %', v; END IF;
-  -- nur Gebundenes (eigene Immobilie, kein Konto): kein leeres „Liquide" darueber
+  IF v_txt IS DISTINCT FROM '{cash,p2p,depot}' THEN RAISE EXCEPTION 'FAIL [7b] Reihenfolge schnell verfuegbar cash/p2p/depot, got %', v_txt; END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_path_query(v, 'strict $.sections[*].items[*].sub') s WHERE s->>'value' <> 'finance.app.overview.share') THEN
+    RAISE EXCEPTION 'FAIL [7c] Untertitel nur „x %% des Besitzes", got %', v; END IF;
+  IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(v)) THEN RAISE EXCEPTION 'FAIL [7z] Lint mit Gebunden-Summe'; END IF;
+  -- nur Gebundenes (eigene Immobilie, kein Konto): kein leeres „Schnell verfuegbar" darueber, keine Summe ueber einer Zeile
   INSERT INTO agent.persons (person_id, full_name, role) VALUES ('appo_solo', 'Solo Beispiel', 'grandparent');
   INSERT INTO finance.real_estate (name, current_value, owner_person_id) VALUES ('__appo_solo_re__', 50000, 'appo_solo');
   v := finance.fn_app_screen_overview(jsonb_build_object('person_id', 'appo_solo'));
   SELECT array_agg(s->'title'->>'value' ORDER BY o) INTO v_txt FROM jsonb_array_elements(v->'sections') WITH ORDINALITY AS t(s, o);
-  IF v_txt IS DISTINCT FROM '{finance.app.overview.section_bound,finance.app.overview.section_accounts}' THEN
-    RAISE EXCEPTION 'FAIL [7d] nur Gebundenes -> Gebunden + Konten, got %', v_txt; END IF;
-  RAISE NOTICE 'PASS [7] Liquide vs. Gebunden mit Summen, Wertverhalten im Untertitel, kein leeres Liquide';
+  IF v_txt IS DISTINCT FROM '{finance.app.overview.section_bound}' OR jsonb_typeof(v->'sections'->0->'value') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [7d] nur Gebundenes -> ein Abschnitt ohne Summe, got %', v; END IF;
+  RAISE NOTICE 'PASS [7] Schnell verfuegbar vs. Langfristig gebunden, Summen nur ab 2 Zeilen ohne gap, Untertitel ohne Zusatz';
 
   -- Transparenz 2026-10-30: mit Kurs fuer das HH-Depot verschwindet der Kaufwert-Hinweis; ohne Schulden steht er allein
   INSERT INTO finance.market_prices (symbol, isin, price, currency, as_of) VALUES ('APOHH', 'APO00000001', 120, 'EUR', CURRENT_DATE);
@@ -241,4 +218,26 @@ BEGIN
   RAISE NOTICE 'PASS [6] kein EXECUTE fuer *_ro; Frei-SQL-Sitzung bekaeme trotzdem nur forbidden';
 END $$;
 RESET SESSION AUTHORIZATION;
+ROLLBACK;
+
+-- ===== 8) Fixture-Haushalt (tests/util/util_app_household.sql): fn_app_view_lint = 0 fuer alle fuenf Personen =====
+BEGIN;
+\ir ../../util/util_app_household.sql
+DO $$
+DECLARE v_pid text; v jsonb; v_lint text;
+BEGIN
+  FOREACH v_pid IN ARRAY ARRAY['fxh_jonas', 'fxh_mira', 'fxh_lea', 'fxh_tom', 'fxh_gast'] LOOP
+    v := finance.fn_app_screen_overview(jsonb_build_object('person_id', v_pid, 'params', '{}'::jsonb));
+    SELECT string_agg(l.rule || '@' || l.path, ' ') INTO v_lint FROM core.fn_app_view_lint(v) l;
+    IF v_lint IS NOT NULL THEN RAISE EXCEPTION 'FAIL [8] Lint % : %', v_pid, v_lint; END IF;
+  END LOOP;
+  -- Haushalt: Vermoegen der Kinder mit Lea + Tom, Schulden positiv
+  v := finance.fn_app_screen_overview('{"person_id":"fxh_jonas","params":{}}');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_kids')
+                   AND jsonb_array_length(s->'items') = 2)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s CROSS JOIN LATERAL jsonb_array_elements(s->'items') i
+                 WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_debts') AND (i->'value'->>'value')::numeric < 0) THEN
+    RAISE EXCEPTION 'FAIL [8b] Fixture: Kinder-Abschnitt (2) + Schulden positiv, got %', v; END IF;
+  RAISE NOTICE 'PASS [8] Fixture-Haushalt: Lint = 0 fuer alle Personen';
+END $$;
 ROLLBACK;

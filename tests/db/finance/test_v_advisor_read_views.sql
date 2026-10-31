@@ -33,18 +33,21 @@ BEGIN
     'amount',100,'schedule_interval',1,'schedule_unit','month','first_payment_date',v_first));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL fn_create_savings_plan: %', v_res; END IF;
 
-  -- (1) Spar-Deckung: der Topf zahlt den Sparplan UND empfaengt den Dauerauftrag -> EINE Zeile, beide Rollen
+  -- (1) Spar-Deckung: der Topf zahlt den Sparplan UND schickt selbst einen Dauerauftrag -> EINE Zeile, beide Rollen;
+  --     das Giro ist Absender des Zubringers -> Rolle order_source (UX-Gesamtkonzept 2026-10-31: Absender statt Empfaenger)
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('arv Rueckfluss', v_pot, v_giro, -20, 'month', t + 3, t + 3);
   SELECT count(*) INTO n FROM finance.account_funding_overview WHERE account_id = v_pot;
   IF n <> 1 THEN RAISE EXCEPTION 'FAIL funding: % Zeilen fuer den Topf (erwartet 1)', n; END IF;
   SELECT * INTO v_row FROM finance.account_funding_overview WHERE account_id = v_pot;
-  IF v_row.roles IS DISTINCT FROM ARRAY['plan', 'transfer'] OR v_row.account_name IS DISTINCT FROM '__t_arv_pot__'
+  IF v_row.roles IS DISTINCT FROM ARRAY['order_source', 'plan'] OR v_row.account_name IS DISTINCT FROM '__t_arv_pot__'
      OR v_row.state IS DISTINCT FROM (finance.fn_account_funding(v_pot)->>'state')
      OR v_row.monthly_in IS DISTINCT FROM (finance.fn_account_funding(v_pot)->>'monthly_in')::numeric
      OR v_row.monthly_out IS DISTINCT FROM (finance.fn_account_funding(v_pot)->>'monthly_out')::numeric THEN
     RAISE EXCEPTION 'FAIL funding Zeile: %', row_to_json(v_row); END IF;
-  IF EXISTS (SELECT 1 FROM finance.account_funding_overview WHERE account_id = v_giro) THEN
-    RAISE EXCEPTION 'FAIL funding: das Giro hat keine Deckungs-Rolle'; END IF;
-  RAISE NOTICE 'PASS account_funding_overview: eine Zeile je Konto, Rollen plan+transfer, Werte = fn_account_funding';
+  IF (SELECT roles FROM finance.account_funding_overview WHERE account_id = v_giro) IS DISTINCT FROM ARRAY['order_source'] THEN
+    RAISE EXCEPTION 'FAIL funding: das Giro ist Absender des Zubringers (order_source)'; END IF;
+  RAISE NOTICE 'PASS account_funding_overview: eine Zeile je Konto, Rollen plan+order_source, Werte = fn_account_funding';
 
   -- (2) Dauerauftraege mit Namen statt ids; die Sparplan-Abbuchung ist kein Dauerauftrag
   SELECT * INTO v_row FROM finance.standing_order_overview WHERE recurring_payment_id = v_rp;
@@ -52,7 +55,7 @@ BEGIN
      OR v_row.to_account IS DISTINCT FROM '__t_arv_pot__' OR v_row.amount_per_execution IS DISTINCT FROM 150
      OR v_row.monthly_amount IS DISTINCT FROM 150 OR v_row.rhythm IS NULL OR v_row.starts_on IS DISTINCT FROM t + 1 THEN
     RAISE EXCEPTION 'FAIL standing_order Zeile: %', row_to_json(v_row); END IF;
-  IF EXISTS (SELECT 1 FROM finance.standing_order_overview WHERE from_account = '__t_arv_pot__') THEN
+  IF EXISTS (SELECT 1 FROM finance.standing_order_overview WHERE from_account = '__t_arv_pot__' AND name <> 'arv Rueckfluss') THEN
     RAISE EXCEPTION 'FAIL standing_order: Sparplan-Abbuchung als Dauerauftrag gelistet'; END IF;
   RAISE NOTICE 'PASS standing_order_overview: Namen, Betrag je Ausfuehrung, Monatsbetrag, Start';
 

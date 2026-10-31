@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_account_planned_flows (READ, STABLE) -- offene Dauerauftrags-Vorkommen eines Kontos in [p_from, p_until], je Vorkommen
 --   die EINE Quelle fuer die Tagesreihe finance.fn_account_projection und die Einzelzeilen der Bruecke auf dem
---   Mini-App-Bildschirm „Zahlungen“ (Transparenz 2026-10-30: dieselben Betraege wie die Reihe, nie nachgerechnet).
+--   Mini-App-Bildschirm „Konten“ (Transparenz 2026-10-30: dieselben Betraege wie die Reihe, nie nachgerechnet).
 --   Quell-Seite = Buchungsbetrag aus finance.fn_upcoming_payments (signiert; Kredit-Schlussrate = Abloese);
 --   Ziel-Seite eines Uebertrags = abs(geplanter Betrag) in ZIELwaehrung: gleiche Waehrung roh, sonst ueber den Kurs
 --   (fn_to_eur_unrounded, 2 Stellen); fehlt ein Kurs, zaehlt der Quellbetrag roh (nie still 0) und fx_gap ist true.

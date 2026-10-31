@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_app_payment_occurrences.sql
 -- finance.fn_app_payment_occurrences — Vorkommen eines Kontos fuer die Mini-App (UX 2026-10-30):
---   eigener Uebertrag A -> B: bei A Abgang mit „→ B", bei B Eingang (+) — vorher fehlte der Eingang beim Ziel;
---   Sparplan-Zahlung traegt den Plan-Namen; Kind-Sicht: verborgene Quelle „vom Haushalt", verborgenes Ziel „Haushalt".
+--   eigener Uebertrag A -> B: bei A Abgang, bei B Eingang (+) — vorher fehlte der Eingang beim Ziel;
+--   Sparplan-Zahlung traegt den Plan-Namen; Kind-Sicht: verborgene Quelle „vom Haushalt", kein fremder Name.
 --   Erfundene Werte.
 BEGIN;
 DO $$
@@ -25,23 +25,21 @@ BEGIN
     VALUES ('Welt ETF Kind', v_dep, 'APO1', 'Welt ETF', v_rp, 'apo_kid');
 
   v := finance.fn_app_payment_occurrences(v_a, t, t + 30, true, 'owner');
-  IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', '__apo_a_to_b__', 'amount', -150, 'to', '__apo_b__'))) THEN
-    RAISE EXCEPTION 'FAIL [1] Quelle: Abgang mit Ziel, got %', v; END IF;
+  IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', '__apo_a_to_b__', 'amount', -150))) THEN
+    RAISE EXCEPTION 'FAIL [1] Quelle: Abgang, got %', v; END IF;
   v := finance.fn_app_payment_occurrences(v_b, t, t + 30, true, 'owner');
   IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', '__apo_a_to_b__', 'amount', 150, 'cur', 'EUR')))
      OR (v->>'fx_gap')::boolean THEN
     RAISE EXCEPTION 'FAIL [2] Ziel: Eingang +150 (fehlte bisher), got %', v; END IF;
-  IF (SELECT count(*) FROM jsonb_array_elements(v->'rows') x WHERE x->'to' <> 'null'::jsonb) <> 0 THEN
-    RAISE EXCEPTION 'FAIL [3] Eingang ohne Ziel-Angabe, got %', v; END IF;
 
   -- Kind-Sicht auf das eigene Konto: Sparplan mit Plan-Namen, Eingang vom verborgenen Konto neutral, Auftrag an verborgenes Konto „Haushalt"
   v := finance.fn_app_payment_occurrences(v_kid, t, t + 30, false, 'apo_kid');
   IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', 'Welt ETF Kind', 'amount', -10))) THEN
     RAISE EXCEPTION 'FAIL [4] Plan-Name statt „Sparplan …", got %', v; END IF;
-  IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.payments.from_household'), 'amount', 20))) THEN
+  IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.from_household'), 'amount', 20))) THEN
     RAISE EXCEPTION 'FAIL [5] verborgene Quelle neutral, got %', v; END IF;
-  IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', 'Spar Kind', 'to', core.fn_ui_tpl('finance.app.payments.household')))) THEN
-    RAISE EXCEPTION 'FAIL [6] verborgenes Ziel „Haushalt", got %', v; END IF;
+  IF NOT (v->'rows' @> jsonb_build_array(jsonb_build_object('label', 'Spar Kind', 'amount', -5))) THEN
+    RAISE EXCEPTION 'FAIL [6] eigener Auftrag an verborgenes Konto mit eigenem Namen, ohne Ziel-Namen, got %', v; END IF;
   IF v::text LIKE '%__apo_%' THEN RAISE EXCEPTION 'FAIL [7] Kind sieht fremde Namen: %', v; END IF;
   RAISE NOTICE 'PASS [1-7] Quelle/Ziel eines Uebertrags, Plan-Name, Zero-Trust';
 END $$;

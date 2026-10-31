@@ -90,7 +90,7 @@
 #       tests/db/finance/test_fn_relative_dates.sql fuer Inline-SQL. Selbst-Asserts.
 #   (28)/(29) BERATER-INTERVIEW-KATALOG / MINI-APP-BILDSCHIRME — s. die Bloecke unten.
 #   (30) EINE FRAGE JE ABSCHNITT: jede Mini-App-Bildschirm-fn nennt im Kopf je Abschnitt
-#       „-- Abschnitt <Titel-Key>: Frage: …?“ (beidseitig gegen die Titel-Literale); Ratchet-Ausnahmen je Bau-Paket.
+#       „-- Abschnitt <Titel-Key>: Frage: …?“ (beidseitig gegen die Titel-Literale); Ausnahmeliste (Ratchet) leer.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -1845,17 +1845,10 @@ foreach ($sf in (Get-ChildItem (Join-Path $pkgDir '*\onboarding\sections.json') 
 #       --   Abschnitt <Titel-Key>: Frage: <Satz>?
 #     beidseitig geprueft: jeder Key einer Kopfzeile steht als Literal im SQL, und jedes Literal
 #     'title', core.fn_ui_tpl('<key>' (ausser dem Seitentitel <…>.title) hat seine Kopfzeile; mindestens eine Kopfzeile.
-#     RATCHET: heute noch alte Handler stehen je Bau-Paket in $AppHeadExcept*; wer den Handler umbaut, streicht die Zeile.
+#     RATCHET: Ausnahmen stehen je Handler in $appHeadExcept (seit dem UX-Umbau leer); wer einen Handler umbaut, streicht sie.
 #     Eine Ausnahme fuer einen Handler ohne Verstoss oder ohne app_screens-Eintrag ist ein FEHLER („Zeile streichen“).
-$AppHeadExceptB = @(          # Paket B (Konten + Vermoegen)
-    'finance.fn_app_screen_overview'
-    'finance.fn_app_screen_payments'
+$appHeadExcept = @(           # leer seit dem Umbau aller Bildschirme (UX-Gesamtkonzept B/C/D); neue Zeile = Owner-Freigabe
 )
-$AppHeadExceptC = @(          # Paket C (Ziele): erledigt
-)
-$AppHeadExceptD = @(          # Paket D (Kredite + Depot)
-)
-$appHeadExcept = @($AppHeadExceptB + $AppHeadExceptC + $AppHeadExceptD | Where-Object { $_ })
 $appHeadLineRe = '(?m)^--\s+Abschnitt\s+([a-z0-9_.]+):\s+Frage:\s+.+\?\s*$'
 # Abschnittstitel = Literal hinter 'title', core.fn_ui_tpl(  ODER  jedes App-Key-Literal mit Namensteil section*
 # (faengt auch per CASE gewaehlte Titel); der Seitentitel <…>.title zaehlt nicht.

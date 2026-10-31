@@ -291,14 +291,16 @@ BEGIN
   SELECT sum(finance.fn_to_eur(o.monthly_amount, o.currency)) INTO v_n FROM finance.savings_plan_overview o WHERE o.status = 'active';
   IF v_sec->'value' <> core.fn_ui_tpl('finance.app.goals.reserve_rate', jsonb_build_object('rate', core.fn_ui_money(v_n, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [1x] Sparplan-Summe % im Monat, got %', v_n, v_sec->'value'; END IF;
-  IF v_sec->'items'->0->>'label' <> '__apgl_low_plan__' OR v_sec->'items'->1->>'label' <> '__apgl_days_plan__'
+  -- warn: das Tage-Konto UND seit Paket B (Ziel-Geld ist nicht frei) das Kinderkonto (500 von 1000 fuer „Alpha Fahrrad“)
+  IF v_sec->'items'->0->>'label' <> '__apgl_low_plan__'
+     OR NOT (jsonb_build_array(v_sec->'items'->1->>'label', v_sec->'items'->2->>'label') @> '["__apgl_days_plan__", "Alpha Sparplan"]'::jsonb)
      OR v_sec->'items'->-1->>'label' <> '__apgl_a_paused__' THEN
     RAISE EXCEPTION 'FAIL [1y] Sparplaene: alert, warn, aktiv, pausiert zuletzt, got %', v_sec->'items'; END IF;
   v_it := v_sec->'items'->0;
   IF v_it->'pill' <> jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl(
                        'finance.app.goals.fund_gap', jsonb_build_object('date', core.fn_ui_date(current_date + 3)))) THEN
     RAISE EXCEPTION 'FAIL [1z] leeres Abbuchungskonto: alert „Luecke ab" mit Datum, got %', v_it; END IF;
-  v_it := v_sec->'items'->1;
+  SELECT i INTO v_it FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apgl_days_plan__';
   IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text'->>'value' <> 'finance.app.goals.fund_until'
      OR v_it->'pill'->'text'->'params'->'date'->>'kind' <> 'month'
      OR v_it->'value' <> core.fn_ui_money(100, 'EUR')

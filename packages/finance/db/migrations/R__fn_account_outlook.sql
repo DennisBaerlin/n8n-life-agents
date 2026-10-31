@@ -2,7 +2,7 @@
 -- fn_account_outlook (READ, STABLE, RAISE-frei) -- Deckungs-Vorschau eines Kontos (Monats-Check WP-E)
 --   "Reicht das Geld bis zum naechsten Geldeingang?" — die EINE Rechen-Adresse fuer die Antwort nach dem Monats-Check
 --   (fn_apply_bank_statement), die Berater-Warnung account_coverage (fn_advisor_review) und die Bruecke des
---   Mini-App-Bildschirms „Zahlungen“. Muster Quicken Simplifi "projected balance + low-balance alert"; die DB rechnet,
+--   Mini-App-Bildschirms „Konten“. Muster Quicken Simplifi "projected balance + low-balance alert"; die DB rechnet,
 --   das LLM formuliert nur.
 --   Modell (Einzelumsaetze werden nicht gespeichert -> Alltagsausgaben sind eine Schaetzung):
 --     d0 = Tag nach dem bestaetigten Stand (last_reconciled_at, sonst heute).

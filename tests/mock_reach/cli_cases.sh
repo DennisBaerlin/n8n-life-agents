@@ -268,6 +268,13 @@ newrun; REACH_MODE=tunnel; ts_reset; ts_state NeedsLogin 'https://login.tailscal
 ui_choose() { local v; v="$(pop choose)"; [ "$v" = retry ] && { ts_state Running "" "[\"https\",\"funnel\"]"; echo 1 > "$TS_MOCK_DIR/allowed"; }; cat >> "$W/choose.log"; printf "%s" "$v"; }
 reach_tunnel_connect 2>/dev/null
 eq A_conn_ready "$DNS|$DNS|127.0.0.1" "${DOMAIN:-}|$(read_env_value "$INSTALL_ENV_FILE" DOMAIN)|$(read_env_value "$INSTALL_ENV_FILE" TRUSTED_PROXIES)"
+hasnt A_conn_bot_no_warn 'öffentlich sichtbar' "$(reach_tunnel_connect 2>&1)"
+newrun; REACH_MODE=tunnel; ts_reset; printf meinnas.tail-fantasy.ts.net > "$TS_MOCK_DIR/dns"; echo 1 > "$TS_MOCK_DIR/allowed"
+jq -nc '{BackendState:"Running", Self:{DNSName:"meinnas.tail-fantasy.ts.net.", CapMap:{https:null, funnel:null}}}' > "$TS_MOCK_DIR/status.json"
+has A_conn_own_node_warn 'meinnas' "$(reach_tunnel_connect 2>&1 | grep 'öffentlich sichtbar')"
+eq A_conn_own_node_stored meinnas "$(read_env_value "$INSTALL_ENV_FILE" TS_HOSTNAME)"
+hasnt A_conn_own_node_once 'öffentlich sichtbar' "$(reach_tunnel_connect 2>&1)"
+printf '%s' "$DNS" > "$TS_MOCK_DIR/dns"
 newrun; REACH_MODE=tunnel; UNATTENDED=1; ts_reset; ts_state Running '' '["https","funnel"]'; echo 1 > "$TS_MOCK_DIR/allowed"
 ui_interactive() { [ "${UNATTENDED:-0}" -ne 1 ]; }
 reach_tunnel_connect 2>/dev/null
@@ -275,6 +282,17 @@ eq A_conn_unattended "$DNS" "${DOMAIN:-}"
 UNATTENDED=0; ui_interactive() { return 0; }
 newrun; REACH_MODE=proxy; ts_reset; reach_tunnel_connect 2>/dev/null
 eq A_conn_other_mode '' "$(cat "$TS_MOCK_DIR/calls.log" 2>/dev/null)"
+
+# Review-Funde: Verbund bietet den Weg nicht zum Aendern an; Bestand wird schon beim Laden eigener Proxy; Funnel ohne
+# Freigabe wartet nur einmal; FritzBox-Beschriftung im Verbund ohne „eigener Reverse Proxy".
+newrun; LIFEAGENTS_RUNTIME=compose; REACH_MODE=tunnel
+hasnt R_compose_no_mode REACH_MODE "$(_host_editable_keys)"
+eq R_compose_label FritzBox "$(reach_cli_mode_label fritzbox)"
+LIFEAGENTS_RUNTIME=systemd
+newrun; cfg DOMAIN=bot.example.org; load_install_env
+eq R_legacy_load proxy "${REACH_MODE:-}"
+ts_reset; rc=0; reach_cli_funnel_ensure "$DNS" 5678 || rc=$?
+eq R_funnel_once "1|1" "$rc|$(grep -c 'funnel --bg' "$TS_MOCK_DIR/calls.log")"
 
 # Wechsel weg vom Tunnel: nur unsere Eintraege gehen, ein fremder bleibt.
 newrun; REACH_MODE=proxy; DOMAIN=bot.example.org; ts_reset; ts_state Running '' '["https","funnel"]'

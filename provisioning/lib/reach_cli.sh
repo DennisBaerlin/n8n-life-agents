@@ -18,7 +18,14 @@
 #   proxy    eigene Domain + eigener Reverse Proxy (der Weg vor dieser Datei).
 #   leer     nur Heimnetz. Bestand ohne REACH_MODE, aber mit DOMAIN -> proxy (abgeleitet, nie neu gefragt).
 
-REACH_CLI_TS_HOST="${LA_TS_HOSTNAME:-bot}"   # neutraler Name: Zertifikats-Protokolle sind oeffentlich (wie der Verbund)
+# Neutraler Rechnername (Zertifikats-Protokolle sind oeffentlich): einmal gezogen und als TS_HOSTNAME in core.env
+# gemerkt (ts_name_ensure aus lib/ts_name.sh, dieselbe Regel wie die Start-App); fehlt die Funktion, `bot`.
+reach_cli_ts_host() {
+  local f="${INSTALL_ENV_FILE:-$REACH_CORE_ENV}" n
+  if declare -F ts_name_ensure >/dev/null && n="$(ts_name_ensure "$f" TS_HOSTNAME)" && [ -n "$n" ]; then printf '%s' "$n"; return 0; fi
+  n="$(read_env_value "$f" TS_HOSTNAME 2>/dev/null || true)"
+  printf '%s' "${n:-bot}"
+}
 REACH_CLI_TS_KEYRING="${REACH_CLI_TS_KEYRING:-/usr/share/keyrings/tailscale-archive-keyring.gpg}"
 REACH_CLI_TS_LIST="${REACH_CLI_TS_LIST:-/etc/apt/sources.list.d/tailscale.list}"
 REACH_CLI_TS_DEFAULTS="${REACH_CLI_TS_DEFAULTS:-/etc/default/tailscaled}"
@@ -40,7 +47,7 @@ reach_cli_mode() {
 reach_cli_mode_label() {
   case "$1" in
     tunnel)   printf 'Tunnel (Tailscale)' ;;
-    fritzbox) printf 'FritzBox (MyFRITZ!-Freigabe + eigener Reverse Proxy)' ;;
+    fritzbox) if rt_is_compose; then printf 'FritzBox'; else printf 'FritzBox (MyFRITZ!-Freigabe + eigener Reverse Proxy)'; fi ;;
     proxy)    printf 'eigene Domain + eigener Reverse Proxy' ;;
     *)        printf 'nur Heimnetz (Telegram erreicht den Bot dann nicht)' ;;
   esac
@@ -87,7 +94,8 @@ reach_cli_ts_install() {
     force_apt_update
     apt_install tailscale
   fi
-  need_cmd qrencode || apt_install qrencode || warn "qrencode fehlt — der Anmelde-Link kommt ohne QR-Code."
+  # QR-Code nur fuer den Dialog; ein unbeaufsichtigtes Update braucht ihn nicht.
+  if ui_interactive && ! need_cmd qrencode; then apt_install qrencode || warn "qrencode fehlt — der Anmelde-Link kommt ohne QR-Code."; fi
   old="$(cat "$REACH_CLI_TS_DEFAULTS" 2>/dev/null || true)"
   new="$(reach_cli_ts_defaults_render "$old" "$(reach_cli_tun_mode)")"
   if [ "$new" != "$old" ]; then
@@ -109,7 +117,7 @@ reach_cli_ts_status() {
 #   sonst die Einstellungen des Nutzers ueberschreiben bzw. ablehnen).
 reach_cli_ts_login_start() {
   need_cmd tailscale || return 1
-  ( setsid timeout 900 tailscale up --hostname="$REACH_CLI_TS_HOST" --accept-dns=false </dev/null >/dev/null 2>&1 & ) 2>/dev/null || true
+  ( setsid timeout 900 tailscale up --hostname="$(reach_cli_ts_host)" --accept-dns=false </dev/null >/dev/null 2>&1 & ) 2>/dev/null || true
   return 0
 }
 
@@ -171,9 +179,9 @@ reach_cli_funnel_ensure() {
   while IFS=$'\t' read -r m t; do
     [ -n "$m" ] || continue
     out="$(timeout 8 tailscale funnel --bg --yes --set-path "$m" "$t" 2>&1 || true)"
-    if [ -z "$REACH_CLI_FUNNEL_URL" ]; then
-      REACH_CLI_FUNNEL_URL="$(printf '%s' "$out" | grep -oE "$REACH_CLI_LOGIN_RE" | head -n1 || true)"
-    fi
+    REACH_CLI_FUNNEL_URL="$(printf '%s' "$out" | grep -oE "$REACH_CLI_LOGIN_RE" | head -n1 || true)"
+    # Freigabe fehlt: jeder weitere Pfad wartete nur dieselben 8 s auf denselben Link.
+    [ -n "$REACH_CLI_FUNNEL_URL" ] && return 1
   done <<<"$(reach_cli_funnel_mounts "$port")"
   [ "$(reach_cli_funnel_eval "$dns" "$(_reach_cli_funnel_status)" "$port")" = ours ]
 }

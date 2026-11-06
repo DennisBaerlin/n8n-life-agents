@@ -80,6 +80,10 @@ load_install_env() {
   # eingefuegte URL (https://name:443/) wird zum Namen, bevor ein Aufrufer (provision.sh, reconfigure, household
   # pair-owner) damit rechnet; die Fragen nutzen dieselbe Regel (_input_normalize).
   if [ -n "${DOMAIN:-}" ]; then DOMAIN="$(normalize_domain "$DOMAIN")"; export DOMAIN; fi
+  # Bestand mit Adresse, aber ohne Weg = eigener Proxy (vor jeder Frage, sonst saehe die Intro REACH_MODE als offen).
+  if [ -z "${REACH_MODE:-}" ] && [ -n "${DOMAIN:-}" ] && ! rt_is_compose && ! env_has_key "${INSTALL_ENV_FILE:-}" REACH_MODE; then
+    REACH_MODE=proxy; export REACH_MODE
+  fi
   # Explizit 0: endet die Schleife mit einem LEEREN letzten Key, waere der Funktions-Status sonst 1
   # (&&-Liste) -> set -e killt provision.sh STILL (die &&-Exemption unterdrueckt sogar den ERR-Trap).
   # Latenter Zweitlauf-Crash seit die optionalen Keys am Listen-Ende stehen koennen (Install-UX-Phase).
@@ -445,7 +449,7 @@ _host_key_ask() {
 #   n8n-Anmeldung bleibt draussen (lebt in n8n; die core.env-Werte nutzt nur die Ersteinrichtung), der Proxy-Ort auch
 #   (`lifeagents proxy set`). Gibt immer 0 zurueck.
 _host_editable_keys() {
-  printf '%s\n' REACH_MODE
+  rt_is_compose || printf '%s\n' REACH_MODE   # im Verbund waehlt die Start-App den Weg (nur tunnel|fritzbox)
   case "$(reach_cli_mode)" in fritzbox|proxy) printf '%s\n' DOMAIN ;; esac
   printf '%s\n' TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY
   if ! declare -F _oc_owner_person_exists >/dev/null || ! _oc_owner_person_exists; then
@@ -913,7 +917,7 @@ _reach_fritz_checks() {
     yes) ui_step_bad 'DS-Lite' ;;
     *)   ui_step_bad 'nicht automatisch prüfbar' ;;
   esac
-  if [ "$d" = unknown ] || { [ "$d" != no ] && [ "$d" != yes ]; }; then
+  if [ "$d" != no ] && [ "$d" != yes ]; then
     _rt page.dslite_help | ui_box "$(_rt page.dslite_title)" >&2
     a="$(printf '%s\t%s\n' "$(_rt opt.dslite_no) — $(_rt opt.dslite_no_desc)" no "$(_rt opt.dslite_yes)" yes \
            | ui_choose "$(_rt page.dslite_title)" 0)"
@@ -1051,7 +1055,7 @@ _host_key_reask() {
 #   bzw. Freigabe-Link + QR-Code, „Erneut pruefen / Spaeter“ (Muster gefuehrtes Ende). Nicht interaktiv: nur feststellen
 #   und fertigstellen, was ohne Anmeldung geht (Update). Fertig = DOMAIN + TRUSTED_PROXIES in core.env.
 reach_tunnel_connect() {
-  local choice url
+  local choice url started=0
   rt_is_compose && return 0
   [ "$(reach_cli_mode)" = tunnel ] || return 0
   ui_step 'Tunnel: Tailscale einrichten'
@@ -1067,7 +1071,9 @@ reach_tunnel_connect() {
     case "$REACH_CLI_STATE" in
       missing) return 0 ;;
       starting|needs_login|key_expired)
-        if [ -z "$REACH_TS_URL" ]; then reach_cli_ts_login_start; reach_cli_ts_wait_url 15; fi
+        # Einmal je Lauf anstossen: ein zweites `tailscale up` liefe nur parallel zum ersten.
+        if [ -z "$REACH_TS_URL" ] && [ "$started" = 0 ]; then reach_cli_ts_login_start; started=1; fi
+        [ -n "$REACH_TS_URL" ] || reach_cli_ts_wait_url 15
         url="$REACH_TS_URL"
         { if [ "$REACH_CLI_STATE" = key_expired ]; then _rt reach.key_expired_help; fi
           if [ -n "$url" ]; then
@@ -1109,6 +1115,12 @@ EOF
     _store_answer "${INSTALL_ENV_FILE:-}" TRUSTED_PROXIES 127.0.0.1
   fi
   ok "Tunnel steht: https://${DOMAIN}/ (Tailscale Funnel)."
+  # Ein schon vorhandener Knoten behaelt seinen Namen, und der wird ueber die Zertifikats-Protokolle oeffentlich: einmal
+  # darauf hinweisen und den Namen als TS_HOSTNAME merken (danach gilt er als bekannt, kein Hinweis bei jedem Update).
+  if [ "${DOMAIN%%.*}" != "$(reach_cli_ts_host)" ]; then
+    warn "Dein Tailscale-Gerät heißt „${DOMAIN%%.*}“ — dieser Name ist ab jetzt öffentlich sichtbar. Steht darin etwas Persönliches, im Tailscale-Konto unter Machines umbenennen, dann: lifeagents reconfigure core → „Unverändert neu anwenden“."
+    _store_answer "${INSTALL_ENV_FILE:-}" TS_HOSTNAME "${DOMAIN%%.*}"
+  fi
   return 0
 }
 

@@ -455,6 +455,8 @@ main() {
     _app="$(_app_path)"
     if [ -z "$_whurl" ] || [ -z "$_app" ]; then _skip "Übersicht-Check (keine WEBHOOK_URL bzw. kein INGRESS_ID_KEY)"
     else _doctor_app_check "${_whurl%/}" "$_app" "$_tg_ok"; fi
+  elif [ "$(reach_cli_mode)" = tunnel ]; then
+    _skip "Noch keine Internet-Adresse — sie kommt mit der Tailscale-Anmeldung (Orchestrator-/HTTPS-Checks übersprungen)"
   else
     _skip "Kein Public-Ingress (keine Domain) — Orchestrator-/HTTPS-Checks übersprungen (dev/Substrat)"
   fi

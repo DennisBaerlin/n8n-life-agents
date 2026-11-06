@@ -90,7 +90,7 @@ function Get-UiCopyText([string]$RepoRoot, $Copy) {
 # Leitung 2026-11-06: eine Uebersetzungs-Quelle mit Bot und Fragebogen). Je Sprache die Schluessel mit den genannten
 # Praefixen, sortiert. Eigenes Serialisieren statt ConvertTo-Json: gleiche Ausgabe unter PowerShell 5.1 und 7.
 function Get-UiLocaleBlocks {
-    @([pscustomobject]@{ Name = 'desktop'; File = 'provisioning/desktop/ui/app.js'; Prefixes = @('core.art.greeting.', 'core.desktop.', 'core.wizard.step.') })
+    @([pscustomobject]@{ Name = 'desktop'; File = 'provisioning/desktop/ui/app.js'; Prefixes = @('core.art.greeting.alt', 'core.desktop.', 'core.wizard.step.') })
 }
 function Get-UiLocaleRegex([string]$Name) {
     [regex]::new('/\* ui-locale:begin ' + [regex]::Escape($Name) + '\b[^\n]*\*/\n[\s\S]*?/\* ui-locale:end \*/')

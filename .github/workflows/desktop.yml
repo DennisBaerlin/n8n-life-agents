@@ -10,6 +10,7 @@ on:
       - 'scripts/lib/ui_tokens.ps1'
       - 'packages/core/locales/**'
       - 'provisioning/compose/compose.yml'
+      - 'provisioning/lib/ts_names.json'
       - '.github/workflows/desktop.yml'
       - '.github/workflows/desktop-build.yml'
   pull_request:
@@ -17,6 +18,7 @@ on:
       - 'provisioning/desktop/**'
       - 'packages/core/locales/**'
       - 'provisioning/compose/compose.yml'
+      - 'provisioning/lib/ts_names.json'
       - '.github/workflows/desktop.yml'
       - '.github/workflows/desktop-build.yml'
   workflow_dispatch:

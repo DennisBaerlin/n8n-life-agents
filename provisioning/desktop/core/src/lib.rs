@@ -24,6 +24,7 @@ pub mod report;
 pub mod suggest;
 pub mod system;
 pub mod texts;
+pub mod ts_name;
 pub mod uninstall;
 
 /// Alle Quellen der Bibliothek, für Tests, die über den ganzen Code wachen (z. B. keine Sicherheits-Einstellung).
@@ -51,6 +52,7 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
         ("suggest.rs", include_str!("suggest.rs")),
         ("system.rs", include_str!("system.rs")),
         ("texts.rs", include_str!("texts.rs")),
+        ("ts_name.rs", include_str!("ts_name.rs")),
         ("uninstall.rs", include_str!("uninstall.rs")),
     ]
 }

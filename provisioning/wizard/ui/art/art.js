@@ -44,14 +44,19 @@
     return s ? s.cloneNode(true) : null;
   }
 
-  // ---------- Geführte Animation: Mauszeiger, Klick, Lupe mit Zoom, Leuchtrahmen; Schritte als Schleife ----------
-  // o = { name, svg, width, height, steps, keyStep, cursor, initial, label }
-  // steps[i] = { cap, start: {set, cam, ring}, acts: [{ to:[x,y], click, set, ring, cam, wait }], hold }
+  // ---------- Geführte Animation: Mauszeiger, Klick, Lupe mit Zoom, Leuchtrahmen; Schritt für Schritt per Klick ----------
+  // o = { name, svg, width, height, steps, cursor, initial, label, light, hint, link, takes }
+  // steps[i] = { cap, start: {set, cam, ring}, acts: [{ to:[x,y], click, set, ring, cam, wait }], hint }
   // set = data-*-Attribute am <svg> (art.css entscheidet, was sichtbar ist); ring = [x,y,b,h] Leuchtrahmen oder null;
   // cam = {x,y,s} Lupe auf Punkt x,y mit Zoom s, null = Zoom 1. Ohne cam folgt die Lupe dem Ziel des Zeigers (to).
-  // Die Lupe zeigt so viel der Zeichnung, wie Platz ist: volle Breite, Höhe nach dem freien Raum.
+  // Ablauf (Owner 2026-11-06): Schritt 1 läuft beim Öffnen einmal ab und bleibt stehen; weiter nur per Klick („Nächster
+  // Schritt“ macht dann auf sich aufmerksam), „Zurück“, Punkte zum Springen, „Nochmal zeigen“. Jeder angesteuerte Schritt
+  // spielt seine Bewegung einmal ruhig ab und endet auf dem Bild, das seine Beschriftung zeigt. Die Knöpfe liegen im
+  // Bildrahmen, damit sie nicht mit Zurück/Weiter des Wizards verwechselt werden. Tastatur: Pfeil links/rechts im Rahmen.
+  // Seiten-Hinweis (page.note) und Anleitungs-Link (page.link) übernimmt das Bild (takes), damit die Zeichnung Platz hat:
+  // Hinweis an den Schritten mit hint: true, Link in der Knopfleiste. Ohne Bild zeigt app.js beides wie bisher.
   function guided(o) {
-    const W = o.width, H = o.height;
+    const W = o.width, H = o.height, N = o.steps.length, SLOW = 1.5;
     const fig = h('figure', { class: 'art art-guide', 'data-art': o.name });
     const svg = fromMarkup(o.svg);
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
@@ -59,16 +64,25 @@
     const ring = svg.querySelector('.ring');
     const cursor = svg.querySelector('.cursor');
     const ripple = svg.querySelector('.ripple');
-    const num = h('span', { class: 'art-num' });
-    const txt = h('span', { class: 'art-txt' });
-    const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${k + 1}: ${s.cap}`,
-      on: { click: () => { pause(true); jump(k, true); } } }));
-    const toggle = h('button', { type: 'button', class: 'art-play', on: { click: () => pause(!paused) } });
-    const cap = h('figcaption', { class: 'art-cap' }, h('p', { class: 'art-line' }, num, txt), h('div', { class: 'art-ctl' }, dots, toggle));
     const stage = h('div', { class: 'art-stage' + (o.light ? ' art-light' : ''), role: 'img', 'aria-label': o.label }, svg);
-    fig.append(stage, cap, h('ol', { class: 'sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
+    const hintBox = o.hint ? h('p', { class: 'art-hint', role: 'note', text: o.hint }) : null;   // Server-Text: nur textContent
+    const line = h('p', { class: 'art-line', 'aria-live': 'polite' });
+    const btn = (cls, text, fn, label) => h('button', { type: 'button', class: 'art-btn ' + cls, 'aria-label': label || null, on: { click: fn } }, text);
+    const back = btn('art-back', '‹ Zurück', () => go(i - 1), 'Vorheriger Schritt');
+    const again = btn('art-again', '↻ Nochmal zeigen', () => go(i));
+    const next = btn('art-next', 'Nächster Schritt ›', () => go(i + 1 < N ? i + 1 : 0));
+    const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${k + 1} von ${N}: ${s.cap}`, on: { click: () => go(k) } }));
+    // Anleitungs-Link (Ziel vom Server) rechts in der Schrittzeile, kurz beschriftet, damit die Zeichnung Platz behält
+    const guide = o.link ? h('a', { class: 'art-guide-link', href: o.link.href, target: '_blank', rel: 'noopener noreferrer', title: o.link.label, text: 'Ausführliche Anleitung' }) : null;
+    const bar = h('figcaption', { class: 'art-bar' }, h('div', { class: 'art-top' }, line, guide),
+      h('div', { class: 'art-ctl' }, back, h('span', { class: 'art-dots' }, dots), again, next));
+    fig.append(h('div', { class: 'art-frame' }, stage, hintBox, bar), h('ol', { class: 'sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
+    fig.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' && i + 1 < N) { e.preventDefault(); go(i + 1); next.focus(); }
+      if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); go(i - 1); back.focus(); }
+    });
 
-    let i = 0, paused = false, timers = [], seen = false, measured = false, born = Date.now(), view = { w: W, h: H, free: H }, focus = { x: o.cursor[0], y: o.cursor[1], s: 1 };
+    let i = 0, timers = [], seen = false, measured = false, born = Date.now(), view = { w: W, h: H, free: H }, focus = { x: o.cursor[0], y: o.cursor[1], s: 1 };
     const clear = () => { timers.forEach(clearTimeout); timers = []; };
     function later(ms, fn) {
       timers.push(setTimeout(() => {
@@ -81,10 +95,9 @@
     function measure() {
       const r = stage.getBoundingClientRect();
       if (r.width < 10 || r.height < 10) return false;
-      const k = r.width / W;
-      const vh = Math.min(H, r.height / k);   // Beschriftung liegt unten auf der Bühne: Lupe zentriert darüber
-      view = { w: W, h: vh, free: Math.max(40, vh - cap.getBoundingClientRect().height / k) };
-      svg.setAttribute('viewBox', `0 0 ${W} ${view.h.toFixed(1)}`);
+      const vh = Math.min(H, r.height / (r.width / W));
+      view = { w: W, h: vh, free: vh };
+      svg.setAttribute('viewBox', `0 0 ${W} ${vh.toFixed(1)}`);
       return true;
     }
     function setCam(f) {
@@ -118,7 +131,7 @@
         st.focus = nextFocus(st.focus, x);
         if (x.to) st.cursor = x.to;
       };
-      for (let k = 0; k <= n && k < o.steps.length; k++) {
+      for (let k = 0; k <= n && k < N; k++) {
         const s = o.steps[k];
         st.ring = null;
         add(s.start || {});
@@ -127,9 +140,11 @@
       return st;
     }
     function caption(n) {
-      num.textContent = `${n + 1}/${o.steps.length}`;
-      txt.textContent = o.steps[n].cap;
-      dots.forEach((d, k) => d.classList.toggle('on', k === n));
+      line.replaceChildren(h('b', { text: `Schritt ${n + 1} von ${N}: ` }), o.steps[n].cap);
+      dots.forEach((d, k) => { d.classList.toggle('on', k === n); d.setAttribute('aria-current', k === n ? 'step' : 'false'); });
+      back.disabled = n === 0;
+      next.textContent = n + 1 < N ? 'Nächster Schritt ›' : '↺ Von vorn';
+      if (hintBox) hintBox.hidden = !o.steps[n].hint;
     }
     function instant(fn) {   // ohne Übergänge springen
       fig.classList.add('instant');
@@ -137,57 +152,47 @@
       void svg.getBoundingClientRect();
       fig.classList.remove('instant');
     }
-    function jump(n, still) {   // Schritt n zeigen; still = Endbild des Schritts ohne Bewegung
+    function ready(on) {   // Schritt fertig: „Nächster Schritt“ macht ein paar Sekunden lang auf sich aufmerksam
+      fig.classList.toggle('done', on);
+      next.classList.toggle('call', on && !reduced());
+      if (on && !reduced()) later(6000, () => next.classList.remove('call'));
+    }
+    function go(n, still) {   // Schritt n zeigen; still = gleich das Endbild ohne Bewegung
+      if (n < 0 || n >= N) return;
       clear();
       i = n;
       caption(n);
+      ready(false);
+      const quiet = still || reduced();
       instant(() => {
         const st = stateAt(n);
         for (const [k, v] of Object.entries(st.set)) svg.setAttribute('data-' + k, v);
         setRing(st.ring);
         setCam(st.focus);
         setCursor(st.cursor);
-        if (still) for (const a of o.steps[n].acts || []) { applyPart(a); if (a.to) setCursor(a.to); }
+        if (quiet) for (const a of o.steps[n].acts || []) { applyPart(a); if (a.to) setCursor(a.to); }
       });
-      if (!still) run(n);
-    }
-    function run(n) {
-      const s = o.steps[n];
-      let t = 500;
-      for (const a of s.acts || []) {
-        if (a.to) { later(t, () => { setCursor(a.to); setCam(nextFocus(focus, { to: a.to })); }); t += 950; }
+      if (quiet) { ready(true); return; }
+      let t = 700;
+      for (const a of o.steps[n].acts || []) {
+        if (a.to) { later(t, () => { setCursor(a.to); setCam(nextFocus(focus, { to: a.to })); }); t += 1400; }
         if (a.click) {
           later(t, () => { ripple.setAttribute('cx', a.to[0]); ripple.setAttribute('cy', a.to[1]); ripple.classList.remove('go'); void ripple.getBoundingClientRect(); ripple.classList.add('go'); });
-          t += 180;
+          t += 260;
         }
         later(t, () => applyPart(a));
-        t += a.wait || 750;
+        t += (a.wait || 750) * SLOW;
       }
-      t += s.hold || 1400;
-      later(t, () => { if (!paused) jump((n + 1) % o.steps.length, false); });
-    }
-    function pause(p) {
-      paused = p;
-      toggle.textContent = p ? 'Abspielen' : 'Anhalten';
-      toggle.setAttribute('aria-pressed', String(p));
-      if (!p) jump(i, false);
+      later(t, () => ready(true));
     }
     // Platz ändert sich (Fenster, Inhalt darüber): Sichtfenster neu, Lupe ohne Übergang nachführen
     if (window.ResizeObserver) new ResizeObserver(() => { if (measure()) { measured = true; instant(() => setCam(focus)); } }).observe(stage);
 
     const pv = window.WIZARD_PREVIEW;   // nur in Vorschau-Aufnahmen gesetzt (erst beim Einbau lesen: art.js lädt vor der Attrappe)
     const want = pv ? (Number.isInteger(pv.artStep) ? pv.artStep : window.WIZARD_ART_STEP) : undefined;
-    const frozen = Number.isInteger(want) ? want : null;
-    if (frozen !== null || reduced()) {
-      paused = true;
-      toggle.textContent = 'Abspielen';
-      jump(frozen !== null ? Math.min(frozen, o.steps.length - 1) : o.keyStep, true);
-      if (reduced()) toggle.hidden = true;   // ohne Bewegung: Schritte über die Punkte
-    } else {
-      toggle.textContent = 'Anhalten';
-      jump(0, false);
-    }
-    return { el: fig };
+    if (Number.isInteger(want)) go(Math.min(want, N - 1), true);
+    else go(0);   // Schritt 1 läuft einmal von selbst, dann steht er
+    return { el: fig, takes: o.takes || [] };
   }
 
   // ---------- A1: FritzBox-Freigabe (Seite fb_guide) ----------
@@ -339,7 +344,7 @@
   const DLG = { x: 465, y: 300, s: 1.2 };
   const FB_STEPS = [
     { cap: 'fritz.box im Browser öffnen, links „Internet“',
-      acts: [{ to: [104, 112], click: true, set: { sub: '1' }, ring: [10, 102, 184, 26] }], hold: 1100 },
+      acts: [{ to: [104, 112], click: true, set: { sub: '1' }, ring: [10, 102, 184, 26] }] },
     { cap: '„Freigaben“, Reiter „Portfreigaben“',
       acts: [{ to: [116, 230], click: true, set: { act: 'freigaben', scene: 'list' } }, { to: [330, 132], ring: [220, 106, 108, 34], wait: 700 }] },
     { cap: '„Gerät für Freigaben hinzufügen“, Rechner wählen',
@@ -350,20 +355,24 @@
     { cap: '„HTTP-Server“, Haken bei „Freigabe aktivieren“',
       acts: [{ to: [652, 280], ring: [426, 252, 236, 36], wait: 900 },
         { to: [424, 436], click: true, set: { chk: '1' }, ring: [264, 416, 160, 26] }] },
-    { cap: '„OK“, die Freigabe steht jetzt in der Liste',
+    { cap: '„OK“, die Freigabe steht jetzt in der Liste', hint: true,
       acts: [{ to: [552, 516], click: true, ring: [472, 488, 102, 38], wait: 500 },
         { set: { scene: 'dev', rows: '1', radio: '0', chk: '0' }, cam: { x: 490, y: 520, s: 1 }, ring: [224, 513, 532, 26] }] },
-    { cap: 'Dasselbe noch einmal mit „HTTPS-Server“',
+    { cap: 'Dasselbe noch einmal mit „HTTPS-Server“', hint: true,
       acts: [{ to: [752, 602], click: true, set: { scene: 'dlg', app: 'https', radio: '1', chk: '1' }, cam: DLG, ring: [426, 252, 236, 36], wait: 1300 },
         { to: [552, 516], click: true, set: { scene: 'dev', rows: '2', radio: '0', chk: '0' }, cam: { x: 490, y: 545, s: 1 }, ring: [224, 541, 532, 26] },
-        { to: [700, 562], cam: { x: 490, y: 545, s: 1 }, wait: 400 }], hold: 1800 },
+        { to: [700, 562], cam: { x: 490, y: 545, s: 1 }, wait: 400 }] },
     { cap: 'Unten „Übernehmen“ klicken',
-      acts: [{ to: [754, 656], click: true, cam: { x: 490, y: 600, s: 1 }, ring: [664, 630, 98, 36] }], hold: 2400 },
+      acts: [{ to: [754, 656], click: true, cam: { x: 490, y: 600, s: 1 }, ring: [664, 630, 98, 36] }] },
   ];
 
-  function fbShare() {
-    return guided({ name: 'fb-share', svg: FB_SVG, width: 780, height: 680, steps: FB_STEPS, keyStep: 3, cursor: [420, 160], light: true,
+  // Seiten-Hinweis „Freigabe existiert bereits“ gehört zum Speichern mit „OK“ (Schritte 6 und 7) und steht dort im Bild.
+  function fbShare(page) {
+    const note = page.note && page.note.text ? page.note.text : null;
+    const link = page.link && page.link.href ? page.link : null;
+    return guided({ name: 'fb-share', svg: FB_SVG, width: 780, height: 680, steps: FB_STEPS, cursor: [420, 160], light: true,
       label: 'Nachgezeichnete FritzBox-Oberfläche: der Weg zu den Freigaben, Schritt für Schritt',
+      hint: note, link, takes: [note ? 'note' : null, link ? 'link' : null].filter(Boolean),
       initial: { sub: '0', act: 'none', scene: 'home', radio: '0', chk: '0', rows: '0', app: 'http' } });
   }
 

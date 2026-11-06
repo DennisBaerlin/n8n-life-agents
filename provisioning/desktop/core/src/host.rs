@@ -75,6 +75,8 @@ pub trait Host {
     /// Zertifikat (DER) einer TLS-Gegenstelle, ohne es zu prüfen: nur um Namen daraus zu lesen (`suggest.rs`).
     /// Ein Verbindungsaufbau, kurze Wartezeit; keine Antwort oder kein TLS heißt `None`.
     fn peer_cert_der(&self, host: &str, port: u16, timeout: std::time::Duration) -> Option<Vec<u8>>;
+    /// Rückwärts-Namensauflösung (PTR) von `ip` direkt bei `server` (dem Router), eine UDP-Anfrage (`dns.rs`).
+    fn dns_ptr(&self, server: std::net::SocketAddr, ip: std::net::Ipv4Addr, timeout: std::time::Duration) -> Option<String>;
 }
 
 /// TLS nur zum Lesen des Zertifikats. Bewusst ohne Prüfung: Die FritzBox zeigt im Heimnetz ein selbst signiertes
@@ -292,6 +294,9 @@ impl Host for RealHost {
     fn peer_cert_der(&self, host: &str, port: u16, timeout: std::time::Duration) -> Option<Vec<u8>> {
         tls_peek::peer_cert(host, port, timeout)
     }
+    fn dns_ptr(&self, server: std::net::SocketAddr, ip: std::net::Ipv4Addr, timeout: std::time::Duration) -> Option<String> {
+        crate::dns::ptr_lookup(server, ip, timeout)
+    }
 }
 
 /// Windows-Werkzeuge wie `wsl.exe -l` schreiben UTF-16; alles andere ist UTF-8.
@@ -337,6 +342,9 @@ pub struct FakeHost {
     pub stdin_log: RefCell<Vec<(String, String)>>,
     /// Zertifikat, das `peer_cert_der` liefert (None = keine Gegenstelle).
     pub peer_cert: RefCell<Option<Vec<u8>>>,
+    /// Antwort auf `dns_ptr` (None = keine Antwort); `ptr_asked` hält „Server Adresse“ je Anfrage fest.
+    pub ptr: RefCell<Option<String>>,
+    pub ptr_asked: RefCell<Vec<String>>,
     pub busy_ports: BTreeSet<u16>,
     pub clock: u64,
 }
@@ -363,6 +371,8 @@ impl FakeHost {
             trashed: RefCell::new(Vec::new()),
             stdin_log: RefCell::new(Vec::new()),
             peer_cert: RefCell::new(None),
+            ptr: RefCell::new(None),
+            ptr_asked: RefCell::new(Vec::new()),
             busy_ports: BTreeSet::new(),
             clock: 1_800_000_000,
         }
@@ -479,6 +489,10 @@ impl Host for FakeHost {
     }
     fn peer_cert_der(&self, _host: &str, _port: u16, _timeout: std::time::Duration) -> Option<Vec<u8>> {
         self.peer_cert.borrow().clone()
+    }
+    fn dns_ptr(&self, server: std::net::SocketAddr, ip: std::net::Ipv4Addr, _timeout: std::time::Duration) -> Option<String> {
+        self.ptr_asked.borrow_mut().push(format!("{server} {ip}"));
+        self.ptr.borrow().clone()
     }
 }
 

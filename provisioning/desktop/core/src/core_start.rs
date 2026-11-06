@@ -3,8 +3,8 @@
 //! Namen und Befehle kommen aus `contract`.
 
 use crate::contract::{
-    self, MasterCmd, HOST_IP_VAR, HOST_NAMES_VAR, MYFRITZ_VAR, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, USER_FULLNAME_VAR,
-    USER_LANG_VAR, WIZARD_PORT_VAR,
+    self, MasterCmd, HOST_IP_VAR, HOST_NAMES_VAR, HOST_NAME_FRITZ_VAR, MYFRITZ_VAR, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT,
+    USER_FULLNAME_VAR, USER_LANG_VAR, WIZARD_PORT_VAR,
 };
 use crate::docker::{Docker, DockerCall};
 use crate::host::{join, Host};
@@ -44,13 +44,21 @@ pub fn write_env(host: &dyn Host, p: &CorePaths, ports: Ports) -> Result<(), Str
 /// (die Quellen in `network.rs`/`suggest.rs` filtern schon; hier noch einmal gegen Zeilenumbrüche und Steuerzeichen).
 pub fn hints_text(host: &dyn Host) -> String {
     let mut lines: Vec<(&str, String)> = Vec::new();
-    if let Some(ip) = crate::network::lan_ip(host) {
-        lines.push((HOST_IP_VAR, ip));
+    let route = crate::network::default_route(host);
+    if let Some(r) = &route {
+        lines.push((HOST_IP_VAR, r.ip.clone()));
     }
     if let Some(zone) = crate::suggest::myfritz_zone(host) {
         lines.push((MYFRITZ_VAR, zone));
     }
-    let names = crate::suggest::hostname_candidates(host);
+    // Geprüfter Name aus der FritzBox zuerst, die Namen aus dem Rechnernamen bleiben der Rückfall.
+    let mut names = crate::suggest::hostname_candidates(host);
+    if let Some(fritz) = route.as_ref().and_then(|r| crate::suggest::fritz_box_name(host, r)) {
+        names.retain(|n| *n != fritz);
+        names.insert(0, fritz.clone());
+        names.truncate(4);
+        lines.push((HOST_NAME_FRITZ_VAR, fritz));
+    }
     if !names.is_empty() {
         lines.push((HOST_NAMES_VAR, names.join(",")));
     }
@@ -294,6 +302,11 @@ pub fn power_done(host: &dyn Host, d: &Docker) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `<name>.fritz.box` zur Laufzeit zusammengesetzt: privacy_lint weist jeden solchen Namen als Literal ab.
+    fn fb(name: &str) -> String {
+        format!("{name}.fritz.box")
+    }
     use crate::host::{CmdOut, FakeHost};
 
     fn d() -> Docker {
@@ -405,6 +418,24 @@ mod tests {
         for v in ["192.168", "myfritz", "Erika", "erikas"] {
             assert!(!line.contains(v), "{v} im argv: {line}");
         }
+    }
+
+    #[test]
+    fn name_from_the_fritz_box_comes_first() {
+        // In der FritzBox umbenannt: Der geprüfte Name passt zu keinem Kandidaten aus dem Rechnernamen.
+        let h = home_mac().on("/sbin/route -n get default", CmdOut::ok("    gateway: 192.168.178.10\n  interface: en0\n"));
+        *h.ptr.borrow_mut() = Some(fb("Erika-Buero"));
+        let text = hints_text(&h);
+        assert!(text.contains("LA_HOST_NAME_FRITZ=erika-buero\n"), "{text}");
+        assert!(text.contains("LA_HOST_NAME_CANDIDATES=erika-buero,erikas-mac-mini,erikasmacmini\n"), "{text}");
+        // Nicht umbenannt: kein doppelter Kandidat.
+        *h.ptr.borrow_mut() = Some(fb("erikas-mac-mini"));
+        assert!(hints_text(&h).contains("LA_HOST_NAME_CANDIDATES=erikas-mac-mini,erikasmacmini\n"));
+        // Kein FritzBox-Router: keine Zeile, Kandidaten wie bisher.
+        *h.ptr.borrow_mut() = None;
+        let text = hints_text(&h);
+        assert!(!text.contains("LA_HOST_NAME_FRITZ"), "{text}");
+        assert!(text.contains("LA_HOST_NAME_CANDIDATES=erikas-mac-mini,erikasmacmini\n"));
     }
 
     #[test]

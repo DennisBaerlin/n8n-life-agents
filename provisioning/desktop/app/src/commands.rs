@@ -571,6 +571,7 @@ pub fn self_test() -> serde_json::Value {
     let h = RealHost;
     let sys = system::check_system(&h);
     let finding = detect::detect(&h);
+    let route = lifeagents_desktop_core::network::default_route(&h);
     serde_json::json!({
         "system": sys,
         "docker": finding,
@@ -582,8 +583,10 @@ pub fn self_test() -> serde_json::Value {
         "mounted_dmgs": cleanup::mounted_dmgs(&h).len(),
         "download_found": cleanup::find_download(&h).is_some(),
         "free_port": inventory::free_port(&h),
-        "lan_ip_found": lifeagents_desktop_core::network::lan_ip(&h).is_some(),
+        "lan_ip_found": route.is_some(),
+        "gateway_found": route.as_ref().is_some_and(|r| r.gateway.is_some()),
         // Vorschläge sind privat: nur ob etwas gefunden wurde, nie der Wert (CI-Protokolle sind öffentlich).
+        "fritz_name_found": route.as_ref().and_then(|r| lifeagents_desktop_core::suggest::fritz_box_name(&h, r)).is_some(),
         "myfritz_found": lifeagents_desktop_core::suggest::myfritz_zone(&h).is_some(),
         "host_name_candidates": lifeagents_desktop_core::suggest::hostname_candidates(&h).len(),
         "user_fullname_found": lifeagents_desktop_core::suggest::user_fullname(&h).is_some(),

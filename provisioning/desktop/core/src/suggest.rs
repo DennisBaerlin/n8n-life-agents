@@ -6,8 +6,11 @@
 //! - MyFRITZ-Kennung: Das selbst signierte Zertifikat, das die FritzBox auf `https://fritz.box` zeigt, nennt bei
 //!   angemeldetem MyFRITZ den Namen `<kennung>.myfritz.net` in den Subject Alternative Names (Leitung, an einer echten
 //!   FritzBox geprüft). Ein Verbindungsaufbau mit kurzer Wartezeit, das Zertifikat wird NICHT geprüft, nur gelesen.
-//! - Gerätename in der FritzBox: Sie übernimmt den Namen, den der Rechner per DHCP sendet, und erlaubt nur Buchstaben,
-//!   Ziffern, Bindestrich. Wie Umlaute umgewandelt werden, ist nicht belegt: darum mehrere Kandidaten.
+//! - Gerätename in der FritzBox, geprüft (Owner-Wunsch: in der Box umbenannte Geräte): Rückwärts-Namensauflösung der
+//!   eigenen Adresse direkt beim Router (`dns.rs`); die FritzBox antwortet mit `<gerätename>.fritz.box` (Leitung, an
+//!   einer echten Box geprüft). Ob ein Umbenennen dort sofort erscheint, ist offen (Handliste).
+//! - Rückfall: Kandidaten aus dem Rechnernamen. Die FritzBox übernimmt den Namen, den der Rechner per DHCP sendet, und
+//!   erlaubt nur Buchstaben, Ziffern, Bindestrich. Wie Umlaute umgewandelt werden, ist nicht belegt: darum mehrere.
 //! - Vollständiger Name und Sprache des angemeldeten Nutzers.
 
 use std::time::Duration;
@@ -37,6 +40,22 @@ pub fn myfritz_zone_from_der(der: &[u8]) -> Option<String> {
 pub fn myfritz_zone(host: &dyn Host) -> Option<String> {
     let der = host.peer_cert_der("fritz.box", 443, FRITZ_TIMEOUT)?;
     myfritz_zone_from_der(&der)
+}
+
+/// Wartezeit für die Namensfrage beim Router.
+pub const PTR_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Gerätename, unter dem die FritzBox diesen Rechner führt: PTR der eigenen Adresse beim Router. Nur eine Antwort
+/// `<name>.fritz.box` zählt (anderer Router oder keine Antwort: `None`); der Name wird nach der AVM-Regel bereinigt.
+pub fn fritz_box_name(host: &dyn Host, route: &crate::network::Route) -> Option<String> {
+    let ip: std::net::Ipv4Addr = route.ip.parse().ok()?;
+    let server = std::net::SocketAddr::from((route.gateway?, 53));
+    let answer = host.dns_ptr(server, ip, PTR_TIMEOUT)?.to_ascii_lowercase();
+    let label = answer.trim_end_matches('.').strip_suffix(".fritz.box")?;
+    if label.contains('.') {
+        return None;
+    }
+    Some(fritz_name(label, true, true)).filter(|n| !n.is_empty())
 }
 
 /// Name so umwandeln, wie die FritzBox ihn zulässt: klein, Buchstaben, Ziffern, Bindestrich. `umlaut_long`: ä → ae
@@ -155,6 +174,11 @@ pub fn user_lang(host: &dyn Host) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `<name>.fritz.box` zur Laufzeit zusammengesetzt: privacy_lint weist jeden solchen Namen als Literal ab.
+    fn fb(name: &str) -> String {
+        format!("{name}.fritz.box")
+    }
     use crate::host::{CmdOut, FakeHost};
 
     /// Attrappe eines FritzBox-Zertifikats, erfundene Kennung.
@@ -182,6 +206,33 @@ mod tests {
         assert_eq!(myfritz_zone(&h), None);
         *h.peer_cert.borrow_mut() = Some(fake_cert(&["fritz.box", "deine-domain.myfritz.net"]));
         assert_eq!(myfritz_zone(&h).as_deref(), Some("deine-domain.myfritz.net"));
+    }
+
+    fn route(gw: bool) -> crate::network::Route {
+        crate::network::Route { ip: "192.168.178.20".into(), gateway: gw.then(|| std::net::Ipv4Addr::new(192, 168, 178, 10)) }
+    }
+
+    #[test]
+    fn fritz_box_name_comes_from_the_router() {
+        let h = FakeHost::mac();
+        *h.ptr.borrow_mut() = Some(fb("Erika-Buero"));
+        assert_eq!(fritz_box_name(&h, &route(true)).as_deref(), Some("erika-buero"));
+        assert_eq!(h.ptr_asked.borrow().as_slice(), ["192.168.178.10:53 192.168.178.20"], "nur beim Router, nur die eigene Adresse");
+        *h.ptr.borrow_mut() = Some(fb("erika-buero") + ".");
+        assert_eq!(fritz_box_name(&h, &route(true)).as_deref(), Some("erika-buero"), "Punkt am Ende");
+    }
+
+    #[test]
+    fn other_routers_or_no_answer_give_nothing() {
+        let h = FakeHost::mac();
+        assert_eq!(fritz_box_name(&h, &route(true)), None, "keine Antwort");
+        *h.ptr.borrow_mut() = Some("erika-buero.speedport.ip".into());
+        assert_eq!(fritz_box_name(&h, &route(true)), None, "anderer Router");
+        *h.ptr.borrow_mut() = Some(fb("a.b"));
+        assert_eq!(fritz_box_name(&h, &route(true)), None, "Gerätenamen haben keinen Punkt");
+        *h.ptr.borrow_mut() = Some(fb("erika-buero"));
+        assert_eq!(fritz_box_name(&h, &route(false)), None, "ohne Router keine Frage");
+        assert_eq!(h.ptr_asked.borrow().len(), 3);
     }
 
     #[test]

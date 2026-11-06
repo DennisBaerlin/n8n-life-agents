@@ -11,6 +11,7 @@ pub mod cleanup;
 pub mod contract;
 pub mod core_start;
 pub mod detect;
+pub mod dns;
 pub mod docker;
 pub mod docker_desktop;
 pub mod host;
@@ -34,6 +35,7 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
         ("contract.rs", include_str!("contract.rs")),
         ("core_start.rs", include_str!("core_start.rs")),
         ("detect.rs", include_str!("detect.rs")),
+        ("dns.rs", include_str!("dns.rs")),
         ("docker.rs", include_str!("docker.rs")),
         ("docker_desktop.rs", include_str!("docker_desktop.rs")),
         ("host.rs", include_str!("host.rs")),

@@ -32,7 +32,10 @@ pub const HINTS_DIR: &str = "/run/lifeagents-wizard";
 pub const HOST_IP_VAR: &str = "LA_HOST_IP";
 /// MyFRITZ-Name der FritzBox (`<kennung>.myfritz.net`, `suggest.rs`),
 pub const MYFRITZ_VAR: &str = "LA_MYFRITZ_ZONE";
-/// 2–4 Kandidaten für den Gerätenamen in der FritzBox, durch Komma getrennt, wahrscheinlichster zuerst,
+/// Gerätename, den die FritzBox selbst für diesen Rechner meldet (PTR beim Router, geprüft; `suggest::fritz_box_name`),
+pub const HOST_NAME_FRITZ_VAR: &str = "LA_HOST_NAME_FRITZ";
+/// bis zu 4 Kandidaten für den Gerätenamen in der FritzBox, durch Komma getrennt, wahrscheinlichster zuerst (der
+/// geprüfte Name aus `HOST_NAME_FRITZ_VAR` steht vorn, die Namen aus dem Rechnernamen sind der Rückfall),
 pub const HOST_NAMES_VAR: &str = "LA_HOST_NAME_CANDIDATES";
 /// vollständiger Name des angemeldeten Nutzers und Sprache des Systems (zwei Buchstaben).
 pub const USER_FULLNAME_VAR: &str = "LA_USER_FULLNAME";

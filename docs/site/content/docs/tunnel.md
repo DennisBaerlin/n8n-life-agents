@@ -13,18 +13,18 @@ Mit der [Start-App](start-app.html) erreicht Telegram deinen Rechner am einfachs
 
 ## Schritt für Schritt
 
-1. **Tunnel wählen:** In der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ **Über einen sicheren Tunnel** wählen.
+1. **Tunnel wählen:** In der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ **Über einen sicheren Tunnel** wählen. Diese Wahl ist schon vorausgewählt.
 
-   *Erwartet:* Nach wenigen Sekunden zeigt die App einen Knopf zum Anmelden bei Tailscale.
-2. **Anmelden:** Auf den Knopf klicken. Dein Browser öffnet die Anmeldeseite von Tailscale. Melde dich an oder leg dort ein Konto an.
+   *Erwartet:* Die App fragt die restlichen Angaben ab und installiert. Die Anmeldung bei Tailscale kommt erst danach, im Schritt „Verbinden“.
+2. **Anmelden:** Im Schritt „Verbinden“ zeigt die App „Melde dich bei Tailscale an“. Klick auf **Tailscale-Anmeldung öffnen**. Dein Browser öffnet die Anmeldeseite von Tailscale. Melde dich an oder leg dort ein Konto an.
 
    *Erwartet:* Tailscale fragt, ob du das neue Gerät mit deinem Konto verbinden willst. Bestätige das.
-3. **Öffentliche Adresse erlauben:** Für eine öffentliche Adresse verlangt Tailscale, dass in deinem Konto Zertifikate (HTTPS) und Funnel erlaubt sind ([Tailscale Funnel](https://tailscale.com/kb/1223/funnel)). Fragt Tailscale dich danach, stimme zu. Dabei weist Tailscale darauf hin, dass Rechnernamen öffentlich sichtbar werden. Das ist normal; warum dich das nicht stört, steht [unten](#neutraler-name).
-4. **Zurück zur App:** Die App vergibt deinem Rechner bei Tailscale einen neutralen Namen und zeigt dir die neue Adresse. Sie endet auf `.ts.net`.
+3. **Empfang erlauben:** Die App zeigt „Erlaube deinem Rechner den Empfang“. Klick auf **Freigabe-Seite öffnen**. Für eine öffentliche Adresse verlangt Tailscale, dass in deinem Konto Zertifikate (HTTPS) und Funnel erlaubt sind ([Tailscale Funnel](https://tailscale.com/kb/1223/funnel)). Stimme auf dieser Seite zu. Dabei weist Tailscale darauf hin, dass Rechnernamen öffentlich sichtbar werden. Das ist normal; warum dich das nicht stört, steht [unten](#neutraler-name).
+4. **Zurück zur App:** Die App gibt deinem Rechner bei Tailscale einen neutralen Namen. Seine öffentliche Adresse endet auf `.ts.net`.
 
-   *Erwartet:* Die App prüft, ob Telegram deinen Bot über diese Adresse erreicht. Bei einem neuen Konto kann es laut Tailscale bis zu 10 Minuten dauern, bis die Adresse im Internet bekannt ist. Prüf in diesem Fall nach ein paar Minuten noch einmal.
+   *Erwartet:* Die App prüft, ob Telegram deinen Bot über diese Adresse erreicht. Bei einem neuen Konto kann es laut Tailscale bis zu 10 Minuten dauern, bis die Adresse im Internet bekannt ist. Kommt Telegram nicht durch, warte ein paar Minuten und klick auf **Noch einmal prüfen**.
 
-Danach geht es in der App mit der Übersicht weiter. Die Adresse brauchst du dir nicht zu merken.
+Die Adresse brauchst du dir nicht zu merken.
 
 ## Ein neutraler Name {#neutraler-name}
 
@@ -49,5 +49,4 @@ Preise und Bedingungen legt Tailscale fest und kann sie ändern. Maßgeblich sin
 
 ## Rückgängig machen
 
-- **Ganz entfernen:** In der App **Deinstallieren** wählen (siehe [Entfernen](start-app.html#entfernen)). Danach in deinem Tailscale-Konto in der Geräteliste den Rechner entfernen. Dein Tailscale-Konto selbst bleibt, bis du es dort löschst.
-- **Zur FritzBox wechseln:** Den Weg ins Internet stellst du in der App um und richtest dann die [FritzBox](fritzbox.html#start-app) ein.
+In der App **Deinstallieren** wählen (siehe [Entfernen](start-app.html#entfernen)). Danach in deinem Tailscale-Konto in der Geräteliste den Rechner entfernen. Dein Tailscale-Konto selbst bleibt, bis du es dort löschst.

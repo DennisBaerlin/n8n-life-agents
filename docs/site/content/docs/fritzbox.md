@@ -80,7 +80,7 @@ Erst die **MyFRITZ!-Freigabe** legt für den Proxy-Rechner einen eigenen Namen a
 
 ## Mit der Start-App (Mac oder PC) {#start-app}
 
-Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.html) auf einem Mac oder PC betreibst und in der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ die **FritzBox** wählst. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.
+Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.html) auf einem Mac oder PC betreibst und in der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ **Über meine FritzBox** wählst. Die App führt dich mit dem Link „Anleitung für die FritzBox öffnen“ hierher. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.
 
 {{< schema name="weg-fritzbox" caption="Eigene Schema-Zeichnung: Telegram schickt über das Internet an deine FritzBox, zwei MyFRITZ!-Freigaben für Port 80 und 443 leiten weiter zum Mac mit fester Adresse im Heimnetz. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch." >}}
 
@@ -95,13 +95,13 @@ Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.ht
 1. **Hat dein Anschluss eine eigene IPv4-Adresse?** *Internet → Online-Monitor*.
 
    *Erwartet:* Bei IPv4 steht eine Adresse, und nirgends steht „DS-Lite“.
-   - Steht dort „DS-Lite“, erreicht Telegram deinen Mac über die FritzBox nicht, denn Telegram stellt nur über IPv4 zu. Nimm den [Tunnel](tunnel.html).
+   - Steht dort „DS-Lite“, erreicht Telegram deinen Mac über die FritzBox nicht, denn Telegram stellt nur über IPv4 zu. Nimm den [Tunnel](tunnel.html). Die App fragt dasselbe („Steht in deiner FritzBox „DS-Lite“?“); bei **Ja** nimmt sie den Tunnel.
    - Dasselbe gilt, wenn die IPv4-Adresse mit `100.` beginnt und die zweite Zahl zwischen 64 und 127 liegt: Dann teilst du dir die Adresse mit anderen Kunden deines Anbieters.
 2. **Sind Port 80 und 443 noch frei?** *Internet → Freigaben → Reiter „Portfreigaben“*.
 
    *Erwartet:* Bei keinem Gerät in der Liste steht eine Freigabe „HTTP-Server“, „HTTPS-Server“, Port 80 oder Port 443.
    - Steht dort schon eine, ist der Port vergeben. **Nicht löschen**, nimm den [Tunnel](tunnel.html).
-   - Auch auf dem Mac selbst müssen die beiden Ports frei sein. Das prüft die App; sind sie dort belegt, sagt sie es dir und empfiehlt den Tunnel.
+   - Auch auf dem Mac selbst müssen die beiden Ports frei sein. Das prüft die App. Sind sie dort belegt, zeigt sie „Der FritzBox-Weg ist auf diesem Rechner schon belegt“; klick dann auf **Den Tunnel nehmen**.
 
 ### Einrichten
 
@@ -126,13 +126,15 @@ Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.ht
 6. **Die drei IPv6-Haken leer lassen und speichern:** Unter „**IPv6-Einstellungen**“ bleiben **PING6**, **delegierte Präfixe** und **Exposed Host** ohne Haken. Dann unten „**Übernehmen**“. Die FritzBox fragt eventuell eine Bestätigung am Gerät oder per Telefon ab.
 
    *Erwartet:* In der Liste der Portfreigaben steht der Mac mit zwei MyFRITZ!-Freigaben.
-7. **Die Adresse ablesen und in die App eintragen:** Die Adresse steht in der Freigabe im Feld „**MyFRITZ!-Adresse**“, zum Beispiel `heimserver.deine-domain.myfritz.net`. Vorne steht der Name aus Schritt 1. Warte eine Minute, denn den IPv6-Teil trägt MyFRITZ! etwas später nach. Dann trag die Adresse in der App ein.
+7. **Die Adresse ablesen und in die App einfügen:** Die Adresse steht in der Freigabe im Feld „**MyFRITZ!-Adresse**“, zum Beispiel `heimserver.deine-domain.myfritz.net`. Vorne steht der Name aus Schritt 1. Warte eine Minute, denn den IPv6-Teil trägt MyFRITZ! etwas später nach. Dann in der App auf **Ich habe die Freigaben angelegt** klicken und die Adresse auf der Seite „Füge die MyFRITZ!-Adresse deines Rechners ein“ einfügen.
 
-   *Erwartet:* Die App nimmt die Adresse an und prüft die Verbindung. Ein Caddyfile oder einen anderen Eintrag brauchst du auf diesem Weg nicht.
+   *Erwartet:* Die App nimmt die Adresse an und zeigt sie in der Übersicht als „MyFRITZ!-Adresse“. Ein Caddyfile oder einen anderen Eintrag brauchst du auf diesem Weg nicht.
+
+Zeigt die App beim Einrichten einen Hinweis, dass eine Freigabe bereits existiert, gilt die Regel oben: nichts löschen, den Tunnel nehmen.
 
 ### Prüfen, ob es klappt
 
-- Die App prüft, ob Telegram deinen Mac erreicht und ob Handy und Laptop über IPv4 und IPv6 bei ihm ankommen. Das sind dieselben Punkte wie unter [Was der Installer prüft](#was-der-installer-prüft). Zeigt sie ein Problem, nennt sie den Handgriff; danach „Erneut prüfen“. Die genauen Texte der App folgen mit ihrer ersten Version.
+- Vor der Installation prüft die App die Erreichbarkeit noch nicht. Erst nach der Installation, im Schritt „Verbinden“, schaut sie, ob Telegram deinen Mac erreicht. Kommt Telegram nicht durch, geh die Schritte oben noch einmal durch und klick dann auf **Noch einmal prüfen**.
 - Nach dem Verbinden mit Telegram: Schalt am Handy das WLAN aus und schreib dem Bot über mobile Daten. Er antwortet. Auch die [Übersicht](uebersicht-app.html) öffnet sich dann im WLAN und unterwegs, nie eine FritzBox-Seite.
 
 ### Rückgängig machen
@@ -140,7 +142,7 @@ Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.ht
 1. *Internet → Freigaben → Reiter „Portfreigaben“ → Stift beim Mac*.
 2. Bei den beiden Freigaben „**HTTP-Server**“ und „**HTTPS-Server**“, die du in Schritt 4 und 5 angelegt hast, auf den **Mülleimer** klicken. Andere Freigaben nicht anfassen. Dann „**Übernehmen**“.
 3. *Erwartet:* Beim Mac stehen keine Freigaben mehr. Die feste Adresse und der Name aus Schritt 1 schaden nicht und dürfen bleiben.
-4. In der App auf den Tunnel umstellen oder die App über **Deinstallieren** entfernen (siehe [Start-App → Entfernen](start-app.html#entfernen)). Ohne diesen Schritt erreicht Telegram deinen Bot nicht mehr.
+4. Ab jetzt erreicht Telegram deinen Bot nicht mehr über die FritzBox. Brauchst du den Bot nicht mehr, entferne die App über **Deinstallieren** (siehe [Start-App → Entfernen](start-app.html#entfernen)). Nach der Installation auf den Tunnel umzustellen, bietet die App noch nicht an.
 
 ## Andere Router
 

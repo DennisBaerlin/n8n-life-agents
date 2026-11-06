@@ -10,7 +10,7 @@ Dieser Weg ist für dich, wenn du **keinen eigenen Server** hast, aber einen Mac
 
 - **Ein Rechner, der an bleiben darf**, am Netzteil: ein Mac mit Apple-Chip (M1 oder neuer; ältere Macs mit Intel-Chip gehen nicht) oder ein Windows-PC mit 64-Bit-Windows. Docker (die Technik, in der der Bot auf deinem Rechner läuft) verlangt mindestens 4 GB Arbeitsspeicher beim Mac und 8 GB bei Windows. Die App prüft das selbst und sagt dir, wenn etwas fehlt.
 - **Die Zugänge für den Bot:** ein Telegram-Bot-Token und ein Anthropic-Schlüssel (Pflicht), ein Google-Schlüssel nur für Sprachnachrichten (freiwillig). Was das ist und wo du es bekommst, steht unter [Bevor du startest](installation.html#bevor-du-startest) und [Telegram-Bot anlegen](installation.html#telegram-bot-anlegen). Eine eigene Domain und einen Reverse Proxy brauchst du auf diesem Weg **nicht**.
-- **Für den Weg ins Internet** (siehe [unten](#tunnel-oder-fritzbox)): ein kostenloses Tailscale-Konto, das du unterwegs in der App anlegst, oder Zugang zur Oberfläche deiner FritzBox.
+- **Für den Weg ins Internet** (siehe [unten](#tunnel-oder-fritzbox)): ein kostenloses Tailscale-Konto, das du nach der Installation anlegst, wenn die App dich dazu auffordert, oder Zugang zur Oberfläche deiner FritzBox.
 
 Docker musst du nicht vorher installieren, das erledigt die App. **Ist Docker schon da**, zum Beispiel weil dort Paperless läuft, nutzt die App es mit. Sie installiert es nie ein zweites Mal, ändert nie seine Version, und deine anderen Programme darin bleiben, wie sie sind.
 
@@ -55,20 +55,20 @@ Ab hier fragt die App, und du antwortest. Jede Antwort wird sofort gespeichert; 
 1. **Rechner prüfen**, ohne Frage: Bauart, System-Version, Arbeitsspeicher, freier Platz.
 2. **Docker:** Fehlt es, erklärt die App in zwei Sätzen, was das ist, zeigt die Bedingungen von Docker und fragt dich. Erst nach deinem **Einverstanden** lädt sie Docker direkt beim Hersteller (gut ein halbes Gigabyte) und prüft dessen Unterschrift. Dein Rechner fragt dabei einmal nach seinem Passwort.
 3. **„Das wird geändert“:** Bevor irgendetwas passiert, zeigt die App eine Liste, was sie auf deinem Rechner einrichtet. Ohne dein Ja ändert sie nichts.
-4. **Deine Angaben**, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, und „Wie soll Telegram deinen Rechner erreichen?“ (Tunnel oder FritzBox).
+4. **Deine Angaben**, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, und der Weg ins Internet (Tunnel oder FritzBox, siehe [unten](#tunnel-oder-fritzbox)).
 5. **Übersicht:** alle Antworten noch einmal zum Prüfen, bevor installiert wird.
 6. **Installation** mit Fortschrittsanzeige. Die App lädt dabei die Bausteine des Bots, gut ein halbes Gigabyte.
-7. **Mit Telegram verbinden** per QR-Code: mit dem Handy scannen, Telegram öffnet den Chat mit deinem Bot.
+7. **Verbinden:** Beim Tunnel meldest du dich hier bei Tailscale an ([Tunnel einrichten](tunnel.html)). Dann verbindest du Telegram per QR-Code: mit dem Handy scannen, Telegram öffnet den Chat mit deinem Bot.
 8. **Dauerbetrieb:** ob der Rechner durchlaufen soll (siehe [unten](#dauerbetrieb)).
 
 Die Fragen und Prüfregeln sind dieselben wie bei der Installation auf einem Server. Die genauen Texte der App können sich bis zur ersten Version noch ändern.
 
 ## Tunnel oder FritzBox? {#tunnel-oder-fritzbox}
 
-Damit Telegram deinem Bot Nachrichten zustellen kann, muss dein Rechner aus dem Internet erreichbar sein. Die App bietet dafür zwei Wege an:
+Damit Telegram deinem Bot Nachrichten zustellen kann, muss dein Rechner aus dem Internet erreichbar sein. Die App fragt darum „Wie soll Telegram deinen Rechner erreichen?“ und bietet zwei Wege an:
 
-- **Tunnel (empfohlen):** Du brauchst ein kostenloses Tailscale-Konto. Am Router änderst du nichts, und es klappt auch bei Anschlüssen ohne eigene IPv4-Adresse (DS-Lite). Anleitung: [Tunnel einrichten](tunnel.html).
-- **FritzBox-Freigabe:** Du brauchst eine FritzBox mit eigener IPv4-Adresse, auf der Port 80 und 443 noch frei sind, und richtest zwei Freigaben auf deinen Rechner ein. Dafür kommst du ohne fremdes Konto aus. Anleitung: [FritzBox einrichten → Mit der Start-App](fritzbox.html#start-app).
+- **Über einen sicheren Tunnel (empfohlen, vorausgewählt):** Du brauchst ein kostenloses Tailscale-Konto. Am Router änderst du nichts, und es geht auch bei Anschlüssen ohne eigene IPv4-Adresse (DS-Lite). Anleitung: [Tunnel einrichten](tunnel.html).
+- **Über meine FritzBox:** Du brauchst eine FritzBox mit eigener IPv4-Adresse, auf der Port 80 und 443 noch frei sind, und richtest zwei Freigaben auf deinen Rechner ein. Dafür kommst du ohne fremdes Konto aus. Anleitung: [FritzBox einrichten → Mit der Start-App](fritzbox.html#start-app).
 
 Der Tunnel ist empfohlen, weil du am Router nichts änderst und er auch dort funktioniert, wo die FritzBox-Freigabe nicht geht.
 

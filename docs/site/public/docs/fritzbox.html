@@ -310,7 +310,7 @@
 <p>Die MyFRITZ!-Adresse der FritzBox (<code>deine-domain.myfritz.net</code>) zeigt über IPv6 auf die <strong>FritzBox selbst</strong>. Telegram stellt Nachrichten nur über IPv4 zu, dort fällt das nie auf. Handy und Laptop nehmen aber oft IPv6. Dann erscheint zufällig eine FritzBox-Seite statt deines Servers: im Heimnetz „Die angegebene URL ist nicht verfügbar&quot;, unterwegs die Anmeldung zum Fernzugang der FritzBox. Auch die Zertifikats-Erneuerung kann daran scheitern, denn Let&rsquo;s Encrypt fragt zuerst über IPv6 an (<a href="https://letsencrypt.org/docs/ipv6-support/">Let&rsquo;s Encrypt zu IPv6</a>).</p>
 <p>Erst die <strong>MyFRITZ!-Freigabe</strong> legt für den Proxy-Rechner einen eigenen Namen an, der über IPv4 auf deinen Anschluss und über IPv6 direkt auf den Proxy-Rechner zeigt. Eine normale Portfreigabe öffnet zwar Ports, legt aber keinen solchen Namen an. Eine andere Port-Nummer für den Fernzugang der FritzBox hilft auch nicht: Im Heimnetz antwortet die Box auf ihrer eigenen Adresse immer selbst. Dein Fernzugang zur FritzBox bleibt mit dem neuen Weg, wie er ist.</p>
 <h2 id="start-app">Mit der Start-App (Mac oder PC)</h2>
-<p>Dieser Abschnitt ist für dich, wenn du den Bot mit der <a href="start-app.html">Start-App</a> auf einem Mac oder PC betreibst und in der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ die <strong>FritzBox</strong> wählst. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.</p>
+<p>Dieser Abschnitt ist für dich, wenn du den Bot mit der <a href="start-app.html">Start-App</a> auf einem Mac oder PC betreibst und in der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ <strong>Über meine FritzBox</strong> wählst. Die App führt dich mit dem Link „Anleitung für die FritzBox öffnen“ hierher. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.</p>
 
 <figure class="schema">
 
@@ -396,7 +396,7 @@
 <p><strong>Hat dein Anschluss eine eigene IPv4-Adresse?</strong> <em>Internet → Online-Monitor</em>.</p>
 <p><em>Erwartet:</em> Bei IPv4 steht eine Adresse, und nirgends steht „DS-Lite“.</p>
 <ul>
-<li>Steht dort „DS-Lite“, erreicht Telegram deinen Mac über die FritzBox nicht, denn Telegram stellt nur über IPv4 zu. Nimm den <a href="tunnel.html">Tunnel</a>.</li>
+<li>Steht dort „DS-Lite“, erreicht Telegram deinen Mac über die FritzBox nicht, denn Telegram stellt nur über IPv4 zu. Nimm den <a href="tunnel.html">Tunnel</a>. Die App fragt dasselbe („Steht in deiner FritzBox „DS-Lite“?“); bei <strong>Ja</strong> nimmt sie den Tunnel.</li>
 <li>Dasselbe gilt, wenn die IPv4-Adresse mit <code>100.</code> beginnt und die zweite Zahl zwischen 64 und 127 liegt: Dann teilst du dir die Adresse mit anderen Kunden deines Anbieters.</li>
 </ul>
 </li>
@@ -405,7 +405,7 @@
 <p><em>Erwartet:</em> Bei keinem Gerät in der Liste steht eine Freigabe „HTTP-Server“, „HTTPS-Server“, Port 80 oder Port 443.</p>
 <ul>
 <li>Steht dort schon eine, ist der Port vergeben. <strong>Nicht löschen</strong>, nimm den <a href="tunnel.html">Tunnel</a>.</li>
-<li>Auch auf dem Mac selbst müssen die beiden Ports frei sein. Das prüft die App; sind sie dort belegt, sagt sie es dir und empfiehlt den Tunnel.</li>
+<li>Auch auf dem Mac selbst müssen die beiden Ports frei sein. Das prüft die App. Sind sie dort belegt, zeigt sie „Der FritzBox-Weg ist auf diesem Rechner schon belegt“; klick dann auf <strong>Den Tunnel nehmen</strong>.</li>
 </ul>
 </li>
 </ol>
@@ -444,13 +444,14 @@
 <p><em>Erwartet:</em> In der Liste der Portfreigaben steht der Mac mit zwei MyFRITZ!-Freigaben.</p>
 </li>
 <li>
-<p><strong>Die Adresse ablesen und in die App eintragen:</strong> Die Adresse steht in der Freigabe im Feld „<strong>MyFRITZ!-Adresse</strong>“, zum Beispiel <code>heimserver.deine-domain.myfritz.net</code>. Vorne steht der Name aus Schritt 1. Warte eine Minute, denn den IPv6-Teil trägt MyFRITZ! etwas später nach. Dann trag die Adresse in der App ein.</p>
-<p><em>Erwartet:</em> Die App nimmt die Adresse an und prüft die Verbindung. Ein Caddyfile oder einen anderen Eintrag brauchst du auf diesem Weg nicht.</p>
+<p><strong>Die Adresse ablesen und in die App einfügen:</strong> Die Adresse steht in der Freigabe im Feld „<strong>MyFRITZ!-Adresse</strong>“, zum Beispiel <code>heimserver.deine-domain.myfritz.net</code>. Vorne steht der Name aus Schritt 1. Warte eine Minute, denn den IPv6-Teil trägt MyFRITZ! etwas später nach. Dann in der App auf <strong>Ich habe die Freigaben angelegt</strong> klicken und die Adresse auf der Seite „Füge die MyFRITZ!-Adresse deines Rechners ein“ einfügen.</p>
+<p><em>Erwartet:</em> Die App nimmt die Adresse an und zeigt sie in der Übersicht als „MyFRITZ!-Adresse“. Ein Caddyfile oder einen anderen Eintrag brauchst du auf diesem Weg nicht.</p>
 </li>
 </ol>
+<p>Zeigt die App beim Einrichten einen Hinweis, dass eine Freigabe bereits existiert, gilt die Regel oben: nichts löschen, den Tunnel nehmen.</p>
 <h3 id="prüfen-ob-es-klappt">Prüfen, ob es klappt</h3>
 <ul>
-<li>Die App prüft, ob Telegram deinen Mac erreicht und ob Handy und Laptop über IPv4 und IPv6 bei ihm ankommen. Das sind dieselben Punkte wie unter <a href="#was-der-installer-pr%C3%BCft">Was der Installer prüft</a>. Zeigt sie ein Problem, nennt sie den Handgriff; danach „Erneut prüfen“. Die genauen Texte der App folgen mit ihrer ersten Version.</li>
+<li>Vor der Installation prüft die App die Erreichbarkeit noch nicht. Erst nach der Installation, im Schritt „Verbinden“, schaut sie, ob Telegram deinen Mac erreicht. Kommt Telegram nicht durch, geh die Schritte oben noch einmal durch und klick dann auf <strong>Noch einmal prüfen</strong>.</li>
 <li>Nach dem Verbinden mit Telegram: Schalt am Handy das WLAN aus und schreib dem Bot über mobile Daten. Er antwortet. Auch die <a href="uebersicht-app.html">Übersicht</a> öffnet sich dann im WLAN und unterwegs, nie eine FritzBox-Seite.</li>
 </ul>
 <h3 id="rückgängig-machen">Rückgängig machen</h3>
@@ -458,7 +459,7 @@
 <li><em>Internet → Freigaben → Reiter „Portfreigaben“ → Stift beim Mac</em>.</li>
 <li>Bei den beiden Freigaben „<strong>HTTP-Server</strong>“ und „<strong>HTTPS-Server</strong>“, die du in Schritt 4 und 5 angelegt hast, auf den <strong>Mülleimer</strong> klicken. Andere Freigaben nicht anfassen. Dann „<strong>Übernehmen</strong>“.</li>
 <li><em>Erwartet:</em> Beim Mac stehen keine Freigaben mehr. Die feste Adresse und der Name aus Schritt 1 schaden nicht und dürfen bleiben.</li>
-<li>In der App auf den Tunnel umstellen oder die App über <strong>Deinstallieren</strong> entfernen (siehe <a href="start-app.html#entfernen">Start-App → Entfernen</a>). Ohne diesen Schritt erreicht Telegram deinen Bot nicht mehr.</li>
+<li>Ab jetzt erreicht Telegram deinen Bot nicht mehr über die FritzBox. Brauchst du den Bot nicht mehr, entferne die App über <strong>Deinstallieren</strong> (siehe <a href="start-app.html#entfernen">Start-App → Entfernen</a>). Nach der Installation auf den Tunnel umzustellen, bietet die App noch nicht an.</li>
 </ol>
 <h2 id="andere-router">Andere Router</h2>
 <p>Für jeden anderen Router gilt dieselbe Regel, nur mit anderen Menüs:</p>

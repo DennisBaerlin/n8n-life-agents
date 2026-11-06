@@ -6,13 +6,20 @@ Deine Finanz-, Karriere- und Vorsorgedaten sind sensibel. Diese Seite erklärt, 
 
 ## Alles läuft bei dir zuhause
 
-Der ganze Assistent läuft auf einer eigenen, selbst betriebenen kleinen Servermaschine (self-hosted n8n auf einer Debian-VM im eigenen Netzwerk) mit einer eigenen Datenbank (PostgreSQL). Es gibt keinen fremden Cloud-Dienst, der deine Daten dauerhaft speichert. Nach außen ist die Maschine bewusst eng abgeriegelt: ein vorgeschalteter Web-Türsteher (dein Reverse Proxy, z. B. Caddy) lässt ausschließlich die Telegram-Nachrichtenwege durch — jeder andere Zugriffsversuch, etwa auf die Verwaltungsoberfläche, wird abgewiesen.
+Der ganze Assistent läuft auf einer eigenen, selbst betriebenen kleinen Servermaschine (self-hosted n8n auf einer Debian-VM im eigenen Netzwerk) oder, mit der Start-App, auf deinem eigenen Mac oder PC, jeweils mit einer eigenen Datenbank (PostgreSQL). Es gibt keinen fremden Cloud-Dienst, der deine Daten dauerhaft speichert. Nach außen ist die Maschine bewusst eng abgeriegelt: ein vorgeschalteter Web-Türsteher (dein Reverse Proxy, z. B. Caddy) lässt ausschließlich die Telegram-Nachrichtenwege durch — jeder andere Zugriffsversuch, etwa auf die Verwaltungsoberfläche, wird abgewiesen.
 
 ## Nach draußen geht nur, was für eine Antwort nötig ist
 
 Damit ein Agent überhaupt „denken" kann, schickt er deine Anfrage an ein Sprachmodell (Claude von Anthropic; nur Sprachnachrichten wandelt Googles Gemini in Text um) — das ist technisch unvermeidbar. Das passiert aber **gezielt und nur für die eine Anfrage**, die du gerade stellst, nicht als Hintergrund-Abgleich oder Dauerübertragung. Alles andere — deine gespeicherten Kontostände, Verläufe, Dokumente — bleibt in der eigenen Datenbank.
 
 Auf dem Weg zu Anthropic gibt es einen kleinen **Zwischenschritt auf deinem eigenen Server**: Er markiert den immer gleichen Anfang jeder Anfrage (Anweisungen und Werkzeug-Beschreibungen des Agenten), damit Anthropic ihn zwischenspeichert und nicht jedes Mal voll berechnet (Prompt-Caching — spart den Großteil der Kosten). Dieser Zwischenschritt reicht deine Anfrage nur weiter; er notiert nur Zahlen: wie viel Text verarbeitet wurde und welcher Assistent die Anfrage geschickt hat, nie was darin stand. Diese Zahlen legt er für 62 Tage in einer Datei auf deinem Server ab, und `/costs` übernimmt sie in deine Datenbank (dort 13 Monate) — daraus entsteht die Kostenübersicht. Damit der Zwischenspeicher bei Anthropic nicht nach einer Stunde verfällt, behält er den immer gleichen Anfang (Anweisungen und Werkzeug-Beschreibungen, nie deine Gespräche) bis zu 24 Stunden nach der letzten Nutzung im Arbeitsspeicher und schickt ihn stündlich kurz an Anthropic. Abschalten: `LLM_GATEWAY_KEEPALIVE_HOURS=0` in `/etc/lifeagents/core.env`, dann `lifeagents update`. Deine Daten gehen dadurch an niemanden zusätzlich.
+
+**Mit der [Start-App](start-app.html)** kommen beim Einrichten diese Abfragen dazu:
+
+- **FritzBox-Weg:** Die App fragt einmal den Dienst `api.ipify.org` nach der öffentlichen IPv4-Adresse deines Anschlusses. Sie braucht die Antwort nur, um DS-Lite zu erkennen. Der Dienst gibt nur diese Adresse zurück, eine Anmeldung gibt es nicht, und die App wartet höchstens 4 Sekunden. Wie bei jedem Aufruf einer Webseite sieht der Dienst dabei deine öffentliche Adresse.
+- **MyFRITZ!-Kennung:** Die App liest sie aus dem Zertifikat deiner FritzBox, im Heimnetz. Dabei geht nichts nach draußen.
+- **Paperless:** Die App sucht ein vorhandenes Paperless nur in deinem eigenen Heimnetz.
+- **Tunnel-Weg:** Tailscale sieht, dass Verbindungen zu deinem Rechner laufen (siehe [Tunnel → Grenzen](tunnel.html#grenzen)).
 
 ## Dokumente und Lebensläufe: nur über den bezahlten Tarif
 

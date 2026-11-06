@@ -225,7 +225,19 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_funnel');
     const fu = await waitFor(async () => { const p = await page(w); return p.title === 'Erlaube deinem Rechner den Empfang' ? p : null; });
     assert.equal(fu.link, null, 'fremde Adresse wird nie als Knopf gezeigt');
-    fs.writeFileSync(path.join(w.fake, 'reach'), 'ready');
+    // Paket-3-Zustände (reach_status_json): Geräte-Freigabe ohne Link -> feste Geräteliste; Funnel-Seite von Tailscale.
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_machine_auth', url: '' }));
+    const ma = await waitFor(async () => { const p = await page(w); return p.title === 'Gib diesen Rechner in Tailscale frei' ? p : null; });
+    assert.equal(ma.link.href, 'https://login.tailscale.com/admin/machines');
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
+    const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
+    assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
+    // Tunnel steht, Telegram zeigt noch nicht darauf: der Wizard fährt einmal reach.sh activate, danach Pairing.
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'pending_activation', url: '' }));
     await waitFor(async () => !!(await page(w)).qr);
+    assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['activate'], 'genau einmal aktiviert');
+    fs.writeFileSync(path.join(w.fake, 'paired'), '');
+    const ho = await waitFor(async () => { const p = await page(w); return p.id === 'handoff' ? p : null; });
+    assert.match(ho.note.text, /in 12 Tagen ab/, 'Hinweis zum Ablauf der Tailscale-Anmeldung');
   } finally { await w.stop(); }
 });

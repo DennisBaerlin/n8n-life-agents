@@ -25,6 +25,7 @@ case "${1:-}" in
     jq -nc --arg h "$host" '{ok:true, bot:"beispiel_bot", webhook_host:$h, polling_conflict:false}' ;;
   reach-status)
     st="$(cat "$D/reach" 2>/dev/null || echo ready)"
+    case "$st" in '{'*) printf '%s\n' "$st"; exit 0 ;; esac   # ganzes JSON wie reach_status_json
     jq -nc --arg s "$st" '{state:$s, url:(if $s == "needs_login" then "https://login.tailscale.com/a/beispiel123" elif $s == "needs_funnel" then "https://evil.example/phish" else "" end)}' ;;
   paperless-ports)
     jq -nc --argjson p "$(cat "$D/paperless_ports" 2>/dev/null || echo "[]")" '{ports:$p}' ;;

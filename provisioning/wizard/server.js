@@ -264,19 +264,19 @@ function pageFor(id) {
       link: { href: GUIDE_URL, label: 'Ausführliche Anleitung mit Bildern öffnen' },
       options: optionsFor(id), value: P.A.__dslite || '', next: 'Weiter' });
     case 'fb_ports_busy': return Object.assign(base, { kind: 'info', title: 'Der FritzBox-Weg ist auf diesem Rechner schon belegt',
-      help: [{ p: 'Ein anderes Programm auf diesem Rechner nutzt schon den Weg, den die FritzBox bräuchte. Wir ändern daran nichts, sonst fällt es aus.' }, { p: 'Nimm den Tunnel, der stört nichts.' }],
+      help: [{ p: 'Ein anderes Programm auf diesem Rechner nutzt schon den Weg, den die FritzBox bräuchte. Wir ändern daran nichts, sonst fällt es aus.' }, { p: 'Wähle stattdessen „Über einen sicheren Tunnel“, der stört nichts.' }],
       next: 'Den Tunnel nehmen' });
     case 'fb_guide': return Object.assign(base, { kind: 'info', title: 'Richte die FritzBox ein',
-      help: [{ p: 'In der FritzBox stellst du ein, dass Nachrichten aus dem Internet bei diesem Rechner ankommen. Das sind einige Schritte, die Anleitung zeigt jeden mit Bild.' }],
-      note: { kind: 'warn', text: 'Meldet die FritzBox „Freigabe existiert bereits“, nutzt schon etwas anderes diesen Weg. Lösche nichts, sonst fällt es aus. Geh dann zurück und nimm den Tunnel.' },
-      link: { href: GUIDE_URL, label: 'Anleitung für die FritzBox öffnen' }, next: 'Ich habe die Freigaben angelegt' });
+      help: [{ p: 'In der FritzBox stellst du ein, dass Nachrichten aus dem Internet bei diesem Rechner ankommen. Unten siehst du die Schritte. Ausführlich, mit allen Sonderfällen, steht es in der Anleitung.' }],
+      note: { kind: 'warn', text: 'Meldet die FritzBox „Freigabe existiert bereits“, nutzt schon etwas anderes diesen Weg. Lösche nichts, sonst fällt es aus. Geh dann zurück und wähle „Über einen sicheren Tunnel“.' },
+      link: { href: GUIDE_URL, label: 'Ausführliche Anleitung öffnen' }, next: 'Ich habe die Freigaben angelegt' });
     case 'review': return Object.assign(base, { kind: 'review', title: 'Stimmt alles so?', rows: reviewRows(), next: 'Alles richtig, weiter' });
     case 'confirm': return Object.assign(base, { kind: 'confirm', title: 'Das wird auf deinem Rechner geändert',
       help: [{ p: 'Bis hierher hat die Einrichtung nichts verändert. Du kannst jetzt noch abbrechen.' }],
       groups: confirmGroups(), next: 'Einverstanden, Installation starten' });
     case 'install': return Object.assign(base, installView());
     case 'connect': return Object.assign(base, connectView());
-    case 'handoff': return Object.assign(base, { kind: 'handoff', title: 'Dein Bot ist eingerichtet',
+    case 'handoff': return Object.assign(base, { kind: 'handoff', title: 'Dein Bot ist eingerichtet', note: keyExpiryNote(),
       help: [{ p: P.notes.welcome_sent ? 'Er hat dir in Telegram geschrieben. Tippe dort auf „Haushalt einrichten“.' : 'Schreib ihm in Telegram einfach /start, er zeigt dir den nächsten Schritt.' },
         { p: 'Zum Schluss fragen wir dich noch, ob dieser Rechner wach bleiben soll, damit dein Bot jederzeit antwortet.' }],
       next: P.phase === 'handoff' ? null : 'Weiter', action: 'handoff', done: P.phase === 'handoff' });
@@ -376,15 +376,41 @@ function installView() {
 }
 
 // Verbinden: beim Tunnel erst die Anmeldung bei Tailscale (Paket 3 meldet den Zustand), dann das Pairing per QR-Code.
+// Texte je Zustand des Tunnels (Paket 3). Knöpfe zeigen nur Adressen von login.tailscale.com (TS_URL).
+const REACH_TEXT = {
+  starting: { title: 'Der Tunnel startet', help: 'Das dauert nur einen Moment.', wait: 'Der Tunnel startet …' },
+  needs_login: { title: 'Melde dich bei Tailscale an', help: 'Es öffnet sich eine neue Seite. Du kannst dich dort mit deinem Google-, Apple- oder Microsoft-Konto anmelden.',
+    link: 'Tailscale-Anmeldung öffnen', wait: 'Warte auf deine Anmeldung …' },
+  needs_machine_auth: { title: 'Gib diesen Rechner in Tailscale frei', help: 'Dein Tailscale-Konto möchte, dass du neue Geräte selbst freigibst. Öffne dort die Liste deiner Geräte und gib diesen Rechner frei.',
+    link: 'Geräteliste in Tailscale öffnen', wait: 'Warte auf die Freigabe …' },
+  needs_funnel: { title: 'Erlaube deinem Rechner den Empfang', help: 'Bestätige auf der nächsten Seite einmal, dass Nachrichten von außen bei diesem Rechner ankommen dürfen. Nur die Adressen für Telegram sind offen, alles andere bleibt zu.',
+    link: 'Freigabe-Seite öffnen', wait: 'Warte auf deine Bestätigung …' },
+  key_expired: { title: 'Die Anmeldung bei Tailscale ist abgelaufen', help: 'Melde diesen Rechner noch einmal bei Tailscale an.', link: 'Tailscale-Anmeldung öffnen',
+    wait: 'Warte auf deine Anmeldung …' },
+  ports_busy: { title: 'Der FritzBox-Weg ist auf diesem Rechner belegt', help: 'Ein anderes Programm nutzt schon den Weg, den die FritzBox bräuchte. Wir ändern daran nichts, sonst fällt es aus.',
+    note: 'Nimm stattdessen „Über einen sicheren Tunnel“. Umstellen kannst du das im Menü der App.', retry: true },
+};
+// keyExpiryNote — Tunnel: Tailscale meldet Geräte nach einer Frist ab (Standard 180 Tage), dann schweigt der Bot. Unter 30
+//   Tagen (Paket 3: key_days_left) ein Hinweis, wie man den Ablauf abschaltet.
+function keyExpiryNote() {
+  const t = P.notes.connect && P.notes.connect.tunnel;
+  if (!t || t.days === null || t.days === undefined || t.days >= 30 || flow.reachMode(P.A) !== 'tunnel') return null;
+  return { kind: 'warn', text: `Tailscale meldet diesen Rechner in ${t.days} Tagen ab, dann erreicht Telegram den Bot nicht mehr. Schalte das ab: in Tailscale unter „Machines“ beim Rechner „Disable key expiry“.` };
+}
 function connectView() {
   const c = P.notes.connect || {};
   const v = { kind: 'connect', title: 'Verbinde dich mit deinem Bot', poll: true };
-  if (c.tunnel && c.tunnel.state !== 'ready' && c.tunnel.state !== 'unavailable') {
-    const login = c.tunnel.state === 'needs_login';
-    return Object.assign(v, { title: login ? 'Melde dich bei Tailscale an' : 'Erlaube deinem Rechner den Empfang',
-      help: [{ p: login ? 'Es öffnet sich eine neue Seite. Du kannst dich dort mit deinem Google-, Apple- oder Microsoft-Konto anmelden.' : 'Bestätige auf der nächsten Seite einmal, dass Nachrichten von außen bei diesem Rechner ankommen dürfen. Nur die Adressen für Telegram sind offen, alles andere bleibt zu.' }],
-      link: c.tunnel.url ? { href: c.tunnel.url, label: login ? 'Tailscale-Anmeldung öffnen' : 'Freigabe-Seite öffnen', primary: true } : null,
-      wait: c.tunnel.url ? 'Warte auf deine Bestätigung …' : 'Der Tunnel startet …' });
+  if (c.activating || (c.tunnel && c.tunnel.state === 'pending_activation')) {
+    return Object.assign(v, { help: [{ p: 'Der Tunnel steht. Jetzt wird dein Bot darauf eingestellt.' }], wait: 'Die Verbindung wird eingerichtet …' });
+  }
+  const T = c.tunnel && REACH_TEXT[c.tunnel.state];
+  if (T) {
+    // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
+    const href = c.tunnel.url || (c.tunnel.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
+    return Object.assign(v, { title: T.title, help: [{ p: T.help }], note: T.note ? { kind: 'warn', text: T.note } : null,
+      link: href ? { href, label: T.link, primary: true } : null,
+      wait: T.wait ? (href || !T.link ? T.wait : 'Der Tunnel startet …') : null,
+      poll: !T.retry, action: T.retry ? 'connect_retry' : null, next: T.retry ? 'Noch einmal prüfen' : null });
   }
   if (c.problem) {
     return Object.assign(v, { help: [{ p: 'Telegram erreicht deinen Rechner noch nicht.' }], note: { kind: 'warn', text: c.problem },
@@ -582,7 +608,28 @@ let connectBusy = false;
 // Owner). Nach einem Neustart wird einfach ein neuer Code erzeugt.
 let PAIR = null;
 let lastConnect = 0;
-const TS_URL = /^https:\/\/login\.tailscale\.com\/[A-Za-z0-9/_?=&.-]{1,200}$/;
+const TS_URL = /^https:\/\/login\.tailscale\.com\/[A-Za-z0-9/_?=&.%:-]{1,300}$/;
+const REACH_STATES = ['unavailable', 'starting', 'needs_login', 'needs_machine_auth', 'needs_funnel', 'key_expired', 'ports_busy',
+  'pending_activation', 'ready'];
+const REACH = process.env.LA_REACH || path.join(__dirname, '..', 'compose', 'reach.sh');
+// startActivation — nach der Tunnel-Anmeldung den Installer einmal nachfahren (Paket 3: reach.sh activate holt die
+//   Tunnel-Adresse, n8n setzt den Telegram-Webhook neu). Fortschritt wie bei der Installation über die Ergebnis-Datei.
+function startActivation(c) {
+  c.activating = true;
+  fs.mkdirSync(RUN_DIR, { recursive: true, mode: 0o700 });
+  const log = fs.openSync(LOG_FILE, 'a', 0o600);
+  const p = spawn('bash', [REACH, 'activate'], { env: Object.assign({}, process.env, { LIFEAGENTS_RESULT_FILE: RESULT }), stdio: ['ignore', log, log] });
+  fs.closeSync(log);
+  const done = (code) => {
+    c.activating = false;
+    if (code === 0) c.activated = true;
+    else c.problem = 'Die Verbindung zu Telegram ließ sich gerade nicht einrichten. Versuch es noch einmal; klappt es wieder nicht, schick den Bericht an die Person, die dir hilft.';
+    delete c.tunnel;   // neu abfragen
+    save();
+  };
+  p.on('error', () => done(127));
+  p.on('close', (code) => done(code ?? 1));
+}
 async function connectTick(force) {
   if (P.phase !== 'pairing' || connectBusy) return;
   if (!force && Date.now() - lastConnect < Math.max(POLL_MS, 2500)) return;
@@ -590,12 +637,17 @@ async function connectTick(force) {
   lastConnect = Date.now();
   const c = P.notes.connect || (P.notes.connect = {});
   try {
-    if (flow.reachMode(P.A) === 'tunnel' && !(c.tunnel && c.tunnel.state === 'ready')) {
+    // Zustand des Wegs zu Telegram (Paket 3, reach_status_json): Tunnel-Anmeldung/-Freigabe, belegte Ports, Aktivierung.
+    if (!(c.tunnel && c.tunnel.state === 'ready') && !c.activating) {
       const r = await bridge(['reach-status'], { timeoutMs: 20000 });
-      const state = r && ['needs_login', 'needs_funnel', 'starting', 'ready', 'unavailable'].includes(r.state) ? r.state : 'unavailable';
-      c.tunnel = { state, url: r && TS_URL.test(r.url || '') ? r.url : '' };
+      const state = r && REACH_STATES.includes(r.state) ? r.state : 'unavailable';
+      c.tunnel = { state, url: r && TS_URL.test(r.url || '') ? r.url : '',
+        days: r && Number.isInteger(r.key_days_left) ? r.key_days_left : null };
+      // Tunnel steht, Telegram zeigt noch nicht darauf: einmal den Installer nachfahren lassen (reach.sh activate).
+      if (state === 'pending_activation' && !c.activated) { startActivation(c); save(); return; }
       if (state !== 'ready' && state !== 'unavailable') { save(); return; }
     }
+    if (c.activating) return;
     if (!PAIR && !c.connected && !c.problem && !c.expired) {
       const reach = await laCli('reach');
       if (reach && reach.ok === false) { c.problem = String(reach.problem || 'Telegram erreicht deinen Rechner noch nicht.').slice(0, 400); save(); return; }
@@ -624,7 +676,7 @@ async function connectTick(force) {
 async function action(name) {
   const c = P.notes.connect || {};
   switch (name) {
-    case 'connect_retry': delete c.problem; await connectTick(true); return { ok: true };
+    case 'connect_retry': delete c.problem; delete c.tunnel; await connectTick(true); return { ok: true };
     case 'pair_new': delete c.expired; await connectTick(true); return { ok: true };
     case 'handoff':
       if (P.phase !== 'connected') return { error: 'Noch nicht verbunden.' };

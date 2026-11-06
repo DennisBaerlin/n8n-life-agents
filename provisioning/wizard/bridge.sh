@@ -43,6 +43,11 @@ if [ -f "$_BR_PROV/lib/runtime.sh" ]; then
   # shellcheck source=/dev/null
   . "$_BR_PROV/lib/runtime.sh"
 fi
+# Erreichbarkeit (Paket 3): reach_status_json, falls vorhanden.
+if [ -f "$_BR_PROV/lib/reach.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_BR_PROV/lib/reach.sh"
+fi
 
 # Host-Fragen, die der Wizard stellt (Reihenfolge = _INSTALL_ENV_KEYS). Nicht dabei: die n8n-Anmeldung (die Installation
 # erzeugt sie) und der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3). DOMAIN fragt der Wizard nur
@@ -245,7 +250,8 @@ br_tg_check() {
 }
 
 # reach-status — Zustand des Tunnels für die Anzeige im Wizard (Schnittstelle zu Paket 3). Ist dort reach_status_json
-#   definiert, gilt es: {"state":"needs_login|needs_funnel|starting|ready|unavailable","url":"https://login.tailscale.com/…",
+#   definiert, gilt es (Format von Paket 3, lib/reach.sh): {"mode":…,"state":"unavailable|starting|needs_login|needs_machine_auth|
+#   needs_funnel|key_expired|ports_busy|pending_activation|ready","url":"https://login.tailscale.com/…","key_days_left":…,
 #   "dns_name":"…"}. Bis dahin: unbekannt.
 br_reach_status() {
   if declare -F reach_status_json >/dev/null; then reach_status_json; return 0; fi

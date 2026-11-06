@@ -66,7 +66,6 @@ async function step(w, id, value, opt) {
     await waitFor(async () => (await state(w)).json.page.failed);
     await shot(w, 'install-fehler');
     fs.rmSync(path.join(w.fake, 'fail_stage'));
-    fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_login');
     await post(w, '/api/action', { name: 'retry' });
     await answer(w, 'confirm', null);
     await waitFor(async () => (await state(w)).json.page.id === 'connect');

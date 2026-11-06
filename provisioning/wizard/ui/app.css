@@ -165,3 +165,10 @@ dl { margin: 0; }
 /* Gefundene Adressen (z. B. mehrere Paperless-Instanzen im Heimnetz): Antippen trägt sie ins Feld ein. */
 .suggest { margin-top: 10px; }
 .suggest .choice { padding: 10px 14px; }
+
+/* Knopfleiste immer sichtbar (App-Fenster 760 × 640): unten angeheftet wie in der Start-App. */
+.actions { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 14px; margin-bottom: -14px; border-top: 1px solid var(--hairline); z-index: 2; }
+/* Einfachauswahl: Kreis zeigt die Wahl zusätzlich zur Fläche (Zustand nie nur über Farbe). */
+.choices:not(.multi) .choice b::before { content: ""; display: inline-block; width: 16px; height: 16px; border: 1.5px solid var(--gray); border-radius: 50%; margin-right: 10px; vertical-align: -2px; box-sizing: border-box; }
+.choices:not(.multi) .choice.sel b::before { border: 5px solid var(--accent); background: var(--bg); }
+.choices:not(.multi) .choice small { padding-left: 26px; }

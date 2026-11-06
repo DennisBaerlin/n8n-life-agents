@@ -553,7 +553,6 @@
   "core.wizard.q.domain.label": "MyFRITZ! address",
   "core.wizard.q.domain.help": "It is shown in the port sharing entry in the field “MyFRITZ! address”, for example meinrechner.deine-domain.myfritz.net. Then wait about a minute until it is registered.",
   "core.wizard.domain.searching": "Looking for your computer's address …",
-  "core.wizard.domain.found": "Found. The address is already filled in, please check it.",
   "core.wizard.domain.suffix": "Only enter the device name at the front. You see it in the FritzBox under Internet → Permit Access, in the row of this computer.",
   "core.wizard.opt.voice_no": "No, I prefer to type",
   "core.wizard.opt.voice_no_desc": "You can add it later.",
@@ -685,5 +684,12 @@
   "core.wizard.step.power": "Always on",
   "core.wizard.step.done": "Done",
   "core.wizard.step.short": "Step {n} of {total} · {name}",
-  "core.wizard.step.aria": "Setup steps"
+  "core.wizard.step.aria": "Setup steps",
+  "core.wizard.domain.verified": "Checked: the address points to your internet connection. It is already filled in.",
+  "core.wizard.domain.suggest_label": "Name from your FritzBox",
+  "core.wizard.domain.recheck": "Check again",
+  "core.wizard.domain.live_ok": "Found ✓ The address points to your internet connection.",
+  "core.wizard.domain.live_found": "Found ✓",
+  "core.wizard.domain.live_wrong_ip": "This address does not point to your internet connection. Check the device name in the FritzBox.",
+  "core.wizard.domain.live_pending": "Not registered yet. The FritzBox needs about a minute for this."
 }

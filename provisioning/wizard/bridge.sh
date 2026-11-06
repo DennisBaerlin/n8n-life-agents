@@ -15,6 +15,7 @@
 #                                                   JSON {"ok":…,"reason":…,"version":…}
 #   bash bridge.sh tg-check                      -> Token in Env TELEGRAM_BOT_TOKEN; Prüfliste Nr. 10 (s. tg_check_json)
 #   bash bridge.sh reach-status                  -> Zustand des Tunnels (Schnittstelle zu Paket 3, s. reach_status_json)
+#   bash bridge.sh public-ip                     -> öffentliche IPv4 des Anschlusses (Paket 3, reach_public_ipv4)
 #
 # Geheimnisse nur über stdin/Env, nie im argv (die Prozessliste ist für jeden lesbar). Ausgabe immer genau eine JSON-Zeile
 # auf stdout; Meldungen der Bibliotheken gehen nach stderr, die der Wizard verwirft. Exit 0, ausser bei falschem Aufruf (64).
@@ -281,6 +282,16 @@ br_paperless_ports() {
   jq -nc --argjson p "$(jq -c 'if type == "array" then . else [] end' <<<"${p:-[]}" 2>/dev/null || echo '[]')" '{ports:$p}'
 }
 
+# public-ip — öffentliche IPv4 dieses Anschlusses (MyFRITZ-Prüfung: eine Adresse wird nur vorgeschlagen, wenn sie hierauf
+#   zeigt). Die Messung gehört Paket 3 (reach_public_ipv4, dieselbe wie für die DS-Lite-Prüfung, nicht doppelt gebaut).
+#   Ausgabe {"ip":"203.0.113.7"} oder {"ip":""} (unbekannt -> der Wizard schlägt nichts vor).
+br_public_ip() {
+  local ip=''
+  if declare -F reach_public_ipv4 >/dev/null; then ip="$(reach_public_ipv4 2>/dev/null || true)"; fi
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || ip=''
+  jq -nc --arg ip "$ip" '{ip:$ip}'
+}
+
 case "${1:-}" in
   questions)       br_questions ;;
   paperless-ports) br_paperless_ports ;;
@@ -289,5 +300,6 @@ case "${1:-}" in
   paperless-check) br_paperless_check ;;
   tg-check)        br_tg_check ;;
   reach-status)    br_reach_status ;;
-  *) printf 'Aufruf: bridge.sh questions|validate <ref>|paperless-check|tg-check|reach-status\n' >&2; exit 64 ;;
+  public-ip)       br_public_ip ;;
+  *) printf 'Aufruf: bridge.sh questions|validate <ref>|paperless-check|tg-check|reach-status|public-ip\n' >&2; exit 64 ;;
 esac

@@ -108,16 +108,25 @@ test('Paperless-Adresse vorausfüllen: genau ein erreichbarer Treffer, sonst lee
   assert.equal(g([{ ip: '0.0.0.0', port: 0 }, { ip: '0.0.0.0', port: 'x' }], '192.0.2.10'), '');
 });
 
-test('MyFRITZ-Adresse: Zone und Kandidaten streng geprüft, erster auflösbarer Name gewinnt', async () => {
+test('MyFRITZ-Adresse: Zone und Namen streng geprüft, vorgeschlagen nur, was auf diesen Anschluss zeigt', async () => {
   assert.equal(flow.myfritzZone('Deine-Domain.myfritz.net.'), 'deine-domain.myfritz.net');
   for (const bad of ['', 'myfritz.net', 'zwei.deine-domain.myfritz.net', 'deine-domain.myfritz.net.evil.example', 'mein rechner.deine-domain.myfritz.net']) assert.equal(flow.myfritzZone(bad), '', bad);
-  assert.deepEqual(flow.myfritzCandidates('Mac-Mini, meinrechner mac-mini ;rm -rf /, -x'), ['mac-mini', 'meinrechner']);
+  // Name der FritzBox zuerst, dann die weiteren; Unbrauchbares fällt weg.
+  assert.deepEqual(flow.myfritzCandidates('Kims-PC', 'Mac-Mini, kims-pc mac-mini ;rm -rf /, -x'), ['kims-pc', 'mac-mini']);
+  const Z = 'deine-domain.myfritz.net'; const IP = '203.0.113.7';
+  const dnsTab = { [`mac-mini.${Z}`]: ['198.51.100.9'], [`meinrechner.${Z}`]: [IP] };
   const seen = [];
-  const resolve = async (n) => { seen.push(n); return n === 'meinrechner.deine-domain.myfritz.net'; };
-  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['mac-mini', 'meinrechner', 'x'], resolve), 'meinrechner.deine-domain.myfritz.net');
-  assert.deepEqual(seen, ['mac-mini.deine-domain.myfritz.net', 'meinrechner.deine-domain.myfritz.net'], 'stoppt beim ersten Treffer');
-  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['a'], async () => { throw new Error('x'); }), '');
-  assert.equal(await flow.myfritzGuess('', ['a'], async () => true), '');
+  const lookup = async (n) => { seen.push(n); return dnsTab[n] || []; };
+  assert.equal(await flow.domainCheck(`meinrechner.${Z}`, lookup, IP), 'ok');
+  assert.equal(await flow.domainCheck(`mac-mini.${Z}`, lookup, IP), 'wrong_ip', 'zeigt woandershin');
+  assert.equal(await flow.domainCheck(`neu.${Z}`, lookup, IP), 'pending', 'Freigabe fehlt oder wird gerade eingetragen');
+  assert.equal(await flow.domainCheck(`meinrechner.${Z}`, lookup, ''), 'found', 'ohne bekannte IPv4 nur „gefunden“');
+  assert.equal(await flow.domainCheck('x', async () => { throw new Error('x'); }, IP), 'pending');
+  seen.length = 0;
+  assert.equal(await flow.myfritzGuess(Z, ['mac-mini', 'meinrechner', 'x'], lookup, IP), `meinrechner.${Z}`, 'falsche IP wird übersprungen');
+  assert.deepEqual(seen, [`mac-mini.${Z}`, `meinrechner.${Z}`], 'stoppt beim ersten geprüften Treffer');
+  assert.equal(await flow.myfritzGuess(Z, ['meinrechner'], lookup, ''), '', 'ohne öffentliche IPv4 kein Vorschlag');
+  assert.equal(await flow.myfritzGuess('', ['meinrechner'], lookup, IP), '', 'ohne Kennung kein Vorschlag');
 });
 
 test('Vorschläge vom Rechner: Sprache auf angebotene Codes, Name am letzten Leerzeichen', () => {

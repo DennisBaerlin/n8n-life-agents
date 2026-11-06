@@ -553,7 +553,6 @@
   "core.wizard.q.domain.label": "MyFRITZ!-Adresse",
   "core.wizard.q.domain.help": "Sie steht in der Freigabe im Feld „MyFRITZ!-Adresse“, zum Beispiel meinrechner.deine-domain.myfritz.net. Warte danach etwa eine Minute, bis sie eingetragen ist.",
   "core.wizard.domain.searching": "Suche die Adresse deines Rechners …",
-  "core.wizard.domain.found": "Gefunden. Die Adresse ist schon eingetragen, prüf sie kurz.",
   "core.wizard.domain.suffix": "Trag vorne nur noch den Gerätenamen ein. Du siehst ihn in der FritzBox unter Internet → Freigaben, in der Zeile dieses Rechners.",
   "core.wizard.opt.voice_no": "Nein, ich schreibe lieber",
   "core.wizard.opt.voice_no_desc": "Du kannst das später nachholen.",
@@ -685,5 +684,12 @@
   "core.wizard.step.power": "Dauerbetrieb",
   "core.wizard.step.done": "Fertig",
   "core.wizard.step.short": "Schritt {n} von {total} · {name}",
-  "core.wizard.step.aria": "Schritte der Einrichtung"
+  "core.wizard.step.aria": "Schritte der Einrichtung",
+  "core.wizard.domain.verified": "Geprüft: Die Adresse zeigt auf deinen Anschluss. Sie ist schon eingetragen.",
+  "core.wizard.domain.suggest_label": "Name aus deiner FritzBox",
+  "core.wizard.domain.recheck": "Erneut prüfen",
+  "core.wizard.domain.live_ok": "Gefunden ✓ Die Adresse zeigt auf deinen Anschluss.",
+  "core.wizard.domain.live_found": "Gefunden ✓",
+  "core.wizard.domain.live_wrong_ip": "Diese Adresse zeigt nicht auf deinen Anschluss. Prüf den Gerätenamen in der FritzBox.",
+  "core.wizard.domain.live_pending": "Noch nicht eingetragen. Die FritzBox braucht dafür etwa eine Minute."
 }

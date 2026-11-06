@@ -553,7 +553,6 @@
   "core.wizard.q.domain.label": "MyFRITZ! 주소",
   "core.wizard.q.domain.help": "포트 공유 항목의 „MyFRITZ! 주소“ 칸에 있어요. 예: meinrechner.deine-domain.myfritz.net. 그다음 등록될 때까지 1분 정도 기다려 주세요.",
   "core.wizard.domain.searching": "내 컴퓨터의 주소를 찾는 중 …",
-  "core.wizard.domain.found": "찾았어요. 주소를 미리 넣어 두었으니 한번 확인해 주세요.",
   "core.wizard.domain.suffix": "앞부분에 기기 이름만 넣어 주세요. FritzBox의 인터넷 → 포트 공유에서 이 컴퓨터 줄에 보여요.",
   "core.wizard.opt.voice_no": "아니요, 글로 쓸게요",
   "core.wizard.opt.voice_no_desc": "나중에 추가할 수 있어요.",
@@ -685,5 +684,12 @@
   "core.wizard.step.power": "상시 실행",
   "core.wizard.step.done": "완료",
   "core.wizard.step.short": "{total}단계 중 {n}단계 · {name}",
-  "core.wizard.step.aria": "설정 단계"
+  "core.wizard.step.aria": "설정 단계",
+  "core.wizard.domain.verified": "확인했어요: 이 주소는 내 인터넷 회선을 가리켜요. 이미 입력해 두었어요.",
+  "core.wizard.domain.suggest_label": "FritzBox에 있는 이름",
+  "core.wizard.domain.recheck": "다시 확인",
+  "core.wizard.domain.live_ok": "찾았어요 ✓ 이 주소는 내 인터넷 회선을 가리켜요.",
+  "core.wizard.domain.live_found": "찾았어요 ✓",
+  "core.wizard.domain.live_wrong_ip": "이 주소는 내 인터넷 회선을 가리키지 않아요. FritzBox에서 기기 이름을 확인해 주세요.",
+  "core.wizard.domain.live_pending": "아직 등록되지 않았어요. FritzBox가 등록하는 데 1분 정도 걸려요."
 }

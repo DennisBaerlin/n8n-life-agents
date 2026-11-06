@@ -3,6 +3,122 @@
 // Sicherheit: kein innerHTML mit Server-Text (nur textContent), Ausnahme der QR-Code (vom Server aus eigenem Code erzeugt);
 // POST nur mit CSRF-Kopf; keine Inline-Skripte (CSP script-src 'self').
 'use strict';
+/* ui-copy:begin ui.steps.js (kopiert von scripts/build_ui_tokens.ps1 aus config/ui.steps.js, nicht von Hand aendern) */
+// Schritt-Leiste der Einrichtung, gemeinsam für Start-App und Fragebogen im selben Fenster: Jede Seite zeichnet sie selbst,
+// mit derselben Reihenfolge und demselben Aussehen (config/ui.steps.css). Kopie per scripts/build_ui_tokens.ps1 als Block in
+// die Datei jeder Oberfläche (so liegt sie auch im Release-Paket des Fragebogens), kein Nachladen zur Laufzeit.
+// Die App zeichnet prepare, docker, power und done; der Fragebogen questions (mit Unterschritten), install und connect.
+// Texte stehen hier keine: Der Aufrufer gibt sie mit (Fragebogen aus dem Textkatalog, Schlüssel core.wizard.step.<id>).
+// Nur textContent, kein HTML, keine Abhängigkeit.
+const UiSteps = {
+  steps: [
+    { id: 'prepare' },
+    { id: 'docker' },
+    { id: 'questions', sub: [{ id: 'about' }, { id: 'access' }, { id: 'modules' }, { id: 'reach' }, { id: 'check' }] },
+    { id: 'install' },
+    { id: 'connect' },
+    { id: 'power' },
+    { id: 'done' },
+  ],
+
+  /**
+   * Leiste in `el` zeichnen. current = id aus steps, sub = id eines Unterschritts (nur bei questions) oder leer.
+   * text = { step: (id) => Beschriftung, short: (n, total, name) => „Schritt 3 von 7 · Fragen“, aria: Name der Leiste }.
+   * Davor = erledigt, danach = offen; Unterschritte stehen nur beim aktuellen Schritt (sonst wird es zu lang).
+   * Unter 600 px Breite zeigt das CSS statt der Liste die kurze Zeile.
+   */
+  render(el, current, sub, text) {
+    const mk = (tag, cls, txt) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (txt != null) e.textContent = txt;
+      return e;
+    };
+    const at = this.steps.findIndex((s) => s.id === current);
+    const last = this.steps.length - 1;
+    const list = mk('ol', 'la-rail-list');
+    this.steps.forEach((s, i) => {
+      // Der letzte Schritt („Fertig“) ist erreicht = erledigt, daher dort das Häkchen statt des offenen Kreises.
+      const state = i < at || (i === at && i === last) ? 'done' : i === at ? 'now' : 'todo';
+      const li = mk('li', 'la-rail-step ' + state);
+      if (i === at) li.setAttribute('aria-current', 'step');
+      li.append(mk('i', null, state === 'done' ? '✓' : ''), mk('span', null, text.step(s.id)));
+      if (state === 'now' && s.sub) {
+        const subAt = s.sub.findIndex((x) => x.id === sub);
+        const ul = mk('ul', 'la-rail-sub');
+        s.sub.forEach((x, k) => {
+          const sli = mk('li', k < subAt ? 'done' : k === subAt ? 'now' : 'todo', text.step(x.id));
+          if (k === subAt) sli.setAttribute('aria-current', 'step');
+          ul.append(sli);
+        });
+        li.append(ul);
+      }
+      list.append(li);
+    });
+    const short = mk('p', 'la-rail-short', at < 0 ? '' : text.short(at + 1, this.steps.length, text.step(this.steps[at].id)));
+    el.setAttribute('aria-label', text.aria);
+    el.replaceChildren(list, short);
+  },
+};
+/* ui-copy:end */
+/* ui-copy:begin ui.nudge.js (kopiert von scripts/build_ui_tokens.ps1 aus config/ui.nudge.js, nicht von Hand aendern) */
+// Lese-Hinweis am Hauptknopf (Owner-Wunsch: erst lesen lassen, dann dezent auf „Weiter“ zeigen; Werte von der Leitung),
+// gemeinsam für Fragebogen, Start-App und die Knöpfe in den Bildern. Kopie per scripts/build_ui_tokens.ps1 als Block in die
+// Datei jeder Oberfläche (Get-UiCopies), Aussehen in config/ui.nudge.css. Keine Abhängigkeit, kein Inline-Stil (CSP).
+//   UiNudge.start(getButton, isReady) beim Wechsel auf eine neue Seite; getButton() liefert den Hauptknopf (darf wechseln),
+//   isReady() sagt, ob die Seite gerade gültig ist (keine Fehlermeldung, Pflichtfeld gefüllt, keine laufende Prüfung).
+// Regeln: 12 s ohne Eingabe (keydown, input, pointerdown, scroll, wheel setzen die Uhr zurück) -> genau 2 Pulse von je 1,5 s,
+// danach still; erneut erst nach weiteren 12 s Ruhe, höchstens 2-mal je Seite. Nicht bereit = kein Puls, es zählt nicht.
+// Ohne Bewegung (prefers-reduced-motion) zeigt das CSS nur eine farbige Hervorhebung.
+const UiNudge = {
+  IDLE_MS: 12000,
+  PULSE_MS: 3000,
+  MAX: 2,
+  CLS: 'la-nudge',
+  _t: null,
+  _n: 0,
+  _get: null,
+  _ready: null,
+  _bound: false,
+
+  start(getButton, isReady) {
+    this.stop();
+    this._get = getButton;
+    this._ready = isReady || null;
+    this._n = 0;
+    if (!this._bound) {
+      this._bound = true;
+      for (const ev of ['keydown', 'input', 'pointerdown', 'scroll', 'wheel']) {
+        document.addEventListener(ev, () => this._poke(), { capture: true, passive: true });
+      }
+    }
+    this._arm();
+  },
+  stop() {
+    clearTimeout(this._t);
+    const b = this._get && this._get();
+    if (b) b.classList.remove(this.CLS);
+  },
+  _arm() {
+    clearTimeout(this._t);
+    if (this._n >= this.MAX) return;
+    this._t = setTimeout(() => this._fire(), this.IDLE_MS);
+  },
+  _fire() {
+    const b = this._get && this._get();
+    if (!b || b.disabled || (this._ready && !this._ready())) { this._arm(); return; }
+    this._n += 1;
+    b.classList.add(this.CLS);
+    this._t = setTimeout(() => { b.classList.remove(this.CLS); this._arm(); }, this.PULSE_MS);
+  },
+  _poke() {
+    if (!this._get) return;
+    const b = this._get();
+    if (b) b.classList.remove(this.CLS);
+    this._arm();
+  },
+};
+/* ui-copy:end */
 (function () {
   const PREVIEW = window.WIZARD_PREVIEW || null;
   const main = document.getElementById('m');
@@ -59,6 +175,7 @@
       if (page.t) T = page.t;
       if (page.lang) document.documentElement.lang = page.lang;
       if (T.doc_title) document.title = T.doc_title;
+      rail(page);
       render();
     }
   }
@@ -71,9 +188,55 @@
     apply(r);
     if (PREVIEW) {   // Vorschau-Bilder: Eingabe und Fehlermeldung eines festgehaltenen Zustands
       const i = document.getElementById('in');
-      if (i && PREVIEW.value) i.value = PREVIEW.value;
+      if (i && PREVIEW.value) { i.value = PREVIEW.value; if (page.live) liveSoon(page.id, 0); }
       if (PREVIEW.error) setErr(PREVIEW.error);
     }
+  }
+
+  // ready — ist die Seite gerade gültig für den Hinweis am Weiter-Knopf? Kein Puls bei Fehlermeldung, laufender Prüfung
+  //   oder Suche, leerem Pflichtfeld, fehlender Auswahl oder einer Adresse, die nicht auf diesen Anschluss zeigt.
+  function ready() {
+    const p = page;
+    if (!p || busy || p.poll) return false;
+    const er = document.getElementById('er');
+    if (er && er.textContent) return false;
+    if (p.kind === 'choice' && !currentValue()) return false;
+    if (['text', 'date', 'secret'].includes(p.kind) && !p.optional && !p.hasSecret) {
+      const i = document.getElementById('in');
+      if (!i || !i.value.trim()) return false;
+    }
+    const lv = document.getElementById('live');
+    return !(lv && / warn/.test(lv.className));
+  }
+
+  // Live-Prüfung einer Eingabe (POST /api/check, ändert nichts am Stand): kurz nach dem letzten Tastendruck.
+  let liveT = null;
+  function liveSoon(id, ms) {
+    clearTimeout(liveT);
+    liveT = setTimeout(async () => {
+      const i = document.getElementById('in');
+      const box = document.getElementById('live');
+      if (!i || !box) return;
+      if (!i.value.trim()) { box.textContent = ''; box.className = 'live'; return; }
+      const r = await api('POST', '/api/check', { id, value: i.value });
+      if (r.csrf) csrf = r.csrf;
+      if (!r.live || document.getElementById('live') !== box) return;
+      box.textContent = r.live.text;
+      // Darstellung wie die übrigen Rückmeldungen: gefunden = Häkchen-Zeile, falsche Adresse = Warnung, noch nicht = Hinweis.
+      box.className = 'live ' + (({ ok: 'check', found: 'check', wrong_ip: 'note warn' })[r.live.state] || 'note');
+    }, ms === undefined ? 700 : ms);
+  }
+
+  // Schritt-Leiste (gemeinsamer Block ui.steps.js oben, Texte aus dem Katalog in der Sprache der Seite).
+  function rail(p) {
+    const el = document.getElementById('rail');
+    if (!el || !p.step || typeof UiSteps === 'undefined') return;
+    const fill = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (v[k] !== undefined ? String(v[k]) : m));
+    UiSteps.render(el, p.step.current, p.step.sub, {
+      step: (id) => (T.step && T.step[id]) || id,
+      short: (n, total, name) => fill(T.step_short || '{n}/{total} · {name}', { n, total, name }),
+      aria: T.step_aria || '' });
+    el.hidden = false;
   }
 
   function fatal() {
@@ -130,6 +293,7 @@
     // Neu zeichnen derselben Seite (Abfrage während einer Suche): schon Getipptes bleibt stehen.
     const prevIn = document.getElementById('in');
     const keep = prevIn && renderedId === p.id && prevIn.value ? prevIn.value : null;
+    const fresh = renderedId !== p.id;
     renderedId = p.id;
     // Bild dieser Seite (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild; side = neben die Auswahl.
     const art = window.WizardArt && typeof window.WizardArt.mount === 'function' ? window.WizardArt.mount(p) : null;
@@ -145,13 +309,24 @@
       const type = p.kind === 'secret' ? 'password' : p.kind === 'date' ? 'date' : 'text';
       const inp = h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? T.secret_kept : (p.placeholder || null),
         autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'er',
-        on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } } } });
+        on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } },
+          input: () => { if (p.live) liveSoon(p.id); } } });
       // Fester Teil hinter dem Feld (z. B. .<kennung>.myfritz.net): nur der Gerätename vorne wird getippt.
       kids.push(h('label', { class: 'sr', for: 'in', text: p.title }),
         p.suffix ? h('div', { class: 'with-suffix' }, inp, h('span', { class: 'suffix', text: p.suffix })) : inp);
-      // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
-      if ((p.suggestions || []).length) {
-        kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': T.found_addresses }, p.suggestions.map((s) => h('button', {
+      // Live-Prüfung (MyFRITZ): Stand der Adresse direkt unter dem Feld, daneben „Erneut prüfen“ (die FritzBox braucht etwa
+      // eine Minute) und der Name aus der FritzBox als kleiner Knopf zum Antippen (kompakt, passt ins App-Fenster 760 × 640).
+      if (p.live) {
+        const tap = (s) => h('button', { type: 'button', class: 'chip', on: { click: () => {
+          const i = document.getElementById('in'); i.value = s; i.focus(); liveSoon(p.id, 0);
+        } } }, s);
+        kids.push(h('div', { class: 'live-row' },
+          (p.suggestions || []).length ? h('span', { class: 'small' }, p.suggestLabel + ': ', ...p.suggestions.map(tap)) : null,
+          h('button', { type: 'button', class: 'link', id: 'rc', on: { click: () => liveSoon(p.id, 0) } }, p.live.recheck)),
+        h('div', { class: 'live', id: 'live', role: 'status' }));
+      } else if ((p.suggestions || []).length) {
+        // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
+        kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': p.suggestLabel || T.found_addresses }, p.suggestions.map((s) => h('button', {
           type: 'button', class: 'choice', on: { click: (e) => {
             const i = document.getElementById('in'); i.value = s; i.focus();
             main.querySelectorAll('.suggest .choice').forEach((b) => b.classList.toggle('sel', b === e.currentTarget));
@@ -222,7 +397,10 @@
     const f = document.getElementById('in');
     if (f && keep !== null) f.value = keep;
     if (f) f.focus();
+    if (p.live && f && f.value) liveSoon(p.id, 0);
     if (p.poll && !PREVIEW) pollT = setTimeout(load, 1500);
+    // Lese-Hinweis am Weiter-Knopf (gemeinsamer Block ui.nudge.js oben): je neue Seite von vorn.
+    if (fresh && !PREVIEW && typeof UiNudge !== 'undefined') UiNudge.start(() => document.getElementById('nx'), ready);
   }
 
   async function showReport() {

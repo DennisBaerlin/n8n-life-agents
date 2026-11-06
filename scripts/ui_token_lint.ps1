@@ -88,6 +88,20 @@ foreach ($s in $surfaces) {
     if (-not $m.Success) { Fail "Block '$($s.Name)': keine Marker in $($s.File)"; continue }
     if ($m.Value -cne (Get-UiBlockText $tokens $s)) { Fail "Block '$($s.Name)' in $($s.File) ist veraltet oder von Hand geaendert -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
 }
+# Geteilte Bausteine: jede Kopie wortgleich mit ihrer Quelle
+$copies = @(Get-UiCopies)
+$copyFiles = @($copies | ForEach-Object { $_.Files })
+foreach ($c in $copies) {
+    if (-not (Test-Path (Join-Path $RepoRoot $c.Source))) { Fail "Baustein fehlt: $($c.Source)"; continue }
+    $name = Split-Path $c.Source -Leaf
+    foreach ($f in $c.Files) {
+        $abs = Join-Path $RepoRoot $f
+        if (-not (Test-Path $abs)) { Fail "Baustein '$name': Datei fehlt: $f"; continue }
+        $m = (Get-UiCopyRegex $name).Match([System.IO.File]::ReadAllText($abs, $u8))
+        if (-not $m.Success) { Fail "Baustein '$name': keine Marker in $f"; continue }
+        if ($m.Value -cne (Get-UiCopyText $RepoRoot $c)) { Fail "Baustein '$name' in $f ist veraltet oder von Hand geaendert -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
+    }
+}
 
 # --- (4) Literale -----------------------------------------------------------------------------------------------
 $tracked = @(git -c core.quotepath=off -C $RepoRoot ls-files)   # ohne die Option stuenden Umlaut-Pfade in Anfuehrungszeichen, ihre Endung passte nicht
@@ -105,6 +119,7 @@ foreach ($f in $scanFiles) {
     $fileText = [System.IO.File]::ReadAllText($abs, $u8)
     # Marker sind nur in der Datei einer registrierten Oberflaeche gueltig, sonst versteckten sie dort feste Farben vor (3) und (4)
     if ($fileText.Contains('ui-tokens:begin') -and -not (@($surfaces | ForEach-Object { $_.File }) -contains $f)) { Fail "Block-Marker in $f, die Datei ist keine registrierte Oberflaeche (Get-UiSurfaces)" }
+    if ($fileText.Contains('ui-copy:begin') -and -not ($copyFiles -contains $f)) { Fail "Baustein-Marker in $f, die Datei ist kein registrierter Verbraucher (Get-UiCopies)" }
     foreach ($lit in (Get-UiColorLiterals $fileText)) {
         $k = "$f|$lit"
         if ($found.ContainsKey($k)) { $found[$k]++ } else { $found[$k] = 1 }

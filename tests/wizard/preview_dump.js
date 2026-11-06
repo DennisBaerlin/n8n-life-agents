@@ -27,7 +27,7 @@ async function step(w, id, value, opt) {
   await new Promise((r) => pl.listen(0, '0.0.0.0', r));
   const plUrl = `http://${lanIp()}:${pl.address().port}`;
   const w = await startWizard({ hints: { LA_HOST_IP: '192.0.2.10', LA_USER_LANG: 'de-DE', LA_USER_FULLNAME: 'Erika Mustermann',
-    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini' }, env: { WIZARD_FAKE_DNS: '' } });
+    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_FRITZ: 'mein-mac', LA_HOST_NAME_CANDIDATES: 'mac-mini' }, env: { WIZARD_FAKE_DNS: '' } });
   try {
     await login(w);
     // Sprach-Seite: Antippen stellt die Einrichtung sofort um (Auswahl bleibt in Eigenschreibweise).
@@ -61,7 +61,8 @@ async function step(w, id, value, opt) {
     await step(w, 'reach', 'fritzbox');
     await step(w, 'fb_dslite', 'no');
     await step(w, 'fb_guide', null);
-    await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: Kennung fest, Gerätename fehlt
+    await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Name als Vorschlag
+    await shot(w, 'h_DOMAIN-tippen', { value: 'meinrechner', live: (await post(w, '/api/check', { id: 'h:DOMAIN', value: 'meinrechner' })).json.live });
     await step(w, 'h:DOMAIN', 'meinrechner');
     await step(w, 'review', null);
     await shot(w, 'confirm');
@@ -93,9 +94,10 @@ async function step(w, id, value, opt) {
     pl.close();
     await w.stop();
   }
-  // MyFRITZ: Gerätename löst auf -> Adresse vorausgefüllt.
-  const d = await startWizard({ hints: { LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini' },
-    env: { WIZARD_FAKE_DNS: 'mac-mini.deine-domain.myfritz.net' } });
+  // MyFRITZ: Name der FritzBox zeigt auf diesen Anschluss -> geprüft eingetragen.
+  const d = await startWizard({ hints: { LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_FRITZ: 'mein-mac' },
+    env: { WIZARD_FAKE_DNS: 'mein-mac.deine-domain.myfritz.net=203.0.113.7' } });
+  fs.writeFileSync(path.join(d.fake, 'public_ip'), '203.0.113.7');
   try {
     await login(d);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],

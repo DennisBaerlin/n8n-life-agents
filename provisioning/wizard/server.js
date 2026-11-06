@@ -205,7 +205,7 @@ function loadCatalog() {
       try { o = JSON.parse(fs.readFileSync(path.join(PKG_DIR, p, 'locales', f), 'utf8')); } catch (_) { continue; }
       const t = CAT[m[1]] || (CAT[m[1]] = {});
       for (const [k, v] of Object.entries(o || {})) {
-        if (typeof v === 'string' && (k.includes('.wizard.') || /\.package\.(name|summary)$/.test(k) || k.startsWith('core.persona.name.'))) t[k] = v;
+        if (typeof v === 'string' && (k.includes('.wizard.') || /\.package\.(name|summary)$/.test(k) || /^core\.persona\.(name\.[a-z_]+|frame\.[a-z_]+\.1)$/.test(k))) t[k] = v;
       }
     }
   }
@@ -237,10 +237,21 @@ function qHelp(q) {
 function pkgName(p) { return has(`${p.id}.package.name`) ? T(`${p.id}.package.name`) : p.name; }
 function pkgSummary(p) { return has(`${p.id}.package.summary`) ? T(`${p.id}.package.summary`) : p.summary; }
 // Auswahl einer Frage in der Sprache der Seite: Sprachen bleiben in Eigenschreibweise (Deutsch / English / 한국어), damit
-//   man nach einem Verklicken zurückfindet; Charaktere aus core.persona.name.<code>.
+//   man nach einem Verklicken zurückfindet; Charaktere aus core.persona.name.<code>. Für das Handy-Bild (di9, Owner-Wunsch)
+//   je Charakter sein Zeichen (erstes Wort des Namens) und eine echte Sprechweise aus dem Katalog: frame = {sprache: Satz}
+//   aus core.persona.frame.<code>.1, nur wo es den Satz in genau dieser Sprache gibt (Standard hat keinen).
 function choicesOf(q) {
   if (!q.choices) return null;
-  if (q.key === 'OWNER_PERSONA') return q.choices.map((c) => ({ value: c.value, label: has(`core.persona.name.${c.value}`) ? T(`core.persona.name.${c.value}`) : c.label }));
+  if (q.key === 'OWNER_PERSONA') {
+    return q.choices.map((c) => {
+      const name = has(`core.persona.name.${c.value}`) ? T(`core.persona.name.${c.value}`) : c.label;
+      const de = (CAT.de || {})[`core.persona.name.${c.value}`] || '';
+      const frame = {};
+      for (const l of Object.keys(CAT)) { const s = CAT[l][`core.persona.frame.${c.value}.1`]; if (s) frame[l] = s; }
+      const tok = de.split(' ')[0] || '';
+      return { value: c.value, label: name, emoji: /\p{L}/u.test(tok) ? '' : tok, frame };
+    });
+  }
   return q.choices;
 }
 function setLang(code) {
@@ -384,9 +395,7 @@ function paperlessSearchView() {
   return { note: { kind: '', text: T('core.wizard.paperless.found_none') } };
 }
 
-// MyFRITZ-Adresse dieses Rechners finden (Seite h:DOMAIN): Kennung der Box (LA_MYFRITZ_ZONE), Gerätenamen-
-//   Kandidaten (LA_HOST_NAME_CANDIDATES), beides aus hints.env, DNS-Probe <kandidat>.<zone>. Treffer = vorausgefüllt; sonst steht .<zone> fest
-//   hinter dem Feld und nur der Gerätename fehlt. Ohne Zone wie bisher (ganze Adresse eintippen).
+// MyFRITZ-Adresse: s. domainView unten.
 // hints — Vorschläge der Start-App, bei jedem Gebrauch frisch gelesen (die App schreibt die Datei vor jedem `ctl.js url` neu).
 //   Fehlt sie oder bricht sie eine Regel: keine Vorschläge. Werte nie loggen, nie in den Fehlerbericht.
 //   Kurz zwischengespeichert (1 s): eine Seite fragt die Sprache dutzendfach ab.
@@ -400,29 +409,54 @@ function hints() {
 }
 function myfritzZone() { return flow.myfritzZone(hints().LA_MYFRITZ_ZONE); }
 let domainSearching = null;
-function dnsResolves(name) {
-  // Nur Tests: WIZARD_FAKE_DNS = Komma-Liste auflösbarer Namen (deterministisch, ohne Netz).
-  if (process.env.WIZARD_FAKE_DNS !== undefined) return Promise.resolve(process.env.WIZARD_FAKE_DNS.split(',').includes(name));
+// dnsLookup — öffentliche Auflösung (nicht der Resolver des Heimnetzes, der eine MyFRITZ-Adresse auf die Box selbst biegen
+//   kann): WIZARD_DNS_SERVERS, sonst zwei öffentliche Resolver. Fehler = keine Adresse.
+const DNS_SERVERS = (process.env.WIZARD_DNS_SERVERS || '1.1.1.1,9.9.9.9').split(',').filter(Boolean);
+function dnsLookup(name) {
+  // Nur Tests: WIZARD_FAKE_DNS = „name=ipv4,name=ipv4“ (deterministisch, ohne Netz).
+  if (process.env.WIZARD_FAKE_DNS !== undefined) {
+    return Promise.resolve(process.env.WIZARD_FAKE_DNS.split(',').map((e) => e.split('=')).filter(([n, ip]) => n === name && ip).map(([, ip]) => ip));
+  }
   const r = new dns.Resolver({ timeout: 1500, tries: 1 });
-  return r.resolve4(name).then((a) => a.length > 0, () => false);
+  try { r.setServers(DNS_SERVERS); } catch (_) { /* Standard-Resolver */ }
+  return r.resolve4(name).catch(() => []);
 }
+// publicIp — öffentliche IPv4 des Anschlusses von Paket 3 (bridge public-ip); leer = unbekannt, dann wird nichts vorgeschlagen.
+async function publicIp() {
+  const r = await bridge(['public-ip'], { timeoutMs: 20000 });
+  return r && typeof r.ip === 'string' ? r.ip : '';
+}
+// MyFRITZ-Adresse (Seite h:DOMAIN, flow.domainCheck): vorgeschlagen wird nur eine GEPRÜFTE volle Adresse (löst öffentlich auf
+//   und zeigt auf diesen Anschluss), mit Hinweis. Sonst steht .<zone> fest hinter dem Feld, der Name der FritzBox ist ein
+//   anklickbarer Vorschlag (nicht eingetragen) und die Seite prüft beim Tippen live (POST /api/check). Ohne Zone wie bisher.
 function domainView(v) {
   const zone = myfritzZone();
   if (!zone) return {};
-  const g = P.notes.domain_guess;
-  if (!g && !domainSearching) {
+  const h = hints();
+  const cands = flow.myfritzCandidates(h.LA_HOST_NAME_FRITZ, h.LA_HOST_NAME_CANDIDATES);
+  if (!P.notes.domain_guess && !domainSearching) {
     P.notes.domain_guess = { state: 'running' };
-    domainSearching = flow.myfritzGuess(zone, flow.myfritzCandidates(hints().LA_HOST_NAME_CANDIDATES), dnsResolves)
+    domainSearching = publicIp()
+      .then((ip) => flow.myfritzGuess(zone, cands, dnsLookup, ip))
       .then((name) => { P.notes.domain_guess = { state: 'done', name }; save(); })
       .catch(() => { P.notes.domain_guess = { state: 'done', name: '' }; })
       .finally(() => { domainSearching = null; });
   }
   const s = P.notes.domain_guess || { state: 'running' };
   if (s.state === 'running') return { poll: true, note: { kind: '', text: T('core.wizard.domain.searching'), busy: true } };
-  if (s.name) return { value: v || s.name, note: { kind: '', text: T('core.wizard.domain.found') } };
+  if (s.name) return { value: v || s.name, note: { kind: '', text: T('core.wizard.domain.verified') } };
   const prefix = v && v.endsWith('.' + zone) ? v.slice(0, -zone.length - 1) : (v || '');
-  return { value: prefix, suffix: '.' + zone, placeholder: 'meinrechner',
+  return { value: prefix, suffix: '.' + zone, placeholder: 'meinrechner', suggestions: cands.slice(0, 1),
+    suggestLabel: T('core.wizard.domain.suggest_label'), live: { recheck: T('core.wizard.domain.recheck') },
     note: { kind: '', text: T('core.wizard.domain.suffix') } };
+}
+// liveCheck — Prüfung beim Tippen (nur MyFRITZ mit Zone): ändert nichts am Stand, meldet nur, ob die Adresse schon stimmt.
+async function liveCheck(id, raw) {
+  const zone = id === 'h:DOMAIN' ? myfritzZone() : '';
+  const name = String(raw || '').trim().toLowerCase();
+  if (!zone || P.phase !== 'questions' || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) return { ok: true, live: null };
+  const state = await flow.domainCheck(`${name}.${zone}`, dnsLookup, await publicIp());
+  return { ok: true, live: { state, text: T(`core.wizard.domain.live_${state}`) } };
 }
 
 function labelOf(id, value) {
@@ -941,13 +975,14 @@ async function handle(req, res) {
   if (!safeEq(req.headers['x-csrf-token'] || '', session.csrf)) return deny(res, 403);
   const body = await readBody(req);
   if (!body || typeof body !== 'object') return send(res, 400, { error: 'bad request' });
-  if (!['/api/answer', '/api/back', '/api/goto', '/api/action', '/api/lang'].includes(url.pathname)) return deny(res, 404);
+  if (!['/api/answer', '/api/back', '/api/goto', '/api/action', '/api/lang', '/api/check'].includes(url.pathname)) return deny(res, 404);
   const r = await serial(async () => {
     switch (url.pathname) {
       case '/api/answer': return answer(String(body.id || ''), body.value, body.skip === true);
       case '/api/back': back(); return { ok: true };
       case '/api/goto': return gotoStep(String(body.id || ''));
       case '/api/lang': return setLang(String(body.lang || ''));
+      case '/api/check': return liveCheck(String(body.id || ''), body.value);
       default: return action(String(body.name || ''));
     }
   });

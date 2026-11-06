@@ -17,15 +17,16 @@ function Get-HeadlessBaseArg([string]$ProfileDir) {
     @('--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', "--user-data-dir=$ProfileDir", '--virtual-time-budget=3000')
 }
 
-# -File: lokale HTML-Datei. -WidthPx/-HeightPx: Ausschnitt in CSS-px. -TrimBottom: gleichfarbigen Rest unter dem Inhalt abschneiden
+# -File: lokale HTML-Datei. -WidthPx/-HeightPx: Ausschnitt in CSS-px. -WindowWidth: Fensterbreite (Standard 600 = Handy-
+# Layout der Seiten; breiter fuer die Fensteransicht des Wizards). -TrimBottom: gleichfarbigen Rest unter dem Inhalt abschneiden
 # (lange Seiten: -HeightPx ist dann die Obergrenze).
 function Invoke-HeadlessShot {
     param([Parameter(Mandatory)][string]$File, [Parameter(Mandatory)][string]$Out, [int]$WidthPx = 390, [int]$HeightPx = 790,
-          [double]$Scale = 2, [switch]$Dark, [switch]$TrimBottom, [switch]$AllowCut)
+          [double]$Scale = 2, [switch]$Dark, [switch]$TrimBottom, [switch]$AllowCut, [int]$WindowWidth = 600)
     $raw = "$Out.raw.png"
     $profileDir = Join-Path $env:TEMP ('lifeagents_shot_' + [guid]::NewGuid().ToString('N'))
     $scaleText = $Scale.ToString([Globalization.CultureInfo]::InvariantCulture)
-    $chromeArgs = @(Get-HeadlessBaseArg $profileDir) + @("--force-device-scale-factor=$scaleText", "--window-size=600,$HeightPx", "--screenshot=$raw")
+    $chromeArgs = @(Get-HeadlessBaseArg $profileDir) + @("--force-device-scale-factor=$scaleText", "--window-size=$WindowWidth,$HeightPx", "--screenshot=$raw")
     if ($Dark) { $chromeArgs += '--force-dark-mode' }
     $chromeArgs += ('file:///' + $File.Replace('\', '/'))
     $p = Start-Process -FilePath (Get-HeadlessBrowser) -ArgumentList $chromeArgs -Wait -PassThru -WindowStyle Hidden

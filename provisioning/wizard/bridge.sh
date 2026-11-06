@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC1111  # deutsche Anführungszeichen in Meldungen sind gewollt
+# bridge.sh — die Brücke zwischen dem Wizard (server.js) und der EINEN Quelle der CLI-Fragen (Plan „Docker-Installer für
+# Freunde“, Paket 4). Der Wizard hat keine eigene Kopie der Fragen oder Prüfregeln: er fragt hier nach und lässt hier
+# prüfen. Dieselben Funktionen nutzt die Installation im Terminal (release_inputs.sh, pkg_lifecycle.sh, common.sh) —
+# CLI und Wizard können darum nicht auseinanderlaufen.
+#
+#   bash bridge.sh questions                     -> eine JSON-Zeile: Host-Fragen (_host_key_def, _REQUIRED_HOST_KEYS),
+#                                                   Sprachen, Charaktere, Pakete (pkg_display_name, package.summary,
+#                                                   Manifest-config mit prompt, Manifest-credentials)
+#   bash bridge.sh validate host:<KEY>           -> Wert auf stdin; JSON {"rc":0|1|2,"value":…,"problem":…}
+#   bash bridge.sh validate cred:<pkg>:<ENVKEY>     (rc 2 = Dienst nicht erreichbar, wie _live_rc)
+#   bash bridge.sh validate cfg:<pkg>:<cat>.<key>
+#   bash bridge.sh paperless-check               -> stdin: Zeile 1 Adresse, Zeile 2 Zugangstoken (optional);
+#                                                   JSON {"ok":…,"reason":…,"version":…}
+#   bash bridge.sh tg-check                      -> Token in Env TELEGRAM_BOT_TOKEN; Prüfliste Nr. 10 (s. tg_check_json)
+#   bash bridge.sh reach-status                  -> Zustand des Tunnels (Schnittstelle zu Paket 3, s. reach_status_json)
+#
+# Geheimnisse nur über stdin/Env, nie im argv (die Prozessliste ist für jeden lesbar). Ausgabe immer genau eine JSON-Zeile
+# auf stdout; Meldungen der Bibliotheken gehen nach stderr, die der Wizard verwirft. Exit 0, ausser bei falschem Aufruf (64).
+set -euo pipefail
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+
+_BR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_BR_PROV="$(cd "$_BR_HERE/.." && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$_BR_PROV/.." && pwd)}"
+export REPO_ROOT
+# Kein Terminal, keine Nachfrage: die Bibliotheken fragen nie, solange UNATTENDED=1 gilt (ui_interactive).
+# shellcheck disable=SC2034  # gelesen von den gesourcten Bibliotheken (ui_interactive, _ask_*)
+UNATTENDED=1
+# shellcheck disable=SC2034  # s. o.
+PROFILE=release
+# shellcheck source=/dev/null
+. "$_BR_PROV/lib/common.sh"
+# shellcheck source=/dev/null
+. "$_BR_PROV/lib/pkg_lifecycle.sh"
+# shellcheck source=/dev/null
+. "$_BR_PROV/lib/release_inputs.sh"
+# shellcheck source=/dev/null
+. "$_BR_PROV/lib/bootstrap_owner.sh"
+
+# Host-Fragen, die der Wizard stellt (Reihenfolge = _INSTALL_ENV_KEYS). Nicht dabei: die n8n-Anmeldung (die Installation
+# erzeugt sie) und der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3). DOMAIN fragt der Wizard nur
+# beim FritzBox-Weg.
+_BR_SKIP_KEYS=" N8N_OWNER_EMAIL N8N_OWNER_PASSWORD TRUSTED_PROXIES "
+
+_br_bool() { if [ "${1:-0}" = 1 ]; then printf true; else printf false; fi; }
+
+# _br_labels <json-array-of-prompts> -> {"<prompt>":"<label>",…} über _prompt_label (dieselbe Beschriftung wie die CLI).
+_br_labels() {
+  local p out='{}'
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    out="$(jq -c --arg p "$p" --arg l "$(_prompt_label "$p")" '. + {($p): $l}' <<<"$out")"
+  done <<<"$(jq -r '.[]' <<<"$1")"
+  printf '%s' "$out"
+}
+
+br_questions() {
+  local k host='[]' req p pkgs='[]' mf one prompts labels langs personas
+  for k in $_INSTALL_ENV_KEYS; do
+    case "$_BR_SKIP_KEYS" in *" $k "*) continue ;; esac
+    _host_key_def "$k"
+    req=0; _host_key_required "$k" && req=1
+    host="$(jq -c --arg k "$k" --arg p "$_HK_PROMPT" --arg l "$(_prompt_label "$_HK_PROMPT")" --arg h "$_HK_HELP" \
+      --arg v "$_HK_VFN" --argjson s "$(_br_bool "$_HK_SECRET")" --argjson c "$(_br_bool "$_HK_CONFIRM")" \
+      --argjson r "$(_br_bool "$req")" --argjson live "$(_is_live_validator "$_HK_VFN" && echo true || echo false)" \
+      '. + [{key:$k, prompt:$p, label:$l, help:$h, validator:$v, secret:$s, confirm:$c, required:$r, live:$live}]' <<<"$host")"
+  done
+  langs="$(_owner_language_options | jq -Rsc 'split("\n") | map(select(length > 0) | split("\t") | {name:.[0], code:.[1]})')"
+  personas="$(_owner_persona_options | jq -Rsc 'split("\n") | map(select(length > 0) | split("\t") | {name:.[0], code:.[1]})')"
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    mf="$(_pkg_dir)/$p/manifest.json"
+    # Dieselben jq-Filter wie _pkg_settings_wizard (config mit prompt) und _pkg_secrets_wizard (credentials.env) —
+    # Reihenfolge und Felder wie dort; Beschriftungen danach über _prompt_label.
+    one="$(jq -c --arg id "$p" --arg name "$(pkg_display_name "$p")" --arg summary "$(pkg_text "$p" package.summary)" '
+      {id:$id, name:$name, summary:$summary, requires:(.requires // []),
+       settings:[(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[]
+                 | select(.value | type == "object" and has("prompt"))
+                 | {id:($c + "." + .key), env:("CONFIG_" + ($c + "_" + .key | ascii_upcase)), prompt:.value.prompt,
+                    help:(.value.help // ""), validator:(.value.validator // "none"), choices:(.value.choices // [])}],
+       credentials:[(.credentials // {}) | to_entries[] | select(.key != "_comment")
+                 | {id:.key, required:(.value.required // false),
+                    keys:[.value.env | to_entries[] | {env:.key, prompt:(.value.prompt // (.key + ": ")), help:(.value.help // ""),
+                          secret:(.value.secret // false), validator:(.value.validator // "none")}]}]}' "$mf")"
+    pkgs="$(jq -c --argjson one "$one" '. + [$one]' <<<"$pkgs")"
+  done <<<"$(_bundled_packages)"
+  prompts="$(jq -c '[.[] | (.settings[].prompt, .credentials[].keys[].prompt)]' <<<"$pkgs")"
+  labels="$(_br_labels "$prompts")"
+  pkgs="$(jq -c --argjson L "$labels" 'map(.settings |= map(. + {label: $L[.prompt]})
+                                         | .credentials |= map(.keys |= map(. + {label: $L[.prompt]})))' <<<"$pkgs")"
+  jq -nc --argjson host "$host" --argjson langs "$langs" --argjson personas "$personas" --argjson pkgs "$pkgs" \
+    '{v:1, host:$host, languages:$langs, personas:$personas, packages:$pkgs}'
+}
+
+# _br_out <rc> [value] [problem] -> die Antwort von validate.
+_br_out() { jq -nc --argjson rc "$1" --arg v "${2:-}" --arg p "${3:-}" '{rc:$rc, value:$v, problem:$p}'; }
+
+# _br_run_validator <fn> <wert> -> rc der CLI-Prüffunktion (0 gültig, 1 abgelehnt, 2 Dienst nicht erreichbar).
+_br_run_validator() { local rc=0; "$1" "$2" >/dev/null 2>&1 || rc=$?; printf '%s' "$rc"; }
+
+br_validate() {
+  local ref="$1" val kind rest pkg id vfn rc problem mf entry choices
+  val="$(cat)"
+  kind="${ref%%:*}"; rest="${ref#*:}"
+  case "$kind" in
+    host)
+      id="$rest"
+      case " $_INSTALL_ENV_KEYS " in *" $id "*) : ;; *) _br_out 1 '' 'unbekannte Frage'; return 0 ;; esac
+      case "$_BR_SKIP_KEYS" in *" $id "*) _br_out 1 '' 'unbekannte Frage'; return 0 ;; esac
+      case "$id" in
+        OWNER_LANGUAGE) if _owner_language_options | cut -f2 | grep -qxF -- "$val"; then _br_out 0 "$val"; else _br_out 1 '' 'keine der angebotenen Sprachen'; fi; return 0 ;;
+        OWNER_PERSONA)  if _owner_persona_options | cut -f2 | grep -qxF -- "$val"; then _br_out 0 "$val"; else _br_out 1 '' 'keiner der angebotenen Charaktere'; fi; return 0 ;;
+      esac
+      _host_key_def "$id"
+      val="$(_input_normalize "$id" "$val")"
+      if [ -z "$val" ]; then
+        if _host_key_required "$id"; then _br_out 1 '' 'Diese Angabe ist nötig'; else _br_out 0 ''; fi
+        return 0
+      fi
+      rc="$(_br_run_validator "$_HK_VFN" "$val")"
+      problem=''
+      if [ "$rc" = 1 ]; then problem="$(_input_problem "$id" "$val")"; fi
+      # Docker-Weg über die FritzBox: die Adresse der Box selbst führt nicht zu diesem Rechner (dieselbe Regel wie doctor).
+      if [ "$rc" = 0 ] && [ "$id" = DOMAIN ] && is_router_myfritz_name "$val"; then
+        rc=1; problem='Das ist die Adresse der FritzBox selbst. Du brauchst die Adresse mit dem Namen deines Rechners vorne'
+      fi
+      _br_out "$rc" "$val" "$problem" ;;
+    cred|cfg)
+      pkg="${rest%%:*}"; id="${rest#*:}"
+      _pkg_name_ok "$pkg" || { _br_out 1 '' 'unbekanntes Paket'; return 0; }
+      mf="$(_pkg_dir)/$pkg/manifest.json"
+      [ -r "$mf" ] || { _br_out 1 '' 'unbekanntes Paket'; return 0; }
+      if [ "$kind" = cred ]; then
+        entry="$(jq -c --arg k "$id" '[(.credentials // {}) | to_entries[] | select(.key != "_comment") | .value.env[$k] // empty] | first // empty' "$mf")"
+      else
+        entry="$(jq -c --arg c "${id%%.*}" --arg k "${id#*.}" '(.config[$c][$k] // empty) | select(type == "object" and has("prompt"))' "$mf")"
+      fi
+      [ -n "$entry" ] || { _br_out 1 '' 'unbekannte Frage'; return 0; }
+      if [ -z "$val" ]; then _br_out 0 ''; return 0; fi   # Paket-Fragen sind optional (Enter = überspringen wie in der CLI)
+      choices="$(jq -r '(.choices // [])[] | .value' <<<"$entry")"
+      if [ -n "$choices" ]; then
+        if printf '%s\n' "$choices" | grep -qxF -- "$val"; then _br_out 0 "$val"; else _br_out 1 '' 'keine der angebotenen Antworten'; fi
+        return 0
+      fi
+      vfn="$(_pkg_validator_fn "$(jq -r '.validator // "none"' <<<"$entry")")" || vfn=_validate_any
+      rc="$(_br_run_validator "$vfn" "$val")"
+      _br_out "$rc" "$val" ;;
+    *) _br_out 1 '' 'unbekannte Frage' ;;
+  esac
+  return 0
+}
+
+# _br_http <out-headers-file> <url> [token] -> HTTP-Code (000 = nicht erreichbar). Token nur über die curl-Konfig (stdin).
+_br_http() {
+  local hf="$1" url="$2" tok="${3:-}" code
+  code="$( { curl_cfg url "$url"
+             if [ -n "$tok" ]; then curl_cfg header "Authorization: Token ${tok}"; fi
+             curl_cfg header 'Accept: application/json'
+           } | curl -K - -sS -o /dev/null -D "$hf" -w '%{http_code}' --max-time 8 2>/dev/null)" || true
+  printf '%s' "${code:-000}"
+}
+
+# paperless-check — Live-Prüfung der Paperless-Anbindung (Plan *Die Module wie in der CLI*): Adresse, Version (3.0 oder
+#   neuer), Zugang. localhost/127.x/::1 meint im Docker-Betrieb den Container selbst -> mit Erklärung abgelehnt. Ohne Token
+#   lässt sich nur „antwortet wie Paperless“ prüfen (die Version zeigt Paperless erst angemeldet, Kopfzeile X-Version).
+#   reason: localhost | invalid | unreachable | not_paperless | token_rejected | too_old.
+br_paperless_check() {
+  local url tok host hf code ver major
+  IFS= read -r url || true
+  IFS= read -r tok || true
+  url="${url%/}"
+  _validate_url "$url" || { jq -nc '{ok:false, reason:"invalid"}'; return 0; }
+  host="${url#*://}"; host="${host%%/*}"; host="${host%%\?*}"
+  case "$host" in \[*) host="${host%%]*}]" ;; *) host="${host%%:*}" ;; esac
+  case "${host,,}" in
+    localhost|localhost.*|127.*|0.0.0.0|\[::1\]|\[::\]) jq -nc '{ok:false, reason:"localhost"}'; return 0 ;;
+  esac
+  hf="$(mktemp)"
+  code="$(_br_http "$hf" "${url}/api/" "$tok")"
+  ver="$(tr -d '\r' <"$hf" | awk -F': *' 'tolower($1) == "x-version" { v = $2 } END { print v }')"
+  rm -f "$hf"
+  case "$code" in
+    000) jq -nc '{ok:false, reason:"unreachable"}'; return 0 ;;
+    401|403)
+      if [ -n "$tok" ]; then jq -nc '{ok:false, reason:"token_rejected"}'; else jq -nc '{ok:true, reason:"reachable"}'; fi
+      return 0 ;;
+    200) : ;;
+    *) jq -nc '{ok:false, reason:"not_paperless"}'; return 0 ;;
+  esac
+  if [ -z "$ver" ]; then
+    if [ -n "$tok" ]; then jq -nc '{ok:false, reason:"not_paperless"}'; else jq -nc '{ok:true, reason:"reachable"}'; fi
+    return 0
+  fi
+  major="${ver%%.*}"
+  if ! printf '%s' "$major" | grep -qE '^[0-9]+$'; then jq -nc '{ok:false, reason:"not_paperless"}'; return 0; fi
+  if [ "$major" -lt 3 ]; then jq -nc --arg v "$ver" '{ok:false, reason:"too_old", version:$v}'; return 0; fi
+  jq -nc --arg v "$ver" '{ok:true, reason:"ok", version:$v}'
+}
+
+# tg-check — Prüfliste Nr. 10. Die Prüf-Logik gehört dem Installer (Paket 1): ist dort tg_preflight_json definiert, gilt
+#   sie. Bis dahin die schmale Fassung hier (nur lesen, nie setWebhook/deleteWebhook, nie drop_pending_updates):
+#   {"ok":true,"bot":"…","webhook_host":"…"|"","polling_conflict":bool} bzw. {"ok":false,"reason":"unauthorized|unreachable"}.
+br_tg_check() {
+  local me info upd bot host conflict=false code
+  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || { jq -nc '{ok:false, reason:"unauthorized"}'; return 0; }
+  if declare -F tg_preflight_json >/dev/null; then tg_preflight_json; return 0; fi
+  me="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" getMe -sS --max-time 10 2>/dev/null || true)"
+  if [ -z "$me" ]; then jq -nc '{ok:false, reason:"unreachable"}'; return 0; fi
+  [ "$(jq -r '.ok // false' <<<"$me" 2>/dev/null || echo false)" = true ] || { jq -nc '{ok:false, reason:"unauthorized"}'; return 0; }
+  bot="$(jq -r '.result.username // ""' <<<"$me")"
+  info="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" getWebhookInfo -sS --max-time 10 2>/dev/null || true)"
+  [ "$(jq -r '.ok // false' <<<"$info" 2>/dev/null || echo false)" = true ] || { jq -nc '{ok:false, reason:"unreachable"}'; return 0; }
+  host="$(jq -r '.result.url // ""' <<<"$info" | sed -E 's#^[a-z]+://##; s#[/:?].*$##')"
+  if [ -z "$host" ]; then
+    # Ohne Webhook: holt ein anderes Programm gerade per getUpdates ab? Telegram antwortet dann 409. timeout=0, kein
+    # offset -> nichts wird als gelesen markiert.
+    upd="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" 'getUpdates?timeout=0&limit=1' -sS --max-time 10 2>/dev/null || true)"
+    code="$(jq -r '.error_code // 0' <<<"$upd" 2>/dev/null || echo 0)"
+    [ "$code" = 409 ] && conflict=true
+  fi
+  jq -nc --arg bot "$bot" --arg host "$host" --argjson c "$conflict" '{ok:true, bot:$bot, webhook_host:$host, polling_conflict:$c}'
+}
+
+# reach-status — Zustand des Tunnels für die Anzeige im Wizard (Schnittstelle zu Paket 3). Ist dort reach_status_json
+#   definiert, gilt es: {"state":"needs_login|needs_funnel|starting|ready|unavailable","url":"https://login.tailscale.com/…",
+#   "dns_name":"…"}. Bis dahin: unbekannt.
+br_reach_status() {
+  if declare -F reach_status_json >/dev/null; then reach_status_json; return 0; fi
+  jq -nc '{state:"unavailable"}'
+}
+
+# reach-ports — Prüfliste Nr. 13 (FritzBox-Weg): sind Port 80 und 443 auf diesem Rechner frei? Die Messung gehört dem
+#   Installer/Rand (Paket 1/3, reach_ports_json): {"state":"free|busy|unknown"}. Bis dahin unbekannt — der Wizard
+#   empfiehlt bei „busy“ den Tunnel und löscht nie etwas.
+br_reach_ports() {
+  if declare -F reach_ports_json >/dev/null; then reach_ports_json; return 0; fi
+  jq -nc '{state:"unknown"}'
+}
+
+case "${1:-}" in
+  questions)       br_questions ;;
+  reach-ports)     br_reach_ports ;;
+  validate)        [ -n "${2:-}" ] || exit 64; br_validate "$2" ;;
+  paperless-check) br_paperless_check ;;
+  tg-check)        br_tg_check ;;
+  reach-status)    br_reach_status ;;
+  *) printf 'Aufruf: bridge.sh questions|validate <ref>|paperless-check|tg-check|reach-status\n' >&2; exit 64 ;;
+esac

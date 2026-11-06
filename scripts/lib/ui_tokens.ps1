@@ -34,13 +34,26 @@ function Get-UiSurfaces {
             Colors = @('ink', 'gray', 'hairline', 'accent', 'ok', 'warn', 'alert', 'bg', 'bg-soft')
             Shape  = @('radius', 'font')
         }
+        # Wizard im Fenster der Start-App: hell/dunkel nach der System-Einstellung. Der QR-Code steht immer auf der hellen
+        # Flaeche (.qr = helle Gruppe): nicht jede Kamera-App liest einen invertierten Code.
+        [pscustomobject]@{
+            Name   = 'wizard'
+            File   = 'provisioning/wizard/ui/app.css'
+            Rules  = @(
+                [pscustomobject]@{ Selector = ':root'; Group = 'light' }
+                [pscustomobject]@{ Media = '@media (prefers-color-scheme: dark)'; Selector = ':root'; Group = 'dark' }
+                [pscustomobject]@{ Selector = '.qr'; Group = 'light' }
+            )
+            Colors = @('ink', 'gray', 'hairline', 'accent', 'accent-hover', 'accent-mid', 'accent-pale', 'accent-wash', 'warn', 'warn-wash', 'alert', 'alert-wash', 'bg', 'bg-soft')
+            Shape  = @('radius-sm', 'radius', 'radius-pill', 'font')
+        }
     )
 }
 
 # Wurzeln, unter denen der Lint Farb-Literale sucht. Eine UI-Datei ausserhalb dieser Wurzeln (und ausserhalb von
 # Get-UiExcludedPrefixes) ist ein Fehler: so rutscht eine neue Oberflaeche nicht unbemerkt durch.
 function Get-UiScanRoots {
-    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/')
+    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/wizard/ui/')
 }
 # public/ = Hugo-Output der Quellen oben; mods = Erweiterung des Entwickler-Werkzeugs, keine Projekt-Oberflaeche.
 function Get-UiExcludedPrefixes { @('docs/site/public/', '.claude/mods/') }

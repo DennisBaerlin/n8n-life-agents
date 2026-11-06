@@ -9,11 +9,14 @@
 #   .\scripts\dev\build_ui_review.ps1 -Name kurzer-hinweis -Page                baut .local/ui_review/<Name>/index.html
 #   -Capture ... -Surface site -Pages index.html,docs/erste-schritte.html       Doku-Seite (vorher .\scripts\build_site.ps1), nur hell
 #   -Screens overview,accounts                                                  nur diese Reiter (Standard: alle aus dem Datenmodell)
+#   -Capture ... -Surface wizard [-Cached]                                         Wizard: alle Seiten aus tests/wizard/preview_dump.js (Docker),
+#                                                                               Handy und Fenster; -Cached nimmt die letzte Sammlung
 #   -Title 'Hinweis kuerzer'                                                    Ueberschrift der Seite
 # Der Pruef-Agent (.claude/agents/ui-review.md) liest den Ordner nachher/. Kein Netz, keine DB, kein Container.
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]+$')][string]$Name,
-    [ValidateSet('mini-app', 'site')][string]$Surface = 'mini-app',
+    [ValidateSet('mini-app', 'site', 'wizard')][string]$Surface = 'mini-app',
+    [switch]$Cached,
     [ValidateSet('vorher', 'nachher')][string]$Capture = '',
     [string[]]$Screens = @(),
     [string[]]$Pages = @('index.html'),
@@ -28,6 +31,7 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 . (Join-Path $RepoRoot 'scripts\build\lib\build_helpers.ps1')
 . (Join-Path $PSScriptRoot 'lib\app_preview.ps1')
+. (Join-Path $PSScriptRoot 'lib\wizard_preview.ps1')
 . (Join-Path $PSScriptRoot 'lib\headless_shot.ps1')
 . (Join-Path $RepoRoot 'scripts\lib\ui_tokens.ps1')
 
@@ -59,6 +63,25 @@ if ($Capture) {
             [System.IO.File]::WriteAllText((Join-Path $dir "$s.txt"), (Get-HeadlessText -File $tmp), $Utf8NoBom)
             Remove-Item $tmp -Force
             Write-Host "  [OK] $Capture/$s" -ForegroundColor Green
+        }
+    } elseif ($Surface -eq 'wizard') {
+        # Jede Seite des echten Ablaufs (preview_dump.js): Handy (375) und Fenster (1100), hell und dunkel; Text fuer den Pruef-Agenten.
+        foreach ($e in (Get-WizardPreviewDump -RepoRoot $RepoRoot -Cached:$Cached)) {
+            if ($Screens.Count -and $Screens -notcontains $e.name) { continue }
+            $base = Join-Path $dir $e.name
+            foreach ($scheme in 'light', 'dark') {
+                Save-Shot (Get-WizardPreviewHtml -RepoRoot $RepoRoot -Entry $e -PhoneWidth $PhoneW -Scheme $scheme) $base $scheme
+                # Fenster: feste Hoehe ohne Zuschneiden (das Zuschneiden tastet nur fuenf Spalten ab und traefe die Seitenleiste nicht)
+                $tmp = "$base.wide.$scheme.tmp.html"
+                [System.IO.File]::WriteAllText($tmp, (Get-WizardPreviewHtml -RepoRoot $RepoRoot -Entry $e -Scheme $scheme), $Utf8NoBom)
+                Invoke-HeadlessShot -File $tmp -Out "$base-fenster-$scheme.png" -WidthPx 1100 -HeightPx 900 -WindowWidth 1100 -Scale 1 -Dark:($scheme -eq 'dark')
+                Remove-Item $tmp -Force
+            }
+            $tmp = "$base.tmp.html"
+            [System.IO.File]::WriteAllText($tmp, (Get-WizardPreviewHtml -RepoRoot $RepoRoot -Entry $e -PhoneWidth $PhoneW -Scheme light), $Utf8NoBom)
+            [System.IO.File]::WriteAllText("$base.txt", (Get-HeadlessText -File $tmp), $Utf8NoBom)
+            Remove-Item $tmp -Force
+            Write-Host "  [OK] $Capture/$($e.name)" -ForegroundColor Green
         }
     } else {
         foreach ($p in $Pages) {

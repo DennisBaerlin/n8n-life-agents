@@ -212,6 +212,13 @@ household_cmd_blocked() {
 # `unlink`. Der Code laeuft ueber den 600-Treiber (bootstrap_owner._arm_owner_challenge), nie im argv.
 household_cmd_pair_owner() {
   local chat
+  # Wizard im Docker-Betrieb: maschinenlesbarer Einstieg ohne Terminal (owner_connect_machine, eine JSON-Zeile je Aufruf).
+  if [ "${1:-}" = "--machine" ]; then
+    _pkg_resolve_env
+    load_install_env
+    owner_connect_machine "${2:-}"
+    return 0
+  fi
   ui_interactive || die "pair-owner braucht ein Terminal (der Ablauf zeigt einen Link und wartet auf deine Telegram-Nachricht)."
   _pkg_resolve_env
   load_install_env

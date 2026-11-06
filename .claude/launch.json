@@ -14,6 +14,12 @@
       "port": 1313
     },
     {
+      "name": "wizard",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/dev/serve_wizard_preview.ps1", "-Port", "8767"],
+      "port": 8767
+    },
+    {
       "name": "n8n-test",
       "url": "http://localhost:5680"
     }

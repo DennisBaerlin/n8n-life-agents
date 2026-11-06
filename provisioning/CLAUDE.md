@@ -4,7 +4,7 @@ Der Auslieferungs-Kern (bash + ein Node-Dienst, der LLM-Gateway) läuft auf Debi
 
 ## Struktur
 
-- `install.sh` = Wegwerf-Bootstrap-Launcher (self-contained, kein lib-Sourcing; `set -euo pipefail`; resolve/fetch/verify/delegate → `exec provision.sh`); wird **nie** in die Runtime gespiegelt. `provision.sh` = interner Applier (`main()` = die Install-Schritte + Uninstall + `install_cli`; kein Fetch/`--version`, kein Endnutzer-Einstieg). `doctor.sh` = standalone Diagnose. `llm_gateway/server.js` = der eine Nicht-bash-Baustein (dependency-frei).
+- `install.sh` = Wegwerf-Bootstrap-Launcher (self-contained, kein lib-Sourcing; `set -euo pipefail`; resolve/fetch/verify/delegate → `exec provision.sh`); wird **nie** in die Runtime gespiegelt. `provision.sh` = interner Applier (Install-Schritte + Uninstall + `install_cli`; kein Fetch, kein Endnutzer-Einstieg). `doctor.sh` = Diagnose. Nicht-bash, dependency-frei: `llm_gateway/server.js`, `wizard/` (Fragen nur via `bridge.sh` aus der CLI-Quelle, Referenz *Einrichtungs-Wizard*).
 - `lib/*.sh` werden **gesourct** (kein Shebang, kein `set -e`): common, preflight, packages, `install_*`, firewall, `*_cli`, apply_schema, seed_data, bootstrap_owner, inject_credentials, deploy_workflows, release_inputs, uninstall, `pkg_*`, backup_cli, upgrade_guard; `fetch_release.sh` nur Runtime (`lifeagents update`/`reconfigure`), nie von `provision.sh`.
 - `templates/` (`@@KEY@@`-Platzhalter): `n8n.env.tpl`, `n8n.service.tpl`, `lifeagents-llm-gateway.service.tpl`, `Caddyfile.tpl` (nur ausgegeben, nie installiert), Firewall-Templates, `lifeagents.tpl`. `.github/workflows/release.yml` baut das Release-Asset per `git archive` (Pathspec = eine Quelle, `layout_lint` L6).
 

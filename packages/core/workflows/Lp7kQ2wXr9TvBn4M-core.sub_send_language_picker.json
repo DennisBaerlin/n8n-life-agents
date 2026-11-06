@@ -1,0 +1,156 @@
+{
+    "id":  "Lp7kQ2wXr9TvBn4M",
+    "name":  "core.sub_send_language_picker",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "person_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "mode"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "suggest"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "cbcad22d-3f6d-570f-9938-81b7027f0e29",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT CASE WHEN ($1::jsonb)-\u003e\u003e\u0027mode\u0027 = \u0027self\u0027 THEN (SELECT string_agg(core.fn_ui_text(\u0027core.lang.picker_self\u0027, l.code), E\u0027\\n\u0027 ORDER BY COALESCE(l.code = ($1::jsonb)-\u003e\u003e\u0027suggest\u0027, false) DESC, l.ord) FROM core.ui_languages l) ELSE core.fn_ui_text(\u0027core.lang.picker\u0027, agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027, jsonb_build_object(\u0027name\u0027, COALESCE((SELECT pp-\u003e\u003e\u0027first_name\u0027 FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata-\u003e\u0027facts\u0027-\u003e\u0027persons\u0027, \u0027[]\u0027::jsonb)) pp WHERE c.name = \u0027family\u0027 AND pp-\u003e\u003e\u0027person_id\u0027 = ($1::jsonb)-\u003e\u003e\u0027person_id\u0027 LIMIT 1), \u0027?\u0027))) END AS text;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ person_id: $(\u0027Start\u0027).item.json.person_id, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), mode: String($(\u0027Start\u0027).item.json.mode || \u0027\u0027), suggest: String($(\u0027Start\u0027).item.json.suggest || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "9590245b-3236-5b45-96f6-e6f3ca98fd3c",
+                      "name":  "Load picker text",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ (String($(\u0027Start\u0027).item.json.suggest || \u0027\u0027) === \u0027de\u0027 ? \u0027👉 \u0027 : \u0027\u0027) + \u0027Deutsch\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027lang:\u0027 + $(\u0027Start\u0027).item.json.person_id + \u0027:de\u0027 }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ (String($(\u0027Start\u0027).item.json.suggest || \u0027\u0027) === \u0027en\u0027 ? \u0027👉 \u0027 : \u0027\u0027) + \u0027English\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027lang:\u0027 + $(\u0027Start\u0027).item.json.person_id + \u0027:en\u0027 }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ (String($(\u0027Start\u0027).item.json.suggest || \u0027\u0027) === \u0027ko\u0027 ? \u0027👉 \u0027 : \u0027\u0027) + \u0027한국어\u0027 }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027lang:\u0027 + $(\u0027Start\u0027).item.json.person_id + \u0027:ko\u0027 }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "d96b0445-e522-5341-b884-21e44d71c552",
+                      "name":  "Send language picker",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_send_language_picker — Sprache je Person per Knopf**\n\nDeterministisch, kein LLM. Eingang person_id + chat_id + mode + suggest. Load picker text holt die Frage aus dem Textkatalog: Modus other (Owner wählt für eine Person) core.lang.picker in der Sprache des EMPFÄNGERS mit dem Vornamen der Zielperson; Modus self (die Person wählt für sich) core.lang.picker_self in ALLEN Katalogsprachen untereinander, die vorgeschlagene zuerst. Send language picker: ein Knopf je unterstützter Sprache (Eigenname, build-time aus dem Core-Manifest languages.list), der Vorschlag (suggest = Telegram-App-Sprache) mit 👉 markiert, callback_data lang:\u003cperson_id\u003e:\u003ccode\u003e. Gespeichert wird nur der Tipp: generischer Callback-Dispatch -\u003e agent.fn_set_person_language (Owner jede Person, Mitglied nur sich selbst; Toast in der neuen Sprache). Aufrufer: agent.tool_set_context_facts (neue Person ohne Sprache, other), Orchestrator /language + /sprache (self) und nach dem Owner-Confirm eines Mitglieds ohne Sprache (self + suggest).",
+                                         "height":  300,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -300
+                                   ],
+                      "id":  "dc76acea-dd33-53d6-b23a-dc4e4a7524a3",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load picker text",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load picker text":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Send language picker",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

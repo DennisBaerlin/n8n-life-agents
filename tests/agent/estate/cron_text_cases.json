@@ -1,0 +1,30 @@
+[
+  {
+    "kind": "cron_text",
+    "id": "cte01",
+    "name": "Fristen-Erinnerung im Ereignisfall an den Owner (ko): Kopf, überfällig/fällig im Owner-Locale, Hinweis, Knöpfe",
+    "workflow": "agent.estate.cron_remind_case_tasks",
+    "schedule_key": "remind_case_tasks",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'estate' AND key LIKE 'case_task:%';",
+      "DELETE FROM estate.cases WHERE subject_person_id = 'lisa' AND flags ? 'cron_text_test';"
+    ],
+    "seed_sql": [
+      "WITH c AS (INSERT INTO estate.cases (case_type, subject_person_id, event_date, knowledge_date, bundesland, flags) VALUES ('incapacity', 'lisa', CURRENT_DATE - 5, CURRENT_DATE - 5, 'berlin', '{\"cron_text_test\": true}'::jsonb) RETURNING id) INSERT INTO estate.case_tasks (case_id, phase, title, due_date, hardness) SELECT c.id, v.phase, v.title, v.due, v.hard FROM c, (VALUES ('immediate', 'CRONTEXT A1', CURRENT_DATE - 1, 'critical'), ('first_week', 'CRONTEXT B1', CURRENT_DATE + 2, 'recommended')) AS v(phase, title, due, hard);"
+    ],
+    "expect_keys": ["estate.dialog.case_tasks_title", "estate.dialog.case_task_overdue", "estate.dialog.case_task_due", "estate.dialog.case_tasks_more"],
+    "expect_buttons": ["estate.dialog.btn_done", "estate.dialog.btn_not_applicable"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "cte02",
+    "name": "Jährlicher Register-Check an den Owner (ko): Grundtext + Sprachangabe ans Umformulier-Modell",
+    "workflow": "agent.estate.cron_review_register",
+    "schedule_key": "review_register",
+    "recipient": "owner",
+    "reset_sql": ["DELETE FROM core.notification_state WHERE source LIKE 'advisor:estate%';"],
+    "expect_send": true,
+    "llm_expect": { "keys": ["estate.advisor.review_intro"], "language": true }
+  }
+]

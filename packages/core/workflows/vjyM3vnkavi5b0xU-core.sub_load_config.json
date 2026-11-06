@@ -1,0 +1,102 @@
+{
+    "id":  "vjyM3vnkavi5b0xU",
+    "name":  "core.sub_load_config",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -832,
+                                       320
+                                   ],
+                      "id":  "4c9417a6-33c7-5e20-8cf6-57636db58e74",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT category, key, value FROM core.config ORDER BY category, key;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -624,
+                                       320
+                                   ],
+                      "id":  "a3ba918b-b9a8-5dff-82ce-5bf8637a3c96",
+                      "name":  "Load core.config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Pivot category/key/value rows into one nested object the agents consume,\n// e.g. { model: { orchestrator: \u0027claude-haiku-latest\u0027, finance: \u0027claude-sonnet-latest\u0027 },\n//        transcription: { provider: \u0027google\u0027 } }.\nconst out = {};\nfor (const item of $input.all()) {\n  const { category, key, value } = item.json;\n  if (!out[category]) out[category] = {};\n  out[category][key] = value;\n}\nreturn [{ json: out }];",
+                                         "mode":  "runOnceForAllItems"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -416,
+                                       320
+                                   ],
+                      "id":  "8558b79c-3f80-5575-a1ff-93ea9cb5ddf4",
+                      "name":  "Build Config Object"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## core.sub_load_config\n\nZentraler Config-Loader fuer alle Agenten (Sub-Workflow, passthrough; als erster Schritt aufgerufen). Loest die alte ENV-Var-Injection ab.\n\n**Ablauf:** Load core.config (SELECT category,key,value) -\u003e Build Config Object (pivotet die Zeilen zu einem verschachtelten Objekt).\n\n**Rueckgabe:** ein Item, json = { model: { orchestrator, finance }, transcription: { provider }, ... }. Aufrufer lesen z. B. $(\u0027Load Config\u0027).item.json.model.finance.\n\n**Quelle:** core.config (Schema core) = generischer Config-Store; Zeilen kommen paket-skopiert aus den .config-Bloecken aller packages/*/manifest.json via seed_data.sh (_seed_package_config). model.*-Werte sind per Trigger gegen agent.ai_models (Enum) abgesichert. Neue Config = neuer Manifest-Eintrag, kein Workflow-Edit.",
+                                         "height":  320,
+                                         "width":  480,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -832,
+                                       -20
+                                   ],
+                      "id":  "6527a1b0-7b50-5a28-8b82-e4fc563d724a",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load core.config",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load core.config":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Build Config Object",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             }
+                    },
+    "settings":  {
+                     "availableInMCP":  false,
+                     "binaryMode":  "separate",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba",
+                     "executionOrder":  "v1"
+                 }
+}

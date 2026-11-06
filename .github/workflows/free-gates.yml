@@ -1,0 +1,166 @@
+# Freie Gates auf GitHub: faehrt die Suiten aus scripts/dev/run_free_gates.ps1 unter PowerShell 7 auf Linux-Runnern, mit
+# demselben Substrat wie genericity.yml (privilegierter systemd-Container, gleiches Image). Ein Runner je Suite, das
+# Basis-Image wird einmal gebaut und per Cache verteilt; die Matrix kommt aus dem Skript (-ListSuites). Kein Required Check.
+#
+# SICHERHEIT: Der Workflow laeuft bei PRs, auch von Forks, und startet privilegierte Container mit fremdem Code.
+#  - Nur `pull_request`, nie `pull_request_target`: Fork-Laeufe bekommen ein Nur-Lese-Token und keine Secrets.
+#  - Der Workflow nutzt keine Secrets. Die .env besteht aus erfundenen Werten (scripts/dev/new_ci_env.ps1).
+#  - Minimale `permissions`, `persist-credentials: false`: im Arbeitsbaum liegt kein Token, das ein Skript finden koennte.
+#  - Der Runner ist eine Wegwerf-VM (der Nutzer hat dort ohnehin sudo): --privileged gibt fremdem Code nicht mehr als er
+#    schon hat. Offen bleibt der Missbrauch von Rechenzeit und Netz. Ein Fork-PR kann diese Datei aendern, Limits hier binden
+#    ihn also nicht; es schuetzt nur die Repo-Einstellung zur Freigabe externer Beitragender.
+#  - Basis-Image im Cache: ein PR-Lauf schreibt nur in den Cache seines eigenen PR-Refs und liest sonst den des Ziel-Branch.
+#    Der Lauf auf main befuellt den Cache, den alle PRs und Branch-Laeufe nutzen.
+name: free-gates
+
+# paths-ignore nur fuer Dateien, die keine Suite liest. Nie `**.md`: packages/*/contexts/*.md und der capabilities_catalog
+# werden in die DB geseedet, eine Aenderung dort ist eine Verhaltens-Aenderung.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - '**/CLAUDE.md'
+      - 'docs/**'
+      - '.claude/**'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - '**/CLAUDE.md'
+      - 'docs/**'
+      - '.claude/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: free-gates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  N8NTEST_CONTAINER: la-n8n
+  N8NTEST_PORT: '5840'
+  DBTEST_CONTAINER: la-db
+  DBTEST_PG_PORT: '5640'
+
+jobs:
+  setup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      suites: ${{ steps.suites.outputs.list }}
+      image-key: ${{ steps.key.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # der Lauf pusht nie
+
+      - name: Suite-Liste aus run_free_gates.ps1
+        id: suites
+        shell: pwsh
+        run: '"list=$(./scripts/dev/run_free_gates.ps1 -ListSuites)" >> $env:GITHUB_OUTPUT'
+
+      # Dieselben Eingaben wie Get-SubstrateBaseSpec im Bootstrap: aendert sich dort der Image-Tag, aendert sich auch der Schluessel.
+      - name: Cache-Schluessel
+        id: key
+        env:
+          INPUTS_HASH: ${{ hashFiles('scripts/dev/substrate-image/**', 'provisioning/provision.sh', 'provisioning/lib/common.sh', 'provisioning/lib/packages.sh', 'provisioning/lib/install_pg.sh', 'provisioning/lib/install_n8n.sh') }}
+        run: echo "value=substrate-base-$INPUTS_HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Basis-Image aus dem Cache
+        id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/substrate-base.tar.zst
+          key: ${{ steps.key.outputs.value }}
+
+      - name: Erfundene .env anlegen
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./scripts/dev/new_ci_env.ps1
+
+      - name: Basis-Image bauen (nur Container hoch, keine Installation)
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}   # die Skripte erwarten die Windows-Variable $env:TEMP
+        run: |
+          ./scripts/dev/bootstrap_test_n8n.ps1 -SkipInstall
+          ./scripts/dev/bootstrap_test_n8n.ps1 -Down
+
+      - name: Basis-Image packen
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          img="$(docker image ls --filter label=lifeagents.substrate-base=1 --format '{{.Repository}}:{{.Tag}}' | head -n1)"
+          echo "Image: $img"
+          docker save "$img" | zstd -T0 -3 -o "$RUNNER_TEMP/substrate-base.tar.zst"
+          ls -lh "$RUNNER_TEMP/substrate-base.tar.zst"
+
+  suite:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.setup.outputs.suites) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Kein fail-on-cache-miss: speichern zwei Laeufe denselben Schluessel gleichzeitig, verliert einer. Fehlt das Image, baut
+      # es der Bootstrap selbst; das ist langsamer, aber nie falsch.
+      - name: Basis-Image aus dem Cache
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/substrate-base.tar.zst
+          key: ${{ needs.setup.outputs.image-key }}
+
+      - name: Basis-Image laden
+        if: steps.restore.outputs.cache-hit == 'true'
+        run: zstd -dc "$RUNNER_TEMP/substrate-base.tar.zst" | docker load
+
+      - name: Erfundene .env anlegen
+        shell: pwsh
+        run: ./scripts/dev/new_ci_env.ps1
+
+      - name: Suite fahren
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}
+          SUITE: ${{ matrix.suite }}
+        run: ./scripts/dev/run_free_gates.ps1 -Child -Reset -Suites $env:SUITE -ResultFile "$env:TEMP/free_gates_result.json"
+
+      - name: Suite-Logs bei Fehler
+        if: failure()
+        run: tail -n 60 "$RUNNER_TEMP"/free_gate_*.log
+
+      - name: Suite-Logs sichern
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: free-gate-logs-${{ matrix.suite }}
+          path: ${{ runner.temp }}/free_gate*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  db:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: DB-Suite
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}
+        run: ./scripts/db_test.ps1

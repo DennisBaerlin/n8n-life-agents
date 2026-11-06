@@ -1,0 +1,185 @@
+﻿#Requires -Version 5.1
+# make_doc_fixtures.ps1 — erzeugt die ECHTEN Test-Dokumente, die der Mock-Telegram fuer bestimmte file_ids ausliefert
+# (tests/mock_telegram/docs/<file_id>.<png|pdf>). Ohne Dokument liefert der Mock weiter das 1x1-PNG.
+#
+# Warum: der Echt-LLM-Tier (n8n_test) bekam fuer tc49/tc51 nur ein 1x1-PNG -> die echte Vision las nichts, der
+# Foto-/PDF-Import (Owner-Hauptablauf) war im bezahlten Tier nie getestet. Der Mock-LLM-Tier ignoriert den Inhalt
+# (seine Vision-Antwort kommt aus tests/mock_llm/scenarios.json) -> beide Tiers nutzen dieselbe Datei.
+#
+# Die Werte MUESSEN zu den Mock-Szenarien und den Routing-Fixtures passen:
+#   mock_photo_001.png  Kontenuebersicht Testbank (tc49)   = Szenario "Kontenübersicht der Testbank"
+#   mock_photo_051.pdf  Kontoauszug Lindenbank Januar 2000 (tc51)  = Szenario "Monatsauszug Mock-Lindenbank" + IBAN des Fixture-Kontos
+#                       Lindenbank Giro (tests/fixtures/util_seed_test_fixtures.sql); Saldo-Probe 2500 - 42,90 - 57,10 = 2400.
+#   mock_photo_056.pdf  Kontoauszug Testbroker Cash Lisa Jan. 2000  = Szenario "Testbroker Cash Konto meiner Tochter Lisa" (tc61):
+#                       IBAN gehoert KEINEM Fixture-Konto (account_unknown); Saldo-Probe 100 + 100 - 50 = 150.
+#   mock_photo_063.pdf  Vermoegensuebersicht TR (tc63)      = Szenario "Vermoegensuebersicht Testbroker Depot": je
+#                       Position nur ISIN + Stueck + aktueller Kurs, KEIN Ticker, KEIN Einstand (Befund 2026-10-23).
+#   mock_photo_070.pdf  Renteninformation DRV (tc75, Werte erfunden) = Szenario "Renteninformation der Testrentenkasse":
+#                       erreichter Anspruch, Hochrechnung, 1-%/2-%-Szenario, EM-Rente, Entgeltpunkte, Regelaltersrente.
+#   mock_photo_084.xlsx Bondora-Go&Grow-Kontoauszug (tc84, Werte erfunden) = Szenario "Bondora-Export": fester Leser
+#                       (Extract From File -> fn_bank_export_normalize), kein Vision-Call.
+#
+# Usage:  .\tests\mock_telegram\make_doc_fixtures.ps1     (danach enable_mock_telegram.ps1 kopiert docs/ in den Container)
+$ErrorActionPreference = 'Stop'
+$Out = Join-Path $PSScriptRoot 'docs'
+New-Item -ItemType Directory -Force $Out | Out-Null
+
+# --- mock_photo_001.png: Foto-artige Kontenuebersicht (System.Drawing, nur Windows-PowerShell) ---------------------
+Add-Type -AssemblyName System.Drawing
+$bmp = New-Object System.Drawing.Bitmap 1000, 520
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+$g.Clear([System.Drawing.Color]::White)
+$fTitle = New-Object System.Drawing.Font 'Arial', 26, ([System.Drawing.FontStyle]::Bold)
+$fHead  = New-Object System.Drawing.Font 'Arial', 15, ([System.Drawing.FontStyle]::Bold)
+$fBody  = New-Object System.Drawing.Font 'Arial', 15
+$ink = [System.Drawing.Brushes]::Black
+$g.DrawString('Testbank AG', $fTitle, $ink, 40, 30)
+$g.DrawString('Kontenübersicht  -  Stand 23.10.2026', $fHead, $ink, 40, 90)
+$g.DrawString('Kontoinhaber: Erika Mustermann', $fBody, $ink, 40, 130)
+$g.DrawLine([System.Drawing.Pens]::Gray, 40, 180, 960, 180)
+$g.DrawString('Konto', $fHead, $ink, 40, 195); $g.DrawString('IBAN', $fHead, $ink, 430, 195); $g.DrawString('Kontostand', $fHead, $ink, 780, 195)
+$g.DrawLine([System.Drawing.Pens]::Gray, 40, 230, 960, 230)
+$g.DrawString('Testbank Giro Mock (Girokonto)', $fBody, $ink, 40, 245)
+$g.DrawString('DE02 1001 0010 0006 8201 01', $fBody, $ink, 430, 245)
+$g.DrawString('1.234,56 EUR', $fBody, $ink, 780, 245)
+$g.DrawLine([System.Drawing.Pens]::Gray, 40, 285, 960, 285)
+$g.DrawString('Summe aller Konten: 1.234,56 EUR', $fHead, $ink, 40, 300)
+$g.DrawString('Alle Angaben ohne Gewähr. Testdokument für automatisierte Tests.', $fBody, [System.Drawing.Brushes]::DimGray, 40, 460)
+$g.Dispose()
+$bmp.Save((Join-Path $Out 'mock_photo_001.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+$bmp.Dispose()
+
+# --- Text-PDFs (Helvetica, WinAnsi), Objekte + xref von Hand ------------------------------------------------------
+$enc = [System.Text.Encoding]::GetEncoding(1252)
+function ConvertTo-PdfString([string]$s) { $s.Replace('\', '\\').Replace('(', '\(').Replace(')', '\)') }
+function Write-TextPdf([string]$Name, [object[]]$Lines) {
+    $stream = ($Lines | ForEach-Object { "BT /F1 $($_[2]) Tf $($_[0]) $($_[1]) Td ($(ConvertTo-PdfString $_[3])) Tj ET" }) -join "`n"
+    $objs = @(
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+        "<< /Length $($enc.GetByteCount($stream)) >>`nstream`n$stream`nendstream"
+    )
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append("%PDF-1.4`n")
+    $offsets = @()
+    for ($i = 0; $i -lt $objs.Count; $i++) {
+        $offsets += $enc.GetByteCount($sb.ToString())
+        [void]$sb.Append("$($i + 1) 0 obj`n$($objs[$i])`nendobj`n")
+    }
+    $xref = $enc.GetByteCount($sb.ToString())
+    [void]$sb.Append("xref`n0 $($objs.Count + 1)`n0000000000 65535 f `n")
+    foreach ($o in $offsets) { [void]$sb.Append(("{0:D10} 00000 n `n" -f $o)) }   # 20 Bytes je Eintrag (doppelte Anfuehrung: `n = LF)
+    [void]$sb.Append("trailer`n<< /Size $($objs.Count + 1) /Root 1 0 R >>`nstartxref`n$xref`n%%EOF`n")
+    [System.IO.File]::WriteAllBytes((Join-Path $Out $Name), $enc.GetBytes($sb.ToString()))
+}
+
+Write-TextPdf 'mock_photo_051.pdf' @(
+    @(50, 790, 18, 'Lindenbank AG'),
+    @(50, 765, 13, 'Kontoauszug Nr. 1/2000  -  Girokonto'),
+    @(50, 740, 11, 'Kontoinhaber: Erika Mustermann'),
+    @(50, 724, 11, 'IBAN: DE21 1234 5678 0000 0123 45    BIC: TESTDEM1XXX'),
+    @(50, 708, 11, 'Zeitraum: 01.01.2000 bis 31.01.2000'),
+    @(50, 680, 11, 'Alter Kontostand am 01.01.2000                                   2.500,00 EUR'),
+    @(50, 650, 11, 'Buchung    Wert       Vorgang                                         Betrag EUR'),
+    @(50, 632, 11, '05.01.2000 05.01.2000 Kartenzahlung ARAL Tankstelle, Tanken            -42,90'),
+    @(50, 614, 11, '12.01.2000 12.01.2000 Kartenzahlung REWE, Einkauf                       -57,10'),
+    @(50, 584, 11, 'Neuer Kontostand am 31.01.2000                                   2.400,00 EUR'),
+    @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Bitte pruefen Sie diesen Kontoauszug.')
+)
+
+Write-TextPdf 'mock_photo_056.pdf' @(
+    @(50, 790, 18, 'Trade Republic Bank GmbH'),
+    @(50, 765, 13, 'Kontoauszug  -  Cash-Konto'),
+    @(50, 740, 11, 'Kontoinhaberin: Lisa Mustermann'),
+    @(50, 724, 11, 'IBAN: DE72 1001 2345 0000 0005 62    BIC: TRBKDEBBXXX'),
+    @(50, 708, 11, 'Zeitraum: 01.01.2000 bis 31.01.2000'),
+    @(50, 680, 11, 'Anfangssaldo am 01.01.2000                                         100,00 EUR'),
+    @(50, 650, 11, 'Datum      Vorgang                                                  Betrag EUR'),
+    @(50, 632, 11, '03.01.2000 Eingehende Ueberweisung Erika Mustermann                   100,00'),
+    @(50, 614, 11, '04.01.2000 Sparplan Vanguard FTSE All-World UCITS ETF                 -50,00'),
+    @(50, 584, 11, 'Endsaldo am 31.01.2000                                             150,00 EUR'),
+    @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Bitte pruefen Sie diesen Kontoauszug.')
+)
+
+Write-TextPdf 'mock_photo_063.pdf' @(
+    @(50, 790, 18, 'Trade Republic Bank GmbH'),
+    @(50, 765, 13, 'Vermoegensuebersicht zum 31.01.2000'),
+    @(50, 740, 11, 'Erika Mustermann                                  Depot 9000000001'),
+    @(50, 710, 11, 'Stk.          Wertpapier                                  Kurs pro Stueck   Kurswert EUR'),
+    @(50, 692, 11, '2,500000 Stk. Testaktie Muster AG                           100,00         250,00'),
+    @(50, 678, 10, '              ISIN: US0378331005'),
+    @(50, 660, 11, '20,123456 Stk. S&P 500 (Acc)                                   80,00       1.609,88'),
+    @(50, 646, 10, '              ISIN: IE00B5BMR087'),
+    @(50, 616, 11, 'Anzahl Positionen: 2                                                       1.859,88 EUR'),
+    @(50, 590, 11, 'Cash (Verrechnungskonto) zum 31.01.2000                                   1.234,56 EUR'),
+    @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Keine Einstandskurse aufgefuehrt.')
+)
+
+Write-TextPdf 'mock_photo_070.pdf' @(
+    @(50, 790, 18, 'Deutsche Rentenversicherung (Testdokument)'),
+    @(50, 765, 13, 'Ihre Renteninformation  -  01. Juli 2026'),
+    @(50, 740, 11, 'Herrn/Frau Erika Mustermann'),
+    @(50, 712, 11, 'Ihre Regelaltersrente wuerde am 01.03.2052 beginnen.'),
+    @(50, 684, 11, 'Rente wegen voller Erwerbsminderung (monatlich):                    800,00 EUR'),
+    @(50, 664, 11, 'Bislang erreichte Rentenanwartschaft (monatlich):                   350,00 EUR'),
+    @(50, 644, 11, 'Hochrechnung bei Beitraegen wie bisher, ohne Rentenanpassungen:   1.800,00 EUR'),
+    @(50, 616, 11, 'Bei einem jaehrlichen Anpassungssatz von 1 Prozent: etwa 2.400 EUR monatlich.'),
+    @(50, 600, 11, 'Bei einem jaehrlichen Anpassungssatz von 2 Prozent: etwa 3.300 EUR monatlich.'),
+    @(50, 572, 11, 'Bisher erworbene Entgeltpunkte:                                       9,8765'),
+    @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Alle Werte erfunden.')
+)
+
+# --- mock_photo_084.xlsx: Bondora-Go&Grow-Kontoauszug (Bank-Import-Modul, tc84; Werte erfunden) -----------------------
+# Form wie der echte Export (Blatt "Data": Kopfblock Summary/Opening/Payments in/out/Closing, Zeitraum M/D/YYYY, "All
+# Goals", Kopfzeile Zeile 8, Datum als Text, Zahlen als Zahl). Minimales xlsx aus XML-Teilen (inlineStr, kein Excel noetig).
+# Saldo-Probe: 100 + 0,02 + 0,15 + 500 + 8,71 - 201 = 407,88 (Info-Zeile "Unallocated" saldo-neutral, nicht in "Payments in").
+function New-XlsxCell([string]$Ref, $Value) {
+    if ($null -eq $Value -or ($Value -is [string] -and $Value -eq '')) { return '' }
+    if ($Value -is [string]) { return "<c r=`"$Ref`" t=`"inlineStr`"><is><t>$([System.Security.SecurityElement]::Escape($Value))</t></is></c>" }
+    return "<c r=`"$Ref`"><v>$(([double]$Value).ToString([System.Globalization.CultureInfo]::InvariantCulture))</v></c>"
+}
+$xRows = @(
+    @('Test Person', '', '', 'Summary', ''),
+    @('9/1/2026-9/30/2026', '', '', 'Opening', 100),
+    @('', '', '', 'Payments in', 508.88),
+    @('', '', '', 'Payments out', 201),
+    @('', '', '', 'Closing', 407.88),
+    @(),
+    @('All Goals'),
+    @('Date', 'Payment type', 'In', 'Out', 'Balance'),
+    @('9/1/2026', 'Go & Grow returns', 0.02, '', 100.02),
+    @('9/2/2026', 'SEPA payment', 0.15, '', 100.17),
+    @('9/2/2026', 'Unallocated balance - Liquidity', 0.05, '', 100.17),
+    @('9/3/2026', 'SEPA payment', 500, '', 600.17),
+    @('9/4/2026', 'Go & Grow returns', 8.71, '', 608.88),
+    @('9/10/2026', 'Withdrawal to bank account', '', 201, 407.88)
+)
+$sheet = New-Object System.Text.StringBuilder
+[void]$sheet.Append('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>')
+for ($r = 0; $r -lt $xRows.Count; $r++) {
+    $cells = for ($c = 0; $c -lt $xRows[$r].Count; $c++) { New-XlsxCell ("{0}{1}" -f [char](65 + $c), ($r + 1)) $xRows[$r][$c] }
+    [void]$sheet.Append("<row r=`"$($r + 1)`">$($cells -join '')</row>")
+}
+[void]$sheet.Append('</sheetData></worksheet>')
+$xParts = [ordered]@{
+    '[Content_Types].xml' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'
+    '_rels/.rels' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'
+    'xl/workbook.xml' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    'xl/_rels/workbook.xml.rels' = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'
+    'xl/worksheets/sheet1.xml' = $sheet.ToString()
+}
+Add-Type -AssemblyName System.IO.Compression
+$xlsxPath = Join-Path $Out 'mock_photo_084.xlsx'
+if (Test-Path $xlsxPath) { Remove-Item $xlsxPath }
+$fs = [System.IO.File]::Open($xlsxPath, [System.IO.FileMode]::CreateNew)
+$zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+foreach ($k in $xParts.Keys) {
+    $w = New-Object System.IO.StreamWriter($zip.CreateEntry($k).Open(), (New-Object System.Text.UTF8Encoding($false)))
+    $w.Write($xParts[$k]); $w.Dispose()
+}
+$zip.Dispose(); $fs.Dispose()
+
+Get-ChildItem $Out | ForEach-Object { "{0,-22} {1,8} Bytes" -f $_.Name, $_.Length }

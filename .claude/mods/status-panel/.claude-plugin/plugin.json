@@ -1,0 +1,6 @@
+{
+  "name": "status-panel",
+  "version": "0.1.0",
+  "description": "Status-Panel neben dem Chat: Kontingent, Test-Container, Owner-/App-Fenster, CI-Ampel",
+  "types": "./types/index.d.ts"
+}

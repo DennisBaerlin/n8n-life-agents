@@ -1,0 +1,4 @@
+"datetime","date","account_type","category","type","asset_class","name","symbol","shares","price","amount","fee","tax","currency","original_amount","original_currency","fx_rate","description","transaction_id","counterparty_name","counterparty_iban","payment_reference","mcc_code"
+"2000-01-03T09:00:00Z","2000-01-03","DEFAULT","CASH","CUSTOMER_INPAYMENT","","","","","","100.000000","","","EUR","","","","Top up","mock-0001","","","",""
+"2000-01-05T10:00:00Z","2000-01-05","DEFAULT","TRADING","BUY","FUND","Mock World ETF","IE00MOCK0001","2.0000000000","25.0000000000","-50.00","","","EUR","","","","Savings plan execution","mock-0002","","","",""
+"2000-01-09T12:00:00Z","2000-01-09","DEFAULT","CASH","CARD_TRANSACTION","","","","","","-12.340000","","","EUR","","","","Baeckerei","mock-0003","Baeckerei Mock","","",""

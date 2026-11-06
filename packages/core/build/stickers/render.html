@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Sticker rendern</title>
+<!-- Nur fuer scripts/dev/render_stickers.ps1 (Headless-Chrome, --dump-dom): zeichnet jedes Set aus stickers.js auf ein
+     512-px-Canvas, kodiert es als WebP und schreibt alle Dateien als JSON {"<code>_<ausdruck>": "data:image/webp;base64,..."}
+     in #out. Kein Netz; die Seite wird nie ausgeliefert. -->
+<script src="stickers.js"></script>
+</head>
+<body>
+<pre id="out">pending</pre>
+<script>
+(function () {
+  var S = window.LifeAgentsStickers, jobs = [], out = {};
+  S.codes.forEach(function (code) {
+    S.expressions.forEach(function (ex) {
+      jobs.push(new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () {
+          var c = document.createElement('canvas');
+          c.width = 512; c.height = 512;
+          c.getContext('2d').drawImage(img, 0, 0, 512, 512);
+          out[code + '_' + ex] = c.toDataURL('image/webp', 0.9);
+          resolve();
+        };
+        img.onerror = function () { reject(new Error(code + '_' + ex)); };
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(S.render(code, ex));
+      }));
+    });
+  });
+  Promise.all(jobs).then(function () {
+    document.getElementById('out').textContent = JSON.stringify(out);
+  }, function (e) {
+    document.getElementById('out').textContent = 'ERROR ' + e.message;
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+-- ============================================================
+-- V001 (estate) — die alte 1-Arg-Signatur estate.fn_render_register_body(boolean) droppen.
+--
+--   WARUM eine V-Migration: CREATE OR REPLACE kann die ARITAET nicht aendern. R__fn_render_register_body legt
+--   jetzt (boolean, text) an (Textkatalog Phase C: Sprache der Ueberschriften/Bezeichnungen); die alte Form muss
+--   EINMALIG weg, sonst bliebe toter Code mit deutschen Literalen liegen (Muster career V003, core V028).
+--   SICHER: kein DB-Objekt haengt an der Funktion (die beiden Aufrufer fn_render_estate_overview +
+--   fn_render_emergency_binder sind plpgsql = late-bound und werden direkt danach als R__ neu gesetzt).
+--   Frische Instanz: die Funktion existiert noch nicht -> DROP IF EXISTS no-op.
+-- ============================================================
+DROP FUNCTION IF EXISTS estate.fn_render_register_body(boolean);

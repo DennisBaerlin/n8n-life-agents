@@ -1,0 +1,75 @@
+# sqlfluff — SQL linter for the tracked SQL (PostgreSQL 17; file scope = the `files:` glob of the
+# prek `sqlfluff-lint` hook in .pre-commit-config.yaml). The prek gate is lint-ONLY (never auto-fix);
+# the one-time casing normalization (Phase 5a) was applied with a rule-scoped `sqlfluff fix` and is
+# now enforced by the capitalisation rules below. Invoked via the prek `sqlfluff-lint` hook
+# (.pre-commit-config.yaml) and in CI.
+#
+# Why no layout/formatting: our SQL is deliberately hand-aligned — column-aligned table
+# definitions and trailing comments (~27% of all SQL lines) plus intentionally long single-line
+# jsonb_build_object/COALESCE expressions. The whole `layout` group (LT01-LT15: spacing, indent,
+# commas, long_lines, ...) would collapse that alignment and reflow those lines on `fix`, producing
+# a ~3000-line diff that destroys readability. So we exclude `layout` entirely and keep only the
+# substantive rules (capitalisation policy, reference qualification, structure, conventions). Casing
+# is length-preserving, so enforcing it does NOT disturb the hand-alignment.
+#
+# Semantic naming renames (e.g. finance_loans.debit_account_id -> payment_source_account_id) are
+# convention-driven and run as their own Phase-5 units (migrations); sqlfluff cannot detect them.
+[sqlfluff]
+dialect = postgres
+# raw templater: our files are plain SQL with no Jinja. The default jinja templater would try to
+# interpret `$$`-quoted function bodies and `{...}` jsonb literals as templating and mis-parse.
+templater = raw
+# pin to 0 (unlimited) defensively in case a non-layout rule consults it (layout/LT05 is off anyway).
+max_line_length = 0
+# 0 = never skip on size. The default (20000 bytes) silently skips our two biggest files
+# (finance.tables_init.sql ~70KB — the finance schema — and R__fn_import_bundle.sql ~20KB), which would
+# make the gate green while covering 0% of them. raw templater + the lean active rule set parse them
+# fast, so disable the skip and actually lint everything.
+large_file_skip_byte_limit = 0
+
+# Excluded rule groups/rules, each with a reason (a green BLOCKING gate — casing is now enforced
+# repo-wide, layout/structure stay off per the owner's no-reformat decision 2026-06-14):
+#   layout                  — the whole LT* group: would reflow/realign the deliberate hand-alignment
+#                             (~27% of SQL lines) on `fix`; we never reformat.
+#   references.keywords     — RF04: flags legitimate column names that are reserved-ish words
+#                             (core.config.value/key, *.name, *.description, ...). Renaming them is
+#                             neither wanted nor in scope; they are valid identifiers.
+#   aliasing.table          — AL01: implicit table aliasing in a few util/seed scripts — stylistic.
+#   aliasing.expression     — AL03: column expression without an explicit AS — stylistic.
+#   postgres.excessive_locks— PG01: wants CREATE INDEX CONCURRENTLY, which CANNOT run inside a
+#                             transaction block; our idempotent inits + migrations apply in ONE
+#                             transaction (db_apply.ps1 / apply_schema.sh). Structurally incompatible.
+# The next five trip the deliberate view style of the finance reporting views (R__finance_views.sql) —
+# all stylistic/structural, fixing them is an SQL reformat the no-reformat decision excludes:
+#   structure.else_null     — ST01: `ELSE NULL` in CASE (redundant but explicit by choice).
+#   structure.column_order  — ST06: SELECT wildcard/target ordering.
+#   structure.join_condition_order — ST09: which join side is named first.
+#   ambiguous.join          — AM05: alias-qualified (not table-qualified) join conditions.
+#   ambiguous.column_count  — AM04: deliberate `SELECT *` / to_jsonb(t) view patterns.
+# Everything not listed stays ON across ALL files (CP01-CP05 capitalisation, RF01/02/03/05/06
+# reference qualification, CV* conventions, ST02/03/04/05/... unused-CTE/subquery/distinct, AL02/04+,
+# AM01-03/06+) — the real bug-catching net, green on the whole tree.
+exclude_rules = layout, references.keywords, aliasing.table, aliasing.expression, postgres.excessive_locks, structure.else_null, structure.column_order, structure.join_condition_order, ambiguous.join, ambiguous.column_count
+
+# Repo-wide capitalisation policy (owner decision 2026-06-14): UPPER for keywords AND literals
+# (NULL/TRUE/FALSE — these ARE keywords, so they follow the keyword UPPER standard); lower for
+# everything else — identifiers, function names AND data types. Reason types are lower (not upper):
+# sqlfluff only enforces casing on DECLARED types, never on the `::type` cast operator (our code casts
+# pervasively: `::int`/`::numeric`/`::jsonb`). UPPER declared types would leave declared-UPPER /
+# cast-lower split that the linter cannot police; lower keeps declared types matching the
+# (un-enforceable) casts → genuinely uniform AND fully enforced. Casing is length-preserving → the
+# hand-alignment is untouched.
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = lower

@@ -1,0 +1,25 @@
+-- ============================================================
+-- V015 (core) — die alte 2-Arg-Signatur core.fn_advisor_review_evaluate(text, jsonb) droppen.
+--
+--   WARUM eine V-Migration: CREATE OR REPLACE kann die ARITAET einer Function NICHT aendern. P2a faechert den
+--   geteilten Advisor-Drift-Wrapper pro Person: R__fn_advisor_review_evaluate.sql legt jetzt
+--   core.fn_advisor_review_evaluate(text, text DEFAULT NULL, jsonb DEFAULT '{}') an (domain, person_id,
+--   observations). Bliebe die alte (text, jsonb)-Form stehen, koexistierten zwei Overloads und ein 2-Arg-Aufruf
+--   (`fn_advisor_review_evaluate('finance', '{}')`) bzw. der heutige 1-Arg-Cron-Call waeren MEHRDEUTIG ("function
+--   is not unique", die neue 3-Arg-Form matcht denselben Aufruf via DEFAULT). Diese V droppt die 2-Arg-Form EINMALIG.
+--
+--   PERSON-FAECHERUNG (P2a): person_id NULL -> Latch-source byte-gleich heute ('advisor:'||domain) -> finance +
+--   die heutigen 1-Arg-Cron-Aufrufe sind 0-Verhaltensaenderung. Mit person_id -> 'advisor:'||domain||':'||person_id
+--   (P2b-Cron-Schleife). Der Wrapper dispatcht uniform 3-arg an alle <pkg>.fn_advisor_review (finance ignoriert den
+--   person_id-Parameter = Haushalt; career nutzt ihn). Die paket-eigenen 2-Arg-review-fns droppen ihre eigenen V
+--   (finance:V010, career:V003).
+--
+--   SICHER: kein DB-Objekt (Trigger/View/fn/Default) haengt an core.fn_advisor_review_evaluate -> kein CASCADE.
+--   Aufrufer sind nur Cron-Workflow-SQL (advisor_drift_check/advisor_review, rufen 1-Arg = neue Form mit Defaults)
+--   + Tests (im selben Commit auf 3-arg angepasst). IDEMPOTENT (IF EXISTS); Fresh DB = no-op (R__ legt direkt die
+--   3-Arg-Form an, die 2-Arg entstand nie). Der REVOKE-PUBLIC-Tail laeuft in R__ auf der NEUEN 3-Arg-Signatur (M3).
+--
+-- APPLY-ORDER: Inits -> V (hier, droppt 2-Arg) -> R (legt 3-Arg an + REVOKE). Re-run-sicher.
+-- ============================================================
+
+DROP FUNCTION IF EXISTS core.fn_advisor_review_evaluate(text, jsonb);

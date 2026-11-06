@@ -1,0 +1,126 @@
+{
+    "id":  "AtIcarTWHn2wKIbl",
+    "name":  "agent.tool_transcribe_telegram_voice.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "voice-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7f1e781d-833f-5e0a-8c7a-29449b4cc3c6",
+                      "name":  "Test Webhook",
+                      "webhookId":  "7a401d36-1859-5d9b-b22c-d1e1771ee611",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "n0YXjqgHqrcT7F5k",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/n0YXjqgHqrcT7F5k",
+                                                            "cachedResultName":  "agent.tool_transcribe_telegram_voice"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.file_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "02e84542-3689-5325-a650-d4be03b123a1",
+                      "name":  "Run agent.tool_transcribe_telegram_voice",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "82fcfe64-228e-5521-923c-7700da08b561",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.tool_transcribe_telegram_voice.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.tool_transcribe_telegram_voice\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: file_id.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "01917c7d-4290-5012-b942-78b976f0159d",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.tool_transcribe_telegram_voice",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.tool_transcribe_telegram_voice":  {
+                                                                         "main":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "index":  0,
+                                                                                              "node":  "Run Info",
+                                                                                              "type":  "main"
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

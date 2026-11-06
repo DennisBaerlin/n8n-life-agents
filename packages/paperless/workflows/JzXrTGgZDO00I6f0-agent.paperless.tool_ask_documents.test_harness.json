@@ -1,0 +1,127 @@
+{
+    "id":  "JzXrTGgZDO00I6f0",
+    "name":  "agent.paperless.tool_ask_documents.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "paperless-ask-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "10888fc0-706b-57d0-8184-9da656b18d88",
+                      "name":  "Test Webhook",
+                      "webhookId":  "99269877-8d37-51d3-a17d-8de4f4ddacad",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "L9dFFzwa5aI5NTgw",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/L9dFFzwa5aI5NTgw",
+                                                            "cachedResultName":  "agent.paperless.tool_ask_documents"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "args":  "={{ $(\u0027Test Webhook\u0027).item.json.body.args }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "3d9ccd51-240d-56f0-9c06-e807db5dae97",
+                      "name":  "Run agent.paperless.tool_ask_documents",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "ec158916-7c21-5503-b17b-ad5fa7316d60",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.paperless.tool_ask_documents.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.paperless.tool_ask_documents\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: args, chat_id.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "196e8c1a-2692-5746-9e91-5d5af11c2fcb",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.paperless.tool_ask_documents",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.paperless.tool_ask_documents":  {
+                                                                       "main":  [
+                                                                                    [
+                                                                                        {
+                                                                                            "index":  0,
+                                                                                            "node":  "Run Info",
+                                                                                            "type":  "main"
+                                                                                        }
+                                                                                    ]
+                                                                                ]
+                                                                   }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

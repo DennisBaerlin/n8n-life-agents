@@ -1,0 +1,16 @@
+<!-- Geteiltes Nav-Chrome: EINE Quelle fuer Landing UND Docs (Owner-Vorgabe: identisches Menue,
+     Rueckweg zum One-Pager). Links via relURL + explizite .html-Ziele (file://-Disziplin). -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="{{ "index.html" | relURL }}">
+      {{ partial "mark.html" . }}
+      n8n-life-agents
+    </a>
+    <span class="nav-links">
+      <a class="ghost" href="{{ "index.html" | relURL }}#agenten">Agenten</a>
+      <a class="ghost" href="{{ "index.html" | relURL }}#sicherheit">Sicherheit</a>
+      <a class="ghost" href="{{ "index.html" | relURL }}#faq">FAQ</a>
+      <a class="btn btn-soft" href="{{ "docs/ueberblick.html" | relURL }}">Docs</a>
+    </span>
+  </div>
+</nav>

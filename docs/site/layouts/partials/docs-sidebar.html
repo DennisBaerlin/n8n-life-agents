@@ -1,0 +1,14 @@
+<!-- Docs-Seitenleiste aus data/docsnav.yaml (EINE Nav-Quelle, kein Duplikat je Seite).
+     Aktiv-Zustand: Slug-Vergleich mit dem Dateinamen der aktuellen Seite. -->
+{{ $current := "" }}
+{{ with .File }}{{ $current = .BaseFileName }}{{ end }}
+{{ range hugo.Data.docsnav }}
+  <div class="group">
+    <div class="group-title">{{ .group }}</div>
+    <ul>
+      {{ range .pages }}
+        <li><a href="{{ printf "docs/%s.html" .slug | relURL }}"{{ if eq $current .slug }} class="active"{{ end }}>{{ .title }}</a></li>
+      {{ end }}
+    </ul>
+  </div>
+{{ end }}

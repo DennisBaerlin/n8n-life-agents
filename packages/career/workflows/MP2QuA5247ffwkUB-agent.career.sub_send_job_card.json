@@ -1,0 +1,174 @@
+{
+    "id":  "MP2QuA5247ffwkUB",
+    "name":  "agent.career.sub_send_job_card",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "job_match_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "is_serendipity"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "score"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "title"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "employer"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "location"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "board"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "url"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "reasoning"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "0280733e-808e-55c1-bab8-1f1e3d643bbb",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027career.jobcard.match\u0027,\u0027career.jobcard.stretch\u0027,\u0027career.jobcard.via\u0027,\u0027career.jobcard.feedback_hint\u0027,\u0027career.jobcard.btn_off\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "d8ab1e6b-37d8-5988-a1be-214668fe4943",
+                      "name":  "Load card texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CAREER_RO__",
+                                                           "name":  "Postgres career_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                         "text":  "={{ ((String($(\u0027Start\u0027).item.json.is_serendipity) === \u0027true\u0027 ? String((($json.t) || {})[\u0027career.jobcard.stretch\u0027] || \u0027career.jobcard.stretch\u0027) : String((($json.t) || {})[\u0027career.jobcard.match\u0027] || \u0027career.jobcard.match\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027score\u0027: ($(\u0027Start\u0027).item.json.score) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })) + \u0027\\n\u0027 + $(\u0027Start\u0027).item.json.title + ($(\u0027Start\u0027).item.json.employer ? \u0027 – \u0027 + $(\u0027Start\u0027).item.json.employer : \u0027\u0027) + ($(\u0027Start\u0027).item.json.location ? \u0027\\n📍 \u0027 + $(\u0027Start\u0027).item.json.location : \u0027\u0027) + ($(\u0027Start\u0027).item.json.board ? \u0027\\n\u0027 + String((($json.t) || {})[\u0027career.jobcard.via\u0027] || \u0027career.jobcard.via\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027board\u0027: ($(\u0027Start\u0027).item.json.board) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : \u0027\u0027) + ($(\u0027Start\u0027).item.json.url ? \u0027\\n\u0027 + $(\u0027Start\u0027).item.json.url : \u0027\u0027) + ($(\u0027Start\u0027).item.json.reasoning ? \u0027\\n\u0027 + $(\u0027Start\u0027).item.json.reasoning : \u0027\u0027) + \u0027\\n\\n\u0027 + String((($json.t) || {})[\u0027career.jobcard.feedback_hint\u0027] || \u0027career.jobcard.feedback_hint\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "👍",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027job:up:\u0027 + $(\u0027Start\u0027).item.json.job_match_id }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "👎",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027job:down:\u0027 + $(\u0027Start\u0027).item.json.job_match_id }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($json.t) || {})[\u0027career.jobcard.btn_off\u0027] || \u0027career.jobcard.btn_off\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "rem:off:score_jobs"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "242eb0d3-fe14-5069-9837-19b87e1711f3",
+                      "name":  "Send card",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**agent.career.sub_send_job_card — Treffer-Karte in der Sprache der Person**\n\nDeterministisch, kein LLM. Start (job_match_id, is_serendipity, score, title, employer, location, board, url, reasoning, chat_id) -\u003e Load card texts (core.fn_ui_texts_for unter career_ro: Sprache der Person hinter chat_id, Kette Person -\u003e Owner -\u003e en) -\u003e Send card an die EIGENE chat_id: Kopf (Passende Stelle n/4 bzw. Blick über den Tellerrand), Titel/Arbeitgeber/Ort, \"via \u003cboard\u003e\" nur wenn ein Board offengelegt ist (jsearch), Link, Begründung des Scorers (in der Sprache der Person), Feedback-Hinweis. Knöpfe 👍/👎 -\u003e job:up|down:\u003cjob_match_id\u003e (generischer Callback-Dispatch -\u003e career.fn_handle_job_feedback) und Abschalten -\u003e rem:off:score_jobs (core.fn_handle_reminder_cb: schaltet NUR die Job-Vorschläge dieser Person ab, agent.reminder_prefs; der Notschalter für alle bleibt Konsole). Aufrufer: agent.career.cron_score_jobs; eigener Sub, damit die Karte über den Harness deterministisch testbar ist.",
+                                         "height":  320,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -300
+                                   ],
+                      "id":  "830f8b9e-41b3-5ec6-941b-2dd9c4302b76",
+                      "name":  "Doc: Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load card texts",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load card texts":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Send card",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

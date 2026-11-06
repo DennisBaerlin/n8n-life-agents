@@ -1,0 +1,131 @@
+{
+    "id":  "Yf6mT1rWc9Jn4GzA",
+    "name":  "agent.tool_publish_plan.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "plan-publish-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7676c0c3-53ef-5c5f-8ad7-d113c48f42a7",
+                      "name":  "Test Webhook",
+                      "webhookId":  "ae963a6d-437e-5696-8d65-6de8652a0335",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "oKi2U6NFXkCONRQQ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/oKi2U6NFXkCONRQQ",
+                                                            "cachedResultName":  "agent.tool_publish_plan"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "domain":  "={{ $(\u0027Test Webhook\u0027).item.json.body.domain }}",
+                                                                              "plan_md":  "={{ $(\u0027Test Webhook\u0027).item.json.body.plan_md }}",
+                                                                              "plan_name":  "={{ $(\u0027Test Webhook\u0027).item.json.body.plan_name }}",
+                                                                              "change_summary":  "={{ $(\u0027Test Webhook\u0027).item.json.body.change_summary }}",
+                                                                              "context_description":  "={{ $(\u0027Test Webhook\u0027).item.json.body.context_description }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "b00a66af-14f1-5076-a2f4-9ad9f9a5b2cd",
+                      "name":  "Run agent.tool_publish_plan",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "9764bcd0-97bb-5bd1-8026-0a474f963752",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.tool_publish_plan.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.tool_publish_plan\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: domain, plan_md, plan_name, change_summary, context_description, chat_id.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "6519b5d1-fe4e-5ba5-93ea-a3a9eb32cebc",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.tool_publish_plan",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.tool_publish_plan":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Run Info",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

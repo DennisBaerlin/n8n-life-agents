@@ -1,0 +1,103 @@
+# squawk — Postgres migration linter for the Flyway versioned V*.sql migrations (packages/*/db/
+# migrations/; file scope = the `files:` glob of the prek `squawk` hook). A safety net BEFORE
+# apply: catches unsafe ALTER/lock patterns that APPLY cleanly yet would block or fail at runtime on a
+# real DB. Run by the local prek `squawk` hook + CI (both via a prebuilt binary on PATH; prek can't
+# fetch the Rust binary itself, j178/prek#681). Rule catalog: https://squawkhq.com/docs/rules
+#
+# assume_in_transaction: our apply driver (db_apply.ps1 / provisioning/lib/apply_schema.sh) wraps EVERY
+# V-migration in ONE transaction (.claude/rules/sql.md Migrations-Modell: "KEINE BEGIN/COMMIT"). This makes the two
+# most valuable rules fit our model exactly:
+#   - transaction-nesting:                          a stray BEGIN/COMMIT inside a migration.
+#   - ban-concurrent-index-creation-in-transaction: CREATE INDEX CONCURRENTLY fails at runtime because
+#                                                   it may not run inside a transaction (our exact case).
+assume_in_transaction = true
+pg_version = "17.0"
+
+excluded_rules = [
+  # lock_timeout / statement_timeout before each "slow" operation. Useful for high-load prod with large
+  # tables + live traffic; our tracker is single-user with tiny tables. It also fires on 16 of the 32
+  # applied migrations (first hit historically: packages/finance/db/migrations/
+  # V003__drop_fn_import_resolve_acct.sql; applied migrations are frozen -> core.migration_should_apply
+  # throws a drift exception on edit) -> unfixable -> permanent red on `prek run --all-files`, so the
+  # exclusion is mandatory, not taste. Tradeoff accepted: this disables the timeout check for ALL future
+  # V-migrations too — fine for a single-user system, but a real coverage gap to revisit if this ever
+  # serves concurrent load.
+  "require-timeout-settings",
+  # Wants re-runnable statements (IF NOT EXISTS etc.). Directly contradicts the V__ model: versioned
+  # migrations run EXACTLY ONCE (ledger-gated, non-idempotent by design; .claude/rules/sql.md). The
+  # ledger provides the re-run safety here, not the statement style.
+  "prefer-robust-stmts",
+  # bigint over int for keys. Column type decisions live in the baseline inits (packages/*/db/*.sql),
+  # not in migrations; for a private tracker int-vs-bigint is not a migration concern -> pure noise.
+  "prefer-bigint-over-int",
+  # Wants DROP INDEX CONCURRENTLY (avoids the brief ACCESS EXCLUSIVE lock). Structurally IMPOSSIBLE
+  # in our model for the SAME reason as ban-concurrent-index-creation-in-transaction above: our driver
+  # wraps every V-migration in ONE transaction, and CONCURRENTLY may not run inside a transaction. So
+  # ANY DROP INDEX in a V__ migration always trips this rule and can never be "fixed" -> with frozen,
+  # immutable applied migrations that means permanent red on `prek run --all-files` (cf. the
+  # require-timeout-settings note) -> exclusion is mandatory, not taste. No real coverage lost: the
+  # warning is an unconditional false positive for us, and our single-user tracker has no concurrent
+  # load for the brief lock to block (first hit: packages/finance/db/migrations/
+  # V004__drop_redundant_import_staging_index.sql; later also career V003 + core V014).
+  "require-concurrent-index-deletion",
+  # --- Added at the WP-9 gate widening (glob flip db/migrations -> packages/*/db/migrations made the
+  # --- gate see all 32 applied migrations for the first time; 18 findings, all in frozen files).
+  # The next five are the same lock-/concurrency-warning class as the exclusions above — structural
+  # false positives here: our driver wraps every V-migration in ONE transaction (all CONCURRENTLY
+  # variants are impossible there), and the single-user tracker has tiny tables + no concurrent load,
+  # so scan-/lock windows are trivial. Each fired on applied (frozen, unfixable) migrations.
+  "require-concurrent-index-creation",  # wants CREATE INDEX CONCURRENTLY (career V003, core V014)
+  "disallowed-unique-constraint",       # wants CONCURRENTLY index + ADD CONSTRAINT USING INDEX (core V014)
+  "constraint-missing-not-valid",       # NOT VALID + later VALIDATE needs a second transaction (core V014)
+  "adding-foreign-key-constraint",      # SHARE ROW EXCLUSIVE scan lock — trivial on our table sizes (finance V011)
+  "adding-field-with-default",          # table-rewrite warning; PG 11+ non-volatile defaults are metadata-only (finance V011)
+  # Dropping tables/columns is our ROUTINE retire pattern (V004/V005/V006/V008/V012 all drop
+  # deliberately, each through plan + review; single-user system, the only "clients" are our own
+  # workflows, updated in the same release). A warning that fires on every intentional retire would be
+  # permanent noise — and permanent red once the migration is applied/frozen.
+  "ban-drop-table",
+  "ban-drop-column",
+  # Same class as the two above: relaxing a NOT NULL is a deliberate, plan+review-gated schema step
+  # here (first case: core V017 makes ai_models.selector_index nullable for NON-selector models like
+  # gemini-embedding-001; the only consumers — selector build [filters NULL] + config model trigger
+  # [checks model_key only] — ship in the same release). NOTE: a per-file excluded_paths entry was
+  # tried first and REVERTED — squawk errors with "Failed to find files" when the exclusion empties
+  # the provided file set (single-staged-V-file commits), so the ratchet pattern cannot carry this rule.
+  "ban-drop-not-null",
+  # The mirror image: SET NOT NULL after a backfill (first case: core V024 fills ai_models.mode, then
+  # SET NOT NULL). The rule warns about the full-table scan under ACCESS EXCLUSIVE — trivial on our tiny
+  # registry/config tables (single-user, no concurrent load). Global for the same "Failed to find files"
+  # reason as ban-drop-not-null above.
+  "adding-not-nullable-field",
+  # --- Added with squawk 2.58 -> 2.70 (OSS-Update-Phase 2026-10-20): two new rules of the same
+  # --- "may break existing clients" class as ban-drop-table/-column above, both firing on frozen migrations.
+  # Retiring a function is our routine pattern (V002/V004/V005/V008/V010/V011/V013/V016, finance V003): every
+  # caller is our own SQL/workflow and ships in the same release (single-user, no foreign clients).
+  "ban-drop-function",
+  # Dropping a column default is a deliberate, plan+review-gated step (core V021: advisor_plans.domain must
+  # be passed explicitly — the only writers are our own fns in the same release).
+  "ban-drop-default",
+  # Views are rebuilt by the repeatable R__<pkg>_views.sql right after the V-phase (finance V006 drops
+  # five before a column drop); retiring an ENUM type is the same retire class (core V003).
+  "ban-drop-view",
+  "ban-drop-type",
+]
+
+# Per-FILE exceptions (ratchet pattern, like the core_literal allowlist): the rules stay live for
+# every future migration; a deliberate use of a flagged pattern in an applied (frozen) migration gets
+# a conscious entry here instead of a global rule exclusion. NOTE: an entry skips the file for ALL
+# rules — acceptable only because applied migrations are frozen anyway.
+excluded_paths = [
+  # ban-char-field: char(3) is the DELIBERATE fixed-length type for ISO-4217 currency codes; the file
+  # is applied/frozen (unfixable). The rule itself stays ON to catch accidental char() in future
+  # migrations (it is the one widening finding with real forward value).
+  "packages/finance/db/migrations/V011__reserve_entries_native_currency.sql",
+  # ban-drop-constraint (new in squawk 2.70): core V014 REPLACES the advisor_plans uniqueness constraint
+  # (drop old + add the person-scoped one in the same transaction) — deliberate, applied/frozen. The rule stays
+  # ON: silently dropping a guarantee in a future migration is exactly what it should catch.
+  "packages/core/db/migrations/V014__advisor_plans_person_id.sql",
+  # changing-column-type: finance V013 widens depot_holdings.average_purchase_price numeric(12,4) -> (20,8)
+  # (Audit Paket 2: Mini-Kurse < 0.0001 wurden zu 0). Deliberate; the table rewrite under ACCESS EXCLUSIVE is
+  # trivial (one row per security, single-user). The rule stays ON for every other migration.
+  "packages/finance/db/migrations/V013__widen_holding_avg_price.sql",
+]

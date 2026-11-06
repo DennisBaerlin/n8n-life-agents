@@ -1,0 +1,365 @@
+{
+    "id":  "Kc7rT2wLq9XpM4vB",
+    "name":  "core.sub_send_cost_report",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -840,
+                                       0
+                                   ],
+                      "id":  "428c1e40-ddb4-5f2d-b903-5d6b90223b71",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_texts(l.lang, ARRAY[\u0027core.cost.title\u0027,\u0027core.cost.d7\u0027,\u0027core.cost.change\u0027,\u0027core.cost.d30\u0027,\u0027core.cost.coverage\u0027,\u0027core.cost.by_workflow\u0027,\u0027core.cost.by_model\u0027,\u0027core.cost.col_7\u0027,\u0027core.cost.col_30\u0027,\u0027core.cost.other\u0027,\u0027core.cost.kinds\u0027,\u0027core.cost.kind.input\u0027,\u0027core.cost.kind.cache_write\u0027,\u0027core.cost.kind.cache_read\u0027,\u0027core.cost.kind.output\u0027,\u0027core.cost.kind.web_search\u0027,\u0027core.cost.kind.keepalive\u0027,\u0027core.cost.insights\u0027,\u0027core.cost.cold_starts\u0027,\u0027core.cost.top_day\u0027,\u0027core.cost.cache_hit\u0027,\u0027core.cost.unpriced\u0027,\u0027core.cost.footer\u0027,\u0027core.cost.empty\u0027,\u0027core.cost.load_failed\u0027,\u0027core.toast.owner_only\u0027]::text[]) AS t, (SELECT u.locale FROM core.ui_languages u WHERE u.code = l.lang) AS locale, (SELECT COALESCE(jsonb_object_agg(s.key, s.text), \u0027{}\u0027::jsonb) FROM (SELECT DISTINCT ON (x.key) x.key, x.text FROM core.ui_texts x WHERE x.key LIKE \u0027%.wf.%\u0027 AND x.lang IN (l.lang, \u0027en\u0027) ORDER BY x.key, (x.lang = l.lang) DESC) s) AS wf_labels FROM (SELECT agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027 AS lang) l;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -620,
+                                       0
+                                   ],
+                      "id":  "c563cb65-40f7-5322-a808-ea365312a697",
+                      "name":  "Read texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_import_llm_usage(\u0027{\"rows\":[]}\u0027::jsonb)-\u003e\u003e\u0027after\u0027 AS after, COALESCE(agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027role\u0027, \u0027\u0027) = \u0027owner\u0027 AS is_owner;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -400,
+                                       0
+                                   ],
+                      "id":  "92b76a94-ad1a-5580-8ed4-c12b7b9fa2a1",
+                      "name":  "Read cursor",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f80c8a87-4ec0-562a-9735-c57d8e615542",
+                                                                                   "leftValue":  "={{ $json.is_owner === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -290,
+                                       0
+                                   ],
+                      "id":  "c77e4c76-5c93-5733-8888-50ffdf682648",
+                      "name":  "Owner?"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://127.0.0.1:8090/__usage",
+                                         "sendQuery":  true,
+                                         "queryParameters":  {
+                                                                 "parameters":  [
+                                                                                    {
+                                                                                        "name":  "after",
+                                                                                        "value":  "={{ $json.after || \u0027\u0027 }}"
+                                                                                    },
+                                                                                    {
+                                                                                        "name":  "limit",
+                                                                                        "value":  "5000"
+                                                                                    }
+                                                                                ]
+                                                             },
+                                         "options":  {
+                                                         "timeout":  30000,
+                                                         "pagination":  {
+                                                                            "pagination":  {
+                                                                                               "paginationMode":  "updateAParameterInEachRequest",
+                                                                                               "parameters":  {
+                                                                                                                  "parameters":  [
+                                                                                                                                     {
+                                                                                                                                         "type":  "qs",
+                                                                                                                                         "name":  "after",
+                                                                                                                                         "value":  "={{ $response.body.next_after }}"
+                                                                                                                                     }
+                                                                                                                                 ]
+                                                                                                              },
+                                                                                               "paginationCompleteWhen":  "other",
+                                                                                               "completeExpression":  "={{ $response.body.has_more !== true }}",
+                                                                                               "limitPagesFetched":  true,
+                                                                                               "maxRequests":  40
+                                                                                           }
+                                                                        }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -180,
+                                       0
+                                   ],
+                      "id":  "86291880-626b-584f-b610-09b74b49e14d",
+                      "name":  "Fetch usage",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_import_llm_usage(jsonb_build_object(\u0027rows\u0027, ($1::jsonb)-\u003e\u0027rows\u0027)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ rows: (Array.isArray($json.rows) ? $json.rows : []) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       40,
+                                       0
+                                   ],
+                      "id":  "9cd99b17-f823-5de4-b05f-37aef878a504",
+                      "name":  "Import usage",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_get_llm_cost_report(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)) AS rep;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).first().json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       260,
+                                       0
+                                   ],
+                      "id":  "3d42c043-6bf1-5544-868c-2e893a9081ab",
+                      "name":  "Read report",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const NL = String.fromCharCode(10);\nconst parse = (v) =\u003e { if (typeof v === \u0027string\u0027) { try { return JSON.parse(v); } catch (e) { return {}; } } return v || {}; };\nconst TX = $(\u0027Read texts\u0027).first().json || {};\nconst T = parse(TX.t);\nconst WL = parse(TX.wf_labels);\nconst loc = TX.locale || \u0027en-GB\u0027;\nconst tx = (k, p) =\u003e { let s = String(T[k] || k); for (const n of Object.keys(p || {})) { s = s.split(\u0027{\u0027 + n + \u0027}\u0027).join(String(p[n])); } return s; };\nconst esc = (s) =\u003e String(s).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nconst chat = $(\u0027Start\u0027).first().json.chat_id;\nconst rep = parse($json.rep);\nif (rep.ok !== true) {\n  return [{ json: { text: esc(rep.reason === \u0027owner_only\u0027 ? tx(\u0027core.toast.owner_only\u0027) : tx(\u0027core.cost.load_failed\u0027)), chat_id: chat } }];\n}\nconst usd = (v) =\u003e Number(v || 0).toLocaleString(loc, { style: \u0027currency\u0027, currency: \u0027USD\u0027, currencyDisplay: \u0027narrowSymbol\u0027, minimumFractionDigits: 2, maximumFractionDigits: 2 });\nconst num = (v) =\u003e Number(v || 0).toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 });\nconst day = (d) =\u003e { const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(d || \u0027\u0027)); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, { timeZone: \u0027UTC\u0027, year: \u0027numeric\u0027, month: \u00272-digit\u0027, day: \u00272-digit\u0027 }) : String(d || \u0027\u0027); };\nconst lines = [String.fromCodePoint(0x1F4B0) + \u0027 \u003cb\u003e\u0027 + esc(tx(\u0027core.cost.title\u0027)) + \u0027\u003c/b\u003e\u0027, \u0027\u0027];\nif (!rep.data_since) {\n  lines.push(esc(tx(\u0027core.cost.empty\u0027)));\n  return [{ json: { text: lines.join(NL), chat_id: chat } }];\n}\nconst P7 = (rep.periods || {}).d7 || {}, P30 = (rep.periods || {}).d30 || {};\nlet l7 = tx(\u0027core.cost.d7\u0027, { total: usd(P7.total_usd), avg: usd(P7.avg_per_day_usd) });\nif (typeof P7.change_pct === \u0027number\u0027) { l7 += \u0027 · \u0027 + tx(\u0027core.cost.change\u0027, { pct: (P7.change_pct \u003e 0 ? \u0027+\u0027 : \u0027\u0027) + P7.change_pct }); }\nlines.push(esc(l7));\nlines.push(esc(tx(\u0027core.cost.d30\u0027, { total: usd(P30.total_usd), projected: usd(P30.projected_month_usd) })));\nif (Number(P30.days_covered) \u003c 30) { lines.push(\u0027\u003ci\u003e\u0027 + esc(tx(\u0027core.cost.coverage\u0027, { date: day(rep.data_since), days: P30.days_covered })) + \u0027\u003c/i\u003e\u0027); }\n// Tabellen in \u003cpre\u003e (Festbreite, Handy ~32 Zeichen): Name 15, 7 Tage 7, 30 Tage 8, je ein fester Abstand dazwischen\n// (sonst kleben grosse Betraege aneinander)\nconst cut = (s, n) =\u003e { s = String(s); return s.length \u003e n ? s.slice(0, n - 1) + \u0027.\u0027 : s + \u0027 \u0027.repeat(n - s.length); };\nconst lp = (s, n) =\u003e { s = String(s); return \u0027 \u0027.repeat(Math.max(0, n - s.length)) + s; };\nconst row = (a, b, c) =\u003e cut(a, 15) + \u0027 \u0027 + lp(b, 7) + \u0027 \u0027 + lp(c, 8);\nconst table = (title, rows) =\u003e {\n  const out = [row(title, tx(\u0027core.cost.col_7\u0027), tx(\u0027core.cost.col_30\u0027))];\n  for (const r of rows) { out.push(row(r.label, num(r.d7), num(r.d30))); }\n  return \u0027\u003cpre\u003e\u0027 + esc(out.join(NL)) + \u0027\u003c/pre\u003e\u0027;\n};\nconst WLS = {}; for (const k of Object.keys(WL)) { const i = k.indexOf(\u0027.wf.\u0027); if (i \u003e 0) { WLS[k.slice(i + 4)] = WL[k]; } }\nconst wfLabel = (w) =\u003e { const s = String(w || \u0027\u0027).replace(/^(agent|core)\\./, \u0027\u0027).replace(/[.-]/g, \u0027_\u0027); return WLS[s] || s; };\nconst modelLabel = (m) =\u003e { const s = String(m || \u0027\u0027).replace(/^claude-/, \u0027\u0027).replace(/-(\\d+)-(\\d+)$/, \u0027 $1.$2\u0027).replace(/-(\\d+)$/, \u0027 $1\u0027); return s.charAt(0).toUpperCase() + s.slice(1); };\nconst wfRows = (Array.isArray(rep.by_workflow) ? rep.by_workflow : []).map((r) =\u003e ({ label: r.other ? tx(\u0027core.cost.other\u0027) : wfLabel(r.workflow), d7: r.usd_d7, d30: r.usd_d30 }));\nconst mRows = (Array.isArray(rep.by_model) ? rep.by_model : []).map((r) =\u003e ({ label: modelLabel(r.model), d7: r.usd_d7, d30: r.usd_d30 }));\nif (wfRows.length) { lines.push(\u0027\u0027, table(tx(\u0027core.cost.by_workflow\u0027), wfRows)); }\nif (mRows.length) { lines.push(table(tx(\u0027core.cost.by_model\u0027), mRows)); }\nconst kinds = (Array.isArray(rep.kinds_d7) ? rep.kinds_d7 : []).filter((k) =\u003e Number(k.usd) \u003e 0);\nif (kinds.length) {\n  lines.push(\u0027\u003cb\u003e\u0027 + esc(tx(\u0027core.cost.kinds\u0027)) + \u0027\u003c/b\u003e\u0027);\n  lines.push(esc(kinds.map((k) =\u003e tx(\u0027core.cost.kind.\u0027 + k.kind) + \u0027 \u0027 + k.pct + \u0027 %\u0027).join(\u0027 · \u0027)));\n}\nconst I = rep.insights || {};\nconst ins = [];\nif (Number(I.cold_starts_d7) \u003e 0) { ins.push(tx(\u0027core.cost.cold_starts\u0027, { n: I.cold_starts_d7, usd: usd(I.cold_start_usd_d7) })); }\nif (I.top_day) { ins.push(tx(\u0027core.cost.top_day\u0027, { date: day(I.top_day), usd: usd(I.top_day_usd) })); }\nif (typeof I.cache_hit_pct_d7 === \u0027number\u0027) { ins.push(tx(\u0027core.cost.cache_hit\u0027, { pct: I.cache_hit_pct_d7 })); }\nif (Number(P30.unpriced_requests) \u003e 0) { ins.push(tx(\u0027core.cost.unpriced\u0027, { n: P30.unpriced_requests })); }\nif (ins.length) {\n  lines.push(\u0027\u0027, String.fromCodePoint(0x1F4A1) + \u0027 \u003cb\u003e\u0027 + esc(tx(\u0027core.cost.insights\u0027)) + \u0027\u003c/b\u003e\u0027);\n  for (const s of ins) { lines.push(\u0027• \u0027 + esc(s)); }\n}\nlines.push(\u0027\u0027, \u0027\u003ci\u003e\u0027 + esc(tx(\u0027core.cost.footer\u0027)) + \u0027\u003c/i\u003e\u0027);\nreturn [{ json: { text: lines.join(NL), chat_id: chat } }];",
+                                         "mode":  "runOnceForAllItems"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       480,
+                                       0
+                                   ],
+                      "id":  "a8d0a89e-ff9f-5462-affc-54c7bd89884c",
+                      "name":  "Build message"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ $json.text }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       700,
+                                       0
+                                   ],
+                      "id":  "c63218e5-4b06-592b-83ca-2d281ccecad9",
+                      "name":  "Send cost report",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_send_cost_report — /costs + /kosten: KI-Kosten der letzten 7 und 30 Tage (deterministisch, kein LLM)**\n\nStart (chat_id) -\u003e Read texts (Texte + Locale in der Sprache des Betrachters über core.fn_ui_texts + Sprach-Kette, dazu alle Anzeige-Namen \u003cpkg\u003e.wf.\u003ckurzname\u003e; core_ro, fail-open) -\u003e Read cursor (core.fn_import_llm_usage mit rows:[] liefert nur den Cursor after = jüngste Zeile bis jetzt minus 10 Min, Überlappung gegen Uhr-Sprünge; dazu die Rolle des Absenders) -\u003e Owner? (nur der Owner löst Abruf + Import aus; ein Mitglied geht direkt zu Read report und bekommt dort den Owner-only-Hinweis) -\u003e Fetch usage (GET 127.0.0.1:8090/__usage?after=..\u0026limit=5000 am lokalen LLM-Gateway, Pagination über next_after bis has_more=false, höchstens 40 Seiten; Gateway nicht erreichbar -\u003e weiter mit dem DB-Stand) -\u003e Import usage (je Seite core.fn_import_llm_usage: idempotent über id, ungültige Zeilen übersprungen, Retention 13 Monate) -\u003e Read report (core.fn_get_llm_cost_report, einmal, core_ro: Owner-Gate in der DB, alle Beträge aus agent.ai_models.pricing_usd_per_mtok, Tage in Haushalts-Zeitzone, Kaltstarts, teuerster Tag, Cache-Trefferquote) -\u003e Build message (nur Formatierung: Intl-Zahlen/-Daten im Locale, Tabellen je Assistent und Modell als \u003cpre\u003e, Kostenarten in Prozent, Auffälligkeiten; jeder DB-Wert HTML-escapt; Mitglied -\u003e core.toast.owner_only, Lesefehler -\u003e core.cost.load_failed, noch keine Daten -\u003e core.cost.empty) -\u003e Send cost report (ein HTML-Send; feste, kurze Form, daher keine Relay-Kette). Die Gateway-Mitschrift kennt den Workflow über eine konstante Kennzeile in der System-Nachricht (Add-LlmWorkflowTag) bzw. den Header x-lifeagents-workflow; der Gateway entfernt beides vor dem Weiterleiten.",
+                                         "height":  420,
+                                         "width":  820,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -860,
+                                       -420
+                                   ],
+                      "id":  "6a326eb3-40f4-56f1-b788-660173ef4cb0",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read texts",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read texts":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Read cursor",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Read cursor":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Owner?",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Owner?":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Fetch usage",
+                                                            "type":  "main"
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Read report",
+                                                            "type":  "main"
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Fetch usage":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Import usage",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Import usage":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Read report",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Read report":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build message",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build message":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Send cost report",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

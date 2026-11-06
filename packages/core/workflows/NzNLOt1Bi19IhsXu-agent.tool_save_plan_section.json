@@ -1,0 +1,554 @@
+{
+    "id":  "NzNLOt1Bi19IhsXu",
+    "name":  "agent.tool_save_plan_section",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "section_key"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "section_content"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "section_data"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "plan_name"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "89faeda7-4172-5047-bf53-1f7fd15cf139",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027agent.fn_advisor_save_section(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, section_key: $(\u0027Start\u0027).item.json.section_key, section_content: $(\u0027Start\u0027).item.json.section_content, section_data: $(\u0027Start\u0027).item.json.section_data, plan_name: $(\u0027Start\u0027).item.json.plan_name, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "24f3f4b0-edc6-58d2-a058-44d0a9f947e4",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d3413f77-a284-5cd3-8a43-dc9c2495c7b2",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "ebba4fbf-7c16-5356-83e4-0ae7614698c4",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "43c0a20e-dbfd-5943-9a9d-b566d5066562",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "dffdfac9-fdae-5aa4-802c-bee562266da3",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bd8c0143-847e-5b1a-a072-f90a31b8a026",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "28a70e6c-f09d-5179-9114-8c809e64deaf",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "abf17734-fd70-5546-8c40-b5bcc9031489",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "ecc0ae84-4679-5619-8adc-adae88a54801",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027plan_id\u0027)::int AS plan_id, (r-\u003e\u003e\u0027version\u0027)::int AS version, (r-\u003e\u003e\u0027draft_created\u0027)::boolean AS draft_created, (r-\u003e\u003e\u0027section_count\u0027)::int AS section_count, (r-\u003e\u0027sections\u0027)::text AS sections FROM agent.fn_advisor_save_section(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, section_key: $(\u0027Start\u0027).item.json.section_key, section_content: $(\u0027Start\u0027).item.json.section_content, section_data: $(\u0027Start\u0027).item.json.section_data, plan_name: $(\u0027Start\u0027).item.json.plan_name, chat_id: $(\u0027Start\u0027).item.json.chat_id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "8c1049e8-6de6-5052-99af-bfa777582eec",
+                      "name":  "Save section (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8613bb78-d133-5481-bbca-e682025b3de6",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027core.hitl.save_plan_section\u0027, title_params: { plan: ({ kind: \u0027key\u0027, value: (String($(\u0027Start\u0027).item.json.domain || \u0027\u0027).replace(/^__e2e_(.+)__$/, \u0027$1\u0027) + \u0027.plan.name\u0027), fallback: (String($(\u0027Start\u0027).item.json.domain || \u0027\u0027).replace(/^__e2e_(.+)__$/, \u0027$1\u0027).replace(/_/g, \u0027 \u0027)) }), section: ({ kind: \u0027key\u0027, value: (String($(\u0027Start\u0027).item.json.domain || \u0027\u0027).replace(/^__e2e_(.+)__$/, \u0027$1\u0027) + \u0027.plan_section.\u0027 + String($(\u0027Start\u0027).item.json.section_key || \u0027\u0027)), fallback: (String($(\u0027Start\u0027).item.json.section_key || \u0027\u0027).replace(/_/g, \u0027 \u0027)) }) }, repeat_key: (String($(\u0027Start\u0027).item.json.domain || \u0027\u0027) + \u0027:\u0027 + String($(\u0027Start\u0027).item.json.section_key || \u0027\u0027)), lines: [ (($(\u0027Start\u0027).item.json.plan_name) ? { label: \u0027core.label.plan\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.plan_name) } : null), { kind: \u0027body\u0027, value: ((String($(\u0027Start\u0027).item.json.section_content || \u0027\u0027).replace(/[*_#`]/g, \u0027\u0027).trim() || String($(\u0027Start\u0027).item.json.section_content || \u0027\u0027))) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "fc3c72c4-c771-5bbd-b642-e07ac427de70",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_only"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "2233e671-3f7d-5c72-b69d-3aa71ef86307",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d95378a3-fdff-5bda-b630-0058326b1a83",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "93498a0d-7dcc-5057-80d7-be95fb0c3a18",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "50ac60e7-cdb7-5e6c-864e-490439e233e3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5575f6ba-f03b-5ca8-a961-eaba06083923",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d77af43f-8477-5b86-9bf7-a53a43090a1e",
+                                                                                     "name":  "message",
+                                                                                     "value":  "={{ $json.repeat_blocked === true ? \u0027The same confirmation card for the save_plan_section action was already not confirmed in this turn, no new card was sent. Nothing was saved. Do NOT call this tool again in this turn. Answer the user now, based on the earlier result.\u0027 : $json.reason === \u0027owner_only\u0027 ? \u0027Only the household owner may do the save_plan_section action; no card was sent. Nothing was saved. Do NOT call this tool again in this turn. Tell the user only the owner can do this.\u0027 : ({ declined: \u0027The user tapped the cancel button on the confirmation card for the save_plan_section action. Nothing was saved. Do NOT call this tool again in this turn. This was their decision, not an error: say it was cancelled and ask what to change, if anything.\u0027, expired: \u0027The confirmation card for the save_plan_section action expired: nobody tapped a button within the time limit, so nobody declined it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the card ran out of time, not that they cancelled it, and ask whether to send it again.\u0027, owner_declined: \u0027The household owner declined the confirmation card for the save_plan_section action after the user had confirmed it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the owner declined it; the user did not cancel it.\u0027, owner_expired: \u0027The household owner did not answer the confirmation card for the save_plan_section action within the time limit; the user had already confirmed it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the owner did not answer in time and ask whether to send it again.\u0027 })[$json.outcome] || \u0027The confirmation card for the save_plan_section action was not confirmed. Nothing was saved. Do NOT call this tool again in this turn. Tell the user it was not confirmed and ask whether to try again or what to change.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       200
+                                   ],
+                      "id":  "2d9de265-69eb-5ec7-923f-d099820e9cde",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "65aa0a71-83af-5195-99de-7c24d66cb2ec",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "9adfc443-22a9-5d1c-8d6e-3407f99f0804",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1caff52e-b134-58e8-aa79-34aae6bb1d13",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "609abe2b-9116-5b08-b9d4-f2bf65516177",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Save section (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       200
+                                   ],
+                      "id":  "30056f49-3f4e-5bde-840e-539a41e62d70",
+                      "name":  "Save rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "afe1946e-f371-51af-88b1-bf1f48f2c57a",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cbb3ecf7-7782-5c3f-986e-b21dac4bc674",
+                                                                                     "name":  "plan_id",
+                                                                                     "value":  "={{ $json.plan_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "58f35aa0-2b9a-5c5a-8e2b-c7175f9e1b05",
+                                                                                     "name":  "version",
+                                                                                     "value":  "={{ $json.version }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b0787afe-b960-571b-9c6f-a4b8a769a270",
+                                                                                     "name":  "draft_created",
+                                                                                     "value":  "={{ $json.draft_created }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7468857b-47f6-5b14-886f-0083c91046f9",
+                                                                                     "name":  "section_count",
+                                                                                     "value":  "={{ $json.section_count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5a6b7b45-5ad3-56e6-a9bc-a3f6cf626c90",
+                                                                                     "name":  "sections",
+                                                                                     "value":  "={{ $json.sections }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "47e871fb-b375-53a3-8518-505e988b4154",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**HITL + agent.fn_advisor_save_section (atomar)**\n\nCross-agent (domain = fixer Binding-Input des Aufrufers, nie $fromAI). fn_advisor_save_section: findet/erzeugt den EINEN Draft je (Domain, Person) (Partial-UNIQUE NULLS NOT DISTINCT = DB-Gesetz; version = MAX+1, DB zählt) und upsertet die Sektion in interview_state. P0c PERSON-SCOPE: household (finance) -\u003e person_id NULL; per_user (career, core.context_scopes) -\u003e person_id = Sender (own_user_only) aus chat_id (fn_resolve_sender, NIE LLM); Permission via fn_check_write_permission (owner_only delegiert byte-gleich an fn_sender_is_member). Dry run = dieselbe fn VOR der Karte, immer zurückgerollt (core.fn_dry_run). Korrigierbar (leerer key/content, invalides section_data-JSON, unaufgelöster per_user-Sender) -\u003e {ok:false, reason} -\u003e Dry run rejected: KEINE Karte, reason an den Berater. Leeres section_data zählt als nicht angegeben. Der echte Write prüft erneut, Write ok? reicht reason als Tool-Error. KARTE: Titel mit Plan- und Abschnittsname aus dem Textkatalog des Plan-Pakets (\u003cdomain\u003e.plan.name, \u003cdomain\u003e.plan_section.\u003csection_key\u003e; die E2E-Domain zeigt die Namen des echten Plans, ohne Eintrag der Schlüssel mit Leerzeichen, contract_lint 28), darunter der GANZE Text ohne die Zeichen * _ # und Backtick (Zeilenart body, lange Texte in Teilen, nichts gekürzt). Gespeichert wird der Text wie geliefert, er unterscheidet sich von der Karte nur um diese Zeichen; section_data (die Zahlen der Abschnitte mit Block) steht bewusst nicht auf der Karte. WIEDERHOL-SPERRE: repeat_key = Domain + Abschnitt, weil das Modell den Text je Aufruf neu formuliert; nach Abbrechen kommt für denselben Abschnitt im selben Lauf keine Karte mehr (Gate), Return cancelled sagt dem Modell, dass es antworten soll.",
+                                         "height":  340,
+                                         "width":  660,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -300
+                                   ],
+                      "id":  "5d1fda5a-9053-5a0b-b8c9-98887508af5b",
+                      "name":  "Doc Save Section"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Dry run",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Save section (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Save section (atomic)":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Write ok?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Save rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

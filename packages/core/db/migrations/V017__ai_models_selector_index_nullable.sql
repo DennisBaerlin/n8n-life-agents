@@ -1,0 +1,12 @@
+-- V017: agent.ai_models.selector_index nullable machen (paperless WS-0, Naht 2).
+-- Embedding-Modelle (erster Fall: gemini-embedding-001) sind Modelle OHNE Selector-Platz —
+-- sie haengen nie am modelSelector-Node (der verdrahtet nur Chat-Modelle), muessen aber in der
+-- Registry stehen, damit der core.config-Modell-Trigger (trg_config_check_model_value) ihre
+-- model_keys akzeptiert. NULL = kein Selector-Platz; UNIQUE bleibt (NULLs kollidieren nicht),
+-- CHECK (>= 1) laesst NULL durch. Build-Seite: New-ModelSelectorBundle filtert NULL-Zeilen
+-- (scripts/build/lib/build_helpers.ps1). Frische DBs tragen den Endzustand direkt im Init
+-- (agent.ai_models_init.sql ohne NOT NULL) -> dieser ALTER ist dort ein harmloser No-op.
+-- (ban-drop-not-null: bewusste Per-Datei-Ausnahme in config/.squawk.toml — kein Client liest
+--  selector_index als NOT-NULL-Garantie; die einzigen Konsumenten sind der Selector-Build
+--  [filtert NULL seit diesem Commit] und der config-Trigger [prueft nur model_key].)
+ALTER TABLE agent.ai_models ALTER COLUMN selector_index DROP NOT NULL;

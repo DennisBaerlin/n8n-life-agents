@@ -1,0 +1,572 @@
+{
+    "id":  "Rf7pQ2nWx8LkT3aZ",
+    "name":  "core.sub_onboarding_progress",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "package"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "area_completed_now"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "area_all_skipped"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "50f57701-85cf-5dd9-9435-5e8b29d5243d",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "627d51e0-1a38-56c5-a7cd-4edc7c89153d",
+                                                                                   "leftValue":  "={{ String($json.area_completed_now) === \u0027true\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "9d53bd73-c4b4-5f2b-9bb8-60f310447cc9",
+                      "name":  "Area done?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -660,
+                                       200
+                                   ],
+                      "id":  "407cd621-c476-5ece-bcc4-5c3f27246f46",
+                      "name":  "Nothing to do"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_onboarding_progress_event($1::jsonb)::text AS ev, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027core.offer.learning\u0027,\u0027core.offer.btn_learning\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), package: String($(\u0027Start\u0027).item.json.package || \u0027\u0027), area_completed_now: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "47f46757-b386-5df9-8ded-aceb77894ae0",
+                      "name":  "Progress event",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "ro7HT6tcwiRNCBhb",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/ro7HT6tcwiRNCBhb",
+                                                            "cachedResultName":  "core.sub_send_onboarding_menu"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "area":  "",
+                                                                              "done_area":  "={{ $(\u0027Start\u0027).item.json.package }}",
+                                                                              "done_mode":  "={{ (JSON.parse($(\u0027Progress event\u0027).item.json.ev || \u0027{}\u0027).send_all_done === true) ? \u0027all\u0027 : ((String($(\u0027Start\u0027).item.json.area_all_skipped) === \u0027true\u0027) ? \u0027skipped\u0027 : \u0027done\u0027) }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "32b1cf56-a6b7-5c3d-8fa0-55a6f3de3fcd",
+                      "name":  "Send progress card",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "53f7be9e-290e-5687-99d3-a98980cfd7e4",
+                                                                                   "leftValue":  "={{ JSON.parse($(\u0027Progress event\u0027).item.json.ev || \u0027{}\u0027).send_learn_offer === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -220,
+                                       0
+                                   ],
+                      "id":  "d23f6830-b4d2-59e9-81a7-c51aafe2eca6",
+                      "name":  "Learn offer?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Start\u0027).item.json.chat_id) }}",
+                                         "text":  "={{ (String((($(\u0027Progress event\u0027).item.json.t) || {})[\u0027core.offer.learning\u0027] || \u0027core.offer.learning\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Progress event\u0027).item.json.t) || {})[\u0027core.offer.btn_learning\u0027] || \u0027core.offer.btn_learning\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_on:learn_context"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       0,
+                                       -160
+                                   ],
+                      "id":  "4c5da569-19ca-5ac7-9bf2-b71e8b76272f",
+                      "name":  "Offer learning",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "465b79f3-725d-5ee6-8c6e-307f100af770",
+                                                                                   "leftValue":  "={{ (JSON.parse($(\u0027Progress event\u0027).item.json.ev || \u0027{}\u0027).member_chats || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       110,
+                                       0
+                                   ],
+                      "id":  "a0e1166d-a1b2-53ce-9a73-032a87449364",
+                      "name":  "Members?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       330,
+                                       200
+                                   ],
+                      "id":  "3b760264-d9e9-5414-8f41-71b2499269a4",
+                      "name":  "No members"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let ev = {};\ntry { ev = JSON.parse($(\u0027Progress event\u0027).first().json.ev || \u0027{}\u0027); } catch (e) { ev = {}; }\nconst chats = Array.isArray(ev.member_chats) ? ev.member_chats : [];\nreturn chats.map(c =\u003e ({ json: { chat_id: String(c), have_areas: ev.members_have_areas === true } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "8b1c8973-0886-5aaa-8e90-34fc4f79f603",
+                      "name":  "Split members"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027core.onboarding.ready.member\u0027,\u0027core.onboarding.ready.member_areas\u0027,\u0027core.onboarding.ready.btn_areas\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "f84150a3-9813-5612-99b3-597036ed531d",
+                      "name":  "Load member texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5158b9fc-f5b0-518a-b6f8-9593b7ac3b94",
+                                                                                   "leftValue":  "={{ $(\u0027Split members\u0027).item.json.have_areas === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "ef2a19f4-31e8-5e29-b796-ccb19dcf8e6b",
+                      "name":  "Has own areas?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Split members\u0027).item.json.chat_id) }}",
+                                         "text":  "={{ (String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.onboarding.ready.member\u0027] || \u0027core.onboarding.ready.member\u0027) + \u0027\\n\\n\u0027 + String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.onboarding.ready.member_areas\u0027] || \u0027core.onboarding.ready.member_areas\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.onboarding.ready.btn_areas\u0027] || \u0027core.onboarding.ready.btn_areas\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "onboarding:_area:"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       -120
+                                   ],
+                      "id":  "7dc78752-0c79-5ead-a2db-a2e61e457656",
+                      "name":  "Send member ready (areas)",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Split members\u0027).item.json.chat_id) }}",
+                                         "text":  "={{ (String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.onboarding.ready.member\u0027] || \u0027core.onboarding.ready.member\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       120
+                                   ],
+                      "id":  "b56461c8-a5ca-5cfb-96eb-bb5d4733aacb",
+                      "name":  "Send member ready",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_onboarding_progress — nächste Karte nach einem Onboarding-Schritt (deterministisch, kein LLM)**\n\nGerufen von jedem tool_set_onboarding_section (core/finance/career/estate) über den Dienst core:onboarding_progress, fire-and-forget. Area done? = core.fn_set_onboarding_section meldete area_completed_now (der Schritt hat einen Bereich geschlossen; unter Advisory-Lock genau einmal je Übergang). Progress event = core.fn_onboarding_progress_event (DEFINER): Latches all_done:\u003cpid\u003e (re-armt, sobald wieder etwas offen ist) und household_ready (genau einmal überhaupt) in core.notification_state, Lern-Angebot nur Owner + Lernen aus. Send progress card = das Onboarding-Menü mit Kopfzeile (done_mode done/skipped/all) und dem Weiter-Knopf auf den nächsten offenen Abschnitt. Offer learning = cron_on:learn_context (zog aus agent.guide.tool_set_onboarding_section hierher: das Angebot kommt jetzt am Ende ALLER Bereiche und nur einmal). Members? (keine -\u003e No members, Lauf endet mit Item) -\u003e Split members -\u003e je gepairtem Mitglied Es kann losgehen in seiner Sprache, mit Knopf onboarding:_area: wenn ein aktives per_user-Paket existiert. Jeder Send onError=continue: ein Telegram-Fehler darf den Onboarding-Schritt nie stören (der Agent und /onboarding bleiben der Rückweg).",
+                                         "height":  400,
+                                         "width":  820,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -400
+                                   ],
+                      "id":  "db923f2d-b36a-5073-be01-9ba70bbf6627",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Area done?",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Area done?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Progress event",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Nothing to do",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Progress event":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send progress card",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Send progress card":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Learn offer?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Learn offer?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Offer learning",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Members?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Offer learning":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Members?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Members?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Split members",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "No members",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Split members":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Load member texts",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Load member texts":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Has own areas?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Has own areas?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send member ready (areas)",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send member ready",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

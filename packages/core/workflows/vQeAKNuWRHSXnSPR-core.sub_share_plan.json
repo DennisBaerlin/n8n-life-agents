@@ -1,0 +1,457 @@
+{
+    "id":  "vQeAKNuWRHSXnSPR",
+    "name":  "core.sub_share_plan",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "version"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "aa8dd351-8e1b-596a-a09d-f84d90356cca",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_plan_share_targets($1::jsonb)::text AS r, core.fn_config_get(\u0027core\u0027,\u0027cron_enable\u0027,\u0027plan_news\u0027) AS kill_switch;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), version: String($(\u0027Start\u0027).item.json.version || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "6fdd6ed5-b4f9-568f-9732-d94c55bea261",
+                      "name":  "Load targets",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let r = {};\ntry { r = JSON.parse($(\u0027Load targets\u0027).first().json.r || \u0027{}\u0027); } catch (e) { r = {}; }\nconst t = Array.isArray(r.targets) ? r.targets : [];\nif (r.ok !== true || t.length === 0) { return [{ json: { skip: true } }]; }\nreturn t.map(x =\u003e ({ json: { skip: false, person_id: String(x.person_id), chat_id: String(x.chat_id), lang: String(x.lang || \u0027\u0027),\n  show_summary: x.show_summary === true, summary: String(r.summary || \u0027\u0027), version: Number(r.version), package: String(r.package || \u0027\u0027),\n  domain: String($(\u0027Start\u0027).first().json.domain || \u0027\u0027) } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "589c5c11-d748-5bfd-afcd-c3ff1bbedee8",
+                      "name":  "Split targets"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ad8c469d-b745-5963-adda-190715399ba0",
+                                                                                   "leftValue":  "={{ $json.skip !== true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "c9b003b2-f249-5fef-8538-2d8b54319602",
+                      "name":  "Has targets?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_texts(NULLIF(($1::jsonb)-\u003e\u003e\u0027lang\u0027, \u0027\u0027), ARRAY[\u0027core.plan_share.member_title\u0027,\u0027core.plan_share.member_summary\u0027,\u0027core.plan_share.member_other_lang\u0027,\u0027core.plan_share.btn_explain\u0027,\u0027core.plan_share.btn_wish\u0027,\u0027core.plan_share.btn_stop\u0027,\u0027career.package.name\u0027,\u0027finance.package.name\u0027]::text[]) AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ lang: String($json.lang || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -220,
+                                       -120
+                                   ],
+                      "id":  "90cddea1-c066-5694-acfe-c84cba3dff15",
+                      "name":  "Load member texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Split targets\u0027).item.json.chat_id) }}",
+                                         "text":  "={{ (String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.plan_share.member_title\u0027] || \u0027core.plan_share.member_title\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027area\u0027: ((($(\u0027Load member texts\u0027).item.json.t || {})[$(\u0027Split targets\u0027).item.json.package + \u0027.package.name\u0027] || $(\u0027Split targets\u0027).item.json.package)), \u0027version\u0027: ($(\u0027Split targets\u0027).item.json.version) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) + \u0027\\n\\n\u0027 + ($(\u0027Split targets\u0027).item.json.show_summary ? String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.plan_share.member_summary\u0027] || \u0027core.plan_share.member_summary\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027summary\u0027: ($(\u0027Split targets\u0027).item.json.summary) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.plan_share.member_other_lang\u0027] || \u0027core.plan_share.member_other_lang\u0027))).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.plan_share.btn_explain\u0027] || \u0027core.plan_share.btn_explain\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027plan:explain:\u0027 + $(\u0027Split targets\u0027).item.json.domain }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.plan_share.btn_wish\u0027] || \u0027core.plan_share.btn_wish\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027plan:wish:\u0027 + $(\u0027Split targets\u0027).item.json.domain }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Load member texts\u0027).item.json.t) || {})[\u0027core.plan_share.btn_stop\u0027] || \u0027core.plan_share.btn_stop\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "rem:off:plan_news"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       0,
+                                       -120
+                                   ],
+                      "id":  "6ecf1076-d53a-5f18-b15b-0cdaa3880afb",
+                      "name":  "Send plan news",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const sent = $input.all();\nconst targets = $(\u0027Split targets\u0027).all();\nconst delivered = [];\nlet failed = 0;\nsent.forEach((it, i) =\u003e {\n  const j = it.json || {};\n  const pid = String(((targets[i] || {}).json || {}).person_id || \u0027\u0027);\n  if (j.error || j.ok === false || !(j.message_id || (j.result \u0026\u0026 j.result.message_id))) { failed++; }\n  else if (pid) { delivered.push(pid); }\n});\nlet r = {};\ntry { r = JSON.parse($(\u0027Load targets\u0027).first().json.r || \u0027{}\u0027); } catch (e) { r = {}; }\nreturn [{ json: { ok: true, sent: delivered.length, delivered, failed, already: Number(r.already || 0),\n  domain: String($(\u0027Start\u0027).first().json.domain || \u0027\u0027), plan_id: String(r.plan_id || \u0027\u0027) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       220,
+                                       -120
+                                   ],
+                      "id":  "186610ee-c65b-5f63-a16d-ed8f39bfea1c",
+                      "name":  "Collect results"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_plan_share_mark($1::jsonb)::text AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Collect results\u0027).item.json.domain, plan_id: $(\u0027Collect results\u0027).item.json.plan_id, person_ids: $(\u0027Collect results\u0027).item.json.delivered }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       440,
+                                       -120
+                                   ],
+                      "id":  "7cb5ca1c-9877-5f4e-b816-d4a0716231c8",
+                      "name":  "Mark delivered",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "757c2c57-5243-50e6-ac4c-038a174008e2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d96fc765-e968-5aaa-8627-7eed0c6610d8",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).item.json.sent }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d29ec69c-28ac-5e5e-907a-585ed4a53d23",
+                                                                                     "name":  "failed",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).item.json.failed }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1db2474a-0b70-5d3a-b6ec-1c06b5ce2bbc",
+                                                                                     "name":  "already",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).item.json.already }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fa894940-70d1-5029-b9bf-306495eb784b",
+                                                                                     "name":  "none",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "57def1e5-42a7-5258-beb0-a25f0f5c8944",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -120
+                                   ],
+                      "id":  "fe9379c1-53ac-54f7-ba97-ff52466048cf",
+                      "name":  "Result sent"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1783318e-b54f-533a-bcdb-c27d7e0e0456",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "={{ JSON.parse($(\u0027Load targets\u0027).first().json.r || \u0027{}\u0027).ok === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "79416f7b-ab4e-5649-8b90-b7b717ab4bb8",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "0",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4bd9a949-619e-5a29-9ca3-56beaa8b224e",
+                                                                                     "name":  "failed",
+                                                                                     "value":  "0",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ad9af8db-4d48-542c-84fe-585bb3699d48",
+                                                                                     "name":  "already",
+                                                                                     "value":  "={{ Number(JSON.parse($(\u0027Load targets\u0027).first().json.r || \u0027{}\u0027).already || 0) }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a1cfffd5-284a-5173-95cf-f45b6e96f25a",
+                                                                                     "name":  "none",
+                                                                                     "value":  "={{ JSON.parse($(\u0027Load targets\u0027).first().json.r || \u0027{}\u0027).none === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b21c3ebc-3a6e-5e0a-bab5-888e3a6c0805",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "={{ String(JSON.parse($(\u0027Load targets\u0027).first().json.r || \u0027{}\u0027).reason || \u0027\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -220,
+                                       160
+                                   ],
+                      "id":  "bfdc4ba3-b616-5614-b0f4-d34077e236f6",
+                      "name":  "Result skip"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_share_plan — Erwachsene über einen neuen Haushalts-Plan informieren (deterministisch, kein LLM)**\n\nGerufen vom Orchestrator nach dem Owner-Tipp plan:share:\u003cdomain\u003e:\u003cversion\u003e (core.fn_handle_plan_cb: Owner + aktuelle Version). Load targets = core.fn_plan_share_targets (read-only: prüft Owner/Version erneut, Empfänger-Regel core.fn_plan_adult_recipients: Rolle partner, mit Chat, plan_news nicht abgemeldet inkl. Notschalter; wer für diese plan_id schon gemerkt ist, zählt als already). Split targets -\u003e je Empfänger ein Item (keiner -\u003e Result skip mit already/none/reason für den Owner-Toast). Load member texts = Katalog in der Sprache der PERSON. Send plan news: Titel mit Bereich + Version, darunter die Änderungs-Zusammenfassung NUR wenn die Person die Sprache der gespeicherten Zusammenfassung spricht (show_summary; nie übersetzt), sonst der Hinweis, dass der Berater sie in ihrer Sprache erklärt; Knöpfe plan:explain:\u003cdomain\u003e, plan:wish:\u003cdomain\u003e, rem:off:plan_news (statisch, Abmelden; wieder an per /reminders). onError continue: ein gescheiterter Send stoppt die anderen nicht. Collect results zählt nur zugestellte Nachrichten; Mark delivered = core.fn_plan_share_mark merkt NUR die Zugestellten (Merker plan_news \u003cpid\u003e:\u003cdomain\u003e:p\u003cplan_id\u003e, einmal je Plan-Version) -\u003e Gescheiterte erreicht ein zweiter Owner-Tipp; stirbt der Lauf zwischen Send und Merken, kommt eine Nachricht im schlimmsten Fall doppelt (lieber doppelt als nie). Result sent/skip = Rückgabe an den Orchestrator (Toast an den Owner).",
+                                         "height":  420,
+                                         "width":  900,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -420
+                                   ],
+                      "id":  "eb1c27d6-e42c-55b6-bfdb-cc793bb7967f",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Load targets",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Load targets":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Split targets",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Split targets":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Has targets?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Has targets?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Load member texts",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Result skip",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Load member texts":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Send plan news",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Send plan news":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Collect results",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Collect results":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Mark delivered",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Mark delivered":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Result sent",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

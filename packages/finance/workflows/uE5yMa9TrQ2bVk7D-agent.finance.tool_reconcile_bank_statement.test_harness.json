@@ -1,0 +1,129 @@
+{
+    "id":  "uE5yMa9TrQ2bVk7D",
+    "name":  "agent.finance.tool_reconcile_bank_statement.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "reconcile-doc-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "c5b9e19b-692f-5473-ac1f-09feb5725574",
+                      "name":  "Test Webhook",
+                      "webhookId":  "2186440b-9750-5800-8bb9-67419fde08cd",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "6N4dRhvPwRzMNpo1",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/6N4dRhvPwRzMNpo1",
+                                                            "cachedResultName":  "agent.finance.tool_reconcile_bank_statement"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.file_id }}",
+                                                                              "more_file_ids":  "={{ $(\u0027Test Webhook\u0027).item.json.body.more_file_ids }}",
+                                                                              "doc_hint":  "={{ $(\u0027Test Webhook\u0027).item.json.body.doc_hint }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "bbd366e4-cab7-59cb-93d3-da583736a911",
+                      "name":  "Run agent.finance.tool_reconcile_bank_statement",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "b53d4bc0-49dd-5720-b052-75170047536b",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.finance.tool_reconcile_bank_statement.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.finance.tool_reconcile_bank_statement\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: file_id, more_file_ids, doc_hint, chat_id.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "b9d11aea-1067-577a-8dbc-c9a6ee7e3ebc",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.finance.tool_reconcile_bank_statement",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.finance.tool_reconcile_bank_statement":  {
+                                                                                "main":  [
+                                                                                             [
+                                                                                                 {
+                                                                                                     "index":  0,
+                                                                                                     "node":  "Run Info",
+                                                                                                     "type":  "main"
+                                                                                                 }
+                                                                                             ]
+                                                                                         ]
+                                                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

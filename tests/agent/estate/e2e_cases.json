@@ -1,0 +1,52 @@
+[
+  {
+    "id": "ee01",
+    "name": "create_provider_contract: echter Register-Write (owner-gegatet)",
+    "task": "Nimm bitte den Stromvertrag bei __E2E__ Stadtwerke ins Notfall-Register auf, Kundennummer KD-4711, im Todesfall soll er gekündigt werden.",
+    "chat_id": "test_e2e_ee01",
+    "verify_sql": "SELECT count(*) FROM estate.provider_contracts WHERE provider = '__E2E__ Stadtwerke' AND category = 'utilities' AND customer_no = 'KD-4711' AND death_action = 'cancel';",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "WS-2 estate: prueft, dass das Agent-Payload durch estate.fn_create_provider_contract in die DB schreibt (Schema-Fidelity + adults_only-Pass-Through fuer die non-numerische test_e2e-chat_id). Cleanup ueber provider LIKE %__E2E% in fn_clear_e2e_data."
+  },
+  {
+    "id": "ee02",
+    "name": "create_contact: echter Register-Write (Notar)",
+    "task": "Speichere bitte den Notar __E2E__ Notariat Beispiel als Schlüssel-Kontakt, Telefon 0123 456789.",
+    "chat_id": "test_e2e_ee02",
+    "verify_sql": "SELECT count(*) FROM estate.contacts WHERE name = '__E2E__ Notariat Beispiel' AND role = 'notary';",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "WS-2 estate: contact-Write inkl. Rollen-Zuordnung. Cleanup ueber name LIKE %__E2E% in fn_clear_e2e_data."
+  },
+  {
+    "id": "ee03",
+    "name": "create_digital_account: Schlüsselkonto OHNE Passwort (nur Fundort)",
+    "task": "Erfasse bitte das digitale Konto __E2E__ GMX Mail als E-Mail-Schlüsselkonto, der Zugang liegt im Passwort-Manager Bitwarden mit dem Master-Passwort im Tresor.",
+    "chat_id": "test_e2e_ee03",
+    "verify_sql": "SELECT count(*) FROM estate.digital_accounts WHERE provider = '__E2E__ GMX Mail' AND category = 'email' AND is_key_account = TRUE AND access_path IS NOT NULL;",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "WS-2 estate: digital-account-Write; prueft is_key_account=true + access_path (Fundort-Verweis) gesetzt, NIE ein Passwort. Cleanup ueber provider LIKE %__E2E% in fn_clear_e2e_data."
+  },
+  {
+    "id": "ee04",
+    "name": "NEGATIVE: delete eines nicht existierenden Vertrags (resolve-fail, kein Write)",
+    "task": "Lösche bitte den Vertrag bei __E2E__ GibtsNicht aus dem Register.",
+    "chat_id": "test_e2e_ee04",
+    "verify_sql": "SELECT count(*) FROM estate.provider_contracts WHERE provider LIKE '%\\_\\_E2E%';",
+    "expect": 0,
+    "is_negative": true,
+    "notes": "WS-2 estate: der Resolver findet 0 Treffer -> Contract ambiguous/Tool-Fehler, kein Write; nach dem Per-Case-Clean 0 Sentinel-Zeilen. Prueft, dass ein Fehlgriff nichts anlegt."
+  },
+  {
+    "id": "ee05",
+    "name": "create_case: echter Ereignisfall-Write + Task-Instanziierung (WS-3)",
+    "task": "Lege bitte einen Todesfall für Erika an, gestorben am 15. Oktober 2026 in Bayern. Sie war angestellt und es gibt ein Testament.",
+    "chat_id": "test_e2e_ee05",
+    "verify_sql": "SELECT count(*) FROM estate.case_tasks ct JOIN estate.cases c ON c.id = ct.case_id WHERE c.case_type = 'death' AND c.status = 'open' AND ct.template_key = 'sterbefallanzeige' AND ct.status = 'open';",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "WS-3 estate: prueft die Schema-Fidelity des create_case-Payloads durch estate.fn_create_case in die DB — der Fall wird angelegt UND die Fristen-Checkliste instanziiert (die Sterbefallanzeige-Task existiert als offene Task, ihre due_date rechnet die DB). Subjekt = die owner-Person (Erika): die non-numerische test_e2e-chat_id laeuft adults_only pass-through UND ueberspringt den subject_is_sender-Guard (nur der numerische Prod-Pfad prueft ihn, db-getestet in test_fn_create_case) -> der Write-Pfad ist voll exerzierbar ohne eine 2. gepairte Person. cases/case_tasks haben keinen Namen -> Cleanup wholesale in fn_clear_e2e_data (estate-Block). set_/cancel_case + set_/create_case_task: triviale case_id/status-Payloads -> contract_lint (Input-Paritaet) + test_fn_* decken die Fidelity. Todesdatum bewusst nah am Lauf (2026-10-15): bei einem Jahre zurueckliegenden Datum sind alle Fristen laengst abgelaufen und der Agent klaert das zuerst, statt den Fall anzulegen -> spaetestens nach ~2 Monaten in task + expected_tool_args + scenarios.json (bzw. ee05) nachziehen."
+  }
+]

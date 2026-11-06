@@ -1,0 +1,176 @@
+{
+  "_comment": "Mini-App View-Modell v1 (docs/package-contract.md §3.12). Erfundene Werte (Repo oeffentlich). page_* = Antworten von core.fn_app_screen an die Seite; page_screen zeigt die Startseite (Dispatcher setzt view.banners, ohne Hinweise genau der ok-Banner) mit einem Vermoegens- und einem Konten-Abschnitt als Form-Beispiel; handler_probe = Probe-Antwort einer Bildschirm-fn fuer core.fn_app_nav. Die Seite rendert jedes {kind:...}-Objekt mit uiRender(ui).val() (Get-UiRenderLibJs), rohe Strings per textContent.",
+  "page_nav": {
+    "ok": true,
+    "ui": {
+      "lang": "de",
+      "locale": "de-DE",
+      "t": {
+        "core.app.title": "Übersicht",
+        "core.app.reload": "Neu laden",
+        "core.app.gap": "unvollständig – ein Kurs fehlt",
+        "core.fmt.empty": "—",
+        "finance.app.screen.overview": "Vermögen",
+        "finance.app.screen.accounts": "Konten"
+      },
+      "date_short": { "from": "2026-07-30", "to": "2027-07-30" }
+    },
+    "screens": [
+      { "screen": "overview", "title": { "kind": "tpl", "value": "finance.app.screen.overview", "params": {} }, "icon": "💶" },
+      { "screen": "accounts", "title": { "kind": "tpl", "value": "finance.app.screen.accounts", "params": {} }, "icon": "💳" }
+    ]
+  },
+  "page_screen": {
+    "ok": true,
+    "ui": {
+      "lang": "de",
+      "locale": "de-DE",
+      "t": {
+        "core.fmt.empty": "—",
+        "core.app.gap": "unvollständig – ein Kurs fehlt",
+        "core.app.sum": "zusammen {sum}",
+        "core.app.all_good": "Alles in Ordnung",
+        "finance.app.overview.title": "Vermögen",
+        "finance.app.overview.hero": "Vermögen Haushalt",
+        "finance.app.overview.hero_note": "Besitz {assets} · Schulden {debts}",
+        "finance.app.overview.section_liquid": "Schnell verfügbar",
+        "finance.app.overview.share": "{pct} % des Besitzes",
+        "finance.app.overview.empty": "Noch nichts erfasst.",
+        "finance.app.accounts.section": "{account}",
+        "finance.app.accounts.empty": "Noch keine Konten angelegt.",
+        "finance.app.accounts.d_statement": "Kontoauszug",
+        "finance.app.accounts.balance_today": "Stand heute",
+        "finance.app.accounts.free_of": "davon {amount} frei",
+        "finance.app.accounts.d_reserved": "Zurückgelegt für Ziele",
+        "finance.app.accounts.low": "Tiefster Stand",
+        "finance.app.accounts.low_before_income": "am {date}, vor dem Geldeingang am {income}",
+        "finance.app.accounts.pill_tight": "knapp über dem Puffer ({buffer})",
+        "finance.app.depot.gain": "{amount} · {pct} %",
+        "finance.app.depot.price_missing": "Kurs fehlt",
+        "finance.enum.asset_bucket.cash": "Konten & Tagesgeld",
+        "finance.enum.asset_bucket.depot": "Wertpapiere & Krypto"
+      }
+    },
+    "view": {
+      "ok": true,
+      "title": { "kind": "tpl", "value": "finance.app.overview.title", "params": {} },
+      "hero": {
+        "label": { "kind": "tpl", "value": "finance.app.overview.hero", "params": {} },
+        "value": { "kind": "money", "value": 48250.37, "currency": "EUR" },
+        "gap": false,
+        "note": { "kind": "tpl", "value": "finance.app.overview.hero_note", "params": {
+          "assets": { "kind": "money", "value": 53250.37, "currency": "EUR" },
+          "debts": { "kind": "money", "value": 5000.00, "currency": "EUR" } } }
+      },
+      "banners": [
+        { "state": "ok", "icon": "check", "text": { "kind": "tpl", "value": "core.app.all_good", "params": {} }, "target": null }
+      ],
+      "sections": [
+        {
+          "title": { "kind": "tpl", "value": "finance.app.overview.section_liquid", "params": {} },
+          "value": { "kind": "money", "value": 53250.37, "currency": "EUR" },
+          "empty": { "kind": "tpl", "value": "finance.app.overview.empty", "params": {} },
+          "items": [
+            {
+              "label": { "kind": "enum", "enum": "finance.enum.asset_bucket", "value": "cash" },
+              "sub": { "kind": "tpl", "value": "finance.app.overview.share", "params": { "pct": { "kind": "number", "value": 32.4, "digits": 1 } } },
+              "value": { "kind": "money", "value": 17250.37, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "progress": { "pct": 32.4, "state": "neutral" },
+              "target": null
+            },
+            {
+              "label": { "kind": "enum", "enum": "finance.enum.asset_bucket", "value": "depot" },
+              "sub": { "kind": "tpl", "value": "finance.app.overview.share", "params": { "pct": { "kind": "number", "value": 67.6, "digits": 1 } } },
+              "value": { "kind": "money", "value": 36000.00, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "progress": { "pct": 67.6, "state": "neutral" },
+              "target": null
+            }
+          ]
+        },
+        {
+          "title": { "kind": "tpl", "value": "finance.app.accounts.section", "params": { "account": "Girokonto Beispielbank" } },
+          "value": null,
+          "empty": { "kind": "tpl", "value": "finance.app.accounts.empty", "params": {} },
+          "items": [
+            {
+              "label": { "kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {} },
+              "sub": { "kind": "tpl", "value": "finance.app.accounts.free_of", "params": { "amount": { "kind": "money", "value": 1310.55, "currency": "EUR" } } },
+              "value": { "kind": "money", "value": 2310.55, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "progress": null,
+              "target": null,
+              "details": [
+                { "label": { "kind": "tpl", "value": "finance.app.accounts.d_reserved", "params": {} },
+                  "value": { "kind": "money", "value": 1000.00, "currency": "EUR" } },
+                { "label": { "kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {} },
+                  "value": { "kind": "date", "value": "2026-10-29" } },
+                { "label": "Rohname aus Import", "value": null }
+              ]
+            },
+            {
+              "label": { "kind": "tpl", "value": "finance.app.accounts.low", "params": {} },
+              "sub": { "kind": "tpl", "value": "finance.app.accounts.low_before_income", "params": {
+                "date": { "kind": "date", "value": "2026-11-18" }, "income": { "kind": "date", "value": "2026-11-30" } } },
+              "value": { "kind": "money", "value": 412.80, "currency": "EUR" },
+              "gap": false,
+              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_tight", "params": { "buffer": { "kind": "money", "value": 250.00, "currency": "EUR" } } } },
+              "progress": null,
+              "target": null
+            },
+            {
+              "label": "Reisekasse USD",
+              "sub": null,
+              "value": { "kind": "money", "value": 1200.00, "currency": "USD" },
+              "gap": true,
+              "pill": { "state": "neutral", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.depot.price_missing", "params": {} } },
+              "progress": null,
+              "target": null
+            },
+            {
+              "label": "Welt ETF",
+              "sub": null,
+              "value": { "kind": "money", "value": 1200.00, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "trend": { "direction": "up", "text": { "kind": "tpl", "value": "finance.app.depot.gain", "params": { "amount": { "kind": "money", "value": 200.00, "currency": "EUR", "sign": true }, "pct": { "kind": "number", "value": 20.0, "digits": 1, "sign": true } } } },
+              "progress": null,
+              "target": null
+            },
+            {
+              "label": "<img src=x onerror=alert(1)>",
+              "sub": null,
+              "value": { "kind": "money", "value": 0, "currency": "EUR" },
+              "gap": false,
+              "pill": null,
+              "progress": null,
+              "target": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "page_refusal": {
+    "ok": false,
+    "code": "expired",
+    "ui": { "lang": "de", "locale": "de-DE", "t": { "core.app.error.expired": "Die Übersicht ist abgelaufen. Bitte schließen und neu öffnen." } },
+    "text": { "kind": "tpl", "value": "core.app.error.expired", "params": {} }
+  },
+  "handler_probe": {
+    "ok": true,
+    "empty": false,
+    "banners": [
+      {
+        "state": "warn",
+        "icon": "clock",
+        "text": { "kind": "tpl", "value": "finance.app.accounts.banner_tight", "params": { "account": "Girokonto Beispielbank", "min": { "kind": "money", "value": 412.80, "currency": "EUR" }, "date": { "kind": "date", "value": "2026-11-18" } } },
+        "target": { "screen": "accounts", "params": {} }
+      }
+    ]
+  }
+}

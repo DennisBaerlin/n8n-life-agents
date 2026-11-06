@@ -1,0 +1,227 @@
+{
+    "id":  "vKZERh1X2eL71YfJ",
+    "name":  "agent.estate.tool_create_case_task",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "case_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "title"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "phase"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "detail"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "due_date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "3c647322-3213-5158-a131-96f660d32e47",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027case_task_id\u0027)::bigint AS case_task_id, (r-\u003e\u003e\u0027case_id\u0027)::bigint AS case_id FROM estate.fn_create_case_task($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, case_id: $(\u0027Start\u0027).item.json.case_id, title: $(\u0027Start\u0027).item.json.title, phase: $(\u0027Start\u0027).item.json.phase, detail: $(\u0027Start\u0027).item.json.detail, due_date: $(\u0027Start\u0027).item.json.due_date }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "6a564174-fbb1-5b96-9b4c-e08c83e43684",
+                      "name":  "Create task (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_ESTATE_RW__",
+                                                           "name":  "Postgres estate_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "a35218cd-954e-5b6b-9b57-ab3b6360ed68",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "d60f5b6d-4fa0-5ce6-bc39-a6c0ab0f5275",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "504a4d73-9175-598e-9793-0fee5234d724",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c56ccc14-f9b6-5257-9892-804c54b7afc7",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Create task (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "0c805410-2be0-550b-bdb0-4a72c812bd7f",
+                      "name":  "Task creation rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "6481b7a1-072d-50fd-8892-dc969536fa6d",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8b8f74a7-d817-57e8-9489-36746d337bc6",
+                                                                                     "name":  "case_task_id",
+                                                                                     "value":  "={{ $(\u0027Create task (atomic)\u0027).item.json.case_task_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "235bd18e-fe63-55be-93be-1babd7a3a875",
+                                                                                     "name":  "case_id",
+                                                                                     "value":  "={{ $(\u0027Create task (atomic)\u0027).item.json.case_id }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "8032d666-8c0e-547b-a7f3-fd6bac447e94",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**estate.fn_create_case_task (manuelle Task, template_key NULL)**\n\nKEIN HITL-Gate (Fortschritts-Flag-Klasse). Fügt eine manuelle Task (template_key NULL, subject_ref \u0027\u0027) zu einem OFFENEN Fall hinzu (phase Default first_week). Manuelle Tasks sind NICHT im Template-Soll-Satz -\u003e vom additiven Reconcile (fn_set_case) nie berührt. adults_only-DB-Backstop + \"Fall offen?\"-Guard.",
+                                         "height":  280,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -240
+                                   ],
+                      "id":  "c84a69a6-1f5e-5d11-b84a-41002a3b44cc",
+                      "name":  "Fortschritts-Flag (KEIN HITL) — manuelle Task"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Create task (atomic)",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Create task (atomic)":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Write ok?",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Task creation rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

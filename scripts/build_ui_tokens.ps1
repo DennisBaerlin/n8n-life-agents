@@ -1,0 +1,30 @@
+﻿#Requires -Version 5.1
+# build_ui_tokens.ps1 -- schreibt die Farben aus config/ui.tokens.json als markierten Block in die Datei jeder Oberflaeche
+# (Liste und Begruendung: scripts/lib/ui_tokens.ps1). Nur der Block aendert sich, die Marker muessen schon in der Datei stehen.
+# Danach bei der Doku-Seite: .\scripts\build_site.ps1 (der Hugo-Output ist getrackt). Die Pruefung im Commit macht
+# scripts/ui_token_lint.ps1.
+#   .\scripts\build_ui_tokens.ps1            Bloecke schreiben
+#   .\scripts\build_ui_tokens.ps1 -Verify    nur vergleichen, Exit-Code = Anzahl veralteter Bloecke
+param([switch]$Verify)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
+$RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
+. (Join-Path (Join-Path $PSScriptRoot 'lib') 'ui_tokens.ps1')
+$u8 = [System.Text.UTF8Encoding]::new($false)
+$tokens = Read-UiTokens $RepoRoot
+$fails = 0
+foreach ($s in (Get-UiSurfaces)) {
+    $abs = Join-Path $RepoRoot $s.File
+    $text = [System.IO.File]::ReadAllText($abs, $u8)
+    $rx = Get-UiBlockRegex $s.Name
+    $m = $rx.Match($text)
+    if (-not $m.Success) { throw "Keine Marker fuer '$($s.Name)' in $($s.File): Zeile '/* ui-tokens:begin $($s.Name) */' und '/* ui-tokens:end */' von Hand einsetzen (Datei geschuetzt? Dann gilt deren Freigabe)." }
+    $want = Get-UiBlockText $tokens $s
+    if ($m.Value -ceq $want) { Write-Host "  [OK] $($s.Name): aktuell" -ForegroundColor Green; continue }
+    if ($Verify) { Write-Host "  [FAIL] $($s.Name): Block in $($s.File) ist veraltet" -ForegroundColor Red; $fails++; continue }
+    # MatchEvaluator statt Ersatz-String: im Ersatz-String waeren $-Zeichen aus dem Block Sonderzeichen
+    $text = $rx.Replace($text, [System.Text.RegularExpressions.MatchEvaluator] { param($x) $want }, 1)
+    [System.IO.File]::WriteAllText($abs, $text, $u8)
+    Write-Host "  [neu] $($s.Name): $($s.File)" -ForegroundColor Cyan
+}
+exit $fails

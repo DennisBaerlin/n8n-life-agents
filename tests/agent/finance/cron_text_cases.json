@@ -1,0 +1,80 @@
+[
+  {
+    "kind": "cron_text",
+    "id": "ctf02",
+    "name": "Zins-Erinnerung an den Owner (ko): Frage + Knöpfe, Ablehnen -> Morgen-Frage, Morgen -> Ergebnis-Zeile",
+    "workflow": "agent.finance.cron_remind_interest",
+    "schedule_key": "remind_interest",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM finance.interest_skips s USING finance.accounts a WHERE a.id = s.account_id AND a.name = 'Tagesgeld Plus';"
+    ],
+    "expect_keys": ["finance.dialog.interest_ask"],
+    "expect_buttons": ["finance.dialog.btn_book", "finance.dialog.btn_other"],
+    "taps": [
+      { "approved": false, "expect_keys": ["finance.dialog.interest_defer"], "expect_buttons": ["finance.dialog.btn_tomorrow", "finance.dialog.btn_skip"] },
+      { "approved": true, "expect_keys": ["finance.dialog.remind_tomorrow"] }
+    ]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf03",
+    "name": "Monats-Check-Erinnerung an den Owner (ko): Kopf mit Stichtag, Konto-Zeile (Datum im Owner-Locale), Anleitung",
+    "workflow": "agent.finance.cron_reconcile_accounts",
+    "schedule_key": "reconcile_accounts",
+    "recipient": "owner",
+    "reset_sql": ["UPDATE finance.accounts SET created_at = now() WHERE name = 'Lindenbank Giro';"],
+    "seed_sql": ["UPDATE finance.accounts SET created_at = now() - interval '400 days' WHERE name = 'Lindenbank Giro' AND last_reconciled_at IS NULL;"],
+    "expect_keys": ["finance.dialog.monthly_check_intro", "finance.dialog.monthly_check_line", "finance.dialog.monthly_check_howto"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf04",
+    "name": "Kontrollfall Owner de: Monats-Check-Erinnerung deutsch",
+    "workflow": "agent.finance.cron_reconcile_accounts",
+    "schedule_key": "reconcile_accounts",
+    "recipient": "owner",
+    "owner_lang": "de",
+    "reset_sql": ["UPDATE finance.accounts SET created_at = now() WHERE name = 'Lindenbank Giro';"],
+    "seed_sql": ["UPDATE finance.accounts SET created_at = now() - interval '400 days' WHERE name = 'Lindenbank Giro' AND last_reconciled_at IS NULL;"],
+    "expect_keys": ["finance.dialog.monthly_check_intro", "finance.dialog.monthly_check_howto"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf05",
+    "name": "Renten-Check-Erinnerung an den Owner (ko): gesetzliche Rente ohne Renteninformation + bAV mit veralteter -> Kopf, Zeilen, Anleitung",
+    "workflow": "agent.finance.cron_remind_pension_statement",
+    "schedule_key": "remind_pension_statement",
+    "recipient": "owner",
+    "reset_sql": ["DELETE FROM finance.pension WHERE name IN ('__ctf05 Gesetzliche Rente', '__ctf05 bAV');"],
+    "seed_sql": [
+      "INSERT INTO finance.pension (name, pension_type) VALUES ('__ctf05 Gesetzliche Rente', 'statutory');",
+      "INSERT INTO finance.pension (name, pension_type) VALUES ('__ctf05 bAV', 'occupational');",
+      "INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim) SELECT id, current_date - 500, 120 FROM finance.pension WHERE name = '__ctf05 bAV';"
+    ],
+    "expect_keys": ["finance.dialog.pension_statement_intro", "finance.dialog.pension_statement_line", "finance.dialog.pension_statement_howto"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf06",
+    "name": "Kurs-Check an den Owner (ko): Krypto-Position ohne Kurs (keine ISIN -> kein Netz-Abruf) -> Lücken-Kopf + Hinweis; alle anderen Positionen bekommen vorab einen frischen Kurs",
+    "workflow": "agent.finance.cron_remind_missing_prices",
+    "schedule_key": "remind_missing_prices",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM finance.depot_holdings WHERE name = '__ctf06 Testcoin';",
+      "DELETE FROM finance.account_balances WHERE account_id IN (SELECT id FROM finance.accounts WHERE name IN ('__ctf06 Krypto', '__ctf06 Cash'));",
+      "DELETE FROM finance.accounts WHERE name = '__ctf06 Krypto';",
+      "DELETE FROM finance.accounts WHERE name = '__ctf06 Cash';",
+      "DELETE FROM finance.market_prices WHERE source = 'ctf06';",
+      "DELETE FROM core.notification_state WHERE source = 'finance_prices';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.market_prices (symbol, price, currency, as_of, source) SELECT DISTINCT h.symbol, 1, 'EUR', current_date, 'ctf06' FROM finance.depot_holdings h WHERE h.shares > 0 ON CONFLICT (symbol, as_of) DO NOTHING;",
+      "INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ctf06 Cash', 'cash', 'EUR', 'active');",
+      "INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id) SELECT '__ctf06 Krypto', 'crypto_depot', 'EUR', 'active', id FROM finance.accounts WHERE name = '__ctf06 Cash';",
+      "INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency) SELECT id, 'ZZQ', '__ctf06 Testcoin', 2, 10, 'EUR' FROM finance.accounts WHERE name = '__ctf06 Krypto';"
+    ],
+    "expect_keys": ["finance.dialog.price_gap_missing", "finance.dialog.price_gap_none"]
+  }
+]

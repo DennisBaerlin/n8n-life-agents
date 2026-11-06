@@ -1,0 +1,127 @@
+{
+    "id":  "wT7dKq2XvN9mRb4Y",
+    "name":  "agent.tool_fetch_telegram_file.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "fetch-file-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "159a4acd-7d7d-5ae3-b4b6-76b67f004f20",
+                      "name":  "Test Webhook",
+                      "webhookId":  "158ae6ff-4461-5732-a5e6-dd96e3347e7b",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PWPPVNrauWK7EpuB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PWPPVNrauWK7EpuB",
+                                                            "cachedResultName":  "agent.tool_fetch_telegram_file"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.file_id }}",
+                                                                              "accept":  "={{ $(\u0027Test Webhook\u0027).item.json.body.accept }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "01193dce-a68f-556d-b600-da7c5a0d18c1",
+                      "name":  "Run agent.tool_fetch_telegram_file",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "76738dfe-4d3f-5f42-8d2c-777e6cc8597b",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.tool_fetch_telegram_file.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.tool_fetch_telegram_file\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: file_id, accept.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "6f014863-53b7-50c0-869f-104290abcc93",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.tool_fetch_telegram_file",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.tool_fetch_telegram_file":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "index":  0,
+                                                                                        "node":  "Run Info",
+                                                                                        "type":  "main"
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

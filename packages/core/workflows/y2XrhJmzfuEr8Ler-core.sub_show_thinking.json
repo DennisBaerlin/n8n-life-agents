@@ -1,0 +1,265 @@
+{
+    "id":  "y2XrhJmzfuEr8Ler",
+    "name":  "core.sub_show_thinking",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "execution_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -600,
+                                       200
+                                   ],
+                      "id":  "ee2ce283-4f0a-5697-bf43-103c3a149c42",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT agent.fn_claim_thinking_draft($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ execution_id: String($(\u0027Start\u0027).first().json.execution_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -380,
+                                       200
+                                   ],
+                      "id":  "55594a3b-5b94-5fc4-a807-cc2901821bda",
+                      "name":  "Claim draft",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "fallbackOutput":  "extra"
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "fda1009a-4b4e-5421-839f-c1678688354d",
+                                                                                                                    "leftValue":  "={{ ($json.r || {}).state === \u0027show\u0027 \u0026\u0026 $runIndex \u003c 2000 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "show",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "dc337855-0921-5538-a794-97d2083fbd6e",
+                                                                                                                    "leftValue":  "={{ ($json.r || {}).state === \u0027pause\u0027 \u0026\u0026 $runIndex \u003c 2000 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "pause",
+                                                                          "renameOutput":  true
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -160,
+                                       200
+                                   ],
+                      "id":  "dab61d0e-4ac5-59aa-92b5-097e8d0225b7",
+                      "name":  "Draft state"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "sendMessageDraft",
+                                         "chatId":  "={{ String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027) }}",
+                                         "draftId":  1,
+                                         "text":  "",
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       80,
+                                       100
+                                   ],
+                      "id":  "21bd6a81-e19a-5696-9fa3-6e336aad0db5",
+                      "name":  "Show thinking",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "amount":  5,
+                                         "unit":  "seconds"
+                                     },
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       300,
+                                       200
+                                   ],
+                      "id":  "58fe344d-38a1-5dd8-a9e1-bbb123e75484",
+                      "name":  "Wait",
+                      "webhookId":  "f0123f54-ed4d-5422-bba1-b35807191313"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_show_thinking — \"Bot denkt nach ...\"**\n\nTelegram sendMessageDraft mit leerem Text = Platzhalter \"Thinking...\" im Chat (nur private Chats; laut Doku max. 30 s, am Client live nur ~8 s; verschwindet mit der nächsten Bot-Nachricht). Claim draft (agent.fn_claim_thinking_draft) entscheidet je Runde: show = Draft senden, 5 s warten, wieder fragen; pause = offene Bestätigungskarte im Chat, keine Punkte über der Karte, nur warten; stop = Schalter weg (Antwort kommt gleich) bzw. abgelaufen -\u003e Ende. Den Schalter (agent.thinking_lease, je Chat einer) öffnet der Aufrufer (Orchestrator bzw. agent.sub_dispatch_agent) VOR diesem Aufruf und löscht ihn VOR seiner Antwort. IMMER fire-and-forget: die Anzeige verzögert nie die Antwort. Claim und Draft schlucken jeden Fehler (kein Retry, kein Alarm) — rein kosmetisch. Erfolgreiche Läufe werden nicht gespeichert (saveDataSuccessExecution none), Fehler schon.",
+                                         "height":  440,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -600,
+                                       -260
+                                   ],
+                      "id":  "d1558001-16ba-5d13-b96a-c7e73fc78f48",
+                      "name":  "Doc: Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Achtung\n**Kein Draft nach Antwort oder Karte**\n\nZwischen Claim draft und dem Draft-Send liegen ~100-300 ms. Käme dazwischen die Antwort oder eine Karte, landete der Draft danach (\"Thinking...\" unter der Antwort bzw. über der Karte). Daher sperrt der Claim seine Schalter-Zeile und setzt bei show ein 1-s-Fenster (drafting_until); das Löschen vor der Antwort (fn_delete_thinking_lease, wait_for_draft) und das Öffnen einer Karte (fn_create_hitl_pending) warten es ab. Restlücke: ein Telegram-Aufruf über 1 s. Eingaben in der Schleife immer über $(\u0027Start\u0027).first() lesen (Item-Pairing über die Rückkante ist fragil).",
+                                         "height":  440,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       60,
+                                       -260
+                                   ],
+                      "id":  "a7f7016d-6e25-550a-82dc-13309df00030",
+                      "name":  "Doc: Wettlauf"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Claim draft",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Claim draft":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Draft state",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Draft state":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Show thinking",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Wait",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+
+                                                         ]
+                                                     ]
+                                        },
+                        "Show thinking":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Wait",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Wait":  {
+                                     "main":  [
+                                                  [
+                                                      {
+                                                          "index":  0,
+                                                          "node":  "Claim draft",
+                                                          "type":  "main"
+                                                      }
+                                                  ]
+                                              ]
+                                 }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba",
+                     "saveDataSuccessExecution":  "none"
+                 }
+}

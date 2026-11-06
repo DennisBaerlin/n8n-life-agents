@@ -1,0 +1,5 @@
+[
+  { "key": "profile_basics",  "ord": 1 },
+  { "key": "skills_overview", "ord": 2 },
+  { "key": "goals_targets",   "ord": 3 }
+]

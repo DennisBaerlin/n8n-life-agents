@@ -1,0 +1,26 @@
+# Dependabot — automated dependency PRs. github-actions is our ONLY dependency surface:
+# the workflows pin third-party actions by SHA (ci.yml / release.yml), and a pinned SHA never
+# auto-updates — Dependabot is what keeps those pins current (with the CVE/changelog in the PR).
+# No npm/pip/cargo/go ecosystems: prek bootstraps all linter toolchains in isolation, nothing is
+# declared as a project dependency. Supply-chain posture: grouped (one PR, less churn) + a cooldown
+# so a freshly published (possibly compromised) action version is not proposed on day zero.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    # "/" scans .github/workflows/** (and a root action.yml, which we don't have).
+    directory: "/"
+    schedule:
+      interval: "daily"
+    # Wait N days after a release before opening a PR — a poisoned tag is usually yanked within days
+    # (7 = zizmor dependabot-cooldown minimum, docs.zizmor.sh/audits/#dependabot-cooldown).
+    cooldown:
+      default-days: 7
+    # One consolidated PR for all action bumps instead of one-per-action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"

@@ -1,0 +1,126 @@
+{
+    "id":  "Xp2540kl6Vga3VXl",
+    "name":  "agent.tool_list_monitor_triggers",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "5670cd9b-a378-54ff-8ac5-574687b5d06b",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT COALESCE(jsonb_agg(jsonb_build_object(\u0027label\u0027, t.label, \u0027trigger_type\u0027, t.trigger_type, \u0027status\u0027, t.status, \u0027spec\u0027, t.spec_summary)), \u0027[]\u0027::jsonb) AS triggers, COUNT(*)::int AS count FROM core.fn_list_monitor_triggers(($1::jsonb)-\u003e\u003e\u0027domain\u0027) AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "b533ff95-b453-5c6e-9cf6-8d8b0eba56eb",
+                      "name":  "List triggers",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a8babd74-c93a-5dc7-86e0-1dbc7c7a1037",
+                                                                                     "name":  "count",
+                                                                                     "value":  "={{ $json.count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6d47edae-09a2-5a4e-b0a5-6c7abe8fd75f",
+                                                                                     "name":  "triggers",
+                                                                                     "value":  "={{ $json.triggers }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       420,
+                                       0
+                                   ],
+                      "id":  "a73dd71f-a1eb-5104-b729-483e4fa1c0b7",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Read-only: core.fn_list_monitor_triggers (publiziertes Lesefenster)**\n\nCross-agent Read-Tool für das Dubletten-Bewusstsein des Advisors beim Plan-Publish. KEIN HITL, KEIN Write. domain ist fixer Binding-Input (je Fach-Advisor seine Domain). Die fn core.fn_list_monitor_triggers ist SECURITY DEFINER (publiziertes Lesefenster, D10 — agent.monitor_triggers ist für die enge Binder-Rolle gesperrt; EXECUTE an JEDE \u003cpkg\u003e_ro zentral via fn_provision_package_roles) und baut spec_summary AUSSCHLIESSLICH aus typisierten Spalten (acquisition_method/comparator/threshold/drawdown/due_date) — NIE aus acquisition_spec/action_note (kein Prompt-Injection-Echo). Nur status armed/fired (disabled für Dedup irrelevant). Rückgabe: { count, triggers[] }.",
+                                         "height":  260,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -240
+                                   ],
+                      "id":  "121bd56d-4a09-542e-a161-39fc83c976a8",
+                      "name":  "Doc List Trigger"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "List triggers",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "List triggers":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Return",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

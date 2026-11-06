@@ -34,8 +34,10 @@ if [ -n "${STUB_STDIN:-}" ] && [ "$me" = docker ] && [ "${1:-}" = exec ] && [ "$
 { printf '%s' "$me"; printf '|%s' "$@"; printf '|stdin=%s\n' "${in:+ja}"; } >> "$STUB_LOG"
 # Compose-Aufrufe: mit welcher Datei und welchem master-Image (Umgebung) — der master-Wechsel haengt genau daran.
 if [ "$me" = docker ] && [ "${1:-}" = compose ]; then printf '%s|%s\n' "${5:-}" "${LA_MASTER_IMAGE:--}" >> "${STUB_LOG}.env"; fi
+# Abbau: welche Profile Compose dabei kannte (sonst blieben Container aus Profilen stehen).
+case "$(printf '|%s' "$@")" in *'|down|'*) printf '%s\n' "${COMPOSE_PROFILES:-}" >> "${STUB_LOG}.profiles" ;; esac
 # Gezielter Fehlschlag: STUB_FAIL = Teilstring der argv-Zeile (z. B. "pull", "run|--rm|-d", "exec|lifeagents-master|bash").
-if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) exit 1 ;; esac; fi
+if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) echo "stub: Daemon-Fehler" >&2; exit 1 ;; esac; fi
 case "$me $1 ${2:-}" in
   "docker volume inspect") [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
   "docker image inspect")  [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
@@ -51,6 +53,7 @@ case "$me $1 ${2:-}" in
 esac
 case "$(printf '|%s' "$@")" in
   *"|config|--format|json|"*) printf '%s' "${STUB_CONFIG_JSON:-}"; exit 0 ;;
+  *"|config|--profiles") printf '%s' "${STUB_PROFILES:-}"; exit 0 ;;
   *"|cat|/var/lib/postgresql/data/PG_VERSION"*) printf '%s\n' "${STUB_PG_MAJOR:-17}"; exit 0 ;;
 esac
 exit 0
@@ -335,12 +338,20 @@ if grep -qE '\|-v\||prune' "$STUB_LOG"; then fail R.kein-breiter-schalter "$(cat
 # ---------------------------------------------------------------------------- D: Entfernen (Pruefliste Nr. 17, stack.sh)
 unset LIFEAGENTS_RUNTIME
 dst() { : > "$STUB_LOG"; ( cd "$W" && LA_PROJECT=lifeagents bash "$ROOT/provisioning/compose/stack.sh" uninstall "$@" ) >/dev/null 2>&1; }
-STUB_VOL_LABEL=lifeagents dst
+STUB_VOL_LABEL=lifeagents STUB_PROFILES=$'fritzbox\ntunnel\n' dst
 if grep -q '^docker|compose|-p|lifeagents|-f|.*|down|--remove-orphans|stdin=$' "$STUB_LOG"; then pass D.down-ohne-v; else fail D.down-ohne-v "$(grep compose "$STUB_LOG")"; fi
-eq D.ohne-daten-nur-abgeleitete 'lifeagents_gw_code lifeagents_n8n_patches lifeagents_shared' "$(grep '^docker|volume|rm|' "$STUB_LOG" | cut -d'|' -f4 | sort | tr '\n' ' ' | sed 's/ $//')"
+# Container aus Profilen (tailscale, wan) sind keine Waisen: Compose entfernt sie nur, wenn ihr Profil beim down aktiv ist.
+eq D.down-alle-profile 'fritzbox,tunnel' "$(tail -n1 "${STUB_LOG}.profiles" 2>/dev/null)"
+# Erwartung aus compose.yml selbst: jedes von Compose verwaltete (nicht externe) Volume ist abgeleitet und geht immer.
+_derived="$(awk '/^volumes:/{v=1;next} v&&/^[^ #]/{v=0} v&&/^  [a-z_0-9]+:/{if(n)print n; sub(/:.*/,"");n=$1;next} v&&/external: *true/{n=""} END{if(n)print n}' "$ROOT/provisioning/compose/compose.yml" | sed 's/^/lifeagents_/' | sort | tr '\n' ' ' | sed 's/ $//')"
+eq D.ohne-daten-nur-abgeleitete "$_derived" "$(grep '^docker|volume|rm|' "$STUB_LOG" | cut -d'|' -f4 | sort | tr '\n' ' ' | sed 's/ $//')"
 STUB_VOL_LABEL=lifeagents dst --delete-data
-read -ra _vols <<<"$LA_STATE_VOLUMES"
-eq D.mit-daten-alle-eigenen "$(( ${#_vols[@]} + 3 ))" "$(grep -c '^docker|volume|rm|' "$STUB_LOG")"
+read -ra _vols <<<"$LA_STATE_VOLUMES"; read -ra _dv <<<"$_derived"
+eq D.mit-daten-alle-eigenen "$(( ${#_vols[@]} + ${#_dv[@]} ))" "$(grep -c '^docker|volume|rm|' "$STUB_LOG")"
+# Ein Volume, das sich nicht entfernen laesst (z. B. noch belegt), ist kein Label-Fall: die Meldung nennt den wahren Grund.
+: > "$STUB_LOG"
+if _out="$( ( cd "$W" && STUB_VOL_LABEL=lifeagents STUB_FAIL='|volume|rm|lifeagents_pgdata' LA_PROJECT=lifeagents bash "$ROOT/provisioning/compose/stack.sh" uninstall --delete-data ) 2>&1 )"; then fail D.rm-fehler-abbruch "Exit 0"; else pass D.rm-fehler-abbruch; fi
+case "$_out" in *Label*) fail D.rm-fehler-wahrer-grund "meldet Label: $_out" ;; *"Daemon-Fehler"*) pass D.rm-fehler-wahrer-grund ;; *) fail D.rm-fehler-wahrer-grund "Grund fehlt: $_out" ;; esac
 if STUB_VOL_LABEL=fremd dst --delete-data; then fail D.fremdes-label-abbruch "Exit 0"; else pass D.fremdes-label-abbruch; fi
 eq D.fremdes-label-unberuehrt 0 "$(grep -c '^docker|volume|rm|' "$STUB_LOG")"
 if grep -qE 'prune|\|-v\||--volumes|--rmi|\|-a\||--all' "$STUB_LOG"; then fail D.nie-breit "$(grep -E 'prune|-v|--rmi' "$STUB_LOG" | head -1)"; else pass D.nie-breit; fi

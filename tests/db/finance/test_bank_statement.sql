@@ -88,7 +88,7 @@ BEGIN
   SELECT m INTO v_m FROM jsonb_array_elements(v_prep->'matched') m WHERE (m->>'recurring_payment_id')::int = r_plan;
   IF v_m->>'kind' IS DISTINCT FROM 'savings_plan' OR (v_m->>'shares')::numeric IS DISTINCT FROM 2 THEN
     RAISE EXCEPTION 'FAIL Sparplan geschaetzt: %', v_m; END IF;
-  -- Owner 2026-11-06 (F1): die Kartenzeile zeigt die geschaetzte Stueckzahl mit 2 Stellen, der Wert darin bleibt genau
+  -- die Kartenzeile zeigt die geschaetzte Stueckzahl mit 2 Stellen, der Wert darin bleibt genau
   -- (gleich matched.shares) -> gerundet wird nur im Renderer (digits), nie in einem Feld, das das Modell liest
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
                  WHERE c->'value'->>'value' = 'finance.tpl.statement_savings_plan_row'

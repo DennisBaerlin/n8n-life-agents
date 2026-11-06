@@ -91,7 +91,7 @@ BEGIN
             'reconciliation_date', to_char(v_date, 'YYYY-MM-DD'),
             -- 2026-10-23: offene Vorkommen, die der Abgleich als erledigt markiert (dieselbe Menge wie fn_reconcile_account)
             'skip_count', v_skip_n,
-            -- Laien-Pruefung 2026-11-06: spaetester Termin dieser Menge -> die Karte nennt ein Datum statt "10 Tage vor"
+            -- spaetester Termin dieser Menge -> die Karte nennt ein Datum statt "10 Tage vor"
             'skip_until', v_skip_until));
     END LOOP;
 

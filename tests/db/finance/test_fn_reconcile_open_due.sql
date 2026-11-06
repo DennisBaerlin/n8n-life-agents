@@ -25,7 +25,7 @@ BEGIN
              jsonb_build_object('account_name','__t_rod_b__','confirmed_balance',0))));
   IF (v_res->'rows'->0->>'skip_count')::int IS DISTINCT FROM v_n OR (v_res->'rows'->1->>'skip_count')::int IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL Sammel-Vorschau skip_count: % / %', v_n, v_res; END IF;
-  -- Laien-Pruefung 2026-11-06: die Karte nennt ein Datum statt "10 Tage vor" -> skip_until = spaeteste Faelligkeit
+  -- die Karte nennt ein Datum statt "10 Tage vor" -> skip_until = spaeteste Faelligkeit
   -- der Menge, die der Abgleich als erledigt markiert (dieselbe fn); ohne offene Termine null
   IF (v_res->'rows'->0->>'skip_until') IS DISTINCT FROM
        (SELECT max(COALESCE(o.due_date, o.interest_period_end))::text FROM finance.fn_reconcile_open_due(v_a, CURRENT_DATE) o)

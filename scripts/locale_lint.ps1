@@ -268,7 +268,7 @@ Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
     }
 }
 
-# (11) Laien-Test der Bestaetigungskarten (Regel E der Sprint-Probe, Owner 2026-11-06; Gerüst packages/CLAUDE.md
+# (11) Laien-Test der Bestaetigungskarten (Regel E der Sprint-Probe; Gerüst packages/CLAUDE.md
 #      *HITL-Bestätigungs-Format*). Dieselbe Mechanik wie (9), eigene Wortliste: Karten-Woerter treffen keine App-Texte.
 #      UMFANG aus dem Code abgeleitet: jedes Key-Literal in Build-Defs, die eine Karte bauen (New-HitlSummary/-Line/-Note),
 #      und in R__-Funktionen mit Kartenzeilen (card_lines / 'kind', 'note'), dazu die Gate-Texte core.hitl.*; ein Literal,

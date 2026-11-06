@@ -88,7 +88,7 @@ BEGIN
      OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")'
      OR v_res->'emergency_reserve' ? 'month_options' THEN
     RAISE EXCEPTION 'FAIL [2c] Notreserve angelegt (Name Default, keine Rate, Karte): %', v_res; END IF;
-  -- Regel E (2026-11-06): der geschaetzte Alltag zeigt ganze Euro (digits 0), der Wert dahinter bleibt cent-genau
+  -- der geschaetzte Alltag zeigt ganze Euro (digits 0), der Wert dahinter bleibt cent-genau
   IF (SELECT (n->'params'->'everyday'->>'digits')::int FROM jsonb_array_elements(v_res->'card_lines') n
        WHERE n->>'value' = 'finance.note.emergency_target_months') IS DISTINCT FROM 0
      OR (SELECT (n->'params'->'everyday'->>'value')::numeric FROM jsonb_array_elements(v_res->'card_lines') n

@@ -42,7 +42,7 @@ function Get-FinanceMonthEndKey([string]$Dom) {
 #   Gutschrift  dom -1 -> zum Monats-/Quartals-/Halbjahres-/Jahresende | fester Tag -> am n. | leer: year -> am
 #               Jahrestag, month (Altzeile) -> am Tag des Starts, day/week -> laufend
 #   Methode   Katalog-Enum finance.enum.day_count.<code> (der Renderer macht aus ACT/365 den Key act_365)
-# Rhythmus in Klartext (Laien-Pruefung 2026-11-06: nie "alle 1 Jahr(e)") — EINE Definition fuer Zins-Kadenz und
+# Rhythmus in Klartext (nie "alle 1 Jahr(e)") — EINE Definition fuer Zins-Kadenz und
 # Zahlungs-Rhythmus: Intervall 1 bzw. 3/6/12 Monate -> ein Wort (jaehrlich, vierteljaehrlich ...), sonst "alle n <Einheit>".
 # Interval/Unit = JS-Ausdruecke der gespeicherten Werte (Default der Einheit traegt der Aufrufer im Ausdruck).
 function Get-FinanceRhythmLine {
@@ -256,7 +256,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.debit_day'     $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.direction === 'expense'")
                 (New-HitlLine 'finance.label.credit_day'    $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.direction !== 'expense'")
                 (New-HitlLine 'finance.label.first_payment' "$S.first_payment_date" -Kind date)
-                # Gueltig ab = erste Zahlung, wenn nicht genannt; ohne "(Standard)" (Laien-Pruefung 2026-11-06: der Zusatz sagt dem Nutzer nichts)
+                # Gueltig ab = erste Zahlung, wenn nicht genannt; ohne "(Standard)" (der Zusatz sagt dem Nutzer nichts)
                 (New-HitlLine 'finance.label.valid_from'    "($S.valid_from || $S.first_payment_date)" -Kind date)
                 (New-HitlLine 'finance.label.valid_to'      "($S.valid_to ? 'finance.tpl.plain' : 'finance.value.unlimited')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind date -Value "$S.valid_to") })

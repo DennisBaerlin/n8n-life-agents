@@ -63,7 +63,7 @@ function Build-ReconcileAccount {
         (New-HitlLine 'core.label.note'                 "$S.notes")
         # 2026-10-23: der Abgleich markiert offene Dauerauftrags-/Sparplan-/Zins-Vorkommen bis Stichtag-10 als erledigt
         # (fn_reconcile_open_due, dieselbe Menge wie der Write) -> vorher sichtbar machen; das Datum (spaeteste Faelligkeit
-        # der Menge) rechnet die DB im Read-Knoten (Laien-Pruefung 2026-11-06: Datum statt "10 Tage vor")
+        # der Menge) rechnet die DB im Read-Knoten (Datum statt "10 Tage vor")
         (New-HitlNote -Key 'finance.note.reconcile_closes_due' -If "Number($B.skip_count) > 0" -Params @{
             n = "$B.skip_count"; date = (New-HitlValue -Kind date -Value "$B.skip_until") })
     )

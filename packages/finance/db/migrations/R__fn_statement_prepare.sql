@@ -72,7 +72,7 @@
 --   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label (Befund 2026-11-03): nicht cash "Sonstige Abweichung"; mit offenen
 --   Ein- UND Ausgaengen "Rest"; Rest > 0 "Ungeklaerter Eingang"; Rest < 0 ohne Zeile und gesperrten Posten
 --   "Ungeklaerter Abgang"; Rest < 0 ohne offene Abgaenge, aber mit erklaertem Teil oder Eingang "Rest"; offene Abgaenge plus Teil neben
---   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Laien-Pruefung 2026-11-06: unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
+--   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
 --   statement_export_gap_unexplained (statement_export_starts_late hat Vorrang).
 --   STARTBETRAG DES GEGENKONTOS (fn_opening_balance_reason, Befund 2026-11-03): Stufe T/P/L mit Zeile im Startbetrag des Gegenkontos ->
 --   matched.other_in_opening (kein partner_lump, kein partner_fee, im fingerprint), apply bucht nur das Bein dieses Kontos, Gebuehr
@@ -205,7 +205,7 @@ DECLARE
     v_lump_used JSONB := '{}'::jsonb;   -- in dieser Vorschau schon Verrechnetes je Gegen-Auszug und Quelle
     v_rest_other NUMERIC;               -- Rest ohne offene Ein-/Ausgaenge (Fund KW 45, Rueckgabe)
     v_rest_pend  NUMERIC := 0;          -- Rest-Teil "noch vorgemerkt" (Export-Luecke mit offenen Abgaengen, nur Karte)
-    v_rest_parts JSONB := '[]'::jsonb;  -- "darin …"-Zeilen: Teile, die zusammen genau v_rest ergeben (Laien-Pruefung 2026-11-06)
+    v_rest_parts JSONB := '[]'::jsonb;  -- "darin …"-Zeilen: Teile, die zusammen genau v_rest ergeben
     v_unexplained NUMERIC;              -- Teil davon, den weder eine Zeile noch die Karte erklaert (Rueckgabe + Kandidaten)
     v_candidates JSONB;                 -- Buchungen mit gleichem Betrag wie eine Abweichung
     v_in_opening BOOLEAN;               -- Zeile liegt im Startbetrag des Gegenkontos (Stufe T/P/L)
@@ -1096,7 +1096,7 @@ BEGIN
                          WHEN m->>'kind' = 'savings_plan'
                          THEN core.fn_ui_tpl('finance.tpl.statement_savings_plan_row', jsonb_build_object('name', m->>'name',
                                   'amount', core.fn_ui_money((m->>'amount')::numeric, v_acct.currency),
-                                  -- geschaetzte Stueckzahl: Wert genau, Anzeige 2 Stellen (Owner 2026-11-06 F1; gerundet nur im Renderer)
+                                  -- geschaetzte Stueckzahl: Wert genau, Anzeige 2 Stellen (gerundet nur im Renderer)
                                   'shares', jsonb_build_object('kind', 'number', 'value', (m->>'shares')::numeric, 'digits', 2, 'sign', false),
                                   'date', core.fn_ui_date((m->>'line_date')::date)))
                          WHEN m ? 'partner_fee'   -- Pool-Eingang: die Gebuehr bucht das Gegenkonto (Karte = Buchung)
@@ -1296,7 +1296,7 @@ BEGIN
         || CASE WHEN v_settled > 0 THEN jsonb_build_array(core.fn_ui_money(v_settled, v_acct.currency)
                || jsonb_build_object('label', 'finance.label.statement_pending_settled')) ELSE '[]'::jsonb END
         -- Bezeichnung s. v_rest_label (Alltagsausgaben, Ungeklaerter Eingang ...); aus mehreren Teilen (Befund KW 45) folgen
-        -- flache "darin"-Zeilen, die zusammen GENAU v_rest ergeben (Laien-Pruefung 2026-11-06: Zeilen statt Hinweis-Absatz)
+        -- flache "darin"-Zeilen, die zusammen GENAU v_rest ergeben (Zeilen statt Hinweis-Absatz)
         || CASE WHEN v_settled = 0 OR v_rest <> 0 THEN jsonb_build_array(
                core.fn_ui_money(v_rest, v_acct.currency) || jsonb_build_object('label', v_rest_label)) || v_rest_parts
            ELSE '[]'::jsonb END

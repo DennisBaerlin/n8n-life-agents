@@ -231,7 +231,7 @@ $$;
 CREATE FUNCTION pg_temp.rl_has(p_prep jsonb, p_key text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
     SELECT EXISTS (SELECT 1 FROM jsonb_array_elements(p_prep->'card_lines') c WHERE c->>'value' = p_key);
 $$;
--- "darin"-Zeilen des Rests (Laien-Pruefung 2026-11-06): Betrag je Teil, Anzahl, und ob sie zusammen genau den Rest ergeben
+-- "darin"-Zeilen des Rests: Betrag je Teil, Anzahl, und ob sie zusammen genau den Rest ergeben
 CREATE FUNCTION pg_temp.rl_part(p_prep jsonb, p_label text) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
     SELECT (c->>'value')::numeric FROM jsonb_array_elements(p_prep->'card_lines') c WHERE c->>'label' = p_label;
 $$;

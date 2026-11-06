@@ -436,7 +436,7 @@ foreach ($tc in $cases) {
         if ($tc.persona_person) { $personaDirty = "$($tc.persona_person)" }
         Write-Host ""
         Write-Host "  [$($tc.id)] $($tc.name)"
-        if ($ForceAbortId -and $tc.id -eq $ForceAbortId) { throw "Erzwungener Abbruch (-ForceAbortId $ForceAbortId)" }
+        Test-ForceAbort $tc.id $ForceAbortId
         [long]$chatId = [long]$tc.chat_id
         [long]$fromUid = [long]$tc.from_uid
         Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
@@ -1008,21 +1008,13 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
     } catch {
         # Jede unerwartete Ausnahme im Fall ist ein ROTER Fall, kein Ende des Laufs: die uebrigen Faelle laufen weiter, der
         # Exit-Code bleibt ungleich 0. Haeufigster Anlass: HTTP 500 vom Eingang unter Last (docs/reference/tests.md, Flakiness-Mechanik).
-        $abort = $_
+        # Gemeinsamer Helfer (test_n8n_state.ps1, Fall-Abbruch): Grund, Skriptzeile, Hinweis, geschuetztes Aufraeumen (offene Karten und
+        # Sperr-Zeilen wuerden sonst den Folgefall rot machen). Gezaehlt wird hier, im selben Bereich wie $failed.
         $failed++
-        $reason = "$($abort.ErrorDetails.Message)"
-        try { $m = ($reason | ConvertFrom-Json).message; if ($m) { $reason = "$m" } } catch { }
-        if (-not $reason) { $reason = $abort.Exception.Message }
-        if ($reason.Length -gt 300) { $reason = $reason.Substring(0, 300) + ' ...' }
-        Write-Host "    [FAIL] Abbruch: $reason (Skriptzeile $($abort.InvocationInfo.ScriptLineNumber))" -ForegroundColor Red
-        if ($reason -match 'Regular expression execution timed out') {
-            Write-Host "    Hinweis: n8n-Zeitschutz, Rechner stand kurz still (kein Fremdtext im Spiel). Einzeln wiederholen: -Id $($tc.id)" -ForegroundColor Yellow
-        }
-        # Aufraeumen darf den Lauf nicht beenden; offene Karten und Sperr-Zeilen wuerden sonst den Folgefall rot machen.
-        try {
+        Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup {
             if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
             Clear-RunLeftovers
-        } catch { Write-Host "    Aufraeumen nach dem Abbruch unvollstaendig: $($_.Exception.Message)" -ForegroundColor Yellow }
+        }
     }
 }
 if ($personaDirty) { [void](Set-TestPersonaFact -Container $Container -PersonId $personaDirty -Code '') }
@@ -1035,8 +1027,11 @@ Write-Host "  [replay] Werkzeugaufrufe behalten beim Zurueckspielen ihre Angaben
 if ($replayLost.Count -gt 0) { $failed++; Write-Host "    [FAIL] ohne Angaben zurueckgespielt: $(($replayLost | Sort-Object -Unique) -join ', ')" -ForegroundColor Red }
 else { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }
 
+$failed += Assert-ForceAbortFired $ForceAbortId
+
 Write-Host ""
 Write-Host ("-" * 64)
+Write-AbortedCases
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$passed/$($cases.Count + 1) Faelle bestanden, $failed fehlgeschlagen." -ForegroundColor $color
 Write-Host ""

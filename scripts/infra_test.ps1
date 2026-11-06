@@ -23,8 +23,12 @@
 # Exit-Code = Anzahl Fehler.
 # Voraussetzungen: Harnesses aktiv (build.ps1 -Only '*test_harness*' -> bootstrap_test_n8n.ps1 -Reset);
 #   .env mit TEST_HARNESS_SECRET.
+#         -Id ic01,ic02 = mehrere Faelle (unbekannte id = Abbruch vor dem Lauf).
+#         -ForceAbortId ic01 = Testschalter: wirft am Anfang dieses Falls eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last).
+# Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht NUR diesen Fall rot, der Lauf geht weiter.
 param(
-    [string]$Id,
+    [string[]]$Id,
+    [string]$ForceAbortId,
     [int]$Timeout = 30,
     [switch]$Verbose
 )
@@ -87,8 +91,24 @@ $substrateState = if (Test-Path $stateFile) { [System.IO.File]::ReadAllText($sta
 
 $tcFile   = Join-Path $RepoRoot 'tests\agent\core\infra_cases.json'
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
-$cases    = @(if ($Id) { $allCases | Where-Object { $_.id -eq $Id } } else { $allCases })
-if (-not $cases) { throw "Testfall '$Id' nicht gefunden." }
+$Id       = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ebenso -Id "a,b"
+$cases    = @(if ($Id) { $allCases | Where-Object { $_.id -in $Id } } else { $allCases })
+# Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf.
+$missing  = @(foreach ($one in $Id) { if ($one -notin @($allCases.id)) { $one } })
+if ($missing.Count) { throw "Testfall nicht gefunden in infra_cases.json: $($missing -join ', ')." }
+if (-not $cases) { throw "Keine Testfaelle in infra_cases.json." }
+if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
+
+# Haengende Harness-Executions (Gate wartet) stoppen: nach dem Lauf und nach einem abgebrochenen Fall.
+$infraHarnesses = @('agent.tool_load_context.test_harness','core.sub_load_config.test_harness','agent.tool_human_approval.test_harness')
+function Clear-InfraHarnessLeftovers {
+    foreach ($hName in $infraHarnesses) {
+        $hId = $wfMap[$hName]
+        if ($hId) {
+            try { (Invoke-N8nGet "executions?workflowId=$hId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
+        }
+    }
+}
 
 Write-Host ""
 Write-Host "Infra Sub-Workflow Tests -- $($cases.Count) Testfall(e)"
@@ -96,133 +116,136 @@ Write-Host ("-" * 64)
 $passed = 0; $failed = 0
 
 foreach ($tc in $cases) {
-    Write-Host ""
-    Write-Host "  [$($tc.id)] $($tc.name)"
-    Write-Host "    Harness: $N8N_URL/webhook/$($tc.harness_path)  ->  $($tc.target_name)"
-
-    $targetWfId = $wfMap[$tc.target_name]
-    if (-not $targetWfId) {
-        Write-Host "    [FAIL] Workflow '$($tc.target_name)' nicht gefunden (aktiv? build.ps1 -Only '*test_harness*' -> bootstrap_test_n8n.ps1 -Reset laufen lassen)." -ForegroundColor Red
-        $failed++; continue
-    }
-
-    $missingReq = @()
-    if ($tc.PSObject.Properties['requires'] -and $tc.requires) {
-        foreach ($rq in @($tc.requires)) {   # ein Name oder eine Liste (z. B. ["mock_telegram","mock_llm"]); Punkt-Pfad = Feld im Block, nicht leer
-            $node = $substrateState
-            foreach ($seg in ($rq -split '\.')) { $node = if ($node -and $node.PSObject.Properties[$seg]) { $node.$seg } else { $null } }
-            if ([string]::IsNullOrEmpty([string]$node)) { $missingReq += $rq }
-        }
-    }
-    if ($missingReq.Count) {
-        $hint = ($missingReq | ForEach-Object {
-            $blk = ($_ -split '\.')[0]
-            ".\scripts\dev\enable_$blk.ps1" + $(if ($_ -ne $blk) { " (Feld '$_' leer - fuer mock_llm.cred_id: TEST_GOOGLE_API_KEY in .env)" } else { '' })
-        }) -join ' + '
-        Write-Host "    [FAIL] Vorbedingung '$($missingReq -join "', '")' fehlt im Substrat-State -- zuerst: $hint" -ForegroundColor Red
-        $failed++; continue
-    }
-    # mock_llm: der State-Block allein beweist nichts (das Laufzeit-Drop-in ueberlebt keinen Container-Neustart) ->
-    # den tatsaechlichen Gateway-Upstream pruefen, sonst kostete dieser Gratis-Case echte Credits.
-    if (@($tc.requires) -contains 'mock_llm') {
-        try { Assert-LlmGatewayUpstream -Container $conn.Container -Expect mock }
-        catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
-    }
-
-    $webhookUrl = "$N8N_URL/webhook/$($tc.harness_path)"
-    $tStart     = (Get-Date).ToUniversalTime()
-    $payload    = ($tc.body | ConvertTo-Json -Compress)
-    if ($payload.Contains('__OWNER_CHAT_ID__')) {
-        # Gepairter Owner-Sender wie mock_route_test/real_ingress_test (der frisch gebootstrappte Owner hat noch keine
-        # telegram_user_id -> fn_resolve_sender found=false). Idempotent, einmal je Lauf reicht -> hier je Case billig.
-        Set-OwnerTelegramPairing -Container $conn.Container -Uid $PairedOwnerUid
-        $payload = $payload.Replace('__OWNER_CHAT_ID__', "$PairedOwnerUid")
-    }
     try {
-        # Harness antwortet seit responseMode=lastNode erst nach Lauf-Ende -> POST blockiert;
-        # Timeout ist KEIN Fehler (Polling unten uebernimmt wie bisher).
-        Invoke-RestMethod -Uri $webhookUrl -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-            -TimeoutSec ($Timeout + 10) `
-            -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
-    } catch {
-        if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) {
-            Write-Host "    [FAIL] Webhook-POST fehlgeschlagen: $_" -ForegroundColor Red
-            Write-Host "    DIAGNOSE: Harness aktiv? Secret korrekt? URL: $webhookUrl" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  [$($tc.id)] $($tc.name)"
+        Write-Host "    Harness: $N8N_URL/webhook/$($tc.harness_path)  ->  $($tc.target_name)"
+        Test-ForceAbort $tc.id $ForceAbortId
+
+        $targetWfId = $wfMap[$tc.target_name]
+        if (-not $targetWfId) {
+            Write-Host "    [FAIL] Workflow '$($tc.target_name)' nicht gefunden (aktiv? build.ps1 -Only '*test_harness*' -> bootstrap_test_n8n.ps1 -Reset laufen lassen)." -ForegroundColor Red
             $failed++; continue
         }
-    }
 
-    $ex = $null; $start = Get-Date
-    while ($true) {
-        $cand = Find-Exec $targetWfId $tStart
-        if ($cand -and $cand.status -ne 'running' -and $cand.status -ne 'new') { $ex = Get-ExecDetail $cand.id; break }
-        if (((Get-Date) - $start).TotalSeconds -ge $Timeout) {
-            if ($cand) { Stop-Exec $cand.id; $ex = Get-ExecDetail $cand.id }
-            break
+        $missingReq = @()
+        if ($tc.PSObject.Properties['requires'] -and $tc.requires) {
+            foreach ($rq in @($tc.requires)) {   # ein Name oder eine Liste (z. B. ["mock_telegram","mock_llm"]); Punkt-Pfad = Feld im Block, nicht leer
+                $node = $substrateState
+                foreach ($seg in ($rq -split '\.')) { $node = if ($node -and $node.PSObject.Properties[$seg]) { $node.$seg } else { $null } }
+                if ([string]::IsNullOrEmpty([string]$node)) { $missingReq += $rq }
+            }
         }
-        Start-Sleep -Milliseconds 1000
-    }
-    if (-not $ex) {
-        Write-Host "    [FAIL] Keine Execution gefunden fuer '$($tc.target_name)' (Timeout $Timeout s)." -ForegroundColor Red
-        $failed++; continue
-    }
-    Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)"
-
-    $runData = $ex.data.resultData.runData
-    $val     = Get-FieldValue $runData $tc.check_node $tc.check_field
-    $valStr  = if ($null -eq $val) { '(null)' } else { [string]$val }
-    if ($Verbose) {
-        $preview = if ($valStr.Length -gt 150) { $valStr.Substring(0, 150) + '...' } else { $valStr }
-        Write-Host "    $($tc.check_node).$($tc.check_field) = $preview" -ForegroundColor DarkGray
-    }
-
-    $errors = @()
-    if ($tc.must_be_nonempty -eq $true) {
-        if ($valStr -eq '(null)' -or [string]::IsNullOrWhiteSpace($valStr)) { $errors += 'Feld ist leer / null' }
-    }
-    if ($null -ne $tc.must_contain) {
-        if ($valStr.IndexOf($tc.must_contain, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
-            $errors += "Enthaelt nicht: '$($tc.must_contain)'"
+        if ($missingReq.Count) {
+            $hint = ($missingReq | ForEach-Object {
+                $blk = ($_ -split '\.')[0]
+                ".\scripts\dev\enable_$blk.ps1" + $(if ($_ -ne $blk) { " (Feld '$_' leer - fuer mock_llm.cred_id: TEST_GOOGLE_API_KEY in .env)" } else { '' })
+            }) -join ' + '
+            Write-Host "    [FAIL] Vorbedingung '$($missingReq -join "', '")' fehlt im Substrat-State -- zuerst: $hint" -ForegroundColor Red
+            $failed++; continue
         }
-    }
-    if ($null -ne $tc.must_not_contain) {
-        if ($valStr.IndexOf($tc.must_not_contain, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            $errors += "Enthaelt unerwartet: '$($tc.must_not_contain)'"
+        # mock_llm: der State-Block allein beweist nichts (das Laufzeit-Drop-in ueberlebt keinen Container-Neustart) ->
+        # den tatsaechlichen Gateway-Upstream pruefen, sonst kostete dieser Gratis-Case echte Credits.
+        if (@($tc.requires) -contains 'mock_llm') {
+            try { Assert-LlmGatewayUpstream -Container $conn.Container -Expect mock }
+            catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
         }
-    }
-    if ($null -ne $tc.must_equal) {
-        if ($val -ne $tc.must_equal) { $errors += "Erwartet $($tc.must_equal), erhalten: $val" }
-    }
 
-    # Mehrfach-Leser: N VERSCHIEDENE Dateien stehen im Vision-Request (Mock-LLM protokolliert Art + Hash je Datei-Block).
-    if ($tc.PSObject.Properties['expect_llm_file_blocks']) {
-        $withFiles = @(Get-MockLlmRequests -Container $conn.Container | Where-Object { @($_.file_blocks).Count -gt 0 })
-        $distinct = if ($withFiles.Count) { @(@($withFiles[-1].file_blocks) | ForEach-Object { $_.sha } | Sort-Object -Unique).Count } else { 0 }
-        if ($distinct -ne [int]$tc.expect_llm_file_blocks) { $errors += "Erwartet $($tc.expect_llm_file_blocks) verschiedene Dateien im Vision-Request, gefunden: $distinct" }
-    }
+        $webhookUrl = "$N8N_URL/webhook/$($tc.harness_path)"
+        $tStart     = (Get-Date).ToUniversalTime()
+        $payload    = ($tc.body | ConvertTo-Json -Compress)
+        if ($payload.Contains('__OWNER_CHAT_ID__')) {
+            # Gepairter Owner-Sender wie mock_route_test/real_ingress_test (der frisch gebootstrappte Owner hat noch keine
+            # telegram_user_id -> fn_resolve_sender found=false). Idempotent, einmal je Lauf reicht -> hier je Case billig.
+            Set-OwnerTelegramPairing -Container $conn.Container -Uid $PairedOwnerUid
+            $payload = $payload.Replace('__OWNER_CHAT_ID__', "$PairedOwnerUid")
+        }
+        try {
+            # Harness antwortet seit responseMode=lastNode erst nach Lauf-Ende -> POST blockiert;
+            # Timeout ist KEIN Fehler (Polling unten uebernimmt wie bisher).
+            Invoke-RestMethod -Uri $webhookUrl -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
+                -TimeoutSec ($Timeout + 10) `
+                -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
+        } catch {
+            if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) {
+                Write-Host "    [FAIL] Webhook-POST fehlgeschlagen: $_" -ForegroundColor Red
+                Write-Host "    DIAGNOSE: Harness aktiv? Secret korrekt? URL: $webhookUrl" -ForegroundColor Yellow
+                $failed++; continue
+            }
+        }
 
-    if ($errors.Count -eq 0) {
-        $passed++
-        Write-Host "    [PASS]" -ForegroundColor Green
-    } else {
+        $ex = $null; $start = Get-Date
+        while ($true) {
+            $cand = Find-Exec $targetWfId $tStart
+            if ($cand -and $cand.status -ne 'running' -and $cand.status -ne 'new') { $ex = Get-ExecDetail $cand.id; break }
+            if (((Get-Date) - $start).TotalSeconds -ge $Timeout) {
+                if ($cand) { Stop-Exec $cand.id; $ex = Get-ExecDetail $cand.id }
+                break
+            }
+            Start-Sleep -Milliseconds 1000
+        }
+        if (-not $ex) {
+            Write-Host "    [FAIL] Keine Execution gefunden fuer '$($tc.target_name)' (Timeout $Timeout s)." -ForegroundColor Red
+            $failed++; continue
+        }
+        Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)"
+
+        $runData = $ex.data.resultData.runData
+        $val     = Get-FieldValue $runData $tc.check_node $tc.check_field
+        $valStr  = if ($null -eq $val) { '(null)' } else { [string]$val }
+        if ($Verbose) {
+            $preview = if ($valStr.Length -gt 150) { $valStr.Substring(0, 150) + '...' } else { $valStr }
+            Write-Host "    $($tc.check_node).$($tc.check_field) = $preview" -ForegroundColor DarkGray
+        }
+
+        $errors = @()
+        if ($tc.must_be_nonempty -eq $true) {
+            if ($valStr -eq '(null)' -or [string]::IsNullOrWhiteSpace($valStr)) { $errors += 'Feld ist leer / null' }
+        }
+        if ($null -ne $tc.must_contain) {
+            if ($valStr.IndexOf($tc.must_contain, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+                $errors += "Enthaelt nicht: '$($tc.must_contain)'"
+            }
+        }
+        if ($null -ne $tc.must_not_contain) {
+            if ($valStr.IndexOf($tc.must_not_contain, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                $errors += "Enthaelt unerwartet: '$($tc.must_not_contain)'"
+            }
+        }
+        if ($null -ne $tc.must_equal) {
+            if ($val -ne $tc.must_equal) { $errors += "Erwartet $($tc.must_equal), erhalten: $val" }
+        }
+
+        # Mehrfach-Leser: N VERSCHIEDENE Dateien stehen im Vision-Request (Mock-LLM protokolliert Art + Hash je Datei-Block).
+        if ($tc.PSObject.Properties['expect_llm_file_blocks']) {
+            $withFiles = @(Get-MockLlmRequests -Container $conn.Container | Where-Object { @($_.file_blocks).Count -gt 0 })
+            $distinct = if ($withFiles.Count) { @(@($withFiles[-1].file_blocks) | ForEach-Object { $_.sha } | Sort-Object -Unique).Count } else { 0 }
+            if ($distinct -ne [int]$tc.expect_llm_file_blocks) { $errors += "Erwartet $($tc.expect_llm_file_blocks) verschiedene Dateien im Vision-Request, gefunden: $distinct" }
+        }
+
+        if ($errors.Count -eq 0) {
+            $passed++
+            Write-Host "    [PASS]" -ForegroundColor Green
+        } else {
+            $failed++
+            foreach ($e in $errors) { Write-Host "    FEHLER: $e" -ForegroundColor Red }
+            Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
+        }
+        if ($ex.status -eq 'waiting') { Stop-Exec $ex.id }
+    } catch {
+        # Ausnahme im Fall = roter Fall, der Lauf geht weiter (Helfer in dev\test_n8n_state.ps1, Abschnitt Fall-Abbruch).
         $failed++
-        foreach ($e in $errors) { Write-Host "    FEHLER: $e" -ForegroundColor Red }
-        Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
+        Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Clear-InfraHarnessLeftovers }
     }
-    if ($ex.status -eq 'waiting') { Stop-Exec $ex.id }
 }
 
 # Haengende Harness-Executions aufraeumen
-$infraHarnesses = @('agent.tool_load_context.test_harness','core.sub_load_config.test_harness','agent.tool_human_approval.test_harness')
-foreach ($hName in $infraHarnesses) {
-    $hId = $wfMap[$hName]
-    if ($hId) {
-        try { (Invoke-N8nGet "executions?workflowId=$hId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
-    }
-}
+Clear-InfraHarnessLeftovers
+$failed += Assert-ForceAbortFired $ForceAbortId
 
 Write-Host ""
 Write-Host ("-" * 64)
+Write-AbortedCases
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$passed/$($cases.Count) Tests bestanden, $failed fehlgeschlagen." -ForegroundColor $color
 Write-Host "Tipp: build.ps1 -Only '*test_harness*' -> bootstrap_test_n8n.ps1 -Reset ausfuehren falls Harnesses fehlen."

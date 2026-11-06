@@ -16,6 +16,7 @@
 ## Flakiness + Quarantäne
 
 - Routing-Tests sind ein weiches Gate; ein einzelner Fail beweist keine Regression. `"quarantined": true` am Case: wird ausgeführt und berichtet, aber nicht gewertet und nicht ins Judge-Bundle geschrieben — Pflicht: `notes` mit Grund + Re-Evaluierungs-Trigger.
+- **Treiber mit Fall-Liste** (freie Suiten `real_ingress`, `mock_route`, `infra_test`, `hitl_gate`; `cron_text` hat eine eigene, gleichwertige Absicherung) setzen jeden Fall in `try`/`catch` **im selben Bereich** wie den Zähler und rufen im `catch` `Write-CaseAbort` (`scripts/dev/test_n8n_state.ps1`, Abschnitt *Fall-Abbruch*): Der Zähler wird nie in einem Scriptblock hochgezählt (eine Kopie ginge verloren, der Lauf bliebe grün), die Fälle laufen mit dem `foreach`-Statement, nie mit `ForEach-Object` (dort beendet `continue` mehr als den Fall). Kein automatisches Wiederholen: Ein roter Fall wird einzeln wiederholt. Eigenbau statt Pester, weil die Fälle linear Substrat-Zustand teilen und `exit $failed` der Vertrag mit `run_free_gates.ps1` ist. Mechanik → `docs/reference/tests.md` *Flakiness-Mechanik*.
 - Rubrics auf Output-Substanz schreiben, nicht auf die `read_tools`-Liste (der n8n-Action-Log ist unvollständig). Massenhaft `status=error` ⟹ zuerst Modell-Quota prüfen, nicht die Korrelation debuggen.
 
 ## DB-Tests: Pattern

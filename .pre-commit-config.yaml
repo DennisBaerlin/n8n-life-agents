@@ -273,6 +273,13 @@ repos:
         pass_filenames: false
         files: ^(\.claude/hooks/(enforce_app_window|lib/grant_window)|scripts/dev/app_window_hook_test|scripts/lib/git_sandbox)\.ps1$
 
+      - id: case-abort-test
+        name: case_abort_test (a case that throws turns red and the run continues; helpers in test_n8n_state.ps1)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/case_abort_test.ps1
+        pass_filenames: false
+        files: ^scripts/dev/(case_abort_test|test_n8n_state|hitl_gate_test|mock_route_test|real_ingress_test)\.ps1$|^scripts/infra_test\.ps1$
+
       - id: capabilities-catalog
         name: build.ps1 -VerifyCatalog (capabilities catalog drift)
         language: system

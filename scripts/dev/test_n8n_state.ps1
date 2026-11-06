@@ -896,3 +896,66 @@ function Test-TextHasKey {
     }
     return $false
 }
+
+# ===== Fall-Abbruch: eine Ausnahme im Fall ist ein ROTER Fall, kein Ende des Laufs =====
+# Gemeinsam fuer alle Treiber mit Fall-Liste (real_ingress, mock_route, infra, hitl_gate). Haeufigster Anlass: HTTP 500 vom
+# Eingang unter Last ("Regular expression execution timed out", n8n-Zeitschutz). Einbau je Fall:
+#   foreach ($tc in $cases) {
+#       try { Test-ForceAbort $tc.id $ForceAbortId; ...Fall...; $failed++ bei rot... }
+#       catch { $failed++; Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { ... } }
+#   }
+#   Write-AbortedCases; $failed += Assert-ForceAbortFired $ForceAbortId     (vor der Schlusszeile)
+# Das try/catch steht im SELBEN Bereich wie der Zaehler: ein Scriptblock-Laeufer wuerde ein $failed++ in einer Kopie verlieren
+# (stiller Falsch-Gruen). Darum zaehlt der Aufrufer, die Helfer melden nur. Kein Retry: ein roter Fall wird einzeln wiederholt.
+# Selbsttest: scripts/dev/case_abort_test.ps1.
+$script:AbortedCases = @()
+$script:ForceAbortReached = $false
+
+# Grund aus ErrorDetails (JSON-"message", z. B. HTTP-Fehlerkoerper) sonst Exception.Message, auf 300 Zeichen gekuerzt.
+function Get-CaseAbortReason($ErrorRecord) {
+    $reason = "$($ErrorRecord.ErrorDetails.Message)"
+    try { $m = ($reason | ConvertFrom-Json).message; if ($m) { $reason = "$m" } } catch { }
+    if (-not $reason) { $reason = $ErrorRecord.Exception.Message }
+    if ($reason.Length -gt 300) { $reason = $reason.Substring(0, 300) + ' ...' }
+    return $reason
+}
+
+# Meldet den Abbruch (Grund, Skriptzeile, Hinweis beim Zeitschutz) und raeumt auf; das Aufraeumen darf nie den Lauf beenden.
+# Zaehlt NICHT selbst (siehe oben). -NoIdParam: Treiber ohne -Id (hitl_gate) -> Hinweis "Lauf wiederholen".
+function Write-CaseAbort {
+    param([Parameter(Mandatory)]$ErrorRecord, [Parameter(Mandatory)][string]$CaseId, [scriptblock]$Cleanup, [switch]$NoIdParam)
+    $script:AbortedCases += $CaseId
+    $reason = Get-CaseAbortReason $ErrorRecord
+    Write-Host "    [FAIL] Abbruch: $reason (Skriptzeile $($ErrorRecord.InvocationInfo.ScriptLineNumber))" -ForegroundColor Red
+    if ($reason -match 'Regular expression execution timed out') {
+        $again = if ($NoIdParam) { 'Lauf wiederholen.' } else { "Einzeln wiederholen: -Id $CaseId" }
+        Write-Host "    Hinweis: n8n-Zeitschutz, Rechner stand kurz still (kein Fremdtext im Spiel). $again" -ForegroundColor Yellow
+    }
+    if ($Cleanup) {
+        try { & $Cleanup } catch { Write-Host "    Aufraeumen nach dem Abbruch unvollstaendig: $($_.Exception.Message)" -ForegroundColor Yellow }
+    }
+}
+
+# Vor der Schlusszeile: abgebrochene Faelle namentlich, damit "Ausnahme, wiederholen" nicht wie eine Regression aussieht.
+function Write-AbortedCases {
+    if (@($script:AbortedCases).Count -gt 0) {
+        Write-Host "  Abgebrochen (Ausnahme statt Pruefung): $((@($script:AbortedCases) | Select-Object -Unique) -join ', ')" -ForegroundColor Yellow
+    }
+}
+
+# Test-Schalter -ForceAbortId: wirft am Anfang genau dieses Falls, um den Abbruch-Pfad ohne echte Last zu zeigen.
+function Test-ForceAbort([string]$CaseId, [string]$ForceAbortId) {
+    if ($ForceAbortId -and $CaseId -eq $ForceAbortId) {
+        $script:ForceAbortReached = $true
+        throw "Erzwungener Abbruch (-ForceAbortId $ForceAbortId)"
+    }
+}
+
+# Ende des Laufs: wurde die ID nie erreicht, ist das ein roter Fall (sonst bliebe ein Tippfehler still gruen). Liefert 0 oder 1.
+function Assert-ForceAbortFired([string]$ForceAbortId) {
+    if ($ForceAbortId -and -not $script:ForceAbortReached) {
+        Write-Host "  [FAIL] -ForceAbortId $ForceAbortId wurde in diesem Lauf nie erreicht." -ForegroundColor Red
+        return 1
+    }
+    return 0
+}

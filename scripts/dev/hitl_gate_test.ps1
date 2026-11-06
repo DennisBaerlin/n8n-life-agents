@@ -32,10 +32,15 @@
 # Real-Ingress-Treiber (Phase 7). Vorbedingung: scripts/dev/enable_mock_telegram.ps1 lief
 # (Mock aktiv + baseUrl umgebogen).
 #
-# Usage:  .\scripts\dev\hitl_gate_test.ps1 [-Timeout 30] [-Verbose]
+# FALL-ABBRUCH: eine Ausnahme in einem Block macht NUR diesen Fall rot (Grund + Skriptzeile, Aufraeumen), der Lauf geht weiter.
+# -ForceAbortId hitlR3 = Testschalter: wirft am Anfang dieses Blocks eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last); wird die id
+# nie erreicht, ist der Lauf rot. Es gibt kein -Id: die Bloecke bauen auf gemeinsamem Zustand auf. hitlO7a-f laufen als EIN Block (hitlO7).
+#
+# Usage:  .\scripts\dev\hitl_gate_test.ps1 [-Timeout 30] [-Verbose] [-ForceAbortId <id>]
 # Exit-Code = Anzahl Fehler.
 param(
     [int]$Timeout = 30,
+    [string]$ForceAbortId,
     [switch]$Verbose
 )
 
@@ -182,257 +187,280 @@ Write-Host "HITL-Gate-Test (echter Telegram-Pfad ueber Mock) -- $($cases.Count) 
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0
 
+# Fall-Abbruch (Helfer in test_n8n_state.ps1): eine Ausnahme in einem Block (z. B. HTTP 500 vom Eingang unter Last) ist ein ROTER Fall, der
+# Lauf geht weiter. Jeder Block unten steht in `try { Test-ForceAbort <id> $ForceAbortId; ... } catch { Register-Abort $_ <id> }` im SELBEN
+# Bereich wie die Zaehler (kein Scriptblock-Laeufer: ein dort vergessenes $failed++ ginge als Kopie verloren, der Lauf bliebe gruen).
+# Der Aufbau oben (Pairing, Seed) bleibt ungeschuetzt: scheitert er, gibt es nichts zu retten.
+# Offene Karten und Sperr-Zeilen raeumt jeder Abbruch auf, sonst machten sie den Folgefall rot; -Extra raeumt zusaetzlich Spuren in der DB ab.
+function Clear-DeclinedCards {
+    try { (Invoke-N8nGet "executions?workflowId=$gateWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
+    Clear-HitlPending -Container $Container
+}
+# -NoCase: der Fall steht schon in $cases (Schleifen, Chat-Faelle), sonst traegt der Abbruch ihn dort ein.
+function Register-Abort($ErrorRecord, [string]$CaseId, [scriptblock]$Extra, [switch]$NoCase) {
+    $script:failed++
+    if (-not $NoCase) { $script:cases += [pscustomobject]@{ id = $CaseId } }
+    Write-Host "  (Fall $CaseId)" -ForegroundColor DarkGray
+    Write-CaseAbort -ErrorRecord $ErrorRecord -CaseId $CaseId -NoIdParam -Cleanup { Clear-DeclinedCards; if ($Extra) { & $Extra } }
+}
+
 foreach ($tc in $cases) {
-    Write-Host ""
-    Write-Host "  [$($tc.id)] $($tc.name)"
-    Clear-MockTelegramRequests -Container $Container
-
-    # chat_id je Case: 999000111 = ungepairt -> Owner-Pfad; 880055200 = gepairte Partnerin -> Member-Pfad.
-    $sum = "HITL probe $($tc.id): bitte bestaetigen."
-    if ($tc.long) { $sum = New-LongSummary $tc.id }
-    if ($tc.structured) {
-        $sum = [ordered]@{ title = 'core.hitl.publish_plan'; lines = @(
-            [ordered]@{ label = 'core.label.amount'; kind = 'money'; value = 1234.5; currency = 'EUR' }
-            [ordered]@{ label = 'core.label.date'; kind = 'date'; value = '2026-12-31' }
-            [ordered]@{ label = 'core.label.note'; kind = 'text'; value = "marker $($tc.id)" }
-            [ordered]@{ label = 'core.label.amount'; kind = 'money'; value = 'xyz'; currency = 'EUR' }
-        ) }
-    }
-    $payload = (@{ chat_id = $tc.chat_id; summary = $sum; approval_tier = $tc.tier } | ConvertTo-Json -Compress -Depth 6)
-
-    # Gate-Floor VOR dem POST (n8n vergibt global monotone ids): die Execution DIESES Falls hat danach
-    # id > $gateBase. Der owner_only-Zweig (kein Send -> Marker-Scan) braucht das zwingend — sonst matcht der
-    # per-Lauf-KONSTANTE Marker eine gleich-markierte Execution eines FRUEHEREN Laufs (Substrat-Reuse ohne
-    # -Reset ist der endorste Normalfall), und eine Regression (Block wird faelschlich zum Send -> die aktuelle
-    # Execution suspendiert) bliebe still ein False-PASS auf der alten success-Zeile.
-    $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-
-    # POST blockiert bis zum Gate-Resume (responseMode=lastNode); Client-Timeout ist KEIN Fehler — die
-    # Execution laeuft serverseitig weiter (wie infra_test).
     try {
-        Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-            -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
-    } catch {
-        if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) {
-            Write-Host "    [FAIL] Webhook-POST fehlgeschlagen: $_" -ForegroundColor Red
-            Write-Host "    DIAGNOSE: Harness aktiv? Secret korrekt? URL: $N8nUrl/webhook/$HarnessPath" -ForegroundColor Yellow
-            $failed++; continue
-        }
-    }
+        Test-ForceAbort $tc.id $ForceAbortId
+        Write-Host ""
+        Write-Host "  [$($tc.id)] $($tc.name)"
+        Clear-MockTelegramRequests -Container $Container
 
-    # --- je Send-and-Wait des Tiers (in Reihenfolge): abfangen (Ziel-chat_id verifizieren) + Resume feuern.
-    # Korreliert ueber den eindeutigen Summary-Marker ($tc.id) im Text PLUS die Ziel-chat_id (member vs owner),
-    # sodass im Vier-Augen-Pfad der Member- und der Owner-Send auseinandergehalten werden. Die exakte
-    # Gate-Execution-id steckt im Resume-URL-Pfad (/webhook-waiting/{execId}/{nodeId}) = GENAU diese Execution.
-    $execId = $null; $sendFail = $false
-    foreach ($snd in $tc.sends) {
-        $isMemberSend = ($snd.t -eq 'member')
-        $msg = $null; $start = Get-Date
-        while ($true) {
-            $reqs = Get-MockTelegramRequests -Container $Container
-            $msg  = $reqs | Where-Object {
-                $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains($tc.id) -and `
-                ( ($isMemberSend -and ([string]$_.body.chat_id -eq $MemberChatId)) -or `
-                  ((-not $isMemberSend) -and ([string]$_.body.chat_id -ne $MemberChatId)) )
-            } | Select-Object -Last 1
-            if ($msg) { break }
-            if (((Get-Date) - $start).TotalSeconds -ge $Timeout) { break }
-            Start-Sleep -Milliseconds 700
+        # chat_id je Case: 999000111 = ungepairt -> Owner-Pfad; 880055200 = gepairte Partnerin -> Member-Pfad.
+        $sum = "HITL probe $($tc.id): bitte bestaetigen."
+        if ($tc.long) { $sum = New-LongSummary $tc.id }
+        if ($tc.structured) {
+            $sum = [ordered]@{ title = 'core.hitl.publish_plan'; lines = @(
+                [ordered]@{ label = 'core.label.amount'; kind = 'money'; value = 1234.5; currency = 'EUR' }
+                [ordered]@{ label = 'core.label.date'; kind = 'date'; value = '2026-12-31' }
+                [ordered]@{ label = 'core.label.note'; kind = 'text'; value = "marker $($tc.id)" }
+                [ordered]@{ label = 'core.label.amount'; kind = 'money'; value = 'xyz'; currency = 'EUR' }
+            ) }
         }
-        if (-not $msg) {
-            Write-Host "    [FAIL] Erwarteter $($snd.t)-Send (Buttons, Marker $($tc.id)) nicht abgefangen." -ForegroundColor Red
-            $sendFail = $true; break
-        }
-        # SICHERHEITS-INVARIANTE: der Member-Send adressiert die AUFGELOESTE, verifizierte Partner-chat_id
-        # (sender.chat_id aus fn_resolve_sender = 880055200) und NICHT den Owner -- ein Send an den Owner statt
-        # das Mitglied waere der Multi-Member-Auth-Bruch. (Bei einem legitimen Mitglied ist die aufgeloeste
-        # chat_id == die Eingangs-id; die Pruefung sichert daher 'an die verifizierte Partnerin, nicht den Owner'.)
-        if ($isMemberSend -and ([string]$msg.body.chat_id -ne $MemberChatId)) {
-            Write-Host "    [FAIL] Member-Send ging an chat_id=$($msg.body.chat_id) statt an die Partnerin $MemberChatId (Leak!)." -ForegroundColor Red
-            $sendFail = $true; break
-        }
-        if ($Verbose) { Write-Host "    $($snd.t)-Send abgefangen an chat_id=$($msg.body.chat_id) (approve=$($snd.ok))" -ForegroundColor DarkGray }
-        # Textkatalog: Knoepfe + Hinweis in der Sprache DIESES Empfaengers; bei hitl08 zusaetzlich Titel/Betrag/Datum.
-        $le = $LangExpect[$snd.t]; $btn = Get-ButtonTexts $msg; $txt = [string]$msg.body.text
-        $langBad = @()
-        if ($btn -notcontains $le.approve -or $btn -notcontains $le.cancel) { $langBad += "Knoepfe [$($btn -join ' | ')]" }
-        if (-not $txt.Contains($le.hint)) { $langBad += "Hinweis fehlt ('$($le.hint)')" }
-        $want = if ($snd.t -eq 'member') { $tc.expectMember } else { $tc.expectOwner }
-        foreach ($w in @($want)) { if ($w -and -not $txt.Contains($w)) { $langBad += "Text ohne '$w'" } }
-        if ($langBad.Count) {
-            Write-Host "    [FAIL] $($snd.t)-Send nicht in der Empfaenger-Sprache: $($langBad -join '; ')" -ForegroundColor Red
-            Write-Host "      Text: $txt" -ForegroundColor DarkGray
-            $sendFail = $true; break
-        }
+        $payload = (@{ chat_id = $tc.chat_id; summary = $sum; approval_tier = $tc.tier } | ConvertTo-Json -Compress -Depth 6)
+
+        # Gate-Floor VOR dem POST (n8n vergibt global monotone ids): die Execution DIESES Falls hat danach
+        # id > $gateBase. Der owner_only-Zweig (kein Send -> Marker-Scan) braucht das zwingend — sonst matcht der
+        # per-Lauf-KONSTANTE Marker eine gleich-markierte Execution eines FRUEHEREN Laufs (Substrat-Reuse ohne
+        # -Reset ist der endorste Normalfall), und eine Regression (Block wird faelschlich zum Send -> die aktuelle
+        # Execution suspendiert) bliebe still ein False-PASS auf der alten success-Zeile.
+        $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+
+        # POST blockiert bis zum Gate-Resume (responseMode=lastNode); Client-Timeout ist KEIN Fehler — die
+        # Execution laeuft serverseitig weiter (wie infra_test).
         try {
-            $resumeUrl = Get-HitlResumeUrl -Request $msg -Approved $snd.ok -BridgeUrl $N8nUrl
-            $eid = Get-HitlExecId -Url $resumeUrl; if ($eid) { $execId = $eid }
-            # Karte offen -> Sperr-Zeile fuer den Ursprungs-Chat (vor dem Tipp).
-            $pendBad = Test-PendingOpen $tc $eid
-            if ($pendBad) {
-                Write-Host "    [FAIL] Karte-offen-Sperre ($($snd.t)-Send): $pendBad" -ForegroundColor Red
-                $sendFail = $true; Invoke-HitlResume -Url $resumeUrl | Out-Null; break
-            }
-            Invoke-HitlResume -Url $resumeUrl | Out-Null
+            Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
+                -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
         } catch {
-            Write-Host "    [FAIL] Resume ($($snd.t)) fehlgeschlagen: $_" -ForegroundColor Red
-            $sendFail = $true; break
-        }
-    }
-    if ($sendFail) { $failed++; continue }
-
-    # owner_only: KEIN Send -> die Gate-Execution ueber den Summary-Marker in den runData des Start-Nodes finden.
-    # FLOOR id > $gateBase (nur DIESER Lauf -> kein Stale-Match auf eine gleich-markierte alte Execution) und
-    # KEIN status-Filter: eine faelschlich SENDENDE Regression suspendiert die Execution (status=waiting) ->
-    # sie wird trotzdem gefunden, und der Success-Check unten schlaegt fehl (statt still auf eine alte
-    # success-Zeile auszuweichen = der False-Green, den Cold-Eyes fand).
-    if ($tc.sends.Count -eq 0) {
-        $start = Get-Date
-        while (-not $execId) {
-            foreach ($e in (Invoke-N8nGet "executions?workflowId=$gateWfId&limit=20").data) {
-                if ([long]$e.id -le [long]$gateBase) { continue }
-                $d = $null; try { $d = Get-ExecDetail $e.id } catch { }
-                $s = $null; try { $s = [string]$d.data.resultData.runData.'Start'[0].data.main[0][0].json.summary } catch { }
-                if ($s -and $s.Contains($tc.id)) { $execId = $e.id; break }
+            if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) {
+                Write-Host "    [FAIL] Webhook-POST fehlgeschlagen: $_" -ForegroundColor Red
+                Write-Host "    DIAGNOSE: Harness aktiv? Secret korrekt? URL: $N8nUrl/webhook/$HarnessPath" -ForegroundColor Yellow
+                $failed++; continue
             }
-            if ($execId -or (((Get-Date) - $start).TotalSeconds -ge $Timeout)) { break }
+        }
+
+        # --- je Send-and-Wait des Tiers (in Reihenfolge): abfangen (Ziel-chat_id verifizieren) + Resume feuern.
+        # Korreliert ueber den eindeutigen Summary-Marker ($tc.id) im Text PLUS die Ziel-chat_id (member vs owner),
+        # sodass im Vier-Augen-Pfad der Member- und der Owner-Send auseinandergehalten werden. Die exakte
+        # Gate-Execution-id steckt im Resume-URL-Pfad (/webhook-waiting/{execId}/{nodeId}) = GENAU diese Execution.
+        $execId = $null; $sendFail = $false
+        foreach ($snd in $tc.sends) {
+            $isMemberSend = ($snd.t -eq 'member')
+            $msg = $null; $start = Get-Date
+            while ($true) {
+                $reqs = Get-MockTelegramRequests -Container $Container
+                $msg  = $reqs | Where-Object {
+                    $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains($tc.id) -and `
+                    ( ($isMemberSend -and ([string]$_.body.chat_id -eq $MemberChatId)) -or `
+                      ((-not $isMemberSend) -and ([string]$_.body.chat_id -ne $MemberChatId)) )
+                } | Select-Object -Last 1
+                if ($msg) { break }
+                if (((Get-Date) - $start).TotalSeconds -ge $Timeout) { break }
+                Start-Sleep -Milliseconds 700
+            }
+            if (-not $msg) {
+                Write-Host "    [FAIL] Erwarteter $($snd.t)-Send (Buttons, Marker $($tc.id)) nicht abgefangen." -ForegroundColor Red
+                $sendFail = $true; break
+            }
+            # SICHERHEITS-INVARIANTE: der Member-Send adressiert die AUFGELOESTE, verifizierte Partner-chat_id
+            # (sender.chat_id aus fn_resolve_sender = 880055200) und NICHT den Owner -- ein Send an den Owner statt
+            # das Mitglied waere der Multi-Member-Auth-Bruch. (Bei einem legitimen Mitglied ist die aufgeloeste
+            # chat_id == die Eingangs-id; die Pruefung sichert daher 'an die verifizierte Partnerin, nicht den Owner'.)
+            if ($isMemberSend -and ([string]$msg.body.chat_id -ne $MemberChatId)) {
+                Write-Host "    [FAIL] Member-Send ging an chat_id=$($msg.body.chat_id) statt an die Partnerin $MemberChatId (Leak!)." -ForegroundColor Red
+                $sendFail = $true; break
+            }
+            if ($Verbose) { Write-Host "    $($snd.t)-Send abgefangen an chat_id=$($msg.body.chat_id) (approve=$($snd.ok))" -ForegroundColor DarkGray }
+            # Textkatalog: Knoepfe + Hinweis in der Sprache DIESES Empfaengers; bei hitl08 zusaetzlich Titel/Betrag/Datum.
+            $le = $LangExpect[$snd.t]; $btn = Get-ButtonTexts $msg; $txt = [string]$msg.body.text
+            $langBad = @()
+            if ($btn -notcontains $le.approve -or $btn -notcontains $le.cancel) { $langBad += "Knoepfe [$($btn -join ' | ')]" }
+            if (-not $txt.Contains($le.hint)) { $langBad += "Hinweis fehlt ('$($le.hint)')" }
+            $want = if ($snd.t -eq 'member') { $tc.expectMember } else { $tc.expectOwner }
+            foreach ($w in @($want)) { if ($w -and -not $txt.Contains($w)) { $langBad += "Text ohne '$w'" } }
+            if ($langBad.Count) {
+                Write-Host "    [FAIL] $($snd.t)-Send nicht in der Empfaenger-Sprache: $($langBad -join '; ')" -ForegroundColor Red
+                Write-Host "      Text: $txt" -ForegroundColor DarkGray
+                $sendFail = $true; break
+            }
+            try {
+                $resumeUrl = Get-HitlResumeUrl -Request $msg -Approved $snd.ok -BridgeUrl $N8nUrl
+                $eid = Get-HitlExecId -Url $resumeUrl; if ($eid) { $execId = $eid }
+                # Karte offen -> Sperr-Zeile fuer den Ursprungs-Chat (vor dem Tipp).
+                $pendBad = Test-PendingOpen $tc $eid
+                if ($pendBad) {
+                    Write-Host "    [FAIL] Karte-offen-Sperre ($($snd.t)-Send): $pendBad" -ForegroundColor Red
+                    $sendFail = $true; Invoke-HitlResume -Url $resumeUrl | Out-Null; break
+                }
+                Invoke-HitlResume -Url $resumeUrl | Out-Null
+            } catch {
+                Write-Host "    [FAIL] Resume ($($snd.t)) fehlgeschlagen: $_" -ForegroundColor Red
+                $sendFail = $true; break
+            }
+        }
+        if ($sendFail) { $failed++; continue }
+
+        # owner_only: KEIN Send -> die Gate-Execution ueber den Summary-Marker in den runData des Start-Nodes finden.
+        # FLOOR id > $gateBase (nur DIESER Lauf -> kein Stale-Match auf eine gleich-markierte alte Execution) und
+        # KEIN status-Filter: eine faelschlich SENDENDE Regression suspendiert die Execution (status=waiting) ->
+        # sie wird trotzdem gefunden, und der Success-Check unten schlaegt fehl (statt still auf eine alte
+        # success-Zeile auszuweichen = der False-Green, den Cold-Eyes fand).
+        if ($tc.sends.Count -eq 0) {
+            $start = Get-Date
+            while (-not $execId) {
+                foreach ($e in (Invoke-N8nGet "executions?workflowId=$gateWfId&limit=20").data) {
+                    if ([long]$e.id -le [long]$gateBase) { continue }
+                    $d = $null; try { $d = Get-ExecDetail $e.id } catch { }
+                    $s = $null; try { $s = [string]$d.data.resultData.runData.'Start'[0].data.main[0][0].json.summary } catch { }
+                    if ($s -and $s.Contains($tc.id)) { $execId = $e.id; break }
+                }
+                if ($execId -or (((Get-Date) - $start).TotalSeconds -ge $Timeout)) { break }
+                Start-Sleep -Milliseconds 700
+            }
+            # 'KEIN Send'-Invariante HART pruefen (Cold-Eyes MINOR): owner_only darf NULL button-tragende Sends mit
+            # dem Marker erzeugt haben — ein Leak (auch an die Partnerin) waere genau der Multi-Member-Auth-Bruch,
+            # den dieser Fall garantiert. Der Mock-Log ist seit Case-Start (Clear oben) leer.
+            $leak = Get-MockTelegramRequests -Container $Container | Where-Object {
+                $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains($tc.id)
+            } | Select-Object -First 1
+            if ($leak) {
+                Write-Host "    [FAIL] owner_only: unerwarteter Button-Send an chat_id=$($leak.body.chat_id) (der Block darf NICHT senden)." -ForegroundColor Red
+                $failed++; continue
+            }
+        }
+        if (-not $execId) { Write-Host "    [FAIL] Keine Gate-Execution-id ermittelt (kein Send/Marker > gateBase gefunden?)." -ForegroundColor Red; $failed++; continue }
+
+        # GENAU diese Gate-Execution einsammeln (warten -> success) und Return.approved pruefen.
+        $ex = $null; $start = Get-Date
+        while ($true) {
+            try { $cand = Get-ExecDetail $execId } catch { $cand = $null }
+            if ($cand -and $cand.status -eq 'success') { $ex = $cand; break }
+            if (((Get-Date) - $start).TotalSeconds -ge $Timeout) { $ex = $cand; break }
             Start-Sleep -Milliseconds 700
         }
-        # 'KEIN Send'-Invariante HART pruefen (Cold-Eyes MINOR): owner_only darf NULL button-tragende Sends mit
-        # dem Marker erzeugt haben — ein Leak (auch an die Partnerin) waere genau der Multi-Member-Auth-Bruch,
-        # den dieser Fall garantiert. Der Mock-Log ist seit Case-Start (Clear oben) leer.
-        $leak = Get-MockTelegramRequests -Container $Container | Where-Object {
-            $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains($tc.id)
-        } | Select-Object -First 1
-        if ($leak) {
-            Write-Host "    [FAIL] owner_only: unerwarteter Button-Send an chat_id=$($leak.body.chat_id) (der Block darf NICHT senden)." -ForegroundColor Red
-            $failed++; continue
-        }
-    }
-    if (-not $execId) { Write-Host "    [FAIL] Keine Gate-Execution-id ermittelt (kein Send/Marker > gateBase gefunden?)." -ForegroundColor Red; $failed++; continue }
+        if (-not $ex) { Write-Host "    [FAIL] Gate-Execution $execId nicht abrufbar." -ForegroundColor Red; $failed++; continue }
 
-    # GENAU diese Gate-Execution einsammeln (warten -> success) und Return.approved pruefen.
-    $ex = $null; $start = Get-Date
-    while ($true) {
-        try { $cand = Get-ExecDetail $execId } catch { $cand = $null }
-        if ($cand -and $cand.status -eq 'success') { $ex = $cand; break }
-        if (((Get-Date) - $start).TotalSeconds -ge $Timeout) { $ex = $cand; break }
-        Start-Sleep -Milliseconds 700
-    }
-    if (-not $ex) { Write-Host "    [FAIL] Gate-Execution $execId nicht abrufbar." -ForegroundColor Red; $failed++; continue }
+        # WS-5b: das Dual-Control-Gate hat MEHRERE Terminal-Returns (Return owner / Return co-approval /
+        # Return info / Return blocked / Return declined) statt eines einzigen 'Return' -> den approved-Wert (+
+        # reason bei owner_only) aus dem tatsaechlich gelaufenen Return*-Node ziehen (name-agnostisch).
+        $approved = $null; $reason = $null
+        try {
+            foreach ($nodeName in $ex.data.resultData.runData.PSObject.Properties.Name) {
+                if ($nodeName -notlike 'Return*') { continue }
+                $rj = $ex.data.resultData.runData.$nodeName[0].data.main[0][0].json
+                if ($null -ne $rj.approved) { $approved = $rj.approved; $reason = $rj.reason; break }
+            }
+        } catch { }
 
-    # WS-5b: das Dual-Control-Gate hat MEHRERE Terminal-Returns (Return owner / Return co-approval /
-    # Return info / Return blocked / Return declined) statt eines einzigen 'Return' -> den approved-Wert (+
-    # reason bei owner_only) aus dem tatsaechlich gelaufenen Return*-Node ziehen (name-agnostisch).
-    $approved = $null; $reason = $null
-    try {
-        foreach ($nodeName in $ex.data.resultData.runData.PSObject.Properties.Name) {
-            if ($nodeName -notlike 'Return*') { continue }
-            $rj = $ex.data.resultData.runData.$nodeName[0].data.main[0][0].json
-            if ($null -ne $rj.approved) { $approved = $rj.approved; $reason = $rj.reason; break }
+        # owner_info: der Einweg-Owner-Info-Send (KEIN reply_markup) MUSS an den Owner (nicht die Partnerin) gehen —
+        # beweist, dass der Owner bei der Member-Selbstbestaetigung informiert wird (Maker-Checker-Transparenz).
+        $ownerInfoOk = $true
+        if ($tc.assertOwnerInfo) {
+            $info = $null; $start = Get-Date
+            while ($true) {
+                $info = Get-MockTelegramRequests -Container $Container | Where-Object {
+                    $_.method -eq 'sendMessage' -and (-not $_.body.reply_markup) -and `
+                    ([string]$_.body.text).Contains($tc.id) -and ([string]$_.body.chat_id -ne $MemberChatId)
+                } | Select-Object -Last 1
+                if ($info -or (((Get-Date) - $start).TotalSeconds -ge 10)) { break }
+                Start-Sleep -Milliseconds 500
+            }
+            if (-not $info) { $ownerInfoOk = $false; Write-Host "    [FAIL] owner_info: kein Einweg-Owner-Info-Send an den Owner abgefangen." -ForegroundColor Red }
+            elseif ($Verbose) { Write-Host "    Owner-Info-Send abgefangen an chat_id=$($info.body.chat_id)" -ForegroundColor DarkGray }
         }
-    } catch { }
+        # self: KEIN einziger Send mit dem Marker an jemand anderen als das Mitglied (weder Buttons noch Info).
+        if ($tc.assertNoOwnerSend) {
+            $ownerLeak = Get-MockTelegramRequests -Container $Container | Where-Object {
+                $_.method -eq 'sendMessage' -and ([string]$_.body.text).Contains($tc.id) -and ([string]$_.body.chat_id -ne $MemberChatId)
+            } | Select-Object -First 1
+            if ($ownerLeak) { $ownerInfoOk = $false; Write-Host "    [FAIL] self: unerwarteter Send an chat_id=$($ownerLeak.body.chat_id) (Owner darf nichts bekommen)." -ForegroundColor Red }
+        }
+        # Lange Karten: je erwartetem Empfaenger >= 1 Vor-Teil (ohne Knoepfe, "Teil i/N" in seiner Sprache), lueckenlos
+        # nummeriert bis zur letzten Nachricht; JEDE Nachricht <= 4096 Zeichen. Kurze Karten: nie ein Teil-Praefix.
+        $reqsAll = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
+        if ($tc.long) {
+            foreach ($who in $tc.parts) {
+                $toMember = ($who -eq 'member')
+                $mine = @($reqsAll | Where-Object { (([string]$_.body.chat_id -eq $MemberChatId) -eq $toMember) -and ([string]$_.body.text) -match $PartRx[$who] })
+                $nums = @($mine | ForEach-Object { [void](([string]$_.body.text) -match $PartRx[$who]); "$($Matches[1])/$($Matches[2])" })
+                $total = if ($nums.Count) { [int]($nums[0].Split('/')[1]) } else { 0 }
+                $long = @($mine | Where-Object { ([string]$_.body.text).Length -gt 4096 })
+                if ($total -lt 2 -or $nums.Count -ne $total -or $long.Count) {
+                    $ownerInfoOk = $false
+                    Write-Host "    [FAIL] Lange Karte ($who): Teile [$($nums -join ', ')], ueber 4096: $($long.Count)" -ForegroundColor Red
+                } elseif ($who -eq 'owner' -and $tc.ownerPart1 -and -not (@($mine | Where-Object { ([string]$_.body.text) -match '^Teil 1/' } | Select-Object -Last 1).body.text).Contains($tc.ownerPart1)) {
+                    $ownerInfoOk = $false; Write-Host "    [FAIL] Lange Karte: Owner-Teil 1 ohne Kopf ('$($tc.ownerPart1)')" -ForegroundColor Red
+                } elseif ($Verbose) { Write-Host "    $who-Teile: $($nums -join ', ')" -ForegroundColor DarkGray }
+            }
+        } elseif (@($reqsAll | Where-Object { ([string]$_.body.text) -match $AnyPartRx }).Count) {
+            $ownerInfoOk = $false; Write-Host "    [FAIL] Kurze Karte, aber Teil-Nachricht gesendet." -ForegroundColor Red
+        }
+        # removeButtons statt showOutcome: n8n darf die fest englische Zeile "Approved by ..." nie anhaengen.
+        $outcome = Get-MockTelegramRequests -Container $Container | Where-Object { ([string]$_.body.text) -match 'Approved by|Declined by' } | Select-Object -First 1
+        if ($outcome) { Write-Host "    [FAIL] englische Outcome-Zeile gesendet ($($outcome.method))." -ForegroundColor Red; $ownerInfoOk = $false }
+        $reasonOk = (-not $tc.expectReason) -or ($reason -eq $tc.expectReason)
+        if (-not $reasonOk) { Write-Host "    [FAIL] Erwartete reason=$($tc.expectReason), got '$reason'." -ForegroundColor Red }
+        # Nach dem Lauf (Tipp/Block) ist jede Sperr-Zeile dieser Execution FREIGEGEBEN (Close pending lief) und laeuft binnen
+        # der Gnadenfrist (2 Min) ab; geloescht wird sie erst vom Orchestrator nach seiner Antwort (hier gibt es keinen).
+        $leftover = @(Get-PendingRows ([string]$ex.id) | Where-Object { $rp = $_.Split('|'); ($rp[2] -ne 'true') -or ([int]$rp[1] -gt 2) })
+        if ($leftover.Count) { $ownerInfoOk = $false; Write-Host "    [FAIL] Karte-offen-Sperre nach dem Lauf nicht freigegeben: $($leftover -join ', ')" -ForegroundColor Red }
 
-    # owner_info: der Einweg-Owner-Info-Send (KEIN reply_markup) MUSS an den Owner (nicht die Partnerin) gehen —
-    # beweist, dass der Owner bei der Member-Selbstbestaetigung informiert wird (Maker-Checker-Transparenz).
-    $ownerInfoOk = $true
-    if ($tc.assertOwnerInfo) {
-        $info = $null; $start = Get-Date
-        while ($true) {
-            $info = Get-MockTelegramRequests -Container $Container | Where-Object {
-                $_.method -eq 'sendMessage' -and (-not $_.body.reply_markup) -and `
-                ([string]$_.body.text).Contains($tc.id) -and ([string]$_.body.chat_id -ne $MemberChatId)
-            } | Select-Object -Last 1
-            if ($info -or (((Get-Date) - $start).TotalSeconds -ge 10)) { break }
-            Start-Sleep -Milliseconds 500
+        Write-Host "    Execution id=$($ex.id) status=$($ex.status)  ->  approved=$approved (erwartet $($tc.expected))"
+        if ($ex.status -eq 'success' -and $approved -eq $tc.expected -and $ownerInfoOk -and $reasonOk) {
+            $passed++; Write-Host "    [PASS]" -ForegroundColor Green
+        } else {
+            $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
         }
-        if (-not $info) { $ownerInfoOk = $false; Write-Host "    [FAIL] owner_info: kein Einweg-Owner-Info-Send an den Owner abgefangen." -ForegroundColor Red }
-        elseif ($Verbose) { Write-Host "    Owner-Info-Send abgefangen an chat_id=$($info.body.chat_id)" -ForegroundColor DarkGray }
-    }
-    # self: KEIN einziger Send mit dem Marker an jemand anderen als das Mitglied (weder Buttons noch Info).
-    if ($tc.assertNoOwnerSend) {
-        $ownerLeak = Get-MockTelegramRequests -Container $Container | Where-Object {
-            $_.method -eq 'sendMessage' -and ([string]$_.body.text).Contains($tc.id) -and ([string]$_.body.chat_id -ne $MemberChatId)
-        } | Select-Object -First 1
-        if ($ownerLeak) { $ownerInfoOk = $false; Write-Host "    [FAIL] self: unerwarteter Send an chat_id=$($ownerLeak.body.chat_id) (Owner darf nichts bekommen)." -ForegroundColor Red }
-    }
-    # Lange Karten: je erwartetem Empfaenger >= 1 Vor-Teil (ohne Knoepfe, "Teil i/N" in seiner Sprache), lueckenlos
-    # nummeriert bis zur letzten Nachricht; JEDE Nachricht <= 4096 Zeichen. Kurze Karten: nie ein Teil-Praefix.
-    $reqsAll = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
-    if ($tc.long) {
-        foreach ($who in $tc.parts) {
-            $toMember = ($who -eq 'member')
-            $mine = @($reqsAll | Where-Object { (([string]$_.body.chat_id -eq $MemberChatId) -eq $toMember) -and ([string]$_.body.text) -match $PartRx[$who] })
-            $nums = @($mine | ForEach-Object { [void](([string]$_.body.text) -match $PartRx[$who]); "$($Matches[1])/$($Matches[2])" })
-            $total = if ($nums.Count) { [int]($nums[0].Split('/')[1]) } else { 0 }
-            $long = @($mine | Where-Object { ([string]$_.body.text).Length -gt 4096 })
-            if ($total -lt 2 -or $nums.Count -ne $total -or $long.Count) {
-                $ownerInfoOk = $false
-                Write-Host "    [FAIL] Lange Karte ($who): Teile [$($nums -join ', ')], ueber 4096: $($long.Count)" -ForegroundColor Red
-            } elseif ($who -eq 'owner' -and $tc.ownerPart1 -and -not (@($mine | Where-Object { ([string]$_.body.text) -match '^Teil 1/' } | Select-Object -Last 1).body.text).Contains($tc.ownerPart1)) {
-                $ownerInfoOk = $false; Write-Host "    [FAIL] Lange Karte: Owner-Teil 1 ohne Kopf ('$($tc.ownerPart1)')" -ForegroundColor Red
-            } elseif ($Verbose) { Write-Host "    $who-Teile: $($nums -join ', ')" -ForegroundColor DarkGray }
-        }
-    } elseif (@($reqsAll | Where-Object { ([string]$_.body.text) -match $AnyPartRx }).Count) {
-        $ownerInfoOk = $false; Write-Host "    [FAIL] Kurze Karte, aber Teil-Nachricht gesendet." -ForegroundColor Red
-    }
-    # removeButtons statt showOutcome: n8n darf die fest englische Zeile "Approved by ..." nie anhaengen.
-    $outcome = Get-MockTelegramRequests -Container $Container | Where-Object { ([string]$_.body.text) -match 'Approved by|Declined by' } | Select-Object -First 1
-    if ($outcome) { Write-Host "    [FAIL] englische Outcome-Zeile gesendet ($($outcome.method))." -ForegroundColor Red; $ownerInfoOk = $false }
-    $reasonOk = (-not $tc.expectReason) -or ($reason -eq $tc.expectReason)
-    if (-not $reasonOk) { Write-Host "    [FAIL] Erwartete reason=$($tc.expectReason), got '$reason'." -ForegroundColor Red }
-    # Nach dem Lauf (Tipp/Block) ist jede Sperr-Zeile dieser Execution FREIGEGEBEN (Close pending lief) und laeuft binnen
-    # der Gnadenfrist (2 Min) ab; geloescht wird sie erst vom Orchestrator nach seiner Antwort (hier gibt es keinen).
-    $leftover = @(Get-PendingRows ([string]$ex.id) | Where-Object { $rp = $_.Split('|'); ($rp[2] -ne 'true') -or ([int]$rp[1] -gt 2) })
-    if ($leftover.Count) { $ownerInfoOk = $false; Write-Host "    [FAIL] Karte-offen-Sperre nach dem Lauf nicht freigegeben: $($leftover -join ', ')" -ForegroundColor Red }
-
-    Write-Host "    Execution id=$($ex.id) status=$($ex.status)  ->  approved=$approved (erwartet $($tc.expected))"
-    if ($ex.status -eq 'success' -and $approved -eq $tc.expected -and $ownerInfoOk -and $reasonOk) {
-        $passed++; Write-Host "    [PASS]" -ForegroundColor Green
-    } else {
-        $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
-    }
+    } catch { Register-Abort $_ $tc.id -NoCase }
 }
 
 # --- hitl15: lange Karte, ein Vor-Teil scheitert (Mock-Schalter /__fail: sendMessage -> HTTP 400 wie die Bot-API) ->
 # fail-closed: KEINE Karte mit Knoepfen, der Gate-Lauf endet nicht erfolgreich (kein approved:true -> kein Write), die
 # Karte-offen-Sperre bleibt nicht offen (core.sub_error_notify 'Clear card lock' bzw. keine Zeile). Mock danach wieder an.
-Write-Host ""
-Write-Host "  [hitl15] Lange Karte: Vor-Teil scheitert -> keine Karte, kein approved"
-Clear-MockTelegramRequests -Container $Container
-$mockPort = if ($state.mock_telegram.port) { $state.mock_telegram.port } else { 8089 }
-function Set-MockSendFail([bool]$On) {
-    $q = if ($On) { 'method=sendMessage' } else { 'method=sendMessage&off=1' }
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    & docker exec $Container sh -c "curl -s 'http://127.0.0.1:$mockPort/__fail?$q'" 2>$null | Out-Null
-    $ErrorActionPreference = $prev
-}
-$failExec = $null
-$gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
 try {
-    Set-MockSendFail $true
-    $payload = (@{ chat_id = '999000111'; summary = (New-LongSummary 'hitl15'); approval_tier = '' } | ConvertTo-Json -Compress)
-    try {
-        Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-            -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
-    } catch { }
-    $start = Get-Date
-    while (-not $failExec -and ((Get-Date) - $start).TotalSeconds -lt ($Timeout + 15)) {
-        $failExec = (Invoke-N8nGet "executions?workflowId=$gateWfId&limit=20").data |
-            Where-Object { [long]$_.id -gt [long]$gateBase -and $_.status -in @('error', 'crashed', 'success') } | Select-Object -First 1
-        if (-not $failExec) { Start-Sleep -Milliseconds 700 }
+    Test-ForceAbort 'hitl15' $ForceAbortId
+    Write-Host ""
+    Write-Host "  [hitl15] Lange Karte: Vor-Teil scheitert -> keine Karte, kein approved"
+    Clear-MockTelegramRequests -Container $Container
+    $mockPort = if ($state.mock_telegram.port) { $state.mock_telegram.port } else { 8089 }
+    function Set-MockSendFail([bool]$On) {
+        $q = if ($On) { 'method=sendMessage' } else { 'method=sendMessage&off=1' }
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        & docker exec $Container sh -c "curl -s 'http://127.0.0.1:$mockPort/__fail?$q'" 2>$null | Out-Null
+        $ErrorActionPreference = $prev
     }
-} finally { Set-MockSendFail $false }
-$card = Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains('hitl15') } | Select-Object -First 1
-Start-Sleep -Seconds 3
-$openRows = if ($failExec) { @(Get-PendingRows ([string]$failExec.id) | Where-Object { $_.Split('|')[2] -ne 'true' }) } else { @() }
-if ($failExec -and $failExec.status -ne 'success' -and -not $card -and -not $openRows.Count) {
-    $passed++; Write-Host "    Execution id=$($failExec.id) status=$($failExec.status), keine Karte, Sperre frei" ; Write-Host "    [PASS]" -ForegroundColor Green
-} else {
-    $failed++
-    Write-Host "    [FAIL] Execution=$($failExec.id) status=$($failExec.status) Karte=$([bool]$card) offene Sperr-Zeilen=[$($openRows -join ', ')]" -ForegroundColor Red
-}
-$cases += [pscustomobject]@{ id = 'hitl15'; name = 'Lange Karte: Vor-Teil scheitert -> keine Karte' }
+    $failExec = $null
+    $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    try {
+        Set-MockSendFail $true
+        $payload = (@{ chat_id = '999000111'; summary = (New-LongSummary 'hitl15'); approval_tier = '' } | ConvertTo-Json -Compress)
+        try {
+            Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
+                -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
+        } catch { }
+        $start = Get-Date
+        while (-not $failExec -and ((Get-Date) - $start).TotalSeconds -lt ($Timeout + 15)) {
+            $failExec = (Invoke-N8nGet "executions?workflowId=$gateWfId&limit=20").data |
+                Where-Object { [long]$_.id -gt [long]$gateBase -and $_.status -in @('error', 'crashed', 'success') } | Select-Object -First 1
+            if (-not $failExec) { Start-Sleep -Milliseconds 700 }
+        }
+    } finally { Set-MockSendFail $false }
+    $card = Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains('hitl15') } | Select-Object -First 1
+    Start-Sleep -Seconds 3
+    $openRows = if ($failExec) { @(Get-PendingRows ([string]$failExec.id) | Where-Object { $_.Split('|')[2] -ne 'true' }) } else { @() }
+    if ($failExec -and $failExec.status -ne 'success' -and -not $card -and -not $openRows.Count) {
+        $passed++; Write-Host "    Execution id=$($failExec.id) status=$($failExec.status), keine Karte, Sperre frei" ; Write-Host "    [PASS]" -ForegroundColor Green
+    } else {
+        $failed++
+        Write-Host "    [FAIL] Execution=$($failExec.id) status=$($failExec.status) Karte=$([bool]$card) offene Sperr-Zeilen=[$($openRows -join ', ')]" -ForegroundColor Red
+    }
+    $cases += [pscustomobject]@{ id = 'hitl15'; name = 'Lange Karte: Vor-Teil scheitert -> keine Karte' }
+} catch { Register-Abort $_ 'hitl15' }
 
 # --- Phase A: Approve-Zweig des EINEN Fakten-Schreibwegs bis in die DB (Schema-Fidelity Payload -> fn -> Zeile).
 # Ueber den facts-test-Harness (agent.tool_set_context_facts) mit der UNGEPAIRTEN Owner-chat_id (owner_only-Gate
@@ -444,138 +472,158 @@ $factCases = @(
     [pscustomobject]@{ id='hitlF2'; ctx='finance_profile'; label='Finanzprofil aktualisieren' }
 )
 foreach ($fc in $factCases) {
-    Write-Host ""
-    Write-Host "  [$($fc.id)] Fakten-Write $($fc.ctx): Approve -> Zeile in der DB"
-    Clear-MockTelegramRequests -Container $Container
-    $persons = (ConvertTo-Json -Compress -InputObject @(@{ person_id = 'owner'; hitl_probe = $fc.id }))
-    $payload = (@{ chat_id = '999000111'; context_name = $fc.ctx; persons = $persons; scope = 'household' } | ConvertTo-Json -Compress)
     try {
-        Invoke-RestMethod -Uri "$N8nUrl/webhook/facts-test" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-            -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
+        Test-ForceAbort $fc.id $ForceAbortId
+        Write-Host ""
+        Write-Host "  [$($fc.id)] Fakten-Write $($fc.ctx): Approve -> Zeile in der DB"
+        Clear-MockTelegramRequests -Container $Container
+        $persons = (ConvertTo-Json -Compress -InputObject @(@{ person_id = 'owner'; hitl_probe = $fc.id }))
+        $payload = (@{ chat_id = '999000111'; context_name = $fc.ctx; persons = $persons; scope = 'household' } | ConvertTo-Json -Compress)
+        try {
+            Invoke-RestMethod -Uri "$N8nUrl/webhook/facts-test" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
+                -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
+        } catch {
+            if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) {
+                Write-Host "    [FAIL] Webhook-POST fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue
+            }
+        }
+        $msg = $null; $start = Get-Date
+        while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
+            $msg = Get-MockTelegramRequests -Container $Container | Where-Object {
+                $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains($fc.id) } | Select-Object -Last 1
+            if (-not $msg) { Start-Sleep -Milliseconds 700 }
+        }
+        if (-not $msg) { Write-Host "    [FAIL] Bestaetigungs-Send (Marker $($fc.id)) nicht abgefangen." -ForegroundColor Red; $failed++; continue }
+        if (-not ([string]$msg.body.text).Contains($fc.label)) {
+            Write-Host "    [FAIL] Summary traegt nicht das Label '$($fc.label)': $($msg.body.text)" -ForegroundColor Red; $failed++; continue
+        }
+        try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $msg -Approved $true -BridgeUrl $N8nUrl) | Out-Null }
+        catch { Write-Host "    [FAIL] Resume fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue }
+        $q = "SELECT p->>'hitl_probe' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name = '$($fc.ctx)' AND p->>'person_id' = 'owner';"
+        $got = $null; $start = Get-Date
+        while (((Get-Date) - $start).TotalSeconds -lt $Timeout) {
+            $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $q)
+            $got = (@($r.Output) | Where-Object { "$_".Trim() } | Select-Object -First 1)
+            if ("$got".Trim() -eq $fc.id) { break }
+            Start-Sleep -Milliseconds 700
+        }
+        $clean = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(p - 'hitl_probe') FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = '$($fc.ctx)';"
+        Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $clean) | Out-Null
+        if ("$got".Trim() -eq $fc.id) { $passed++; Write-Host "    [PASS] persons-Merge in '$($fc.ctx)' geschrieben (Probe-Key wieder entfernt)" -ForegroundColor Green }
+        else { $failed++; Write-Host "    [FAIL] Probe-Key nicht in '$($fc.ctx)' gefunden (got '$got')." -ForegroundColor Red }
     } catch {
-        if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) {
-            Write-Host "    [FAIL] Webhook-POST fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue
+        Register-Abort $_ $fc.id -NoCase -Extra {
+            Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(p - 'hitl_probe') FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = '$($fc.ctx)';") | Out-Null
         }
     }
-    $msg = $null; $start = Get-Date
-    while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
-        $msg = Get-MockTelegramRequests -Container $Container | Where-Object {
-            $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains($fc.id) } | Select-Object -Last 1
-        if (-not $msg) { Start-Sleep -Milliseconds 700 }
-    }
-    if (-not $msg) { Write-Host "    [FAIL] Bestaetigungs-Send (Marker $($fc.id)) nicht abgefangen." -ForegroundColor Red; $failed++; continue }
-    if (-not ([string]$msg.body.text).Contains($fc.label)) {
-        Write-Host "    [FAIL] Summary traegt nicht das Label '$($fc.label)': $($msg.body.text)" -ForegroundColor Red; $failed++; continue
-    }
-    try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $msg -Approved $true -BridgeUrl $N8nUrl) | Out-Null }
-    catch { Write-Host "    [FAIL] Resume fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue }
-    $q = "SELECT p->>'hitl_probe' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name = '$($fc.ctx)' AND p->>'person_id' = 'owner';"
-    $got = $null; $start = Get-Date
-    while (((Get-Date) - $start).TotalSeconds -lt $Timeout) {
-        $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $q)
-        $got = (@($r.Output) | Where-Object { "$_".Trim() } | Select-Object -First 1)
-        if ("$got".Trim() -eq $fc.id) { break }
-        Start-Sleep -Milliseconds 700
-    }
-    $clean = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(p - 'hitl_probe') FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = '$($fc.ctx)';"
-    Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $clean) | Out-Null
-    if ("$got".Trim() -eq $fc.id) { $passed++; Write-Host "    [PASS] persons-Merge in '$($fc.ctx)' geschrieben (Probe-Key wieder entfernt)" -ForegroundColor Green }
-    else { $failed++; Write-Host "    [FAIL] Probe-Key nicht in '$($fc.ctx)' gefunden (got '$got')." -ForegroundColor Red }
 }
 $cases += $factCases
 
 # --- Textkatalog (E3): eine NEUE Person ohne Sprache -> nach dem bestaetigten Write schickt agent.tool_set_context_facts
 # dem Owner die Sprach-Picker-Karte (core.sub_send_language_picker): Frage auf Deutsch (Owner-Sprache), ein Knopf je
 # unterstuetzter Sprache, callback_data lang:<person_id>:<code>. Danach Person wieder entfernen.
-Write-Host ""
-Write-Host "  [hitlF3] Neue Person ohne Sprache -> Sprach-Picker-Karte an den Owner"
-Clear-MockTelegramRequests -Container $Container
-# WP3: eine NEUE Person traegt keine person_id (die vergibt die DB auf dem Chat-Pfad, agent.fn_person_slug) -> die
-# vergebene id wird nach dem Write aus family gelesen. Ein Rest aus einem abgebrochenen Lauf wird vorher entfernt
-# (sonst faende der Name-Treffer ihn und es entstuende keine neue Person, also kein Picker).
-$probeSql = "SELECT pp->>'person_id' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp WHERE c.name = 'family' AND pp->>'first_name' = 'Nora' AND pp->>'last_name' = 'Probe' LIMIT 1;"
-$leftPid = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $probeSql)).Output | Select-Object -First 1)".Trim()
-if ($leftPid) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$leftPid'));") | Out-Null }
-$probePid = ''
-$persons = (ConvertTo-Json -Compress -InputObject @(@{ first_name = 'Nora'; last_name = 'Probe'; birth_date = '2015-01-01'; role = 'child' }))
-$payload = (@{ chat_id = '999000111'; context_name = 'family'; persons = $persons; scope = 'household' } | ConvertTo-Json -Compress)
-$f3ok = $false
 try {
-    Invoke-RestMethod -Uri "$N8nUrl/webhook/facts-test" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-        -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
-} catch { }
-$msg = $null; $start = Get-Date
-while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
-    $msg = Get-MockTelegramRequests -Container $Container | Where-Object {
-        $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains('Nora Probe') } | Select-Object -Last 1
-    if (-not $msg) { Start-Sleep -Milliseconds 700 }
-}
-if (-not $msg) { Write-Host "    [FAIL] Bestaetigungs-Send fuer die neue Person nicht abgefangen." -ForegroundColor Red }
-else {
-    try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $msg -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { }
-    $card = $null; $start = Get-Date
-    while (-not $card -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
-        $card = Get-MockTelegramRequests -Container $Container | Where-Object {
-            $_.method -eq 'sendMessage' -and ([string]$_.body.text).Contains('In welcher Sprache soll Nora') } | Select-Object -Last 1
-        if (-not $card) { Start-Sleep -Milliseconds 700 }
+    Test-ForceAbort 'hitlF3' $ForceAbortId
+    Write-Host ""
+    Write-Host "  [hitlF3] Neue Person ohne Sprache -> Sprach-Picker-Karte an den Owner"
+    Clear-MockTelegramRequests -Container $Container
+    # WP3: eine NEUE Person traegt keine person_id (die vergibt die DB auf dem Chat-Pfad, agent.fn_person_slug) -> die
+    # vergebene id wird nach dem Write aus family gelesen. Ein Rest aus einem abgebrochenen Lauf wird vorher entfernt
+    # (sonst faende der Name-Treffer ihn und es entstuende keine neue Person, also kein Picker).
+    $probeSql = "SELECT pp->>'person_id' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp WHERE c.name = 'family' AND pp->>'first_name' = 'Nora' AND pp->>'last_name' = 'Probe' LIMIT 1;"
+    $leftPid = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $probeSql)).Output | Select-Object -First 1)".Trim()
+    if ($leftPid) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$leftPid'));") | Out-Null }
+    $probePid = ''
+    $persons = (ConvertTo-Json -Compress -InputObject @(@{ first_name = 'Nora'; last_name = 'Probe'; birth_date = '2015-01-01'; role = 'child' }))
+    $payload = (@{ chat_id = '999000111'; context_name = 'family'; persons = $persons; scope = 'household' } | ConvertTo-Json -Compress)
+    $f3ok = $false
+    try {
+        Invoke-RestMethod -Uri "$N8nUrl/webhook/facts-test" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
+            -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
+    } catch { }
+    $msg = $null; $start = Get-Date
+    while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
+        $msg = Get-MockTelegramRequests -Container $Container | Where-Object {
+            $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains('Nora Probe') } | Select-Object -Last 1
+        if (-not $msg) { Start-Sleep -Milliseconds 700 }
     }
-    $probePid = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $probeSql)).Output | Select-Object -First 1)".Trim()
-    if (-not $card) { Write-Host "    [FAIL] Keine Sprach-Picker-Karte an den Owner abgefangen." -ForegroundColor Red }
+    if (-not $msg) { Write-Host "    [FAIL] Bestaetigungs-Send fuer die neue Person nicht abgefangen." -ForegroundColor Red }
     else {
-        $kb = $card.body.reply_markup; if ($kb -is [string]) { $kb = $kb | ConvertFrom-Json }
-        $btns = @($kb.inline_keyboard | ForEach-Object { $_ })
-        $data = @($btns | ForEach-Object { [string]$_.callback_data })
-        $texts = @($btns | ForEach-Object { [string]$_.text })
-        # Textkatalog Phase B: im Modus 'other' (Owner waehlt fuer eine Person) gibt es keinen Vorschlag -> kein 👉-Knopf
-        # (der Modus 'self' mit Vorschlag ist im Real-Ingress-Test ri31/ri37 abgedeckt).
-        if (($data -contains "lang:${probePid}:ko") -and ($data -contains "lang:${probePid}:de") -and ($texts -contains '한국어') -and -not (($texts -join ' ').Contains('👉'))) { $f3ok = $true }
-        else { Write-Host "    [FAIL] Picker-Knoepfe falsch: $($texts -join ' | ') / $($data -join ' | ')" -ForegroundColor Red }
+        try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $msg -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { }
+        $card = $null; $start = Get-Date
+        while (-not $card -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
+            $card = Get-MockTelegramRequests -Container $Container | Where-Object {
+                $_.method -eq 'sendMessage' -and ([string]$_.body.text).Contains('In welcher Sprache soll Nora') } | Select-Object -Last 1
+            if (-not $card) { Start-Sleep -Milliseconds 700 }
+        }
+        $probePid = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $probeSql)).Output | Select-Object -First 1)".Trim()
+        if (-not $card) { Write-Host "    [FAIL] Keine Sprach-Picker-Karte an den Owner abgefangen." -ForegroundColor Red }
+        else {
+            $kb = $card.body.reply_markup; if ($kb -is [string]) { $kb = $kb | ConvertFrom-Json }
+            $btns = @($kb.inline_keyboard | ForEach-Object { $_ })
+            $data = @($btns | ForEach-Object { [string]$_.callback_data })
+            $texts = @($btns | ForEach-Object { [string]$_.text })
+            # Textkatalog Phase B: im Modus 'other' (Owner waehlt fuer eine Person) gibt es keinen Vorschlag -> kein 👉-Knopf
+            # (der Modus 'self' mit Vorschlag ist im Real-Ingress-Test ri31/ri37 abgedeckt).
+            if (($data -contains "lang:${probePid}:ko") -and ($data -contains "lang:${probePid}:de") -and ($texts -contains '한국어') -and -not (($texts -join ' ').Contains('👉'))) { $f3ok = $true }
+            else { Write-Host "    [FAIL] Picker-Knoepfe falsch: $($texts -join ' | ') / $($data -join ' | ')" -ForegroundColor Red }
+        }
+    }
+    # jsonb_build_object statt JSON-Literal: PS 5.1 entfernt eingebettete " aus nativen Argumenten -> das Literal kam als
+    # {person_id:...} an, das Aufraeumen scheiterte still und der naechste Lauf fand die Person schon vor (kein Picker).
+    if ($probePid) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$probePid'));") | Out-Null }
+    if ($f3ok) { $passed++; Write-Host "    [PASS] Picker-Karte mit Knoepfen je Sprache (lang:<person>:<code>) beim Owner (Person wieder entfernt)" -ForegroundColor Green }
+    else { $failed++ }
+    $cases += [pscustomobject]@{ id = 'hitlF3' }
+} catch {
+    Register-Abort $_ 'hitlF3' -Extra {
+        if ($probeSql) {
+            $pp = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $probeSql)).Output | Select-Object -First 1)".Trim()
+            if ($pp) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$pp'));") | Out-Null }
+        }
     }
 }
-# jsonb_build_object statt JSON-Literal: PS 5.1 entfernt eingebettete " aus nativen Argumenten -> das Literal kam als
-# {person_id:...} an, das Aufraeumen scheiterte still und der naechste Lauf fand die Person schon vor (kein Picker).
-if ($probePid) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$probePid'));") | Out-Null }
-if ($f3ok) { $passed++; Write-Host "    [PASS] Picker-Karte mit Knoepfen je Sprache (lang:<person>:<code>) beim Owner (Person wieder entfernt)" -ForegroundColor Green }
-else { $failed++ }
-$cases += [pscustomobject]@{ id = 'hitlF3' }
 
 # --- hitlW1: Wartegrenze wirkt. Eine offene Karte muss nach WAIT_MIN (human_approval.ps1) ablaufen, nicht nie:
 # n8n liest die Grenze NUR unter options.limitWaitTime (configureWaitTillDate, Default 'options') — top-level wird still
 # ignoriert -> waitTill = WAIT_INDEFINITELY (3000-01-01), die ganze Aufrufer-Kette parkt fuer immer (Befund
 # 2026-10-22). Geprueft: waitTill der wartenden Gate-Execution liegt 5..15 Min in der Zukunft; danach Decline (Aufraeumen).
-Write-Host ""
-Write-Host "  [hitlW1] Offene Karte laeuft nach der Wartegrenze ab (waitTill ~ +10 Min, nicht 3000)"
-Clear-MockTelegramRequests -Container $Container
-$wPayload = (@{ chat_id = '999000111'; summary = 'HITL probe hitlW1: bitte nicht tippen.'; approval_tier = '' } | ConvertTo-Json -Compress)
 try {
-    Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-        -TimeoutSec 4 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($wPayload)) | Out-Null
-} catch { }
-$wOk = $false; $wDetail = 'kein Button-Send abgefangen'
-$msg = $null; $start = Get-Date
-while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
-    $msg = Get-MockTelegramRequests -Container $Container | Where-Object {
-        $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains('hitlW1') } | Select-Object -Last 1
-    if (-not $msg) { Start-Sleep -Milliseconds 700 }
-}
-if ($msg) {
-    $wUrl = Get-HitlResumeUrl -Request $msg -Approved $false -BridgeUrl $N8nUrl; $wEid = Get-HitlExecId -Url $wUrl
-    $wt = $null; $start = Get-Date
-    while (((Get-Date) - $start).TotalSeconds -lt $Timeout) {
-        try { $d = Get-ExecDetail $wEid; if ($d.status -eq 'waiting' -and $d.waitTill) { $wt = [datetime]$d.waitTill; break } } catch { }
-        Start-Sleep -Milliseconds 700
+    Test-ForceAbort 'hitlW1' $ForceAbortId
+    Write-Host ""
+    Write-Host "  [hitlW1] Offene Karte laeuft nach der Wartegrenze ab (waitTill ~ +10 Min, nicht 3000)"
+    Clear-MockTelegramRequests -Container $Container
+    $wPayload = (@{ chat_id = '999000111'; summary = 'HITL probe hitlW1: bitte nicht tippen.'; approval_tier = '' } | ConvertTo-Json -Compress)
+    try {
+        Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
+            -TimeoutSec 4 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($wPayload)) | Out-Null
+    } catch { }
+    $wOk = $false; $wDetail = 'kein Button-Send abgefangen'
+    $msg = $null; $start = Get-Date
+    while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
+        $msg = Get-MockTelegramRequests -Container $Container | Where-Object {
+            $_.method -eq 'sendMessage' -and $_.body.reply_markup -and ([string]$_.body.text).Contains('hitlW1') } | Select-Object -Last 1
+        if (-not $msg) { Start-Sleep -Milliseconds 700 }
     }
-    if (-not $wt) { $wDetail = "Execution $wEid ohne waitTill" }
-    else {
-        $mins = ($wt.ToUniversalTime() - (Get-Date).ToUniversalTime()).TotalMinutes
-        $wOk = ($mins -ge 5 -and $mins -le 15)
-        $wDetail = "waitTill=$($wt.ToUniversalTime().ToString('u')) (in $([math]::Round($mins, 1)) Min)"
+    if ($msg) {
+        $wUrl = Get-HitlResumeUrl -Request $msg -Approved $false -BridgeUrl $N8nUrl; $wEid = Get-HitlExecId -Url $wUrl
+        $wt = $null; $start = Get-Date
+        while (((Get-Date) - $start).TotalSeconds -lt $Timeout) {
+            try { $d = Get-ExecDetail $wEid; if ($d.status -eq 'waiting' -and $d.waitTill) { $wt = [datetime]$d.waitTill; break } } catch { }
+            Start-Sleep -Milliseconds 700
+        }
+        if (-not $wt) { $wDetail = "Execution $wEid ohne waitTill" }
+        else {
+            $mins = ($wt.ToUniversalTime() - (Get-Date).ToUniversalTime()).TotalMinutes
+            $wOk = ($mins -ge 5 -and $mins -le 15)
+            $wDetail = "waitTill=$($wt.ToUniversalTime().ToString('u')) (in $([math]::Round($mins, 1)) Min)"
+        }
+        try { Invoke-HitlResume -Url $wUrl | Out-Null } catch { }
     }
-    try { Invoke-HitlResume -Url $wUrl | Out-Null } catch { }
-}
-if ($wOk) { $passed++; Write-Host "    [PASS] $wDetail" -ForegroundColor Green }
-else { $failed++; Write-Host "    [FAIL] hitlW1: $wDetail" -ForegroundColor Red }
-$cases += [pscustomobject]@{ id = 'hitlW1' }
+    if ($wOk) { $passed++; Write-Host "    [PASS] $wDetail" -ForegroundColor Green }
+    else { $failed++; Write-Host "    [FAIL] hitlW1: $wDetail" -ForegroundColor Red }
+    $cases += [pscustomobject]@{ id = 'hitlW1' }
+} catch { Register-Abort $_ 'hitlW1' }
 
 # --- Bestaetigen im Chat (nur wenn das Substrat Chat-Knoepfe sendet: bootstrap_test_n8n.ps1 -HitlChatApproval).
 # Die Faelle oben laufen in BEIDEN Modi (Get-HitlResumeUrl/Invoke-HitlResume sind modus-neutral); hier die
@@ -667,10 +715,6 @@ function Test-RepeatBlocked([string]$Marker, [string]$ChatId, [string]$Tier, $Su
     Send-GateSummary $ChatId $Tier $Summary
     Get-RepeatBlockProblem (Wait-NewExec $gateWfId $base) $Marker
 }
-function Clear-DeclinedCards {
-    try { (Invoke-N8nGet "executions?workflowId=$gateWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
-    Clear-HitlPending -Container $Container
-}
 function Write-RepeatCase([string]$Id, [string]$Name, [string[]]$Problems) {
     Write-Host ""
     Write-Host "  [$Id] $Name"
@@ -683,67 +727,99 @@ function Write-RepeatCase([string]$Id, [string]$Name, [string[]]$Problems) {
 $OwnerUnpaired = '999000111'
 
 # hitlR1: Abbrechen, gleiche Karte -> kein Send. hitlR2 (im selben Zustand): andere Karte -> Send.
-$sumA = 'HITL probe hitlR1: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR1' $OwnerUnpaired '' $sumA @($false)
-$p2 = Test-RepeatBlocked 'hitlR1' $OwnerUnpaired '' $sumA
-$p3 = Invoke-CardRound 'hitlR2' $OwnerUnpaired '' 'HITL probe hitlR2: eine andere Karte.' @($false)
-Write-RepeatCase 'hitlR1' 'Abbrechen, gleiche Karte -> kein Send; andere Karte -> Send' @($p1, $p2, $p3)
+try {
+    Test-ForceAbort 'hitlR1' $ForceAbortId
+    $sumA = 'HITL probe hitlR1: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR1' $OwnerUnpaired '' $sumA @($false)
+    $p2 = Test-RepeatBlocked 'hitlR1' $OwnerUnpaired '' $sumA
+    $p3 = Invoke-CardRound 'hitlR2' $OwnerUnpaired '' 'HITL probe hitlR2: eine andere Karte.' @($false)
+    Write-RepeatCase 'hitlR1' 'Abbrechen, gleiche Karte -> kein Send; andere Karte -> Send' @($p1, $p2, $p3)
+} catch { Register-Abort $_ 'hitlR1' }
 
 # hitlR3: nach dem Loeschen der Zeile (Orchestrator-Abschluss, neue Nachricht) -> wieder eine Karte.
-$sumB = 'HITL probe hitlR3: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR3' $OwnerUnpaired '' $sumB @($false)
-$del = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT agent.fn_delete_hitl_pending(jsonb_build_object('chat_id', '$OwnerUnpaired'));")
-$p2 = if ($del.Code -ne 0) { "fn_delete_hitl_pending: $($del.Output -join ' ')" } else { $null }
-$p3 = Invoke-CardRound 'hitlR3' $OwnerUnpaired '' $sumB @($false)
-Write-RepeatCase 'hitlR3' 'Nach fn_delete_hitl_pending -> gleiche Karte wieder' @($p1, $p2, $p3)
+try {
+    Test-ForceAbort 'hitlR3' $ForceAbortId
+    $sumB = 'HITL probe hitlR3: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR3' $OwnerUnpaired '' $sumB @($false)
+    $del = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT agent.fn_delete_hitl_pending(jsonb_build_object('chat_id', '$OwnerUnpaired'));")
+    $p2 = if ($del.Code -ne 0) { "fn_delete_hitl_pending: $($del.Output -join ' ')" } else { $null }
+    $p3 = Invoke-CardRound 'hitlR3' $OwnerUnpaired '' $sumB @($false)
+    Write-RepeatCase 'hitlR3' 'Nach fn_delete_hitl_pending -> gleiche Karte wieder' @($p1, $p2, $p3)
+} catch { Register-Abort $_ 'hitlR3' }
 
 # hitlR4: Bestaetigen sperrt nicht.
-$sumC = 'HITL probe hitlR4: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR4' $OwnerUnpaired '' $sumC @($true)
-$p2 = Invoke-CardRound 'hitlR4' $OwnerUnpaired '' $sumC @($false)
-Write-RepeatCase 'hitlR4' 'Bestaetigen, gleiche Karte -> Send' @($p1, $p2)
+try {
+    Test-ForceAbort 'hitlR4' $ForceAbortId
+    $sumC = 'HITL probe hitlR4: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR4' $OwnerUnpaired '' $sumC @($true)
+    $p2 = Invoke-CardRound 'hitlR4' $OwnerUnpaired '' $sumC @($false)
+    Write-RepeatCase 'hitlR4' 'Bestaetigen, gleiche Karte -> Send' @($p1, $p2)
+} catch { Register-Abort $_ 'hitlR4' }
 
 # hitlR5-R7: Mitglieds-Pfade, Sperre am Ursprungs-Chat (Stufe 2 Owner-Veto, Stufe 1 Mitglied, self).
-$sumD = 'HITL probe hitlR5: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR5' $MemberChatId 'owner_approval' $sumD @($true, $false)
-$p2 = Test-RepeatBlocked 'hitlR5' $MemberChatId 'owner_approval' $sumD
-Write-RepeatCase 'hitlR5' 'Vier-Augen: Mitglied ok, Owner lehnt ab -> gleiche Karte gesperrt' @($p1, $p2)
-$sumE = 'HITL probe hitlR6: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR6' $MemberChatId 'owner_approval' $sumE @($false)
-$p2 = Test-RepeatBlocked 'hitlR6' $MemberChatId 'owner_approval' $sumE
-Write-RepeatCase 'hitlR6' 'Vier-Augen: Mitglied lehnt in Stufe 1 ab -> gleiche Karte gesperrt' @($p1, $p2)
-$sumF = 'HITL probe hitlR7: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR7' $MemberChatId 'self' $sumF @($false)
-$p2 = Test-RepeatBlocked 'hitlR7' $MemberChatId 'self' $sumF
-Write-RepeatCase 'hitlR7' 'self: Mitglied lehnt ab -> gleiche Karte gesperrt' @($p1, $p2)
+try {
+    Test-ForceAbort 'hitlR5' $ForceAbortId
+    $sumD = 'HITL probe hitlR5: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR5' $MemberChatId 'owner_approval' $sumD @($true, $false)
+    $p2 = Test-RepeatBlocked 'hitlR5' $MemberChatId 'owner_approval' $sumD
+    Write-RepeatCase 'hitlR5' 'Vier-Augen: Mitglied ok, Owner lehnt ab -> gleiche Karte gesperrt' @($p1, $p2)
+} catch { Register-Abort $_ 'hitlR5' }
+try {
+    Test-ForceAbort 'hitlR6' $ForceAbortId
+    $sumE = 'HITL probe hitlR6: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR6' $MemberChatId 'owner_approval' $sumE @($false)
+    $p2 = Test-RepeatBlocked 'hitlR6' $MemberChatId 'owner_approval' $sumE
+    Write-RepeatCase 'hitlR6' 'Vier-Augen: Mitglied lehnt in Stufe 1 ab -> gleiche Karte gesperrt' @($p1, $p2)
+} catch { Register-Abort $_ 'hitlR6' }
+try {
+    Test-ForceAbort 'hitlR7' $ForceAbortId
+    $sumF = 'HITL probe hitlR7: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR7' $MemberChatId 'self' $sumF @($false)
+    $p2 = Test-RepeatBlocked 'hitlR7' $MemberChatId 'self' $sumF
+    Write-RepeatCase 'hitlR7' 'self: Mitglied lehnt ab -> gleiche Karte gesperrt' @($p1, $p2)
+} catch { Register-Abort $_ 'hitlR7' }
 
 # hitlR8: repeat_key geht vor dem Text: neu formulierter Text = gleiche Karte, anderer Schluessel = neue Karte.
 function New-KeyedSummary([string]$Marker, [string]$Key) {
     [ordered]@{ title = 'core.hitl.publish_plan'; repeat_key = $Key; lines = @([ordered]@{ label = 'core.label.note'; kind = 'text'; value = "marker $Marker" }) }
 }
-$p1 = Invoke-CardRound 'hitlR8a' $OwnerUnpaired '' (New-KeyedSummary 'hitlR8a' 'probe:eins') @($false)
-$p2 = Test-RepeatBlocked 'hitlR8b' $OwnerUnpaired '' (New-KeyedSummary 'hitlR8b' 'probe:eins')
-$p3 = Invoke-CardRound 'hitlR8c' $OwnerUnpaired '' (New-KeyedSummary 'hitlR8c' 'probe:zwei') @($false)
-Write-RepeatCase 'hitlR8' 'repeat_key: anderer Text gesperrt, anderer Schluessel frei' @($p1, $p2, $p3)
+try {
+    Test-ForceAbort 'hitlR8' $ForceAbortId
+    $p1 = Invoke-CardRound 'hitlR8a' $OwnerUnpaired '' (New-KeyedSummary 'hitlR8a' 'probe:eins') @($false)
+    $p2 = Test-RepeatBlocked 'hitlR8b' $OwnerUnpaired '' (New-KeyedSummary 'hitlR8b' 'probe:eins')
+    $p3 = Invoke-CardRound 'hitlR8c' $OwnerUnpaired '' (New-KeyedSummary 'hitlR8c' 'probe:zwei') @($false)
+    Write-RepeatCase 'hitlR8' 'repeat_key: anderer Text gesperrt, anderer Schluessel frei' @($p1, $p2, $p3)
+} catch { Register-Abort $_ 'hitlR8' }
 
 # hitlR9: Test-Sentinel (nicht-numerische chat_id) sperrt nie.
-$sumG = 'HITL probe hitlR9: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR9' 'test_hitlR9' '' $sumG @($false)
-$p2 = Invoke-CardRound 'hitlR9' 'test_hitlR9' '' $sumG @($false)
-Write-RepeatCase 'hitlR9' 'Sentinel-chat_id: gleiche Karte kommt wieder' @($p1, $p2)
+try {
+    Test-ForceAbort 'hitlR9' $ForceAbortId
+    $sumG = 'HITL probe hitlR9: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR9' 'test_hitlR9' '' $sumG @($false)
+    $p2 = Invoke-CardRound 'hitlR9' 'test_hitlR9' '' $sumG @($false)
+    Write-RepeatCase 'hitlR9' 'Sentinel-chat_id: gleiche Karte kommt wieder' @($p1, $p2)
+} catch { Register-Abort $_ 'hitlR9' }
 
 # hitlR10: scheitert die Sperr-Abfrage, sendet das Gate die Karte normal (fail-open) und laeuft sauber zu Ende.
-$sumH = 'HITL probe hitlR10: bitte bestaetigen.'
-$p1 = Invoke-CardRound 'hitlR10' $OwnerUnpaired '' $sumH @($false)
-$p2 = $null; $p3 = $null
-$ren = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'ALTER FUNCTION agent.fn_get_hitl_repeat_blocked(jsonb) RENAME TO fn_get_hitl_repeat_blocked_off;')
-if ($ren.Code -ne 0) { $p2 = "Umbenennen: $($ren.Output -join ' ')" }
-try { $p3 = Invoke-CardRound 'hitlR10' $OwnerUnpaired '' $sumH @($true) }
-finally {
-    $back = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'ALTER FUNCTION agent.fn_get_hitl_repeat_blocked_off(jsonb) RENAME TO fn_get_hitl_repeat_blocked;')
-    if ($back.Code -ne 0) { $p2 = "Zurueckbenennen: $($back.Output -join ' ')" }
+try {
+    Test-ForceAbort 'hitlR10' $ForceAbortId
+    $sumH = 'HITL probe hitlR10: bitte bestaetigen.'
+    $p1 = Invoke-CardRound 'hitlR10' $OwnerUnpaired '' $sumH @($false)
+    $p2 = $null; $p3 = $null
+    $ren = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'ALTER FUNCTION agent.fn_get_hitl_repeat_blocked(jsonb) RENAME TO fn_get_hitl_repeat_blocked_off;')
+    if ($ren.Code -ne 0) { $p2 = "Umbenennen: $($ren.Output -join ' ')" }
+    try { $p3 = Invoke-CardRound 'hitlR10' $OwnerUnpaired '' $sumH @($true) }
+    finally {
+        $back = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'ALTER FUNCTION agent.fn_get_hitl_repeat_blocked_off(jsonb) RENAME TO fn_get_hitl_repeat_blocked;')
+        if ($back.Code -ne 0) { $p2 = "Zurueckbenennen: $($back.Output -join ' ')" }
+    }
+    Write-RepeatCase 'hitlR10' 'Sperr-Abfrage scheitert -> Karte wird normal gesendet' @($p1, $p2, $p3)
+} catch {
+    Register-Abort $_ 'hitlR10' -Extra {
+        # Falls die Funktion umbenannt blieb: zurueck (ohne Wirkung, wenn sie nie umbenannt wurde)
+        Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'ALTER FUNCTION agent.fn_get_hitl_repeat_blocked_off(jsonb) RENAME TO fn_get_hitl_repeat_blocked;') | Out-Null
+    }
 }
-Write-RepeatCase 'hitlR10' 'Sperr-Abfrage scheitert -> Karte wird normal gesendet' @($p1, $p2, $p3)
 
 # Laesst offene Karten ablaufen: Die Wartegrenze von 10 Min wird in der n8n-DB auf jetzt gesetzt, n8n setzt die Laeufe dann beim
 # naechsten Durchgang seiner Warte-Liste fort (bis ~60 s). format/%I statt Anfuehrungszeichen: PS 5.1 entfernt eingebettete " aus
@@ -769,17 +845,20 @@ function Set-CardsExpired([long[]]$ExecIds) {
     "Laeufe $($open -join ',') nach Ablauf nicht success"
 }
 # hitlR11: Karte laeuft ab (kein Tipp): dasselbe wie Abbrechen.
-$sumI = 'HITL probe hitlR11: bitte nicht tippen.'
-Clear-MockTelegramRequests -Container $Container
-Send-GateSummary $OwnerUnpaired '' $sumI
-$m = Wait-ButtonSend 'hitlR11' ''
-$p1 = $null; $p2 = $null
-if (-not $m) { $p1 = 'Karte nicht abgefangen' }
-else {
-    $p1 = Set-CardsExpired @([long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)))
-    if (-not $p1) { $p2 = Test-RepeatBlocked 'hitlR11' $OwnerUnpaired '' $sumI }
-}
-Write-RepeatCase 'hitlR11' 'Karte laeuft ab -> gleiche Karte gesperrt' @($p1, $p2)
+try {
+    Test-ForceAbort 'hitlR11' $ForceAbortId
+    $sumI = 'HITL probe hitlR11: bitte nicht tippen.'
+    Clear-MockTelegramRequests -Container $Container
+    Send-GateSummary $OwnerUnpaired '' $sumI
+    $m = Wait-ButtonSend 'hitlR11' ''
+    $p1 = $null; $p2 = $null
+    if (-not $m) { $p1 = 'Karte nicht abgefangen' }
+    else {
+        $p1 = Set-CardsExpired @([long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)))
+        if (-not $p1) { $p2 = Test-RepeatBlocked 'hitlR11' $OwnerUnpaired '' $sumI }
+    }
+    Write-RepeatCase 'hitlR11' 'Karte laeuft ab -> gleiche Karte gesperrt' @($p1, $p2)
+} catch { Register-Abort $_ 'hitlR11' }
 
 # --- Ausgang der Karte (outcome): Das Gate meldet, ob jemand getippt hat oder die Karte abgelaufen ist. n8n liefert nach einem
 # Tipp data.approved als true/false, nach einem Ablauf nur die Eingabe des Sends (ohne data). hitlO1-O6 = Tipp, hitlO7 = Ablauf.
@@ -794,12 +873,15 @@ function Get-OutcomeProblem($Exec, [string]$Want, [bool]$WantApproved) {
     $null
 }
 function Test-TapOutcome([string]$Id, [string]$Name, [string]$ChatId, [string]$Tier, [bool[]]$Taps, [string]$Want, [bool]$WantApproved) {
-    Clear-MockTelegramRequests -Container $Container
-    $base = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    Send-GateSummary $ChatId $Tier "HITL probe ${Id}: bitte bestaetigen."
-    $p1 = Complete-CardTaps $Id $Taps
-    $p2 = Get-OutcomeProblem (Wait-NewExec $gateWfId $base -Finished) $Want $WantApproved
-    Write-RepeatCase $Id $Name @($p1, $p2)
+    try {
+        Test-ForceAbort $Id $ForceAbortId
+        Clear-MockTelegramRequests -Container $Container
+        $base = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+        Send-GateSummary $ChatId $Tier "HITL probe ${Id}: bitte bestaetigen."
+        $p1 = Complete-CardTaps $Id $Taps
+        $p2 = Get-OutcomeProblem (Wait-NewExec $gateWfId $base -Finished) $Want $WantApproved
+        Write-RepeatCase $Id $Name @($p1, $p2)
+    } catch { Register-Abort $_ $Id }
 }
 Test-TapOutcome 'hitlO1' 'Owner bestaetigt -> outcome approved' $OwnerUnpaired '' @($true) 'approved' $true
 Test-TapOutcome 'hitlO2' 'Owner tippt Abbrechen -> outcome declined' $OwnerUnpaired '' @($false) 'declined' $false
@@ -818,31 +900,34 @@ $expiryCases = @(
     [pscustomobject]@{ id = 'hitlO7e'; chat = $MemberChatId;  tier = 'owner_approval'; tapFirst = $true;  want = 'owner_expired'; name = 'Vier-Augen Stufe 2'; sum = 'HITL probe hitlO7e: bitte nicht tippen.' }
     [pscustomobject]@{ id = 'hitlO7f'; chat = $OwnerUnpaired; tier = '';               tapFirst = $false; want = 'expired';       name = 'lange Karte';        sum = (New-LongSummary 'hitlO7f') }
 )
-Clear-MockTelegramRequests -Container $Container
-$expiryProblems = @{}; $expiryIds = @{}
-foreach ($c in $expiryCases) {
-    $expiryProblems[$c.id] = @()
-    Send-GateSummary $c.chat $c.tier $c.sum
-    $m = Wait-ButtonSend $c.id ''
-    if ($m -and $c.tapFirst) {
-        try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { $expiryProblems[$c.id] += "Stufe 1: $_" }
-        $m = Wait-ButtonSend $c.id '' -Skip 1
+try {
+    Test-ForceAbort 'hitlO7' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $expiryProblems = @{}; $expiryIds = @{}
+    foreach ($c in $expiryCases) {
+        $expiryProblems[$c.id] = @()
+        Send-GateSummary $c.chat $c.tier $c.sum
+        $m = Wait-ButtonSend $c.id ''
+        if ($m -and $c.tapFirst) {
+            try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { $expiryProblems[$c.id] += "Stufe 1: $_" }
+            $m = Wait-ButtonSend $c.id '' -Skip 1
+        }
+        if ($m) { $expiryIds[$c.id] = [long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)) }
+        else { $expiryProblems[$c.id] += 'Karte nicht abgefangen' }
     }
-    if ($m) { $expiryIds[$c.id] = [long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)) }
-    else { $expiryProblems[$c.id] += 'Karte nicht abgefangen' }
-}
-$batch = $null
-if ($expiryIds.Count) { $batch = Set-CardsExpired @($expiryIds.Values) }
-foreach ($c in $expiryCases) {
-    if ($batch) { $expiryProblems[$c.id] += $batch }
-    if ($expiryIds.ContainsKey($c.id)) {
-        $expiryProblems[$c.id] += Get-OutcomeProblem (Get-ExecDetail $expiryIds[$c.id]) $c.want $false
-        $expiryProblems[$c.id] += Test-RepeatBlocked $c.id $c.chat $c.tier $c.sum
+    $batch = $null
+    if ($expiryIds.Count) { $batch = Set-CardsExpired @($expiryIds.Values) }
+    foreach ($c in $expiryCases) {
+        if ($batch) { $expiryProblems[$c.id] += $batch }
+        if ($expiryIds.ContainsKey($c.id)) {
+            $expiryProblems[$c.id] += Get-OutcomeProblem (Get-ExecDetail $expiryIds[$c.id]) $c.want $false
+            $expiryProblems[$c.id] += Test-RepeatBlocked $c.id $c.chat $c.tier $c.sum
+        }
     }
-}
-foreach ($c in $expiryCases) {
-    Write-RepeatCase $c.id "Ablauf $($c.name) -> outcome $($c.want), gleiche Karte gesperrt" $expiryProblems[$c.id]
-}
+    foreach ($c in $expiryCases) {
+        Write-RepeatCase $c.id "Ablauf $($c.name) -> outcome $($c.want), gleiche Karte gesperrt" $expiryProblems[$c.id]
+    }
+} catch { Register-Abort $_ 'hitlO7' }
 
 # hitlB1: Zeilenart body: langer Text in Teilen, jedes Wort kommt an, Wortgrenzen bleiben, ein Text ohne Leerzeichen wird hart
 # getrennt, geschweifte Klammern bleiben, jede Nachricht <= 4096, die Knoepfe an der letzten.
@@ -861,12 +946,15 @@ function Get-BodyProblems([object[]]$Sends, [int]$Words, [int]$QCount, [string[]
     foreach ($w in $Must) { if (-not $all.Contains($w)) { $bad += "Text ohne '$w'" } }
     $bad
 }
-$longWords = ((1..1500 | ForEach-Object { 'wort{0:d4}' -f $_ }) -join ' ')
-$longBody = "$longWords`n`n{bleibt}`n" + ('Q' * 5000) + "`nendeB1"
-$sumB1 = [ordered]@{ title = 'core.hitl.publish_plan'; lines = @([ordered]@{ kind = 'body'; value = $longBody }) }
-$p1 = Invoke-CardRound 'endeB1' $OwnerUnpaired '' $sumB1 @($false)
-$sent = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
-Write-RepeatCase 'hitlB1' 'Zeilenart body: langer Text kommt vollstaendig an' (@($p1) + @(Get-BodyProblems $sent 1500 5000 @('{bleibt}')))
+try {
+    Test-ForceAbort 'hitlB1' $ForceAbortId
+    $longWords = ((1..1500 | ForEach-Object { 'wort{0:d4}' -f $_ }) -join ' ')
+    $longBody = "$longWords`n`n{bleibt}`n" + ('Q' * 5000) + "`nendeB1"
+    $sumB1 = [ordered]@{ title = 'core.hitl.publish_plan'; lines = @([ordered]@{ kind = 'body'; value = $longBody }) }
+    $p1 = Invoke-CardRound 'endeB1' $OwnerUnpaired '' $sumB1 @($false)
+    $sent = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
+    Write-RepeatCase 'hitlB1' 'Zeilenart body: langer Text kommt vollstaendig an' (@($p1) + @(Get-BodyProblems $sent 1500 5000 @('{bleibt}')))
+} catch { Register-Abort $_ 'hitlB1' }
 
 # --- Karten der Plan-Tools ueber die echten Tools (Harness): Plan- und Abschnittsname aus dem Textkatalog in der Sprache des
 # Empfaengers, keine internen Schluessel, kein alter Hinweis, der ganze Text. Erwartete Namen kommen aus den Locale-Dateien.
@@ -903,104 +991,132 @@ $saveWfId = ($wfList.data | Where-Object { $_.name -eq 'agent.tool_save_plan_sec
 $publishWfId = ($wfList.data | Where-Object { $_.name -eq 'agent.tool_publish_plan' } | Select-Object -First 1).id
 try {
     foreach ($lang in @('de', 'en', 'ko')) {
-        $id = "hitlP1$lang"
-        Set-OwnerLanguage $lang
-        Clear-MockTelegramRequests -Container $Container
-        Send-PlanSection 'finance' 'household_basics' "**Zwei** Erwachsene und eine Regel {bleibt} `# Ende $id"
-        $m = Wait-ButtonSend $id ''
-        $probs = @()
-        if (-not $m) { $probs += "Karte (Marker $id) nicht abgefangen" }
-        else {
-            $probs += Get-CardTextProblems ([string]$m.body.text) @(
-                (Get-LocaleText 'finance' $lang 'finance.plan.name'),
-                (Get-LocaleText 'finance' $lang 'finance.plan_section.household_basics'),
-                'Zwei Erwachsene', '{bleibt}') $InternalNames
-            $probs += Complete-CardTaps $id @($false)
-        }
-        Write-RepeatCase $id "Plan-Karte in $lang`: Namen aus dem Katalog, keine Schluessel, ganzer Text" $probs
+        try {
+            Test-ForceAbort "hitlP1$lang" $ForceAbortId
+            $id = "hitlP1$lang"
+            Set-OwnerLanguage $lang
+            Clear-MockTelegramRequests -Container $Container
+            Send-PlanSection 'finance' 'household_basics' "**Zwei** Erwachsene und eine Regel {bleibt} `# Ende $id"
+            $m = Wait-ButtonSend $id ''
+            $probs = @()
+            if (-not $m) { $probs += "Karte (Marker $id) nicht abgefangen" }
+            else {
+                $probs += Get-CardTextProblems ([string]$m.body.text) @(
+                    (Get-LocaleText 'finance' $lang 'finance.plan.name'),
+                    (Get-LocaleText 'finance' $lang 'finance.plan_section.household_basics'),
+                    'Zwei Erwachsene', '{bleibt}') $InternalNames
+                $probs += Complete-CardTaps $id @($false)
+            }
+            Write-RepeatCase $id "Plan-Karte in $lang`: Namen aus dem Katalog, keine Schluessel, ganzer Text" $probs
+        } catch { Register-Abort $_ "hitlP1$lang" }
     }
 } finally { Set-OwnerLanguage $ownerLangBefore }
 
 # hitlP2: Abschnitt ohne Katalogeintrag -> lesbarer Rueckfall.
-Clear-MockTelegramRequests -Container $Container
-Send-PlanSection 'finance' 'sonder_abschnitt_neu' 'Probe hitlP2'
-$m = Wait-ButtonSend 'hitlP2' ''
-$probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('sonder abschnitt neu') @('sonder.{0,2}_abschnitt')) + @(Complete-CardTaps 'hitlP2' @($false)) } else { @('Karte nicht abgefangen') }
-Write-RepeatCase 'hitlP2' 'Abschnitt ohne Katalogeintrag: lesbarer Rueckfall' $probs
+try {
+    Test-ForceAbort 'hitlP2' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    Send-PlanSection 'finance' 'sonder_abschnitt_neu' 'Probe hitlP2'
+    $m = Wait-ButtonSend 'hitlP2' ''
+    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('sonder abschnitt neu') @('sonder.{0,2}_abschnitt')) + @(Complete-CardTaps 'hitlP2' @($false)) } else { @('Karte nicht abgefangen') }
+    Write-RepeatCase 'hitlP2' 'Abschnitt ohne Katalogeintrag: lesbarer Rueckfall' $probs
+} catch { Register-Abort $_ 'hitlP2' }
 
 # hitlP3: Text ohne Leerzeichen ueber dem Telegram-Limit geht vollstaendig durch, nichts gekuerzt.
-Clear-MockTelegramRequests -Container $Container
-Send-PlanSection 'finance' 'risk_profile' (('Q' * 6000) + ' hitlP3')
-$m = Wait-ButtonSend 'hitlP3' ''
-$probs = @()
-if (-not $m) { $probs += 'Karte nicht abgefangen' }
-else {
-    $sent = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
-    $probs += Get-BodyProblems $sent 0 6000 @((Get-LocaleText 'finance' 'de' 'finance.plan_section.risk_profile'))
-    $probs += Complete-CardTaps 'hitlP3' @($false)
-}
-Write-RepeatCase 'hitlP3' 'Plan-Text ohne Leerzeichen ueber dem Limit: vollstaendig' $probs
+try {
+    Test-ForceAbort 'hitlP3' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    Send-PlanSection 'finance' 'risk_profile' (('Q' * 6000) + ' hitlP3')
+    $m = Wait-ButtonSend 'hitlP3' ''
+    $probs = @()
+    if (-not $m) { $probs += 'Karte nicht abgefangen' }
+    else {
+        $sent = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
+        $probs += Get-BodyProblems $sent 0 6000 @((Get-LocaleText 'finance' 'de' 'finance.plan_section.risk_profile'))
+        $probs += Complete-CardTaps 'hitlP3' @($false)
+    }
+    Write-RepeatCase 'hitlP3' 'Plan-Text ohne Leerzeichen ueber dem Limit: vollstaendig' $probs
+} catch { Register-Abort $_ 'hitlP3' }
 
 # hitlP4: Sentinel-Domain und Career: echter Name statt interner Domain.
-Clear-MockTelegramRequests -Container $Container
-Send-PlanSection '__e2e_finance__' 'risk_profile' 'Probe hitlP4'
-$m = Wait-ButtonSend 'hitlP4' ''
-$probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name')) $InternalNames) + @(Complete-CardTaps 'hitlP4' @($false)) } else { @('Karte nicht abgefangen') }
-Write-RepeatCase 'hitlP4' 'Sentinel-Domain: Name des echten Plans' $probs
-Clear-MockTelegramRequests -Container $Container
-Send-PlanSection 'career' 'situation' 'Probe hitlP5' ([string]$PairedUidOwner)
-$m = Wait-ButtonSend 'hitlP5' ''
-$probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'career' 'de' 'career.plan.name'), (Get-LocaleText 'career' 'de' 'career.plan_section.situation')) @('\(career\)')) + @(Complete-CardTaps 'hitlP5' @($false)) } else { @('Karte nicht abgefangen') }
-Write-RepeatCase 'hitlP5' 'Career-Plan: eigene Namen' $probs
+try {
+    Test-ForceAbort 'hitlP4' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    Send-PlanSection '__e2e_finance__' 'risk_profile' 'Probe hitlP4'
+    $m = Wait-ButtonSend 'hitlP4' ''
+    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name')) $InternalNames) + @(Complete-CardTaps 'hitlP4' @($false)) } else { @('Karte nicht abgefangen') }
+    Write-RepeatCase 'hitlP4' 'Sentinel-Domain: Name des echten Plans' $probs
+} catch { Register-Abort $_ 'hitlP4' }
+try {
+    Test-ForceAbort 'hitlP5' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    Send-PlanSection 'career' 'situation' 'Probe hitlP5' ([string]$PairedUidOwner)
+    $m = Wait-ButtonSend 'hitlP5' ''
+    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'career' 'de' 'career.plan.name'), (Get-LocaleText 'career' 'de' 'career.plan_section.situation')) @('\(career\)')) + @(Complete-CardTaps 'hitlP5' @($false)) } else { @('Karte nicht abgefangen') }
+    Write-RepeatCase 'hitlP5' 'Career-Plan: eigene Namen' $probs
+} catch { Register-Abort $_ 'hitlP5' }
 
 # hitlP6: Abbrechen, derselbe Abschnitt mit neu formuliertem Text -> keine Karte; das Tool sagt dem Modell, dass es antworten soll.
-Clear-MockTelegramRequests -Container $Container
-$toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-Send-PlanSection 'finance' 'crossborder' 'Erste Fassung hitlP6a'
-$probs = @(Complete-CardTaps 'hitlP6a' @($false))
-$first = Wait-NewExec $saveWfId $toolBase -Finished
-$firstMsg = ''; try { $firstMsg = [string]$first.data.resultData.runData.'Return cancelled'[0].data.main[0][0].json.message } catch { }
-if (-not $firstMsg) { $probs += 'erster Abbruch ohne Return cancelled' }
-elseif ($firstMsg -match 'no new card') { $probs += "erster Abbruch meldet schon die Sperre: $firstMsg" }
-Clear-MockTelegramRequests -Container $Container
-$toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-$gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-Send-PlanSection 'finance' 'crossborder' 'Neue Fassung hitlP6b'
-$probs += Get-RepeatBlockProblem (Wait-NewExec $gateWfId $gateBase) 'hitlP6b'
-$second = Wait-NewExec $saveWfId $toolBase -Finished
-$cancel = $null; try { $cancel = $second.data.resultData.runData.'Return cancelled'[0].data.main[0][0].json } catch { }
-if (-not $cancel) { $probs += 'zweiter Aufruf ohne Return cancelled' }
-elseif ($cancel.ok -ne $false -or $cancel.cancelled -ne $true -or ([string]$cancel.message) -notmatch 'no new card was sent') { $probs += "Rueckmeldung ans Modell: $($cancel | ConvertTo-Json -Compress)" }
-Write-RepeatCase 'hitlP6' 'Plan-Karte: neu formulierter Text nach Abbrechen -> keine Karte, Rueckmeldung ans Modell' $probs
+try {
+    Test-ForceAbort 'hitlP6' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-PlanSection 'finance' 'crossborder' 'Erste Fassung hitlP6a'
+    $probs = @(Complete-CardTaps 'hitlP6a' @($false))
+    $first = Wait-NewExec $saveWfId $toolBase -Finished
+    $firstMsg = ''; try { $firstMsg = [string]$first.data.resultData.runData.'Return cancelled'[0].data.main[0][0].json.message } catch { }
+    if (-not $firstMsg) { $probs += 'erster Abbruch ohne Return cancelled' }
+    elseif ($firstMsg -match 'no new card') { $probs += "erster Abbruch meldet schon die Sperre: $firstMsg" }
+    Clear-MockTelegramRequests -Container $Container
+    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-PlanSection 'finance' 'crossborder' 'Neue Fassung hitlP6b'
+    $probs += Get-RepeatBlockProblem (Wait-NewExec $gateWfId $gateBase) 'hitlP6b'
+    $second = Wait-NewExec $saveWfId $toolBase -Finished
+    $cancel = $null; try { $cancel = $second.data.resultData.runData.'Return cancelled'[0].data.main[0][0].json } catch { }
+    if (-not $cancel) { $probs += 'zweiter Aufruf ohne Return cancelled' }
+    elseif ($cancel.ok -ne $false -or $cancel.cancelled -ne $true -or ([string]$cancel.message) -notmatch 'no new card was sent') { $probs += "Rueckmeldung ans Modell: $($cancel | ConvertTo-Json -Compress)" }
+    Write-RepeatCase 'hitlP6' 'Plan-Karte: neu formulierter Text nach Abbrechen -> keine Karte, Rueckmeldung ans Modell' $probs
+} catch { Register-Abort $_ 'hitlP6' }
 
 # hitlP8: bleibt nach dem Entfernen der Markdown-Zeichen nichts uebrig, zeigt die Karte den Rohtext statt keinen Text.
-$p8Section = Get-LocaleText 'finance' 'de' 'finance.plan_section.retirement_pension'
-Clear-MockTelegramRequests -Container $Container
-Send-PlanSection 'finance' 'retirement_pension' '***'
-$m = Wait-ButtonSend $p8Section ''
-$probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('*') @()) + @(Complete-CardTaps $p8Section @($false)) } else { @('Karte nicht abgefangen') }
-Write-RepeatCase 'hitlP8' 'Text nur aus Markdown-Zeichen: Karte zeigt ihn roh' $probs
+try {
+    Test-ForceAbort 'hitlP8' $ForceAbortId
+    $p8Section = Get-LocaleText 'finance' 'de' 'finance.plan_section.retirement_pension'
+    Clear-MockTelegramRequests -Container $Container
+    Send-PlanSection 'finance' 'retirement_pension' '***'
+    $m = Wait-ButtonSend $p8Section ''
+    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('*') @()) + @(Complete-CardTaps $p8Section @($false)) } else { @('Karte nicht abgefangen') }
+    Write-RepeatCase 'hitlP8' 'Text nur aus Markdown-Zeichen: Karte zeigt ihn roh' $probs
+} catch { Register-Abort $_ 'hitlP8' }
 
 # hitlP7: Veroeffentlichen-Karte: Planname statt Kontextname; Schluessel = Domain (andere Aenderungs-Zusammenfassung = gleiche Karte).
-$probs = @()
-Clear-MockTelegramRequests -Container $Container
-Send-PlanSection '__e2e_finance__' 'crossborder' 'Probe-Abschnitt hitlP7s'
-$probs += Complete-CardTaps 'hitlP7s' @($true)
-Clear-HitlPending -Container $Container
-Clear-MockTelegramRequests -Container $Container
-Send-PlanPublish '__e2e_finance__' 'Erste Fassung hitlP7a'
-$m = Wait-ButtonSend 'hitlP7a' ''
-if (-not $m) { $probs += 'Veroeffentlichen-Karte nicht abgefangen' }
-else {
-    $probs += Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name')) $InternalNames
-    $probs += Complete-CardTaps 'hitlP7a' @($false)
+try {
+    Test-ForceAbort 'hitlP7' $ForceAbortId
+    $probs = @()
     Clear-MockTelegramRequests -Container $Container
-    $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    Send-PlanPublish '__e2e_finance__' 'Neue Fassung hitlP7b'
-    $probs += Get-RepeatBlockProblem (Wait-NewExec $gateWfId $gateBase) 'hitlP7b'
+    Send-PlanSection '__e2e_finance__' 'crossborder' 'Probe-Abschnitt hitlP7s'
+    $probs += Complete-CardTaps 'hitlP7s' @($true)
+    Clear-HitlPending -Container $Container
+    Clear-MockTelegramRequests -Container $Container
+    Send-PlanPublish '__e2e_finance__' 'Erste Fassung hitlP7a'
+    $m = Wait-ButtonSend 'hitlP7a' ''
+    if (-not $m) { $probs += 'Veroeffentlichen-Karte nicht abgefangen' }
+    else {
+        $probs += Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name')) $InternalNames
+        $probs += Complete-CardTaps 'hitlP7a' @($false)
+        Clear-MockTelegramRequests -Container $Container
+        $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+        Send-PlanPublish '__e2e_finance__' 'Neue Fassung hitlP7b'
+        $probs += Get-RepeatBlockProblem (Wait-NewExec $gateWfId $gateBase) 'hitlP7b'
+    }
+    Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
+    Write-RepeatCase 'hitlP7' 'Veroeffentlichen-Karte: Planname, Sperre je Domain' $probs
+} catch {
+    Register-Abort $_ 'hitlP7' -Extra {
+        Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
+    }
 }
-Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
-Write-RepeatCase 'hitlP7' 'Veroeffentlichen-Karte: Planname, Sperre je Domain' $probs
 
 # --- Text ans Modell je Ausgang, ueber die echten Tools (Return cancelled). hitlT1/T2/T4/T5: tool_delete_monitor_trigger, einmal als
 # Owner, einmal als Mitglied im Vier-Augen-Weg. hitlT3: owner_only ohne Karte; das Fakten-Tool hat keinen Probelauf, der den Block vorher abfaengt.
@@ -1027,67 +1143,106 @@ function Remove-ProbeTrigger([string]$Label) {
     Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "DELETE FROM agent.monitor_triggers WHERE label = '$Label';") | Out-Null
 }
 
-Clear-MockTelegramRequests -Container $Container
-$probs = @(New-ProbeTrigger 'hitlT1 Probe')
-$toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-Send-HarnessPost 'monitor-delete-test' @{ chat_id = $OwnerUnpaired; domain = 'general'; label = 'hitlT1 Probe' }
-$probs += Complete-CardTaps 'hitlT1' @($false)
-$probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'tapped the cancel button' $ExpiredRx
-Remove-ProbeTrigger 'hitlT1 Probe'
-Write-RepeatCase 'hitlT1' 'Text ans Modell: Abbrechen, kein Ablauf' $probs
-
-Clear-MockTelegramRequests -Container $Container
-$probs = @(New-ProbeTrigger 'hitlT2 Probe')
-$toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-Send-HarnessPost 'monitor-delete-test' @{ chat_id = $OwnerUnpaired; domain = 'general'; label = 'hitlT2 Probe' }
-$m = Wait-ButtonSend 'hitlT2' ''
-if (-not $m) { $probs += 'Karte nicht abgefangen' }
-else {
-    $probs += Set-CardsExpired @([long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)))
-    $probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'card .* expired' 'tapped the cancel button|you cannot tell'
+try {
+    Test-ForceAbort 'hitlT1' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $probs = @(New-ProbeTrigger 'hitlT1 Probe')
+    $toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'monitor-delete-test' @{ chat_id = $OwnerUnpaired; domain = 'general'; label = 'hitlT1 Probe' }
+    $probs += Complete-CardTaps 'hitlT1' @($false)
+    $probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'tapped the cancel button' $ExpiredRx
+    Remove-ProbeTrigger 'hitlT1 Probe'
+    Write-RepeatCase 'hitlT1' 'Text ans Modell: Abbrechen, kein Ablauf' $probs
+} catch {
+    Register-Abort $_ 'hitlT1' -Extra {
+        Remove-ProbeTrigger 'hitlT1 Probe'
+    }
 }
-Remove-ProbeTrigger 'hitlT2 Probe'
-Write-RepeatCase 'hitlT2' 'Text ans Modell: Ablauf, kein Abbrechen' $probs
 
-Clear-MockTelegramRequests -Container $Container
-$toolBase = Get-MaxExecId -WfId $factsWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-Send-HarnessPost 'facts-test' @{ chat_id = $MemberChatId; context_name = 'family'; scope = 'household'; persons = (ConvertTo-Json -Compress -InputObject @(@{ person_id = 'owner'; hitl_probe = 'hitlT3' })) }
-$probs = @(Get-CancelledMessageProblem (Wait-NewExec $factsWfId $toolBase -Finished) 'Only the household owner' 'tapped the cancel button|expired|you cannot tell')
-$t3Cards = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and $_.body.reply_markup })
-if ($t3Cards.Count) { $probs += "$($t3Cards.Count) Karte(n) trotz owner_only" }
-Write-RepeatCase 'hitlT3' 'Text ans Modell: nur der Owner, keine Karte' $probs
-
-Clear-MockTelegramRequests -Container $Container
-$probs = @(New-ProbeTrigger 'hitlT4 Probe')
-$toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-Send-HarnessPost 'monitor-delete-test' @{ chat_id = $MemberChatId; domain = 'general'; label = 'hitlT4 Probe' }
-$probs += Complete-CardTaps 'hitlT4' @($true, $false)
-$probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'household owner declined' 'tapped the cancel button|expired|you cannot tell'
-Remove-ProbeTrigger 'hitlT4 Probe'
-Write-RepeatCase 'hitlT4' 'Text ans Modell: Owner lehnt ab, nicht der Nutzer' $probs
-
-Clear-MockTelegramRequests -Container $Container
-$probs = @(New-ProbeTrigger 'hitlT5 Probe')
-$toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-Send-HarnessPost 'monitor-delete-test' @{ chat_id = $MemberChatId; domain = 'general'; label = 'hitlT5 Probe' }
-$m = Wait-ButtonSend 'hitlT5' ''
-if ($m) {
-    try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { $probs += "Stufe 1: $_" }
-    $m = Wait-ButtonSend 'hitlT5' '' -Skip 1
+try {
+    Test-ForceAbort 'hitlT2' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $probs = @(New-ProbeTrigger 'hitlT2 Probe')
+    $toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'monitor-delete-test' @{ chat_id = $OwnerUnpaired; domain = 'general'; label = 'hitlT2 Probe' }
+    $m = Wait-ButtonSend 'hitlT2' ''
+    if (-not $m) { $probs += 'Karte nicht abgefangen' }
+    else {
+        $probs += Set-CardsExpired @([long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)))
+        $probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'card .* expired' 'tapped the cancel button|you cannot tell'
+    }
+    Remove-ProbeTrigger 'hitlT2 Probe'
+    Write-RepeatCase 'hitlT2' 'Text ans Modell: Ablauf, kein Abbrechen' $probs
+} catch {
+    Register-Abort $_ 'hitlT2' -Extra {
+        Remove-ProbeTrigger 'hitlT2 Probe'
+    }
 }
-if (-not $m) { $probs += 'Karte nicht abgefangen' }
-else {
-    $probs += Set-CardsExpired @([long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)))
-    $probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'owner did not answer' 'tapped the cancel button|declined the|you cannot tell'
-}
-Remove-ProbeTrigger 'hitlT5 Probe'
-Write-RepeatCase 'hitlT5' 'Text ans Modell: Owner antwortet nicht rechtzeitig' $probs
 
-Clear-MockTelegramRequests -Container $Container
-Start-GateCase 'hitlC0' '999000111' '' 'HITL probe hitlC0: Modus-Erkennung.'
-$probe = Wait-ButtonSend 'hitlC0' ''
-$chatMode = $probe -and (@($probe.body.reply_markup.inline_keyboard | ForEach-Object { $_ } | Where-Object { [string]$_.callback_data -like 'nhitl1|*' }).Count -gt 0)
-if ($probe) { try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $probe -Approved $false -BridgeUrl $N8nUrl) | Out-Null } catch { } }
+try {
+    Test-ForceAbort 'hitlT3' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $toolBase = Get-MaxExecId -WfId $factsWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'facts-test' @{ chat_id = $MemberChatId; context_name = 'family'; scope = 'household'; persons = (ConvertTo-Json -Compress -InputObject @(@{ person_id = 'owner'; hitl_probe = 'hitlT3' })) }
+    $probs = @(Get-CancelledMessageProblem (Wait-NewExec $factsWfId $toolBase -Finished) 'Only the household owner' 'tapped the cancel button|expired|you cannot tell')
+    $t3Cards = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and $_.body.reply_markup })
+    if ($t3Cards.Count) { $probs += "$($t3Cards.Count) Karte(n) trotz owner_only" }
+    Write-RepeatCase 'hitlT3' 'Text ans Modell: nur der Owner, keine Karte' $probs
+} catch { Register-Abort $_ 'hitlT3' }
+
+try {
+    Test-ForceAbort 'hitlT4' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $probs = @(New-ProbeTrigger 'hitlT4 Probe')
+    $toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'monitor-delete-test' @{ chat_id = $MemberChatId; domain = 'general'; label = 'hitlT4 Probe' }
+    $probs += Complete-CardTaps 'hitlT4' @($true, $false)
+    $probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'household owner declined' 'tapped the cancel button|expired|you cannot tell'
+    Remove-ProbeTrigger 'hitlT4 Probe'
+    Write-RepeatCase 'hitlT4' 'Text ans Modell: Owner lehnt ab, nicht der Nutzer' $probs
+} catch {
+    Register-Abort $_ 'hitlT4' -Extra {
+        Remove-ProbeTrigger 'hitlT4 Probe'
+    }
+}
+
+try {
+    Test-ForceAbort 'hitlT5' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $probs = @(New-ProbeTrigger 'hitlT5 Probe')
+    $toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'monitor-delete-test' @{ chat_id = $MemberChatId; domain = 'general'; label = 'hitlT5 Probe' }
+    $m = Wait-ButtonSend 'hitlT5' ''
+    if ($m) {
+        try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { $probs += "Stufe 1: $_" }
+        $m = Wait-ButtonSend 'hitlT5' '' -Skip 1
+    }
+    if (-not $m) { $probs += 'Karte nicht abgefangen' }
+    else {
+        $probs += Set-CardsExpired @([long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)))
+        $probs += Get-CancelledMessageProblem (Wait-NewExec $delTrigWfId $toolBase -Finished) 'owner did not answer' 'tapped the cancel button|declined the|you cannot tell'
+    }
+    Remove-ProbeTrigger 'hitlT5 Probe'
+    Write-RepeatCase 'hitlT5' 'Text ans Modell: Owner antwortet nicht rechtzeitig' $probs
+} catch {
+    Register-Abort $_ 'hitlT5' -Extra {
+        Remove-ProbeTrigger 'hitlT5 Probe'
+    }
+}
+
+try {
+    Test-ForceAbort 'hitlC0' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    Start-GateCase 'hitlC0' '999000111' '' 'HITL probe hitlC0: Modus-Erkennung.'
+    $probe = Wait-ButtonSend 'hitlC0' ''
+    $chatMode = $probe -and (@($probe.body.reply_markup.inline_keyboard | ForEach-Object { $_ } | Where-Object { [string]$_.callback_data -like 'nhitl1|*' }).Count -gt 0)
+    if ($probe) { try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $probe -Approved $false -BridgeUrl $N8nUrl) | Out-Null } catch { } }
+} catch {
+    Register-Abort $_ 'hitlC0' -Extra {
+        $script:chatMode = $false
+        Write-Host "    Chat-Faelle hitlC1-C4 werden uebersprungen: die Modus-Erkennung ist abgebrochen." -ForegroundColor Yellow
+    }
+}
 Write-Host ""
 if (-not $chatMode) {
     Write-Host "  Bestaetigen im Chat: Substrat sendet Link-Knoepfe -> Chat-Faelle uebersprungen (bootstrap_test_n8n.ps1 -HitlChatApproval fuer den Chat-Modus)." -ForegroundColor DarkGray
@@ -1097,76 +1252,85 @@ if (-not $chatMode) {
 
     # hitlC1: fremder Tipper + gefaelschte Signatur setzen NICHT fort; danach der Owner -> true.
     $chatCases += 'hitlC1'; Write-Host ""; Write-Host "  [hitlC1] Chat: fremder Tipper / falsche Signatur blockiert, Owner gibt frei"
-    Clear-MockTelegramRequests -Container $Container
-    Start-GateCase 'hitlC1' '999000111' '' 'HITL probe hitlC1: bitte bestaetigen.'
-    $m = Wait-ButtonSend 'hitlC1' ''
-    $ok = $false
-    if ($m) {
-        $url = Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $url
-        try { Invoke-HitlResume -Url $url -FromId $MemberChatId | Out-Null } catch { }
-        $foreignBlocked = Test-StillWaiting $eid
-        # Signatur faelschen: letztes Hex-Zeichen der callback_data-HMAC kippen (Rest identisch).
-        $cbEsc = if ($url -match '[?&]cb=([^&]+)') { $Matches[1] } else { '' }
-        $cbRaw = [uri]::UnescapeDataString($cbEsc)
-        $last  = $cbRaw.Substring($cbRaw.Length - 1)
-        $cbBad = $cbRaw.Substring(0, $cbRaw.Length - 1) + $(if ($last -eq '0') { '1' } else { '0' })
-        $forged = $url.Replace("cb=$cbEsc", 'cb=' + [uri]::EscapeDataString($cbBad))
-        $forgedRejected = $false
-        try { Invoke-HitlResume -Url $forged | Out-Null } catch { $forgedRejected = $true }
-        $forgedBlocked = $forgedRejected -and (Test-StillWaiting $eid)
-        try { Invoke-HitlResume -Url $url | Out-Null } catch { }
-        Start-Sleep -Seconds 2
-        $final = Get-ExecStatus $eid
-        if ($Verbose) { Write-Host "    fremd blockiert=$foreignBlocked  falsche Signatur blockiert=$forgedBlocked  danach=$final" -ForegroundColor DarkGray }
-        $ok = $foreignBlocked -and $forgedBlocked -and ($final -eq 'success')
-    }
-    if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC1 (Send gefunden=$([bool]$m))" -ForegroundColor Red }
+    try {
+        Test-ForceAbort 'hitlC1' $ForceAbortId
+        Clear-MockTelegramRequests -Container $Container
+        Start-GateCase 'hitlC1' '999000111' '' 'HITL probe hitlC1: bitte bestaetigen.'
+        $m = Wait-ButtonSend 'hitlC1' ''
+        $ok = $false
+        if ($m) {
+            $url = Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $url
+            try { Invoke-HitlResume -Url $url -FromId $MemberChatId | Out-Null } catch { }
+            $foreignBlocked = Test-StillWaiting $eid
+            # Signatur faelschen: letztes Hex-Zeichen der callback_data-HMAC kippen (Rest identisch).
+            $cbEsc = if ($url -match '[?&]cb=([^&]+)') { $Matches[1] } else { '' }
+            $cbRaw = [uri]::UnescapeDataString($cbEsc)
+            $last  = $cbRaw.Substring($cbRaw.Length - 1)
+            $cbBad = $cbRaw.Substring(0, $cbRaw.Length - 1) + $(if ($last -eq '0') { '1' } else { '0' })
+            $forged = $url.Replace("cb=$cbEsc", 'cb=' + [uri]::EscapeDataString($cbBad))
+            $forgedRejected = $false
+            try { Invoke-HitlResume -Url $forged | Out-Null } catch { $forgedRejected = $true }
+            $forgedBlocked = $forgedRejected -and (Test-StillWaiting $eid)
+            try { Invoke-HitlResume -Url $url | Out-Null } catch { }
+            Start-Sleep -Seconds 2
+            $final = Get-ExecStatus $eid
+            if ($Verbose) { Write-Host "    fremd blockiert=$foreignBlocked  falsche Signatur blockiert=$forgedBlocked  danach=$final" -ForegroundColor DarkGray }
+            $ok = $foreignBlocked -and $forgedBlocked -and ($final -eq 'success')
+        }
+        if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC1 (Send gefunden=$([bool]$m))" -ForegroundColor Red }
+    } catch { Register-Abort $_ 'hitlC1' -NoCase }
 
     # hitlC2: Vier-Augen — das Mitglied wiederholt seinen Stufe-1-Tipp, waehrend Stufe 2 (Owner) wartet -> bleibt wartend.
     $chatCases += 'hitlC2'; Write-Host ""; Write-Host "  [hitlC2] Chat: Replay des Stufe-1-Tipps beantwortet Stufe 2 nicht"
-    Clear-MockTelegramRequests -Container $Container
-    Start-GateCase 'hitlC2' $MemberChatId 'owner_approval' 'HITL probe hitlC2: bitte bestaetigen.'
-    $ok = $false
-    $m1 = Wait-ButtonSend 'hitlC2' $MemberChatId
-    if ($m1) {
-        $u1 = Get-HitlResumeUrl -Request $m1 -Approved $true -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $u1
-        # Der OWNER tippt auf den Member-Send -> darf Stufe 1 nicht beantworten (approverIds = nur das Mitglied).
-        try { Invoke-HitlResume -Url $u1 -FromId ([string]$OWNER_CHAT_ID) | Out-Null } catch { }
-        $ownerOnMemberBlocked = Test-StillWaiting $eid
-        try { Invoke-HitlResume -Url $u1 | Out-Null } catch { }
-        $m2 = Wait-ButtonSend 'hitlC2' ''  -Skip 1
-        if ($m2 -and -not $ownerOnMemberBlocked) { Write-Host "    Owner-Tipp auf den Member-Send wurde NICHT blockiert" -ForegroundColor Red; $m2 = $null }
-        if ($m2) {
-            try { Invoke-HitlResume -Url $u1 | Out-Null } catch { }        # Replay: Mitglied, Stufe-1-Daten
-            $replayBlocked = Test-StillWaiting $eid
-            try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $m2 -Approved $false -BridgeUrl $N8nUrl) | Out-Null } catch { }
-            $ex = $null; $start = Get-Date
-            while (((Get-Date) - $start).TotalSeconds -lt $Timeout) { try { $ex = Get-ExecDetail $eid } catch { }; if ($ex.status -eq 'success') { break }; Start-Sleep -Milliseconds 700 }
-            $ap = $null; try { $ap = $ex.data.resultData.runData.'Return co-approval'[0].data.main[0][0].json.approved } catch { }
-            if ($Verbose) { Write-Host "    Replay blockiert=$replayBlocked  Owner-Veto -> approved=$ap" -ForegroundColor DarkGray }
-            $ok = $replayBlocked -and ($ex.status -eq 'success') -and ($ap -eq $false)
+    try {
+        Test-ForceAbort 'hitlC2' $ForceAbortId
+        Clear-MockTelegramRequests -Container $Container
+        Start-GateCase 'hitlC2' $MemberChatId 'owner_approval' 'HITL probe hitlC2: bitte bestaetigen.'
+        $ok = $false
+        $m1 = Wait-ButtonSend 'hitlC2' $MemberChatId
+        if ($m1) {
+            $u1 = Get-HitlResumeUrl -Request $m1 -Approved $true -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $u1
+            # Der OWNER tippt auf den Member-Send -> darf Stufe 1 nicht beantworten (approverIds = nur das Mitglied).
+            try { Invoke-HitlResume -Url $u1 -FromId ([string]$OWNER_CHAT_ID) | Out-Null } catch { }
+            $ownerOnMemberBlocked = Test-StillWaiting $eid
+            try { Invoke-HitlResume -Url $u1 | Out-Null } catch { }
+            $m2 = Wait-ButtonSend 'hitlC2' ''  -Skip 1
+            if ($m2 -and -not $ownerOnMemberBlocked) { Write-Host "    Owner-Tipp auf den Member-Send wurde NICHT blockiert" -ForegroundColor Red; $m2 = $null }
+            if ($m2) {
+                try { Invoke-HitlResume -Url $u1 | Out-Null } catch { }        # Replay: Mitglied, Stufe-1-Daten
+                $replayBlocked = Test-StillWaiting $eid
+                try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $m2 -Approved $false -BridgeUrl $N8nUrl) | Out-Null } catch { }
+                $ex = $null; $start = Get-Date
+                while (((Get-Date) - $start).TotalSeconds -lt $Timeout) { try { $ex = Get-ExecDetail $eid } catch { }; if ($ex.status -eq 'success') { break }; Start-Sleep -Milliseconds 700 }
+                $ap = $null; try { $ap = $ex.data.resultData.runData.'Return co-approval'[0].data.main[0][0].json.approved } catch { }
+                if ($Verbose) { Write-Host "    Replay blockiert=$replayBlocked  Owner-Veto -> approved=$ap" -ForegroundColor DarkGray }
+                $ok = $replayBlocked -and ($ex.status -eq 'success') -and ($ap -eq $false)
+            }
         }
-    }
-    if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC2" -ForegroundColor Red }
+        if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC2" -ForegroundColor Red }
+    } catch { Register-Abort $_ 'hitlC2' -NoCase }
 
     # hitlC3: Markdown-Entities im Text (Unterstrich) — das Bearbeiten der Nachricht nach dem Tipp ist upstream reiner
     # Text + best-effort; die Freigabe muss trotzdem durchgehen.
     $chatCases += 'hitlC3'; Write-Host ""; Write-Host "  [hitlC3] Chat: Text mit Unterstrich -> Freigabe geht durch"
-    Clear-MockTelegramRequests -Container $Container
-    Start-GateCase 'hitlC3' '999000111' '' 'HITL probe hitlC3: Konto giro_konto_alt umbenennen.'
-    $ok = $false
-    $m = Wait-ButtonSend 'hitlC3' ''
-    if ($m) {
-        $url = Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $url
-        try { Invoke-HitlResume -Url $url | Out-Null } catch { }
-        $ex = $null; $start = Get-Date
-        while (((Get-Date) - $start).TotalSeconds -lt $Timeout) { try { $ex = Get-ExecDetail $eid } catch { }; if ($ex.status -eq 'success') { break }; Start-Sleep -Milliseconds 700 }
-        $ap = $null; try { $ap = $ex.data.resultData.runData.'Return owner'[0].data.main[0][0].json.approved } catch { }
-        $edit = Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -like 'editMessage*' } | Select-Object -First 1
-        if ($Verbose) { Write-Host "    approved=$ap  Nachricht bearbeitet=$([bool]$edit)" -ForegroundColor DarkGray }
-        $ok = ($ex.status -eq 'success') -and ($ap -eq $true) -and $edit
-    }
-    if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC3" -ForegroundColor Red }
+    try {
+        Test-ForceAbort 'hitlC3' $ForceAbortId
+        Clear-MockTelegramRequests -Container $Container
+        Start-GateCase 'hitlC3' '999000111' '' 'HITL probe hitlC3: Konto giro_konto_alt umbenennen.'
+        $ok = $false
+        $m = Wait-ButtonSend 'hitlC3' ''
+        if ($m) {
+            $url = Get-HitlResumeUrl -Request $m -Approved $true -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $url
+            try { Invoke-HitlResume -Url $url | Out-Null } catch { }
+            $ex = $null; $start = Get-Date
+            while (((Get-Date) - $start).TotalSeconds -lt $Timeout) { try { $ex = Get-ExecDetail $eid } catch { }; if ($ex.status -eq 'success') { break }; Start-Sleep -Milliseconds 700 }
+            $ap = $null; try { $ap = $ex.data.resultData.runData.'Return owner'[0].data.main[0][0].json.approved } catch { }
+            $edit = Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -like 'editMessage*' } | Select-Object -First 1
+            if ($Verbose) { Write-Host "    approved=$ap  Nachricht bearbeitet=$([bool]$edit)" -ForegroundColor DarkGray }
+            $ok = ($ex.status -eq 'success') -and ($ap -eq $true) -and $edit
+        }
+        if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC3" -ForegroundColor Red }
+    } catch { Register-Abort $_ 'hitlC3' -NoCase }
 
     # hitlC4: Doppel-Tipp im Cron-Dialog (New-StaleTapGuard). agent.finance.cron_remind_interest fragt je offener
     # Zinsgutschrift "so gutgeschrieben?" und nach Ablehnen "morgen erneut?" — in EINER Execution. Ein zweiter Tipp auf
@@ -1176,51 +1340,54 @@ if (-not $chatMode) {
     # Zeitplan wird kurz auf jede Minute gestellt und danach zurueckgesetzt (die CLI spielt die finance-Workflows dabei neu
     # ein -> Chat-Knoepfe per Env erzwingen, wie bootstrap_test_n8n -HitlChatApproval).
     $chatCases += 'hitlC4'; Write-Host ""; Write-Host "  [hitlC4] Chat: Doppel-Tipp im Cron-Dialog beantwortet die Folgefrage nicht"
-    $cronWf = ($wfList.data | Where-Object { $_.name -eq 'agent.finance.cron_remind_interest' } | Select-Object -First 1).id
-    function Set-CronSchedule([string]$Verb, [string]$Value) {
-        $a = @('exec', '-e', 'LIFEAGENTS_HITL_CHAT_APPROVAL=true', $Container, 'lifeagents', 'config', $Verb, 'schedule', 'remind_interest')
-        if ($Value) { $a += $Value }
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        & docker @a 2>&1 | Out-Null
-        $ErrorActionPreference = $prev
-    }
-    function Get-SkipCount { [int]("$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', 'SELECT count(*) FROM finance.interest_skips;')).Output | Select-Object -First 1)".Trim()) }
-    $ok = $false; $detail = ''; $skipsBefore = Get-SkipCount
-    Clear-MockTelegramRequests -Container $Container
-    $viaHarness = Test-TestCronHarness -BridgeUrl $N8nUrl -ApiKey $ApiKey
     try {
-        if ($viaHarness) { Start-TestCron -BridgeUrl $N8nUrl -Secret $TEST_HARNESS_SECRET -WorkflowId $cronWf | Out-Null }
-        else { Set-CronSchedule 'set' '* * * * *' }
-        $start = Get-Date; $ask = $null
-        while (-not $ask -and ((Get-Date) - $start).TotalSeconds -lt 150) {
-            $ask = Get-MockTelegramRequests -Container $Container | Where-Object {
-                $_.method -eq 'sendMessage' -and $_.body.reply_markup -and (Test-TextHasKey -Text ([string]$_.body.text) -Key 'finance.dialog.interest_ask') } | Select-Object -First 1
-            if (-not $ask) { Start-Sleep -Seconds 2 }
+        Test-ForceAbort 'hitlC4' $ForceAbortId
+        $cronWf = ($wfList.data | Where-Object { $_.name -eq 'agent.finance.cron_remind_interest' } | Select-Object -First 1).id
+        function Set-CronSchedule([string]$Verb, [string]$Value) {
+            $a = @('exec', '-e', 'LIFEAGENTS_HITL_CHAT_APPROVAL=true', $Container, 'lifeagents', 'config', $Verb, 'schedule', 'remind_interest')
+            if ($Value) { $a += $Value }
+            $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            & docker @a 2>&1 | Out-Null
+            $ErrorActionPreference = $prev
         }
-        if (-not $viaHarness) { Set-CronSchedule 'reset' '' }   # keine weiteren Laeufe; die wartende Execution laeuft weiter
-        if (-not $ask) { $detail = 'keine Zins-Frage abgefangen' }
-        else {
-            $dec = Get-HitlResumeUrl -Request $ask -Approved $false -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $dec
-            try { Invoke-HitlResume -Url $dec | Out-Null } catch { }
-            Start-Sleep -Seconds 2
-            try { Invoke-HitlResume -Url $dec | Out-Null } catch { }       # der Doppel-Tipp (dieselbe Nachricht)
-            Start-Sleep -Seconds 3
-            $mine = @(Get-MockTelegramRequests -Container $Container | Where-Object {
-                $_.method -eq 'sendMessage' -and $_.body.reply_markup -and (Test-TextHasKey -Text ([string]$_.body.text) -Key 'finance.dialog.interest_defer') -and `
-                (@($_.body.reply_markup.inline_keyboard | ForEach-Object { $_ } | Where-Object { [string]$_.callback_data -like "nhitl1|$eid|*" }).Count -gt 0) })
-            $skips = (Get-SkipCount) - $skipsBefore
-            $status = Get-ExecStatus $eid
-            if ($Verbose) { Write-Host "    'morgen erneut?'-Fragen=$($mine.Count) (erwartet 2: Frage + nach Doppel-Tipp neu gestellt)  Skips=$skips  Execution=$status" -ForegroundColor DarkGray }
-            $ok = ($mine.Count -eq 2) -and ($skips -eq 0) -and ($status -eq 'waiting')
-            if (-not $ok) { $detail = "Fragen=$($mine.Count) Skips=$skips Status=$status" }
-            if ($mine.Count -ge 1) { try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $mine[-1] -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { } }
-            Start-Sleep -Seconds 2
+        function Get-SkipCount { [int]("$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', 'SELECT count(*) FROM finance.interest_skips;')).Output | Select-Object -First 1)".Trim()) }
+        $ok = $false; $detail = ''; $skipsBefore = Get-SkipCount
+        Clear-MockTelegramRequests -Container $Container
+        $viaHarness = Test-TestCronHarness -BridgeUrl $N8nUrl -ApiKey $ApiKey
+        try {
+            if ($viaHarness) { Start-TestCron -BridgeUrl $N8nUrl -Secret $TEST_HARNESS_SECRET -WorkflowId $cronWf | Out-Null }
+            else { Set-CronSchedule 'set' '* * * * *' }
+            $start = Get-Date; $ask = $null
+            while (-not $ask -and ((Get-Date) - $start).TotalSeconds -lt 150) {
+                $ask = Get-MockTelegramRequests -Container $Container | Where-Object {
+                    $_.method -eq 'sendMessage' -and $_.body.reply_markup -and (Test-TextHasKey -Text ([string]$_.body.text) -Key 'finance.dialog.interest_ask') } | Select-Object -First 1
+                if (-not $ask) { Start-Sleep -Seconds 2 }
+            }
+            if (-not $viaHarness) { Set-CronSchedule 'reset' '' }   # keine weiteren Laeufe; die wartende Execution laeuft weiter
+            if (-not $ask) { $detail = 'keine Zins-Frage abgefangen' }
+            else {
+                $dec = Get-HitlResumeUrl -Request $ask -Approved $false -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $dec
+                try { Invoke-HitlResume -Url $dec | Out-Null } catch { }
+                Start-Sleep -Seconds 2
+                try { Invoke-HitlResume -Url $dec | Out-Null } catch { }       # der Doppel-Tipp (dieselbe Nachricht)
+                Start-Sleep -Seconds 3
+                $mine = @(Get-MockTelegramRequests -Container $Container | Where-Object {
+                    $_.method -eq 'sendMessage' -and $_.body.reply_markup -and (Test-TextHasKey -Text ([string]$_.body.text) -Key 'finance.dialog.interest_defer') -and `
+                    (@($_.body.reply_markup.inline_keyboard | ForEach-Object { $_ } | Where-Object { [string]$_.callback_data -like "nhitl1|$eid|*" }).Count -gt 0) })
+                $skips = (Get-SkipCount) - $skipsBefore
+                $status = Get-ExecStatus $eid
+                if ($Verbose) { Write-Host "    'morgen erneut?'-Fragen=$($mine.Count) (erwartet 2: Frage + nach Doppel-Tipp neu gestellt)  Skips=$skips  Execution=$status" -ForegroundColor DarkGray }
+                $ok = ($mine.Count -eq 2) -and ($skips -eq 0) -and ($status -eq 'waiting')
+                if (-not $ok) { $detail = "Fragen=$($mine.Count) Skips=$skips Status=$status" }
+                if ($mine.Count -ge 1) { try { Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $mine[-1] -Approved $true -BridgeUrl $N8nUrl) | Out-Null } catch { } }
+                Start-Sleep -Seconds 2
+            }
+        } finally {
+            if (-not $viaHarness) { Set-CronSchedule 'reset' '' }
+            if ($cronWf) { try { (Invoke-N8nGet "executions?workflowId=$cronWf&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { } }
         }
-    } finally {
-        if (-not $viaHarness) { Set-CronSchedule 'reset' '' }
-        if ($cronWf) { try { (Invoke-N8nGet "executions?workflowId=$cronWf&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { } }
-    }
-    if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC4 ($detail)" -ForegroundColor Red }
+        if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC4 ($detail)" -ForegroundColor Red }
+    } catch { Register-Abort $_ 'hitlC4' -NoCase }
 
     $cases += $chatCases
 }
@@ -1230,8 +1397,11 @@ try { (Invoke-N8nGet "executions?workflowId=$gateWfId&status=waiting&limit=20").
 Clear-HitlPending -Container $Container
 Clear-ThinkingLease -Container $Container
 
+$failed += Assert-ForceAbortFired $ForceAbortId
+
 Write-Host ""
 Write-Host ("-" * 64)
+Write-AbortedCases
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$passed/$($cases.Count) Faelle bestanden, $failed fehlgeschlagen." -ForegroundColor $color
 Write-Host ""

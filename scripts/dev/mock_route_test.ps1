@@ -32,8 +32,13 @@
 #
 # Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 + .env TEST_HARNESS_SECRET.
 # Exit-Code = Anzahl Fehler.
+#   ... -Id oc01,oc02                                      # mehrere Faelle (unbekannte id = Abbruch vor dem Lauf)
+#   ... -ForceAbortId oc01                                 # Testschalter: wirft am Anfang dieses Falls (oder von draft-fail) eine
+#                                                          # Ausnahme und zeigt so den Abbruch-Pfad ohne echte Last
+# Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht NUR diesen Fall rot, der Lauf geht weiter.
 param(
-    [string]$Id,
+    [string[]]$Id,
+    [string]$ForceAbortId,
     [int]$Timeout = 90,
     [string]$TargetWorkflow = 'agent.orchestrator.main_route',
     [string]$WebhookPath = 'finance-test',
@@ -56,6 +61,7 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 # Ueber powershell.exe -File (z. B. aus Bash) kommt "a,b,c" als EIN String an -> sonst zaehlte kein Write (2026-10-23).
 $WriteTools = @($WriteTools | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ebenso -Id "a,b"
 
 Get-Content "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
@@ -188,8 +194,19 @@ if ($isOrch) {
 
 $tcFile = Join-Path $RepoRoot $CasesFile
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
-$cases = @(if ($Id) { $allCases | Where-Object { $_.id -eq $Id } } else { $allCases })
-if (-not $cases) { throw "Testfall '$Id' nicht gefunden in $CasesFile." }
+$cases = @(if ($Id) { $allCases | Where-Object { $_.id -in $Id } } else { $allCases })
+# Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf.
+$missing = @(foreach ($one in $Id) { if ($one -notin @($allCases.id)) { $one } })
+if ($missing.Count) { throw "Testfall nicht gefunden in ${CasesFile}: $($missing -join ', ')." }
+if (-not $cases) { throw "Keine Testfaelle in $CasesFile." }
+if ($ForceAbortId -and $ForceAbortId -notin (@($cases.id) + 'draft-fail')) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen (oder draft-fail)." }
+
+# Aufraeumen nach einem abgebrochenen Fall: wartende Gate-Executions des Ziels stoppen, Sperr-Zeilen leeren (sonst waere der Folgefall rot).
+function Clear-CaseLeftovers {
+    try { (Invoke-N8nGet "executions?workflowId=$TargetWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
+    Clear-HitlPending -Container $Container
+    Clear-ThinkingLease -Container $Container
+}
 
 Write-Host ""
 Write-Host "Mock-Route-Test ($TargetWorkflow) -- $($cases.Count) Testfall(e)"
@@ -197,122 +214,129 @@ Write-Host ("-" * 64)
 $passed = 0; $failed = 0; $pkgOnbDirty = $false
 
 foreach ($tc in $cases) {
-    Write-Host ""
-    Write-Host "  [$($tc.id)] $($tc.name)"
-    Write-Host "    Task: '$($tc.task)'"
-
-    $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
-    [long]$chatId = $PairedUid
-    if (-not $KeepMemory) { Clear-ChatSessionMemory -Container $Container -SessionId "$chatId" }
-    # Wiederhol-Sperre: ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt, ein Fall mit gleicher Karte bekaeme keine.
-    Clear-HitlPending -Container $Container
     try {
-        if (-not $KeepMemory -and $tc.PSObject.Properties['chat_history'] -and $tc.chat_history) { Set-TestChatHistory -Container $Container -SessionId "$chatId" -ChatHistory $tc.chat_history }
-        Set-TestHouseholdOnboarding -Container $Container -Status $(if ($tc.onboarding) { "$($tc.onboarding)" } else { 'completed' })
-        if ($tc.package_onboarding -or $pkgOnbDirty) {
-            Set-TestPackageOnboarding -Container $Container -Sections $tc.package_onboarding
-            $pkgOnbDirty = [bool]$tc.package_onboarding
-        }
-    }
-    catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
-    Clear-MockTelegramRequests -Container $Container
-    Clear-MockLlmRequests -Container $Container
-    $base = Get-MaxExecId -WfId $TargetWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
+        Write-Host ""
+        Write-Host "  [$($tc.id)] $($tc.name)"
+        Write-Host "    Task: '$($tc.task)'"
+        Test-ForceAbort $tc.id $ForceAbortId
 
-    # Feuern: Orchestrator -> echter Telegram-Webhook; Agent -> Harness.
-    try {
-        if ($isOrch) {
-            Send-TelegramIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $chatId -FromUid $PairedUid -Text $tc.task | Out-Null
-        } else {
-            $payload = @{ task = $tc.task; chat_id = "$chatId"; call_depth = 0 } | ConvertTo-Json -Compress
-            try {
-                Invoke-RestMethod -Uri $WebhookUrl -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-                    -TimeoutSec 8 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
-            } catch {
-                if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) { throw }
+        $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
+        [long]$chatId = $PairedUid
+        if (-not $KeepMemory) { Clear-ChatSessionMemory -Container $Container -SessionId "$chatId" }
+        # Wiederhol-Sperre: ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt, ein Fall mit gleicher Karte bekaeme keine.
+        Clear-HitlPending -Container $Container
+        try {
+            if (-not $KeepMemory -and $tc.PSObject.Properties['chat_history'] -and $tc.chat_history) { Set-TestChatHistory -Container $Container -SessionId "$chatId" -ChatHistory $tc.chat_history }
+            Set-TestHouseholdOnboarding -Container $Container -Status $(if ($tc.onboarding) { "$($tc.onboarding)" } else { 'completed' })
+            if ($tc.package_onboarding -or $pkgOnbDirty) {
+                Set-TestPackageOnboarding -Container $Container -Sections $tc.package_onboarding
+                $pkgOnbDirty = [bool]$tc.package_onboarding
             }
         }
-    } catch {
-        Write-Host "    [FAIL] Feuern fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue
-    }
+        catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
+        Clear-MockTelegramRequests -Container $Container
+        Clear-MockLlmRequests -Container $Container
+        $base = Get-MaxExecId -WfId $TargetWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 
-    # Execution zum Terminalstatus treiben + jedes Gate DECLINEn (Routing-Tier -> kein Write).
-    $ex = Wait-ExecResolvingGates -WfId $TargetWfId -AfterId $base -Approve $false -Container $Container -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY -TimeoutSec $caseTimeout
-    if (-not $ex) { Write-Host "    [FAIL] Keine Execution gefunden (Timeout $caseTimeout s)." -ForegroundColor Red; $failed++; continue }
-
-    if (-not $Discover -and $ex.status -eq 'error') {
-        $errMsg = $null; try { $errMsg = $ex.data.resultData.error.message } catch { }
-        Write-Host "    [FAIL] Execution status=error (kein gueltiges Routing-Ergebnis): $errMsg" -ForegroundColor Red
-        if ($Verbose) { foreach ($m in (Get-MockLlmRequests -Container $Container)) { Write-Host "      mock: offered=[$($m.offered -join ', ')] decision=$($m.decision)" -ForegroundColor Yellow } }
-        $failed++; continue
-    }
-
-    $runData = $ex.data.resultData.runData
-    $tools = Get-ToolCall $runData $AgentNode
-    Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)  tools=[$($tools -join ', ')]"
-
-    if ($Discover) {
-        Write-Host "    [DISCOVER] Mock-Entscheidungen:" -ForegroundColor Cyan
-        foreach ($m in (Get-MockLlmRequests -Container $Container)) {
-            Write-Host ("      offered=[{0}]  decision={1}" -f ($m.offered -join ', '), $m.decision) -ForegroundColor DarkCyan
-        }
-        continue
-    }
-
-    # --- Assertion: route (orchestrator) ODER tool (agent) je nach Case-Form ---
-    $pass = $false
-    if ($tc.PSObject.Properties['expected_route']) {
-        $expect = [string]$tc.expected_route
-        $hit = Get-RoutedAgent -Tools $tools -RouteAgents $routeAgents
-        $pass = Test-ExpectedRoute -Routed $hit -Expected $expect -RouteAgents $routeAgents
-        if (-not $pass) {
-            $want = if ($expect) { "route=$expect" } else { 'kein Routing' }
-            Write-Host "    FEHLER: erwartet $want, got [$($hit -join '+')]" -ForegroundColor Red
-        }
-    } elseif ($tc.PSObject.Properties['expected_tool']) {
-        # Write-Tool-Erkennung: -WriteTools-Liste (Advisor: tool_save_plan_section,...) ODER Default tool_*.
-        # WICHTIG: lokale Variable NICHT $writeTools nennen — PowerShell-Variablen sind case-insensitiv,
-        # das wuerde den Param $WriteTools ueberschreiben (leeres $tools im 1. Case -> Param weg).
-        $hitWrite = if ($WriteTools.Count -gt 0) { @($tools | Where-Object { $WriteTools -contains $_ }) }
-                    else { @($tools | Where-Object { $_ -like 'tool_*' }) }
-        $expTool = [string]$tc.expected_tool
-        if ($expTool) {
-            $pass = ($hitWrite -contains $expTool)
-            if (-not $pass) { Write-Host "    FEHLER: erwartet tool=$expTool, got [$($hitWrite -join ', ')]" -ForegroundColor Red }
-            # Aufgerufen heisst nicht gelaufen: scheitert der Aufruf am Eingabe-Schema (z. B. Zahl statt Text im
-            # Szenario), laeuft der Tool-Workflow nie, der Agent bekommt nur eine Fehlermeldung (2026-10-23 so unbemerkt).
-            if ($pass -and $runData.PSObject.Properties.Name -contains $expTool) {
-                $toolErr = @($runData.$expTool | Where-Object { $_.error -or $_.executionStatus -eq 'error' })
-                if ($toolErr.Count -gt 0) {
-                    $pass = $false
-                    $em = $null; try { $em = $toolErr[0].error.message } catch { }
-                    Write-Host "    FEHLER: Aufruf von $expTool scheiterte (Tool-Workflow lief nicht): $em" -ForegroundColor Red
+        # Feuern: Orchestrator -> echter Telegram-Webhook; Agent -> Harness.
+        try {
+            if ($isOrch) {
+                Send-TelegramIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $chatId -FromUid $PairedUid -Text $tc.task | Out-Null
+            } else {
+                $payload = @{ task = $tc.task; chat_id = "$chatId"; call_depth = 0 } | ConvertTo-Json -Compress
+                try {
+                    Invoke-RestMethod -Uri $WebhookUrl -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
+                        -TimeoutSec 8 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
+                } catch {
+                    if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) { throw }
                 }
             }
-        } else {
-            $pass = ($hitWrite.Count -eq 0)
-            if (-not $pass) { Write-Host "    FEHLER: kein Tool erwartet, got [$($hitWrite -join ', ')]" -ForegroundColor Red }
+        } catch {
+            Write-Host "    [FAIL] Feuern fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue
         }
-    } else {
-        Write-Host "    FEHLER: Case hat weder expected_route noch expected_tool." -ForegroundColor Red
-    }
 
-    # "Bot denkt nach": der Mock-LLM antwortet sofort -> ob VOR der Antwort ein Draft kam, ist ein Wettlauf und wird
-    # hier nicht verlangt (das pruefen [thinking-keepalive] und [draft-fail] mit langsamem Mock). Hart: der Schalter
-    # ist nach der Antwort weg und kein Draft kam NACH ihr.
-    if ($pass -and $isOrch) { $pass = Test-ThinkingAfterAnswer $chatId }
+        # Execution zum Terminalstatus treiben + jedes Gate DECLINEn (Routing-Tier -> kein Write).
+        $ex = Wait-ExecResolvingGates -WfId $TargetWfId -AfterId $base -Approve $false -Container $Container -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY -TimeoutSec $caseTimeout
+        if (-not $ex) { Write-Host "    [FAIL] Keine Execution gefunden (Timeout $caseTimeout s)." -ForegroundColor Red; $failed++; continue }
 
-    # Zurueckgespielte Werkzeugaufrufe muessen ihre Angaben behalten (der Mock schickt vor jedem Aufruf einen Denkblock;
-    # n8n-Fix #41241 ab 2.45, Regressionswache). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
-    if ($pass) {
-        $lost = @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ })
-        if ($lost.Count -gt 0) { $pass = $false; Write-Host "    FEHLER: Aufruf ohne Angaben zurueckgespielt: $($lost -join ', ')" -ForegroundColor Red }
-    }
+        if (-not $Discover -and $ex.status -eq 'error') {
+            $errMsg = $null; try { $errMsg = $ex.data.resultData.error.message } catch { }
+            Write-Host "    [FAIL] Execution status=error (kein gueltiges Routing-Ergebnis): $errMsg" -ForegroundColor Red
+            if ($Verbose) { foreach ($m in (Get-MockLlmRequests -Container $Container)) { Write-Host "      mock: offered=[$($m.offered -join ', ')] decision=$($m.decision)" -ForegroundColor Yellow } }
+            $failed++; continue
+        }
 
-    if ($pass) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }
-    else {
-        $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
-        if ($Verbose) { foreach ($m in (Get-MockLlmRequests -Container $Container)) { Write-Host "      mock: offered=[$($m.offered -join ', ')] decision=$($m.decision)" -ForegroundColor Yellow } }
+        $runData = $ex.data.resultData.runData
+        $tools = Get-ToolCall $runData $AgentNode
+        Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)  tools=[$($tools -join ', ')]"
+
+        if ($Discover) {
+            Write-Host "    [DISCOVER] Mock-Entscheidungen:" -ForegroundColor Cyan
+            foreach ($m in (Get-MockLlmRequests -Container $Container)) {
+                Write-Host ("      offered=[{0}]  decision={1}" -f ($m.offered -join ', '), $m.decision) -ForegroundColor DarkCyan
+            }
+            continue
+        }
+
+        # --- Assertion: route (orchestrator) ODER tool (agent) je nach Case-Form ---
+        $pass = $false
+        if ($tc.PSObject.Properties['expected_route']) {
+            $expect = [string]$tc.expected_route
+            $hit = Get-RoutedAgent -Tools $tools -RouteAgents $routeAgents
+            $pass = Test-ExpectedRoute -Routed $hit -Expected $expect -RouteAgents $routeAgents
+            if (-not $pass) {
+                $want = if ($expect) { "route=$expect" } else { 'kein Routing' }
+                Write-Host "    FEHLER: erwartet $want, got [$($hit -join '+')]" -ForegroundColor Red
+            }
+        } elseif ($tc.PSObject.Properties['expected_tool']) {
+            # Write-Tool-Erkennung: -WriteTools-Liste (Advisor: tool_save_plan_section,...) ODER Default tool_*.
+            # WICHTIG: lokale Variable NICHT $writeTools nennen — PowerShell-Variablen sind case-insensitiv,
+            # das wuerde den Param $WriteTools ueberschreiben (leeres $tools im 1. Case -> Param weg).
+            $hitWrite = if ($WriteTools.Count -gt 0) { @($tools | Where-Object { $WriteTools -contains $_ }) }
+                        else { @($tools | Where-Object { $_ -like 'tool_*' }) }
+            $expTool = [string]$tc.expected_tool
+            if ($expTool) {
+                $pass = ($hitWrite -contains $expTool)
+                if (-not $pass) { Write-Host "    FEHLER: erwartet tool=$expTool, got [$($hitWrite -join ', ')]" -ForegroundColor Red }
+                # Aufgerufen heisst nicht gelaufen: scheitert der Aufruf am Eingabe-Schema (z. B. Zahl statt Text im
+                # Szenario), laeuft der Tool-Workflow nie, der Agent bekommt nur eine Fehlermeldung (2026-10-23 so unbemerkt).
+                if ($pass -and $runData.PSObject.Properties.Name -contains $expTool) {
+                    $toolErr = @($runData.$expTool | Where-Object { $_.error -or $_.executionStatus -eq 'error' })
+                    if ($toolErr.Count -gt 0) {
+                        $pass = $false
+                        $em = $null; try { $em = $toolErr[0].error.message } catch { }
+                        Write-Host "    FEHLER: Aufruf von $expTool scheiterte (Tool-Workflow lief nicht): $em" -ForegroundColor Red
+                    }
+                }
+            } else {
+                $pass = ($hitWrite.Count -eq 0)
+                if (-not $pass) { Write-Host "    FEHLER: kein Tool erwartet, got [$($hitWrite -join ', ')]" -ForegroundColor Red }
+            }
+        } else {
+            Write-Host "    FEHLER: Case hat weder expected_route noch expected_tool." -ForegroundColor Red
+        }
+
+        # "Bot denkt nach": der Mock-LLM antwortet sofort -> ob VOR der Antwort ein Draft kam, ist ein Wettlauf und wird
+        # hier nicht verlangt (das pruefen [thinking-keepalive] und [draft-fail] mit langsamem Mock). Hart: der Schalter
+        # ist nach der Antwort weg und kein Draft kam NACH ihr.
+        if ($pass -and $isOrch) { $pass = Test-ThinkingAfterAnswer $chatId }
+
+        # Zurueckgespielte Werkzeugaufrufe muessen ihre Angaben behalten (der Mock schickt vor jedem Aufruf einen Denkblock;
+        # n8n-Fix #41241 ab 2.45, Regressionswache). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
+        if ($pass) {
+            $lost = @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ })
+            if ($lost.Count -gt 0) { $pass = $false; Write-Host "    FEHLER: Aufruf ohne Angaben zurueckgespielt: $($lost -join ', ')" -ForegroundColor Red }
+        }
+
+        if ($pass) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }
+        else {
+            $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
+            if ($Verbose) { foreach ($m in (Get-MockLlmRequests -Container $Container)) { Write-Host "      mock: offered=[$($m.offered -join ', ')] decision=$($m.decision)" -ForegroundColor Yellow } }
+        }
+    } catch {
+        # Ausnahme im Fall = roter Fall, der Lauf geht weiter (Helfer in test_n8n_state.ps1, Abschnitt Fall-Abbruch).
+        $failed++
+        Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Clear-CaseLeftovers }
     }
 }
 
@@ -334,6 +358,7 @@ if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
     }
     $ok = $false
     try {
+        Test-ForceAbort 'draft-fail' $ForceAbortId
         Set-MockDraftFail $true
         [long]$chatId = $PairedUid
         Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
@@ -346,7 +371,10 @@ if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
         $answers = @($reqs | Where-Object { $_.method -eq 'sendMessage' -and [string]$_.body.chat_id -eq "$chatId" }).Count
         if ($Verbose) { Write-Host "    abgelehnte Platzhalter=$drafts  Antworten=$answers  Execution=$($ex.status)" -ForegroundColor DarkGray }
         $ok = $ex -and ($ex.status -eq 'success') -and ($drafts -ge 1) -and ($answers -ge 1)
-    } finally { Set-MockDraftFail $false }
+    } catch {
+        # $ok bleibt $false -> unten zaehlt der Fall genau einmal als rot
+        Write-CaseAbort -ErrorRecord $_ -CaseId 'draft-fail' -Cleanup { Clear-CaseLeftovers }
+    } finally { try { Set-MockDraftFail $false } catch { } }
     if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] Antwort fehlt oder Execution nicht success, wenn der Platzhalter scheitert" -ForegroundColor Red }
 }
 
@@ -451,6 +479,8 @@ try { (Invoke-N8nGet "executions?workflowId=$TargetWfId&status=waiting&limit=20"
 Write-Host ""
 Write-Host ("-" * 64)
 if ($Discover) { Write-Host "Discovery-Lauf beendet (keine Wertung)." -ForegroundColor Cyan; exit 0 }
+$failed += Assert-ForceAbortFired $ForceAbortId
+Write-AbortedCases
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$passed/$(@($cases).Count + $extra) Tests bestanden, $failed fehlgeschlagen." -ForegroundColor $color
 Write-Host ""

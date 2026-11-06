@@ -270,6 +270,43 @@ reach_ipv4_eval() {
   return 0
 }
 
+# --- Tailscale-Rechnername ------------------------------------------------------------------------------------------
+# Der Name steht in oeffentlichen Zertifikats-Protokollen (Funnel-Zertifikat) und soll weder Person noch Software
+# verraten: zwei freundliche Woerter aus lib/ts_names.json, der EINEN Liste (die Start-App bettet dieselbe Datei ein).
+# Zieh-Regel, in beiden Umsetzungen gleich und an `vectors` der Datei geprueft: n (0..2^32-1) ->
+# adjectives[n % A] "-" nouns[(n / A) % N]. Einmal je Installation ziehen und speichern; ein neuer Name wuerde das Geraet
+# im Tailnet umbenennen (neue Internet-Adresse, neuer Webhook). Rueckfall ohne Liste: `bot` (compose.yml).
+TS_NAMES_FILE="${TS_NAMES_FILE:-$(dirname "${BASH_SOURCE[0]}")/ts_names.json}"
+
+# ts_name_valid <name> -> 0 bei gueltigem Hostname-Label (a-z, 0-9, Bindestrich innen, hoechstens 63 Zeichen).
+ts_name_valid() { printf '%s' "$1" | grep -qE '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'; }
+
+# ts_name_from_seed <n> -> Name nach der Zieh-Regel; rc 1 ohne Liste oder bei ungueltigem n.
+ts_name_from_seed() {
+  printf '%s' "$1" | grep -qE '^[0-9]{1,10}$' && [ "$1" -le 4294967295 ] || return 1
+  [ -r "$TS_NAMES_FILE" ] || return 1
+  jq -er --argjson n "$1" '(.adjectives | length) as $a | (.nouns | length) as $o
+    | .adjectives[$n % $a] + "-" + .nouns[(($n / $a) | floor) % $o]' "$TS_NAMES_FILE" 2>/dev/null
+}
+
+# ts_name_new -> ein frisch gezogener Name; rc 1 ohne Liste.
+ts_name_new() {
+  local n
+  n="$(od -An -N4 -tu4 /dev/urandom 2>/dev/null | tr -d '[:space:]')"
+  ts_name_from_seed "$n"
+}
+
+# ts_name_ensure <env-datei> <KEY> -> der gespeicherte Name; fehlt er, einmal ziehen und speichern. Ein gueltiger Bestand
+#   bleibt (auch `bot`); ein ungueltiger Wert -> rc 1 ohne Aenderung, nie still neu gewuerfelt.
+ts_name_ensure() {
+  local f="$1" key="$2" v
+  v="$(read_env_value "$f" "$key" 2>/dev/null || true)"
+  if [ -n "$v" ]; then ts_name_valid "$v" || return 1; printf '%s\n' "$v"; return 0; fi
+  v="$(ts_name_new)" && ts_name_valid "$v" || return 1
+  env_upsert "$f" "$key" "$v" || return 1
+  printf '%s\n' "$v"
+}
+
 # --- Oeffentliche Pfade fuer den Rand -------------------------------------------------------------------------------
 # reach_edge_public_write — den Baustein der CLI (common.sh caddy_webhook_block, Upstream anchor:5678) nach
 #   reach_conf/edge-public.caddy schreiben; edge laedt ihn binnen 5 s ohne Neustart (compose.yml). rc 0 = geaendert.

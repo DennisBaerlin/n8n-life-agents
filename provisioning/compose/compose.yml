@@ -23,7 +23,8 @@
 # PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
 # nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
 # Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5). Optional:
-# LA_TS_HOSTNAME (neutraler Tailscale-Name, Standard `bot`; Zertifikats-Protokolle sind oeffentlich).
+# LA_TS_HOSTNAME (Tailscale-Name aus zwei Woertern, einmal gezogen von der Start-App aus lib/ts_names.json; `bot` nur als
+# Rueckfall; Zertifikats-Protokolle sind oeffentlich).
 # Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
 # dort nicht.
 name: lifeagents

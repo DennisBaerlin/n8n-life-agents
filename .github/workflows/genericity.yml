@@ -343,10 +343,13 @@ jobs:
           # Eingang :8088 (Ziel von Funnel und wan) direkt ueber die Container-Adresse des Rands.
           ip="$(docker inspect -f "{{(index .NetworkSettings.Networks \"${LA_PROJECT}_edge_public\").IPAddress}}" "$LA_PROJECT-edge")"
           body() { curl -s --path-as-is --max-time 5 "$@" || true; }
-          # Oeffentlich: landet bei n8n (dessen Antwort fuer einen unbekannten Webhook nennt "webhook"), nie die 404 des Rands.
+          # Die Liste schreibt der master am Ende der Installation (reach_conf), edge laedt sie binnen 5 s ohne Neustart.
+          for _ in $(seq 1 15); do [ "$(body "http://$ip:8088/webhook/ci-nope")" != "Not Found" ] && break; sleep 2; done
+          docker exec "$LA_PROJECT-edge" cat /tmp/public.caddy
+          # Oeffentlich: landet bei n8n (JSON-Antwort von n8n), nie die 404 des Rands ("Not Found" als Klartext).
           for p in /webhook/ci-nope /webhook-test/ci-nope /webhook-waiting/ci-nope; do
             b="$(body "http://$ip:8088$p")"; echo "$p -> ${b:0:80}"
-            [ "$b" != "Not Found" ] && printf '%s' "$b" | grep -qi webhook || { echo "FAIL $p erreicht n8n nicht"; exit 1; }
+            [ -n "$b" ] && [ "$b" != "Not Found" ] || { echo "FAIL $p erreicht n8n nicht"; exit 1; }
           done
           b="$(body -X POST -H 'Content-Type: application/json' --data '{}' "http://$ip:8088/webhook-waiting-telegram")"
           [ "$b" != "Not Found" ] || { echo "FAIL /webhook-waiting-telegram gesperrt"; exit 1; }
@@ -421,7 +424,7 @@ jobs:
           done
           [ -n "$ok" ] || { docker logs --tail 40 "$LA_PROJECT-wan"; exit 1; }
           w() { curl -sk --path-as-is --max-time 5 --resolve ci-edge.localhost:443:127.0.0.1 "https://ci-edge.localhost$1" || true; }
-          w /webhook/ci-nope | grep -qi webhook
+          b="$(w /webhook/ci-nope)"; [ -n "$b" ] && [ "$b" != "Not Found" ]
           for p in / /rest/settings /healthz /webhook/../rest/settings; do test "$(w "$p")" = "Not Found"; done
           # Port 80 leitet auf HTTPS um (und dient der Zertifikats-Abfrage).
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: ci-edge.localhost' http://127.0.0.1/)" = 308

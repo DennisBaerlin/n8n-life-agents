@@ -217,9 +217,15 @@ services:
     #         aus dem EIGENEN Namensraum (127.0.0.1/::1) bricht Caddy ab: dort sitzt nur Tailscale, und Tailscale (Userspace)
     #         reicht Zugriffe aus dem Tailnet auf 127.0.0.1 weiter — so kaeme sonst jedes Tailnet-Geraet an Editor und
     #         Wizard. Ueber Docker veroeffentlichte Verbindungen kommen nie von 127.0.0.1 (Absender = Docker-Gateway).
-    #   :8088 die EINE Liste oeffentlicher Pfade (= templates/Caddyfile.tpl der CLI, contract_lint 34), alles andere 404.
-    #         Ziel von Funnel (tunnel) und wan (fritzbox). trusted_proxies: Funnel und wan setzen X-Forwarded-For selbst,
-    #         n8n sieht so den echten Absender (N8N_PROXY_HOPS=2 im Verbund).
+    #   :8088 die EINE Liste oeffentlicher Pfade, alles andere 404. Ziel von Funnel (tunnel) und wan (fritzbox).
+    #         Die Liste steht NICHT hier: der master schreibt den Baustein der CLI (common.sh LA_PUBLIC_PATHS ->
+    #         templates/Caddyfile.tpl, contract_lint 34) nach reach_conf/edge-public.caddy (lib/reach.sh). Der Befehl unten
+    #         uebernimmt eine geaenderte Fassung binnen 5 s per `caddy run --watch` (geht auch mit `admin off`, Probe) —
+    #         ohne Neustart, denn ein Neustart von edge risse den Namensraum von tailscale ab. Vor der Installation ist der
+    #         Baustein leer: :8088 antwortet dann ueberall 404. trusted_proxies: Funnel und wan setzen X-Forwarded-For
+    #         selbst, n8n sieht so den echten Absender (N8N_PROXY_HOPS=2 im Verbund).
+    volumes:
+      - reach_conf:/reach:ro
     environment:
       LA_CADDYFILE: |
         {
@@ -240,15 +246,28 @@ services:
           reverse_proxy anchor:8091
         }
         :8088 {
-          @lifeagents path /webhook/* /webhook-test/* /webhook-waiting/* /webhook-waiting-telegram
-          handle @lifeagents {
-            reverse_proxy anchor:5678
-          }
+          import /tmp/public.caddy
           handle {
             respond "Not Found" 404
           }
         }
-    command: ["sh", "-c", "printf '%s' \"$$LA_CADDYFILE\" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile"]
+    command:
+      - sh
+      - -c
+      - |
+        pub=/reach/edge-public.caddy
+        sync() {
+          if [ -s "$$pub" ]; then cp "$$pub" /tmp/public.new; else : > /tmp/public.new; fi
+          cmp -s /tmp/public.new /tmp/public.caddy && return 1
+          mv -f /tmp/public.new /tmp/public.caddy
+          # Pruefsumme im Hauptfile: --watch sieht nur dessen Inhalt, nicht den des import.
+          { printf '%s\n' "$$LA_CADDYFILE"; printf '# public %s\n' "$$(md5sum < /tmp/public.caddy)"; } > /tmp/Caddyfile
+        }
+        rm -f /tmp/public.caddy; sync || true
+        caddy run --config /tmp/Caddyfile --adapter caddyfile --watch & pid=$$!
+        trap 'kill -TERM "$$pid" 2>/dev/null; wait "$$pid"; exit 0' TERM INT
+        while kill -0 "$$pid" 2>/dev/null; do sleep 5; sync || true; done
+        wait "$$pid"
 
   tailscale:
     # Nur beim Tunnel-Weg (Profil tunnel; der master startet ihn gezielt: `up --no-deps tailscale`, lib/reach.sh). Teilt den
@@ -262,7 +281,12 @@ services:
     labels: *labels
     mem_limit: 128m
     network_mode: "service:edge"
-    depends_on: [edge]
+    # Haengt am Namensraum von edge: wird edge neu angelegt (z. B. anderer LA_EDGE_PORT), muss tailscale mit (Einwand 17,
+    # wie die Pod-Dienste am anchor); `restart: true` deckt nur Compose-Laeufe ab, die tailscale mit anfassen.
+    depends_on:
+      edge:
+        condition: service_started
+        restart: true
     environment:
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "true"

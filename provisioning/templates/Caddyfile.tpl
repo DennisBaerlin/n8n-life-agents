@@ -5,7 +5,7 @@
 	# >>> lifeagents-webhooks (dieser Block ist zugleich der Einfüge-Baustein für einen bestehenden Proxy)
 	# /webhook-waiting/* ist Pflicht für die Bestätigungs-Knöpfe (ohne hängt jede Bestätigung); mit /webhook-waiting-telegram
 	# antworten sie direkt im Chat statt über eine Webseite (lifeagents doctor zeigt, ob es greift).
-	@lifeagents path /webhook/* /webhook-test/* /webhook-waiting/* /webhook-waiting-telegram
+	@lifeagents path @@PUBLIC_PATHS@@
 	handle @lifeagents {
 		reverse_proxy @@N8N_UPSTREAM@@
 	}

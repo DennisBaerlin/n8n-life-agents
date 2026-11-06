@@ -576,7 +576,8 @@ main() {
   # Public-Repo: ein GH_TOKEN aus der privaten Zeit braucht die NEUE CLI nicht mehr -> aus core.env + Alt-Bootstrap-Env
   # weg. Erst HIER (nach install_cli): scheitert der Lauf vorher, bleibt die alte CLI installiert, die ihn noch braucht.
   drop_legacy_repo_token "$INSTALL_ENV_FILE" /etc/n8n/install.env
-  # Docker-Verbund, FritzBox-Weg: wan (80/443, Zertifikat) erst jetzt starten — nach der Pruefung, dass 80/443 frei sind.
+  # Docker-Verbund: erst jetzt die oeffentlichen Pfade am Rand freigeben; beim FritzBox-Weg wan (80/443, Zertifikat)
+  # starten, nachdem 80/443 als frei geprueft sind (lib/reach.sh).
   if rt_is_compose; then reach_converge; fi
 
   # Gefuehrtes Ende (interaktiv): Erreichbarkeit pruefen (ggf. Caddyfile + "Erneut pruefen/Spaeter"),
@@ -587,7 +588,7 @@ main() {
     owner_connect_guided
     # Nicht verbunden + Domain gesetzt -> Proxy-Anleitung mindestens einmal ausgeben (non-TTY wie bisher).
     if [ "$OWNER_CONNECT_RESULT" != "connected" ] && [ "$_INGRESS_HELP_SHOWN" -eq 0 ] && [ -n "$DOMAIN" ]; then
-      ui_section 'Ingress (Reverse Proxy — bring your own)'
+      if rt_is_compose; then ui_section 'Erreichbarkeit'; else ui_section 'Ingress (Reverse Proxy — bring your own)'; fi
       emit_ingress_help "$TEMPLATE_DIR" "$DOMAIN" "$N8N_PORT" "$WEBHOOK_URL"
     fi
   fi

@@ -13,7 +13,7 @@
 # alles andere ist der echte Lib-Code des Checkouts.
 #
 # Usage: bash compose_cases.sh <root>     Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
-# shellcheck disable=SC2015,SC2329,SC2034  # Attrappen-Funktionen ruft der Lib-Code; "a && pass || fail" gewollt (pass = rc 0)
+# shellcheck disable=SC2015,SC2329,SC2034,SC2016  # Attrappen ruft der Lib-Code; "a && pass || fail" gewollt (pass = rc 0); $() in Testwerten absichtlich unausgewertet
 set -uo pipefail
 ROOT="$1"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1
@@ -50,7 +50,9 @@ eq E_machine_auth  "needs_machine_auth||bot.tail-fantasy.ts.net|" "$(st "$(ts_js
 eq E_no_funnel     "needs_funnel||bot.tail-fantasy.ts.net|"      "$(st "$(ts_json Running '' '["https"]')")"
 eq E_no_https      "needs_funnel||bot.tail-fantasy.ts.net|"      "$(st "$(ts_json Running '' '["funnel"]')")"
 eq E_running       "running||bot.tail-fantasy.ts.net|"           "$(st "$(ts_json Running '' '["https","funnel"]')")"
-eq E_caps_array    "running||bot.tail-fantasy.ts.net|" \
+eq E_caps_url_form "running||bot.tail-fantasy.ts.net|" \
+  "$(st "$(ts_json Running '' '["https://tailscale.com/cap/https","https://tailscale.com/cap/funnel"]')")"
+eq E_caps_array   "running||bot.tail-fantasy.ts.net|" \
   "$(st "$(ts_json Running '' '[]' | jq -c '.Self.Capabilities=["https","funnel"]')")"
 eq E_key_days      "running||bot.tail-fantasy.ts.net|10"         "$(st "$(ts_json Running '' '["https","funnel"]' "$(iso $((NOW + 10*86400 + 60)))")")"
 eq E_key_fraction  "running||bot.tail-fantasy.ts.net|10" \
@@ -104,7 +106,7 @@ unset REACH_MODE
 cfg TELEGRAM_BOT_TOKEN=123:fantasy
 out="$(js)"
 eq S_no_mode "none|unavailable|no_mode" "$(field "$out" mode)|$(field "$out" state)|$(field "$out" reason)"
-eq S_keys "dns_name,key_days_left,key_expiry,mode,reason,state,url,webhook" "$(printf '%s' "$out" | jq -r 'keys | join(",")')"
+eq S_keys "dns_name,ipv4,ipv4_reason,key_days_left,key_expiry,mode,reason,state,url,webhook,webhook_error,webhook_error_at,webhook_pending" "$(printf '%s' "$out" | jq -r 'keys | join(",")')"
 
 cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy
 A_TS_UP=0; out="$(js)"
@@ -122,7 +124,7 @@ rm -f "$REACH_RUN_DIR/funnel-link"
 A_TS_JSON="$(ts_json Running '' '["https","funnel"]' "$(iso $((NOW + 100*86400)))")"; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=1
 A_TG="$(tg_url '')"; : > "$LOG"; out="$(js)"
 eq S_ts_pending "pending_activation|none|bot.tail-fantasy.ts.net" "$(field "$out" state)|$(field "$out" webhook)|$(field "$out" dns_name)"
-grep -q 'exec timeout 20 tailscale funnel --bg --yes http://127.0.0.1:8088' "$LOG" && pass S_ts_funnel_switched_on || fail S_ts_funnel_switched_on "$(tr '\n' ';' < "$LOG")"
+grep -q 'exec timeout 8 tailscale funnel --bg --yes http://127.0.0.1:8088' "$LOG" && pass S_ts_funnel_switched_on || fail S_ts_funnel_switched_on "$(tr '\n' ';' < "$LOG")"
 [ "$(field "$out" key_days_left)" -ge 1 ] 2>/dev/null && pass S_ts_key_days || fail S_ts_key_days "$(field "$out" key_days_left)"
 : > "$LOG"; js >/dev/null
 grep -q 'funnel --bg' "$LOG" && fail S_ts_funnel_idempotent "schon an, trotzdem neu eingeschaltet" || pass S_ts_funnel_idempotent
@@ -142,9 +144,11 @@ cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy
 out="$(js)"
 eq S_fb_no_domain "unavailable|no_domain" "$(field "$out" state)|$(field "$out" reason)"
 cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy DOMAIN=meinproxy.deine-domain.myfritz.net
-A_WAN_UP=0; A_PORTS_FREE=0; out="$(js)"
+# Status prueft keine Ports selbst (kein Kurzlauf-Container je Abfrage): ports_busy = Marke der letzten Pruefung.
+A_WAN_UP=0; A_PORTS_FREE=1; mkdir -p "$REACH_CONF_DIR"; : > "$REACH_CONF_DIR/ports-busy"; : > "$LOG"; out="$(js)"
 eq S_fb_ports_busy "ports_busy" "$(field "$out" state)"
-A_PORTS_FREE=1; out="$(js)"
+grep -q portprobe "$LOG" && fail S_fb_status_no_probe "Status startet eine Port-Probe" || pass S_fb_status_no_probe
+rm -f "$REACH_CONF_DIR/ports-busy"; out="$(js)"
 eq S_fb_not_started "starting|not_started" "$(field "$out" state)|$(field "$out" reason)"
 A_WAN_UP=1; A_TG="$(tg_url 'https://meinproxy.deine-domain.myfritz.net/webhook/abc/webhook')"; out="$(js)"
 eq S_fb_ready "ready|ours|meinproxy.deine-domain.myfritz.net" "$(field "$out" state)|$(field "$out" webhook)|$(field "$out" dns_name)"
@@ -187,16 +191,21 @@ cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy; unset REACH_MODE
 A_WAN_UP=0; A_PORTS_FREE=0; : > "$LOG"; rm -rf "$REACH_CONF_DIR"
 DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
 grep -q '^up' "$LOG" && fail P_fb_busy_no_start "wan trotz belegter Ports gestartet" || pass P_fb_busy_no_start
+[ -e "$REACH_CONF_DIR/ports-busy" ] && pass P_fb_busy_marked || fail P_fb_busy_marked "Marke ports-busy fehlt"
 A_PORTS_FREE=1; : > "$LOG"
 DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
 grep -q '^up --no-deps wan$' "$LOG" && pass P_fb_start || fail P_fb_start "$(tr '\n' ';' < "$LOG")"
 eq P_fb_domain_file meinproxy.deine-domain.myfritz.net "$(cat "$REACH_CONF_DIR/domain" 2>/dev/null)"
+[ -e "$REACH_CONF_DIR/ports-busy" ] && fail P_fb_busy_cleared "Marke nach freiem Start noch da" || pass P_fb_busy_cleared
 : > "$LOG"; DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
 [ -s "$LOG" ] && fail P_fb_second_run_noop "$(tr '\n' ';' < "$LOG")" || pass P_fb_second_run_noop
 : > "$LOG"; DOMAIN=zweiter.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
 grep -q '^restart wan$' "$LOG" && pass P_fb_domain_change_restart || fail P_fb_domain_change_restart "$(tr '\n' ';' < "$LOG")"
 ( DOMAIN='evil.example.org;touch /tmp/x' reach_converge ) >/dev/null 2>&1 && fail P_fb_bad_domain "ungueltige Adresse geschrieben" || pass P_fb_bad_domain
 eq P_fb_bad_domain_untouched zweiter.deine-domain.myfritz.net "$(cat "$REACH_CONF_DIR/domain")"
+# Grossbuchstaben: wan nimmt nur Kleinschreibung -> klein gespeichert, gleiche Adresse = kein Neustart.
+: > "$LOG"; DOMAIN=Zweiter.Deine-Domain.MyFritz.net reach_converge >/dev/null 2>&1
+eq P_fb_lowercase "zweiter.deine-domain.myfritz.net|" "$(cat "$REACH_CONF_DIR/domain")|$(cat "$LOG")"
 cfg REACH_MODE=tunnel; : > "$LOG"; DOMAIN=bot.tail-fantasy.ts.net reach_converge >/dev/null 2>&1
 [ -s "$LOG" ] && fail P_tunnel_converge_noop "$(tr '\n' ';' < "$LOG")" || pass P_tunnel_converge_noop
 
@@ -206,13 +215,74 @@ eq P_wrapper_fixed_list 2 "$?"
 
 # --- C: Rand-Konfiguration -----------------------------------------------------------------------------------------
 CY="$ROOT/provisioning/compose/compose.yml"
-cli_paths="$(sed -n 's/^[[:space:]]*@lifeagents path \(.*\)$/\1/p' "$ROOT/provisioning/templates/Caddyfile.tpl")"
-edge_paths="$(sed -n 's/^[[:space:]]*@lifeagents path \(.*\)$/\1/p' "$CY")"
-[ -n "$cli_paths" ] && eq C_one_path_list "$cli_paths" "$edge_paths" || fail C_one_path_list "Pfad-Liste der CLI nicht gefunden"
+# Eine Liste: der Baustein fuer edge kommt aus derselben Vorlage + LA_PUBLIC_PATHS wie das Caddyfile der CLI.
+rm -rf "$REACH_CONF_DIR"; reach_edge_public_write && pass C_edge_block_written || fail C_edge_block_written "nicht geschrieben"
+blk="$(cat "$REACH_CONF_DIR/edge-public.caddy" 2>/dev/null)"
+eq C_edge_paths "$LA_PUBLIC_PATHS" "$(printf '%s\n' "$blk" | sed -n 's/^@lifeagents path //p')"
+printf '%s' "$blk" | grep -q 'reverse_proxy anchor:5678' && pass C_edge_upstream || fail C_edge_upstream "Upstream nicht anchor:5678"
+cli="$(render_template "$ROOT/provisioning/templates/Caddyfile.tpl" SITE_ADDRESS=x.example.org N8N_UPSTREAM=127.0.0.1:5678 PUBLIC_PATHS="$LA_PUBLIC_PATHS" | sed -n 's/^[[:space:]]*@lifeagents path //p')"
+eq C_cli_paths "$LA_PUBLIC_PATHS" "$cli"
+reach_edge_public_write && fail C_edge_block_noop "Zweitlauf schrieb neu" || pass C_edge_block_noop
+grep -q '@lifeagents path' "$CY" && fail C_no_second_list "compose.yml traegt eine eigene Liste" || pass C_no_second_list
 [ "$(grep -c 'abort @own_netns' "$CY")" = 2 ] && pass C_editor_wizard_netns_blocked || fail C_editor_wizard_netns_blocked "erwartet 2 Sperren (8080, 8081)"
 [ "$(grep -cE '^[[:space:]]+admin off$' "$CY")" = 2 ] && pass C_admin_off || fail C_admin_off "edge und wan brauchen admin off"
 grep -q 'reverse_proxy edge:8088' "$CY" && ! grep -qE 'reverse_proxy edge:(8080|8081)' "$CY" && pass C_wan_only_public || fail C_wan_only_public "wan muss nur an edge:8088"
 grep -q "REACH_PUBLIC_TARGET='http://127.0.0.1:8088'" "$ROOT/provisioning/lib/reach.sh" && pass C_funnel_target || fail C_funnel_target "Funnel-Ziel nicht :8088"
+
+# --- I: eigene IPv4 (DS-Lite/Carrier-NAT) ----------------------------------------------------------------------------
+A_DNS4=''; A_DNS6=''; A_ECHO=''
+_reach_dns4() { printf 'dns4 %s\n' "$1" >> "$LOG"; printf '%s' "$A_DNS4"; }
+_reach_dns6() { printf 'dns6 %s\n' "$1" >> "$LOG"; printf '%s' "$A_DNS6"; }
+_reach_echo4() { printf 'echo\n' >> "$LOG"; printf '%s' "$A_ECHO"; }
+v4() { reach_ipv4_eval; printf '%s|%s' "$REACH_IPV4" "$REACH_IPV4_REASON"; }
+# Zone nur aus der fluechtigen Hinweis-Datei der Start-App, nie aus der Umgebung (docker inspect) oder aus DOMAIN.
+export REACH_HINTS_FILE="$W/hints.env"
+hint() { rm -f "$REACH_HINTS_FILE"; [ -n "$1" ] && printf '%s\n' "$@" > "$REACH_HINTS_FILE"; return 0; }
+cfg TELEGRAM_BOT_TOKEN=123:fantasy; hint ''; DOMAIN=''
+eq I_no_zone "unknown|no_zone" "$(v4)"
+LA_MYFRITZ_ZONE=deine-domain.myfritz.net; export LA_MYFRITZ_ZONE
+eq I_env_ignored "unknown|no_zone" "$(v4)"
+unset LA_MYFRITZ_ZONE
+DOMAIN=meinproxy.deine-domain.myfritz.net; eq I_domain_ignored "unknown|no_zone" "$(v4)"; DOMAIN=''
+hint 'LA_MYFRITZ_ZONE=Deine-Domain.MyFritz.net'
+A_DNS4=''; A_DNS6='2001:db8::1'; eq I_dslite "none|no_a_record" "$(v4)"
+A_DNS4=''; A_DNS6='';            eq I_dns_down "unknown|dns_failed" "$(v4)"
+A_DNS4='100.72.1.2';             eq I_cgnat "none|shared_address" "$(v4)"
+A_DNS4='192.168.178.10';         eq I_private "none|shared_address" "$(v4)"
+A_DNS4='100.128.0.1'; A_ECHO='100.128.0.1'; eq I_not_cgnat_edge "own|matches" "$(v4)"
+A_DNS4='203.0.113.7'; A_ECHO='203.0.113.7'; eq I_own "own|matches" "$(v4)"
+A_DNS4='203.0.113.7'; A_ECHO='198.51.100.9'; eq I_differs "unknown|differs" "$(v4)"
+A_DNS4='203.0.113.7'; A_ECHO='';            eq I_echo_down "unknown|echo_failed" "$(v4)"
+A_DNS4='203.0.113.7'; A_ECHO='<html>';      eq I_echo_garbage "unknown|echo_failed" "$(v4)"
+hint 'LA_MYFRITZ_ZONE=zone.example.org'; eq I_bad_zone "unknown|no_zone" "$(v4)"
+hint 'LA_MYFRITZ_ZONE=$(touch /tmp/reach-pwned).myfritz.net'; v4 >/dev/null
+[ -e /tmp/reach-pwned ] && fail I_hint_not_executed "Hinweis ausgefuehrt" || pass I_hint_not_executed
+eq I_hint_injection "unknown|no_zone" "$(v4)"
+ln -sf "$W/elsewhere" "$REACH_HINTS_FILE.tmp"; printf 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net\n' > "$W/elsewhere"
+rm -f "$REACH_HINTS_FILE"; mv "$REACH_HINTS_FILE.tmp" "$REACH_HINTS_FILE"
+eq I_hint_symlink_ignored "unknown|no_zone" "$(v4)"
+hint 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net' "X=$(head -c 5000 /dev/zero | tr '\0' a)"
+eq I_hint_too_big_ignored "unknown|no_zone" "$(v4)"
+# Status: vor der Wahl und beim FritzBox-Weg mit Ergebnis, zwischengespeichert (kein Echo je Abfrage).
+hint 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net'; rm -f "$REACH_RUN_DIR/ipv4"
+cfg TELEGRAM_BOT_TOKEN=123:fantasy; A_DNS4='203.0.113.7'; A_ECHO='203.0.113.7'; : > "$LOG"
+out="$(js)"; eq I_status_none_mode "own|matches" "$(field "$out" ipv4)|$(field "$out" ipv4_reason)"
+: > "$LOG"; js >/dev/null
+grep -q '^echo$' "$LOG" && fail I_status_cached "Echo bei jeder Abfrage" || pass I_status_cached
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; A_TS_UP=0; out="$(js)"
+eq I_tunnel_not_checked "unknown|not_checked" "$(field "$out" ipv4)|$(field "$out" ipv4_reason)"
+hint ''
+# --- W: Webhook-Angaben fuer den Selbsttest nach „Verbinden" ----------------------------------------------------------
+cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy DOMAIN=meinproxy.deine-domain.myfritz.net; A_WAN_UP=1
+A_TG="$(jq -nc '{ok:true, result:{url:"https://meinproxy.deine-domain.myfritz.net/webhook/a/webhook", pending_update_count:3,
+  last_error_date:1800000000, last_error_message:"Connection timed out\nzweite Zeile"}}')"
+out="$(js)"
+eq W_fields "ours|3|1800000000" "$(field "$out" webhook)|$(field "$out" webhook_pending)|$(field "$out" webhook_error_at)"
+eq W_error_one_line "Connection timed out zweite Zeile" "$(field "$out" webhook_error)"
+A_TG="$(tg_url 'https://meinproxy.deine-domain.myfritz.net/webhook/a/webhook')"; out="$(js)"
+eq W_no_error "0||null" "$(field "$out" webhook_pending)|$(field "$out" webhook_error)|$(field "$out" webhook_error_at)"
+A_TG=''; out="$(js)"
+eq W_unknown "unknown|null" "$(field "$out" webhook)|$(field "$out" webhook_pending)"
 
 printf 'compose_cases: %s Fehler\n' "$fails"
 exit "$fails"

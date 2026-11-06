@@ -1173,6 +1173,17 @@ tg_webhook_delivers() {
 # Heimnetz droht Hairpin-NAT bzw. der IPv6-Abzweig zur FritzBox (MyFRITZ!-AAAA = die Box selbst).
 HITL_ROUTE_SUFFIX='/webhook-waiting-telegram'
 
+# Die EINE Liste oeffentlicher Pfade fuer beide Installationswege (contract_lint 34): das Caddyfile der CLI
+# (templates/Caddyfile.tpl), die Hilfetexte fuer einen eigenen Proxy (owner_connect.sh) und der Rand des Docker-Verbunds
+# (lib/reach.sh schreibt denselben Baustein fuer edge). /webhook-waiting/* ist Pflicht fuer die Bestaetigungs-Knoepfe.
+LA_PUBLIC_PATHS='/webhook/* /webhook-test/* /webhook-waiting/* /webhook-waiting-telegram'
+# caddy_webhook_block <template-dir> <upstream> -> der Einfuege-Baustein aus Caddyfile.tpl (Block zwischen den
+#   lifeagents-webhooks-Markern, ohne Einrueckung): Pfad-Matcher + Weiterleitung an <upstream>.
+caddy_webhook_block() {
+  render_template "$1/Caddyfile.tpl" SITE_ADDRESS=_ N8N_UPSTREAM="$2" PUBLIC_PATHS="$LA_PUBLIC_PATHS" \
+    | sed -n '/>>> lifeagents-webhooks/,/<<< lifeagents-webhooks/p' | sed '1d;$d' | sed 's/^\t//'
+}
+
 # hitl_route_probe <webhook-url> [<ip>] -> rc0, wenn ein leerer Callback-POST an <webhook-url>/webhook-waiting-telegram
 #   (ueber DNS bzw. per --resolve auf <ip>) denselben Fingerabdruck (http_fp: Status + Body) liefert wie derselbe POST
 #   direkt an dieses n8n = die Anfrage ist bei DIESEM n8n gelandet (n8n antwortet ohne gueltigen Callback deterministisch

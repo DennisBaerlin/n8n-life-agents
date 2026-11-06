@@ -98,7 +98,7 @@
 #       laut Positivliste (fester Projektname, nie prune/--all/ps -q ...). Lexer erkennt die Befehls-Stellung. Selbst-Asserts.
 #   (33) COMPOSE-PINS: compose.yml/master.Dockerfile per Digest, n8n, Postgres und Node = Pins aus provision.sh, mem_limit +
 #       Label + Namens-Vorsatz je Dienst, externe Volumes = LA_STATE_VOLUMES, Patch-Mount je n8n-Korrektur. Selbst-Asserts.
-#   (34) RAND-PFADE: oeffentliche Pfade des Rands (compose.yml) = die der CLI (templates/Caddyfile.tpl); Editor/Wizard aus
+#   (34) RAND-PFADE: eine Liste oeffentlicher Pfade (common.sh LA_PUBLIC_PATHS) fuer CLI und Rand, keine zweite; Editor/Wizard aus
 #       dem eigenen Namensraum gesperrt, `admin off` in jeder Caddy-Konfiguration. Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
@@ -2235,40 +2235,57 @@ foreach ($sa in @(
 }
 
 # ---------------------------------------------------------------
-# (34) RAND-PFADE: EINE Liste oeffentlicher Pfade fuer beide Installationswege. Der Rand des Docker-Verbunds
-#     (compose.yml, Dienst edge, LA_CADDYFILE) gibt genau die Pfade frei, die die CLI ihrem Proxy nennt
-#     (templates/Caddyfile.tpl, Matcher @lifeagents) -- sonst haengen im einen Weg die Bestaetigungs-Knoepfe oder der andere
-#     oeffnet mehr (Editor, /rest). Dazu die Sperren des Rands: Editor- und Wizard-Eingang brechen Verbindungen aus dem
-#     eigenen Namensraum (= Tailnet) ab, jede Caddy-Konfiguration hat `admin off`. Selbst-Asserts.
+# (34) RAND-PFADE: EINE Liste oeffentlicher Pfade fuer beide Installationswege (Einwand 10). Quelle ist allein
+#     LA_PUBLIC_PATHS in provisioning/lib/common.sh: das Caddyfile der CLI (templates/Caddyfile.tpl, Platzhalter
+#     @@PUBLIC_PATHS@@), die Hilfetexte (owner_connect.sh) und der Rand des Docker-Verbunds (lib/reach.sh schreibt den
+#     Baustein, edge importiert ihn) lesen sie. Verboten ist eine zweite, von Hand gepflegte Liste: die Pfad-Kennung
+#     '/webhook-test/*' darf in provisioning/ nur in der LA_PUBLIC_PATHS-Zeile stehen. Dazu die Sperren des Rands: Editor-
+#     und Wizard-Eingang brechen Verbindungen aus dem eigenen Namensraum (= Tailnet) ab, :8088 importiert den Baustein,
+#     jede Caddy-Konfiguration hat `admin off`. Selbst-Asserts.
 # ---------------------------------------------------------------
-function Get-EdgePathIssues([string]$Cy, [string]$Tpl) {
+function Get-EdgePathIssues([hashtable]$Files) {
+    # $Files: relativer Pfad -> Inhalt (provisioning/**); Pflicht: lib/common.sh, templates/Caddyfile.tpl, compose/compose.yml.
     $iss = New-Object System.Collections.Generic.List[string]
-    $want = @([regex]::Matches($Tpl, '(?m)^\s*@lifeagents\s+path\s+(.+?)\s*$') | ForEach-Object { $_.Groups[1].Value })
-    $got  = @([regex]::Matches($Cy,  '(?m)^\s*@lifeagents\s+path\s+(.+?)\s*$') | ForEach-Object { $_.Groups[1].Value })
-    if ($want.Count -ne 1) { $iss.Add("templates/Caddyfile.tpl: $($want.Count) Zeilen '@lifeagents path' (erwartet 1).") }
-    elseif ($got.Count -ne 1) { $iss.Add("compose.yml: $($got.Count) Zeilen '@lifeagents path' (erwartet 1, Eingang :8088 des Rands).") }
-    elseif ($got[0] -ne $want[0]) { $iss.Add("oeffentliche Pfade des Rands '$($got[0])' != CLI '$($want[0])' (templates/Caddyfile.tpl).") }
-    $aborts = [regex]::Matches($Cy, '(?m)^\s+abort @own_netns\s*$').Count
+    $common = $Files['provisioning/lib/common.sh']; $tpl = $Files['provisioning/templates/Caddyfile.tpl']; $cy = $Files['provisioning/compose/compose.yml']
+    if ($null -eq $common -or $null -eq $tpl -or $null -eq $cy) { $iss.Add('common.sh, Caddyfile.tpl oder compose.yml fehlt.'); return , $iss }
+    $def = @([regex]::Matches($common, "(?m)^LA_PUBLIC_PATHS='([^']+)'\s*$"))
+    if ($def.Count -ne 1) { $iss.Add("lib/common.sh: $($def.Count) Zeilen LA_PUBLIC_PATHS='...' (erwartet 1).") }
+    elseif ($def[0].Groups[1].Value -notmatch '(^| )/webhook-waiting/\*( |$)') { $iss.Add("LA_PUBLIC_PATHS ohne /webhook-waiting/* (Pflicht fuer die Bestaetigungs-Knoepfe).") }
+    if ([regex]::Matches($tpl, '(?m)^\s*@lifeagents\s+path\s+@@PUBLIC_PATHS@@\s*$').Count -ne 1) { $iss.Add("templates/Caddyfile.tpl: Matcher muss genau '@lifeagents path @@PUBLIC_PATHS@@' sein.") }
+    foreach ($k in $Files.Keys) {
+        $lines = @($Files[$k] -split "`n" | Where-Object { $_ -like '*/webhook-test/`**' -and $_ -notmatch "^LA_PUBLIC_PATHS='" })
+        if ($lines.Count) { $iss.Add("${k}: zweite Liste oeffentlicher Pfade ($($lines.Count) Zeile(n) mit '/webhook-test/*') -- LA_PUBLIC_PATHS (common.sh) nutzen.") }
+    }
+    if ([regex]::Matches($cy, '(?m)^\s+import /tmp/public\.caddy\s*$').Count -ne 1) { $iss.Add("compose.yml: Eingang :8088 importiert den Baustein nicht genau einmal ('import /tmp/public.caddy').") }
+    $aborts = [regex]::Matches($cy, '(?m)^\s+abort @own_netns\s*$').Count
     if ($aborts -ne 2) { $iss.Add("compose.yml: $aborts Sperre(n) 'abort @own_netns' (erwartet 2: Editor :8080 und Wizard :8081).") }
-    $caddies = [regex]::Matches($Cy, '(?m)^\s+LA_CADDYFILE:\s*\|').Count
-    $admins  = [regex]::Matches($Cy, '(?m)^\s+admin off\s*$').Count
+    $caddies = [regex]::Matches($cy, '(?m)^\s+LA_CADDYFILE:\s*\|').Count
+    $admins  = [regex]::Matches($cy, '(?m)^\s+admin off\s*$').Count
     if ($admins -lt $caddies) { $iss.Add("compose.yml: $caddies Caddy-Konfiguration(en), aber nur $admins mit 'admin off'.") }
     return , $iss
 }
-$tplPath = Join-Path $provDir 'templates\Caddyfile.tpl'
-if ((Test-Path $composePath) -and (Test-Path $tplPath)) {
-    foreach ($m in (Get-EdgePathIssues ([System.IO.File]::ReadAllText($composePath, $Utf8NoBom)) ([System.IO.File]::ReadAllText($tplPath, $Utf8NoBom)))) { $errors.Add("RAND-PFADE: $m") }
+$edgeFiles = @{}
+foreach ($fi in (Get-ChildItem -Path $provDir -Recurse -File | Where-Object { $_.Extension -in '.sh', '.tpl', '.yml', '.js' })) {
+    $rel = 'provisioning/' + $fi.FullName.Substring($provDir.Length).TrimStart('\', '/').Replace('\', '/')
+    $edgeFiles[$rel] = [System.IO.File]::ReadAllText($fi.FullName, $Utf8NoBom)
 }
-$saTpl = "x {`n`t@lifeagents path /webhook/* /webhook-waiting-telegram`n}"
-$saCy  = "    LA_CADDYFILE: |`n        {`n          admin off`n        }`n        :8080 {`n          abort @own_netns`n        }`n        :8081 {`n          abort @own_netns`n        }`n          @lifeagents path /webhook/* /webhook-waiting-telegram`n"
+foreach ($m in (Get-EdgePathIssues $edgeFiles)) { $errors.Add("RAND-PFADE: $m") }
+$saOk = @{
+    'provisioning/lib/common.sh'            = "LA_PUBLIC_PATHS='/webhook/* /webhook-test/* /webhook-waiting/*'`n"
+    'provisioning/templates/Caddyfile.tpl'  = "x {`n`t@lifeagents path @@PUBLIC_PATHS@@`n}`n"
+    'provisioning/compose/compose.yml'      = "    LA_CADDYFILE: |`n        {`n          admin off`n        }`n        :8080 {`n          abort @own_netns`n        }`n        :8081 {`n          abort @own_netns`n        }`n        :8088 {`n          import /tmp/public.caddy`n        }`n"
+}
+function Copy-EdgeSa([hashtable]$Base, [string]$Key, [string]$Val) { $h = @{}; foreach ($k in $Base.Keys) { $h[$k] = $Base[$k] }; $h[$Key] = $Val; return $h }
 foreach ($sa in @(
-    @{ n = 'gleich';          c = $saCy;                                                   want = 0 },
-    @{ n = 'Pfad mehr';       c = $saCy -replace '/webhook-waiting-telegram', '/webhook-waiting-telegram /rest/*'; want = 1 },
-    @{ n = 'Sperre fehlt';    c = $saCy -replace '(?s)(:8081 \{\n)\s+abort @own_netns\n', '$1';                     want = 1 },
-    @{ n = 'admin fehlt';     c = $saCy -replace '\s+admin off\n', "`n";                    want = 1 },
-    @{ n = 'Liste fehlt';     c = $saCy -replace '@lifeagents path', '@x path';            want = 1 })) {
-    $got = (Get-EdgePathIssues $sa.c $saTpl).Count
-    if ($got -ne $sa.want) { $errors.Add("RAND-PFADE SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got ($((Get-EdgePathIssues $sa.c $saTpl) -join '; ')) -- Check 34 ist defekt.") }
+    @{ n = 'gueltig';            f = $saOk;                                                                                                       want = 0 },
+    @{ n = 'zweite Liste';       f = (Copy-EdgeSa $saOk 'provisioning/lib/owner_connect.sh' "    /webhook/*   /webhook-test/*`n");                    want = 1 },
+    @{ n = 'Liste im Rand';      f = (Copy-EdgeSa $saOk 'provisioning/compose/compose.yml' ($saOk['provisioning/compose/compose.yml'] -replace 'import /tmp/public\.caddy', '@lifeagents path /webhook/* /webhook-test/*')); want = 2 },
+    @{ n = 'Vorlage fest';       f = (Copy-EdgeSa $saOk 'provisioning/templates/Caddyfile.tpl' "x {`n`t@lifeagents path /webhook/*`n}`n");             want = 1 },
+    @{ n = 'ohne waiting';       f = (Copy-EdgeSa $saOk 'provisioning/lib/common.sh' "LA_PUBLIC_PATHS='/webhook/*'`n");                               want = 1 },
+    @{ n = 'Sperre fehlt';       f = (Copy-EdgeSa $saOk 'provisioning/compose/compose.yml' ($saOk['provisioning/compose/compose.yml'] -replace '(?s)(:8081 \{\n)\s+abort @own_netns\n', '$1')); want = 1 },
+    @{ n = 'admin fehlt';        f = (Copy-EdgeSa $saOk 'provisioning/compose/compose.yml' ($saOk['provisioning/compose/compose.yml'] -replace '\s+admin off\n', "`n")); want = 1 })) {
+    $got = (Get-EdgePathIssues $sa.f).Count
+    if ($got -ne $sa.want) { $errors.Add("RAND-PFADE SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got ($((Get-EdgePathIssues $sa.f) -join '; ')) -- Check 34 ist defekt.") }
 }
 
 # ---------------------------------------------------------------

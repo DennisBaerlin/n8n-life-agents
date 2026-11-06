@@ -9,12 +9,15 @@
 #
 # DOCKER-POSITIVLISTE (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
 #   docker exec · docker inspect · docker image inspect · docker version · docker volume inspect · docker volume create ·
-#   docker run --rm · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version>.
+#   docker run --rm · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
+# Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` NUR in
+# rt_volume_rm_own (prueft vorher unser Label an genau diesem einen Namen) und `compose down` NUR in rt_stack_down (ohne
+# -v/--rmi: externe Volumes und Images bleiben; entfernt nur Container + Netze DIESES Projekts).
 # Verboten sind breite Befehle (prune, --all/-a, ps -q, rm $(…), down -v/--volumes, --rmi, system …): unser master hat
 # Zugriff auf GANZ Docker, ein Fehler hier traefe fremde Container (z. B. Paperless) — die wichtigste Regel des Verbunds.
-# Alles, was wir anlegen, traegt den Projektnamen als Vorsatz und das Label io.lifeagents.install=<projekt>. Nur der
-# Deinstaller (Start-App bzw. Paket 2, nach ausdruecklicher Rueckfrage, Pruefliste Nr. 17) darf zusaetzlich `compose down`
-# (ohne -v), `volume rm <eigenes, gelabeltes Volume>` und `image rm <laut Journal selbst geladen>`.
+# Bind-Mounts nur per `--mount` (der Schalter -v ist wegen `down -v` gesperrt). Alles, was wir anlegen, traegt den
+# Projektnamen als Vorsatz und das Label io.lifeagents.install=<projekt>. `image rm <laut Journal selbst geladen>` gehoert
+# der Start-App (sie fuehrt das Journal), nicht dem master.
 
 rt_is_compose() { [ "${LIFEAGENTS_RUNTIME:-systemd}" = compose ]; }
 
@@ -252,3 +255,97 @@ rt_master_write() {
 }
 # rt_master_exec <befehl…> — im master ausfuehren (ohne stdin, s. pg_su_exec).
 rt_master_exec() { docker exec "$(rt_master_container)" "$@"; }
+
+# --- Laufzeit im Verbund: Image-Wechsel, Messung, Rechner-Ordner, Abbau (Paket 2) ---------------------------------------
+# rt_container_image <container> -> das Image (Name@Digest wie in compose.yml), mit dem der Container angelegt wurde.
+rt_container_image() { docker inspect -f '{{.Config.Image}}' "$1" 2>/dev/null; }
+# rt_container_running <container> — 0 = laeuft.
+rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
+# rt_master_image_of <compose-datei> -> das master-Image, das DIESE Datei selbst nennt (Release-Pin, Paket 5:
+#   `image: ${LA_MASTER_IMAGE:-<register>/master@sha256:…}`), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
+#   keins (heute `:?`). Die aufgeloeste Fassung enthaelt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.
+rt_master_image_of() {
+  ( unset LA_MASTER_IMAGE; LA_COMPOSE_FILE="$1"; _rt_compose config --format json master 2>/dev/null ) \
+    | jq -r '.services.master.image // empty' 2>/dev/null || true
+}
+# rt_image_ensure <compose-datei> <master-image> — das Image liegt lokal vor (sonst per Compose laden; nie `docker pull`
+#   mit freiem Namen). Ein per Digest festgelegtes Image ist mit dem Inhalt identisch, der lokale Treffer genuegt.
+rt_image_ensure() {
+  docker image inspect "$2" >/dev/null 2>&1 && return 0
+  # shellcheck disable=SC2030  # bewusst nur in der Teilschale: Ziel-Image fuer genau diesen Compose-Aufruf
+  ( export LA_MASTER_IMAGE="$2"; LA_COMPOSE_FILE="$1"; _rt_compose pull master ) >&2
+}
+# rt_master_recreate <compose-datei> <master-image> — den master aus genau dieser Datei mit genau diesem Image anlegen
+#   (`up --no-deps`: kein anderer Dienst wird angefasst). Nur aus dem Helfer rufen, nie aus dem master selbst.
+# shellcheck disable=SC2030,SC2031  # bewusst nur in der Teilschale (s. rt_image_ensure)
+rt_master_recreate() { ( export LA_MASTER_IMAGE="$2"; LA_COMPOSE_FILE="$1"; _rt_compose up -d --no-deps master ); }
+# rt_master_selfcheck [sekunden] — laeuft der master und hat er alles, was der Installer braucht? 0 = ja.
+rt_master_selfcheck() {
+  local n="${1:-120}" _
+  for _ in $(seq 1 "$n"); do
+    if rt_container_running "$(rt_master_container)" \
+       && docker exec "$(rt_master_container)" bash -c 'type jq node gpg >/dev/null 2>&1 && docker version >/dev/null 2>&1 && test -r /opt/lifeagents/provisioning/provision.sh && test "$LIFEAGENTS_RUNTIME" = compose' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+# rt_swap_helper_start <image> <arbeitsordner> — den kurzlebigen Helfer fuer den master-Wechsel starten (Fund 6: der master
+#   kann sich nicht selbst ersetzen). Aus dem ALTEN, bewaehrten Image; sieht nur den Docker-Socket und var_la (dort liegen
+#   Zustandsdatei, beide compose-Dateien und die Env-Datei). Fester Name: ein zweiter Wechsel waehrend eines laufenden
+#   scheitert am Namen, bevor er etwas aendert.
+rt_swap_helper_start() {
+  docker run --rm -d --name "${LA_PROJECT}-swap" --label "${LA_LABEL}=${LA_PROJECT}" --network none \
+    --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
+    --mount "type=volume,src=${LA_PROJECT}_var_la,dst=/var/lib/lifeagents" \
+    --env-file "$2/stack.env" --env LIFEAGENTS_RUNTIME=compose \
+    --entrypoint bash "$1" /opt/lifeagents/provisioning/compose/swap_helper.sh "$2" >/dev/null
+}
+# rt_swap_helper_running — 0 = der Helfer laeuft noch.
+rt_swap_helper_running() { rt_container_running "${LA_PROJECT}-swap"; }
+# rt_netns <container> -> Kennung des Netz-Namensraums im Container (net:[…]); doctor vergleicht den Pod. /proc/self statt
+#   /proc/1: der exec-Prozess teilt den Namensraum, und PID 1 eines anderen Nutzers (postgres) waere ohne ptrace nicht lesbar.
+rt_netns() { docker exec "$1" readlink /proc/self/ns/net 2>/dev/null; }
+# rt_probe_internal <port> — erreicht ein Kurzlauf-Container im internen Netz (dort, wo der Rand steht) anchor:<port>?
+#   Die Messung von aussen (Plan *Der Rand*): was der Rand sieht, sieht hier auch die Probe. 0 = erreichbar.
+rt_probe_internal() {
+  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network "${LA_PROJECT}_internal" \
+    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" nc -z -w 2 anchor "$1" >/dev/null 2>&1
+}
+# _rt_host_run [-i] <mount-angabe> <befehl…> — EIN Kurzlauf-Container fuer einen Ordner AUF DEM RECHNER (Sicherung, Fund 7:
+#   nicht auf der Docker-Platte): busybox, ohne Netz, genau dieser eine Bind-Mount, unser Label. Fehlt der Ordner, scheitert
+#   der Mount (Docker legt ihn mit --mount nie still an). -i = stdin durchreichen.
+_rt_host_run() {
+  local i=()
+  if [ "$1" = -i ]; then i=(-i); shift; fi
+  docker run --rm "${i[@]}" --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "$1" \
+    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" "${@:2}"
+}
+# rt_host_put <rechner-ordner> <dateiname> — stdin als Datei dorthin schreiben; erst .part, dann umbenennen.
+# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
+rt_host_put() { _rt_host_run -i "type=bind,src=$1,dst=/out" sh -c 'umask 077; cat > "/out/.$1.part" && mv -f "/out/.$1.part" "/out/$1"' _ "$2"; }
+# rt_host_get <rechner-ordner> <dateiname> — eine Datei von dort nach stdout (nur lesend gemountet).
+rt_host_get() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" cat "/in/$2"; }
+# rt_host_ls <rechner-ordner> -> Dateinamen der Sicherungen (*.nla.enc) im Ordner, eine je Zeile.
+# shellcheck disable=SC2016
+rt_host_ls() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" sh -c 'cd /in && for f in *.nla.enc; do [ -f "$f" ] && echo "$f"; done; true'; }
+# rt_host_check <rechner-ordner> — gibt es den Ordner und ist er beschreibbar? (Probe anlegen + loeschen)
+# shellcheck disable=SC2016  # $$/$p werden erst in der Container-Shell ausgewertet
+rt_host_check() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'p=/out/.lifeagents-probe.$$; : > "$p" && rm -f "$p"' >/dev/null 2>&1; }
+# rt_host_rotate <rechner-ordner> <behalten> — NUR unsere Sicherungen (lifeagents-backup-*.nla.enc, Zeitstempel im Namen)
+#   jenseits der neuesten <behalten> loeschen; andere Dateien im Ordner fasst das Muster nie an.
+# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
+rt_host_rotate() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'cd /out && ls -1 lifeagents-backup-*.nla.enc 2>/dev/null | sort -r | tail -n +$(($1 + 1)) | while IFS= read -r f; do rm -f -- "$f"; done' _ "$2"; }
+# rt_stack_down — Container + Netze DIESES Projekts entfernen (Deinstaller, Rechner-Seite). Ohne -v/--rmi: die externen
+#   Volumes (Daten) und alle Images bleiben. --remove-orphans erfasst nur Container mit unserem Compose-Projekt (z. B.
+#   tailscale aus einem Profil), nie fremde.
+rt_stack_down() { _rt_compose down --remove-orphans; }
+# rt_volume_rm_own <name> — EIN Volume entfernen, aber nur, wenn es unser Label traegt (fremdes gleichen Namens: Abbruch).
+#   rc 0 = entfernt oder nicht vorhanden.
+rt_volume_rm_own() {
+  local lbl
+  lbl="$(docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>/dev/null)" || return 0
+  [ "$lbl" = "$LA_PROJECT" ] || { warn "Volume $1 trägt nicht unser Label — bleibt unangetastet."; return 1; }
+  docker volume rm "$1" >/dev/null
+}

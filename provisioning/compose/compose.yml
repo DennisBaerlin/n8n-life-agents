@@ -150,8 +150,10 @@ services:
     # die stuende dauerhaft in `docker inspect`. 0700 root: n8n (uid 1000, eigener Container) sieht sie ohnehin nicht.
     tmpfs: ["/run/lifeagents-wizard:mode=0700,uid=0,gid=0,size=1m"]
     # Wizard (Paket 4) laeuft, bis er sich nach "Fertig" selbst beendet (er erkennt den Zustand im Volume wizard_state und
-    # endet dann auch nach einem Neustart sofort); danach bleibt der master als Ruhe-Prozess fuer docker exec stehen.
-    # Fehlt die Datei (Baum ohne Wizard), startet nur der Ruhe-Prozess. SIGTERM geht an den Wizard weiter.
+    # endet dann auch nach einem Neustart sofort). Danach die Tick-Schleife (Ersatz der systemd-Timer des Updates im Chat,
+    # lib/update_runner.sh update_tick): jede Minute ein FRISCHER Prozess (nach einem Update laeuft sofort der neue Code);
+    # vor der ersten Installation fehlt die CLI (Link ins Volume rt_tree) und die Schleife wartet still. SIGTERM geht an
+    # den gerade laufenden Kindprozess weiter.
     command:
       - sh
       - -c
@@ -159,7 +161,10 @@ services:
         w=/opt/lifeagents/provisioning/wizard/server.js
         trap 'kill -TERM "$$pid" 2>/dev/null; exit 0' TERM INT
         if [ -f "$$w" ]; then node "$$w" & pid=$$!; wait "$$pid" || echo "Wizard endete mit Fehler" >&2; fi
-        while :; do sleep 3600 & pid=$$!; wait "$$pid"; done
+        while :; do
+          if [ -x /usr/local/bin/lifeagents ]; then lifeagents update --tick & pid=$$!; wait "$$pid" || true; fi
+          sleep 60 & pid=$$!; wait "$$pid"
+        done
     depends_on:
       anchor:
         condition: service_started
@@ -175,6 +180,7 @@ services:
       LA_MASTER_IMAGE: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
       LA_COMPOSE_FILE: /opt/lifeagents/provisioning/compose/compose.yml
       LA_N8N_IMAGE: *img_n8n
+      LA_PG_IMAGE: *img_postgres       # upgrade_guard: laufendes Postgres-Image != Pin -> erst sichern, dann tauschen
       LA_PROBE_IMAGE: *img_busybox
       TMPDIR: /shared                  # Dateien fuer `n8n import:*` muessen der n8n-Container unter demselben Pfad sehen
       LLM_GATEWAY_DIR: /gw

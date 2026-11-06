@@ -49,6 +49,11 @@ _u_stop_unit() {
 
 uninstall() {
   require_root
+  # Docker-Verbund: Entfernen ist Sache der Rechner-Seite (Start-App bzw. compose/stack.sh uninstall, Pruefliste Nr. 17) —
+  # nur von dort lassen sich Container + Volumes mit unserem Label abbauen, ohne dass sich der master selbst beendet.
+  if rt_is_compose; then
+    die "Im Docker-Verbund entfernt die Start-App das System (Menüpunkt Entfernen; Daten nur nach Rückfrage). Es wurde nichts geändert."
+  fi
   require_su_tools
 
   if [ "$PURGE_DATA" -eq 1 ]; then

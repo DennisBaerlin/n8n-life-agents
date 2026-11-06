@@ -69,6 +69,67 @@ _doctor_app_check() {
   elif [ "$r4" = ok ] || [ "$r6" = ok ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${fams})"; fi
 }
 
+# _doctor_compose_tick — Docker-Verbund: lebt die Tick-Schleife des master (Ersatz der Update-Timer)? Ein offener
+#   master-Wechsel ohne laufenden Helfer, der aelter als 30 Minuten ist, haengt (lib/master_swap.sh).
+_doctor_compose_tick() {
+  local st=/var/lib/lifeagents/update-tick.state last age swap=/var/lib/lifeagents/master-swap/state
+  if [ "$(id -u)" -ne 0 ]; then _skip "Update-Schleife im master (braucht root)"; return 0; fi
+  last="$(read_env_value "$st" LAST_TICK 2>/dev/null || true)"
+  case "$last" in
+    ''|*[!0-9]*)
+      # Direkt nach der Installation (Abschlusspruefung) laeuft die Schleife erst mit dem naechsten Durchlauf an.
+      if [ -n "$(find "$(lifeagents_version_marker)" -mmin -10 2>/dev/null)" ]; then
+        _warn "Update-Schleife im master startet mit dem nächsten Durchlauf (höchstens 1 min)"
+      else _red "Update-Schleife im master lief noch nie — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+    *) age=$(( $(date -u +%s) - last ))
+       if [ "$age" -le 300 ]; then _pass "Update-Schleife im master läuft (letzter Durchlauf vor ${age} s)"
+       else _red "Update-Schleife im master steht seit $((age / 60)) min — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+  esac
+  if [ -f "$swap" ] && ! rt_swap_helper_running && [ -n "$(find "$swap" -mmin +30 2>/dev/null)" ]; then
+    _red "Ein master-Wechsel (Update) ist seit über 30 min offen — Verlauf: docker logs ${LA_PROJECT}-master"
+  fi
+}
+
+# _doctor_compose_pod <bind> — Docker-Verbund: (1) alle Pod-Container im Netz-Namensraum des anchor (nach einem
+#   `docker restart` des anchor haengen sie sonst an einem toten Namensraum, Einwand 17), (2) Netz-Grenze von aussen.
+_doctor_compose_pod() {
+  local anchor ns c n bad='' p
+  anchor="$(rt_netns "${LA_PROJECT}-anchor" || true)"
+  if [ -z "$anchor" ]; then
+    _red "anchor-Container läuft nicht — der ganze Verbund ist ohne Netz (Start-App: Neu starten)"
+  else
+    for c in postgres n8n gateway master; do
+      rt_container_running "${LA_PROJECT}-${c}" || continue   # laeuft nicht: melden die Dienst-Pruefungen
+      ns="$(rt_netns "${LA_PROJECT}-${c}" || true)"
+      [ "$ns" = "$anchor" ] || bad="${bad:+${bad}, }${c}"
+    done
+    if [ -n "$bad" ]; then
+      _red "Netz-Namensraum getrennt (${bad}) — der anchor wurde einzeln neu gestartet. Abhilfe: in der Start-App Neu starten (docker compose -p ${LA_PROJECT} restart anchor — startet die Pod-Container danach mit)"
+    else
+      _pass "Pod teilt einen Netz-Namensraum (anchor, postgres, n8n, gateway, master)"
+    fi
+  fi
+  # Rand: tailscale haengt per network_mode am Namensraum von edge — wird edge neu angelegt (z. B. anderer Port), bleibt
+  # tailscale sonst an einem toten Namensraum haengen (derselbe Einwand 17).
+  if rt_container_running "${LA_PROJECT}-tailscale"; then
+    if [ "$(rt_netns "${LA_PROJECT}-tailscale" || true)" = "$(rt_netns "${LA_PROJECT}-edge" || echo x)" ]; then
+      _pass "tailscale teilt den Netz-Namensraum des Rands"
+    else
+      _red "tailscale hängt nicht mehr am Rand (edge wurde neu angelegt) — Abhilfe: docker compose -p ${LA_PROJECT} restart tailscale (hängt sich beim Start an den aktuellen Rand)"
+    fi
+  fi
+  if rt_probe_internal "$N8N_PORT"; then _pass "Rand erreicht n8n (gemessen aus dem internen Netz, n8n bindet $1 im Verbund)"
+  else _red "Rand erreicht n8n nicht — Telegram und Mini-App kommen nicht an (gemessen aus dem internen Netz)"; fi
+  local open=0
+  for p in 5432 8090; do
+    if rt_probe_internal "$p"; then
+      open=1; n="PostgreSQL"; [ "$p" = 8090 ] && n="LLM-Gateway"
+      _red "${n} (Port ${p}) ist aus dem internen Netz erreichbar — muss nur im Verbund lauschen (127.0.0.1)"
+    fi
+  done
+  [ "$open" -eq 1 ] || _pass "PostgreSQL und LLM-Gateway von außen nicht erreichbar (gemessen)"
+}
+
 main() {
   printf 'Diagnose — n8n-life-agents Provisioning\n'
 
@@ -130,18 +191,20 @@ main() {
 
   # --- Update im Chat (lib/install_update_timers.sh + lib/update_runner.sh) ---
   if rt_is_compose; then
-    _skip "Update im Chat: im Docker-Verbund noch ohne Runner (folgt mit dem master-Dienst)"
+    # Verbund: statt der Timer laeuft die Tick-Schleife im master (compose.yml, update_runner.sh update_tick).
+    _doctor_compose_tick
   else
     svc_active lifeagents-update-check.timer "Täglicher Release-Check"
     svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
   fi
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then
-    local _stuck _lastfail _help
+    local _stuck _lastfail _help _runner_log="journalctl -u lifeagents-update-run -n 50"
+    if rt_is_compose; then _runner_log="docker logs ${LA_PROJECT}-master"; fi
     # Haengender Auftrag: offen seit > 60 min UND die Update-Sperre ist frei (sonst laeuft er gerade wirklich).
     _stuck="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
       "SELECT id FROM core.update_requests WHERE finished_at IS NULL AND requested_at < now() - interval '60 minutes' LIMIT 1" 2>/dev/null || true)"
     if [ -n "$_stuck" ] && update_lock_free; then
-      _red "Update-Auftrag ${_stuck} hängt seit über einer Stunde — der Runner läuft nicht (journalctl -u lifeagents-update-run -n 50)"
+      _red "Update-Auftrag ${_stuck} hängt seit über einer Stunde — der Runner läuft nicht (${_runner_log})"
     fi
     # Das letzte Update der letzten 7 Tage ist gescheitert -> dieselbe Hilfe wie im Chat (core.fn_update_report).
     _lastfail="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
@@ -159,7 +222,7 @@ main() {
     if [ -n "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
           "SELECT 1 FROM core.menu_refresh WHERE (requested_gen > done_gen AND requested_at < now() - interval '30 minutes')
               OR gave_up_at > now() - interval '7 days'" 2>/dev/null || true)" ]; then
-      _warn "Übersicht-Knöpfe nicht vollständig nachgezogen (Kopplung/Sprache geändert, Telegram lehnte ab) — journalctl -u lifeagents-update-run -n 50"
+      _warn "Übersicht-Knöpfe nicht vollständig nachgezogen (Kopplung/Sprache geändert, Telegram lehnte ab) — ${_runner_log}"
     fi
   fi
 
@@ -185,9 +248,9 @@ main() {
   _tp="${TRUSTED_PROXIES:-$(read_env_value /etc/lifeagents/core.env TRUSTED_PROXIES 2>/dev/null || true)}"
   _bind="$(read_env_value "$N8N_ENV_FILE" N8N_LISTEN_ADDRESS 2>/dev/null || true)"
   if rt_is_compose; then
-    # Verbund: n8n lauscht im Namensraum des anchor auf 0.0.0.0, erreichbar nur ueber das interne Netz zum Rand (compose.yml).
-    # Die Messung von aussen (Editor gesperrt, nur die oeffentlichen Pfade offen) kommt mit dem doctor-Ausbau (Paket 2).
-    _skip "Netz-Grenze im Docker-Verbund: n8n bindet ${_bind:-0.0.0.0} im Verbund, Messung von außen folgt"
+    # Verbund (Plan *Der Rand*, Einwand 17): ein Netz-Namensraum fuer den ganzen Pod, und die Grenze von AUSSEN gemessen —
+    # ein Kurzlauf-Container im internen Netz sieht, was der Rand sieht: n8n ja, Postgres und Gateway nein.
+    _doctor_compose_pod "${_bind:-0.0.0.0}"
   elif ! _tp_list="$(normalize_trusted_proxies "$_tp" 2>/dev/null)"; then
     _red "TRUSTED_PROXIES ungültig ('${_tp}') — korrigieren: lifeagents proxy set <IP des Proxy-Rechners>"
   else

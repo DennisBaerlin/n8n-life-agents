@@ -51,6 +51,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 . "$LIB_DIR/install_update_timers.sh"   # Update im Chat: taeglicher Release-Check + Runner fuer Update-Auftraege
 # shellcheck source=lib/upgrade_guard.sh
 . "$LIB_DIR/upgrade_guard.sh"   # Versionswechsel auf Bestands-Instanzen: erst sichern, dann tauschen
+# shellcheck source=lib/master_swap.sh
+. "$LIB_DIR/master_swap.sh"   # Docker-Verbund: master-Wechsel (Merkzettel des Rueckwegs, upgrade_guard.sh)
 # Kein install_caddy.sh mehr: der Reverse Proxy wird nicht mitinstalliert (Install-UX-Phase 2, pure-A).
 # shellcheck source=lib/apply_schema.sh
 . "$LIB_DIR/apply_schema.sh"
@@ -798,6 +800,9 @@ EOF
 install_cli() {
   local libdir bindir="/usr/local/bin"
   libdir="$(lifeagents_runtime_dir)"   # EINE Adresse (common.sh) — auch fuer den Erfolgs-Marker VERSION unten
+  # Docker-Verbund: /usr/local/bin liegt im Container-Dateisystem des master und waere nach seiner Neuanlage (Update =
+  # Image-Wechsel) weg -> die CLI liegt im Baum-Volume rt_tree, das Image verlinkt /usr/local/bin/lifeagents dorthin.
+  if rt_is_compose; then bindir="$libdir/bin"; mkdir -p "$bindir"; fi
   log "lifeagents-Admin-CLI installieren (${bindir}/lifeagents) + Runtime-Baum spiegeln ..."
   mkdir -p "$libdir"
   rm -rf "$libdir"/.staging.* 2>/dev/null || true   # Reste eines frueher abgebrochenen Laufs raeumen

@@ -19,6 +19,9 @@ COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/
 RUN groupadd -g 1000 n8n && useradd -u 1000 -g 1000 -M -d /nonexistent -s /usr/sbin/nologin n8n
 COPY provisioning /opt/lifeagents/provisioning
 COPY packages /opt/lifeagents/packages
+# Die CLI selbst legt install_cli ins Volume rt_tree (ueberlebt jede Neuanlage des master, Update = Image-Wechsel); bis zur
+# ersten Installation zeigt der Link ins Leere (die Tick-Schleife in compose.yml wartet so still).
+RUN ln -s /usr/local/lib/lifeagents/bin/lifeagents /usr/local/bin/lifeagents
 LABEL io.lifeagents.install.image="master"
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 LIFEAGENTS_RUNTIME=compose
 WORKDIR /opt/lifeagents

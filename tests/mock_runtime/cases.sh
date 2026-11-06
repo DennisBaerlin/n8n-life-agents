@@ -32,8 +32,25 @@ me="$(basename "$0")"
 in=''
 if [ -n "${STUB_STDIN:-}" ] && [ "$me" = docker ] && [ "${1:-}" = exec ] && [ "${2:-}" = -i ]; then in="$(cat)"; fi
 { printf '%s' "$me"; printf '|%s' "$@"; printf '|stdin=%s\n' "${in:+ja}"; } >> "$STUB_LOG"
+# Compose-Aufrufe: mit welcher Datei und welchem master-Image (Umgebung) — der master-Wechsel haengt genau daran.
+if [ "$me" = docker ] && [ "${1:-}" = compose ]; then printf '%s|%s\n' "${5:-}" "${LA_MASTER_IMAGE:--}" >> "${STUB_LOG}.env"; fi
+# Gezielter Fehlschlag: STUB_FAIL = Teilstring der argv-Zeile (z. B. "pull", "run|--rm|-d", "exec|lifeagents-master|bash").
+if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) exit 1 ;; esac; fi
 case "$me $1 ${2:-}" in
   "docker volume inspect") [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
+  "docker image inspect")  [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
+  "docker inspect -f")
+    # STUB_RUNNING = laufende Container (Leerzeichen-Liste); STUB_IMG_<name mit _> = Image eines Containers.
+    n="${*: -1}"
+    case "$3" in
+      *State.Running*) case " ${STUB_RUNNING:-} " in *" $n "*) echo true ;; *) echo false ;; esac ;;
+      *Config.Image*)  v="STUB_IMG_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}" ;;
+    esac
+    exit 0 ;;
+esac
+case "$(printf '|%s' "$@")" in
+  *"|config|--format|json|"*) printf '%s' "${STUB_CONFIG_JSON:-}"; exit 0 ;;
+  *"|cat|/var/lib/postgresql/data/PG_VERSION"*) printf '%s\n' "${STUB_PG_MAJOR:-17}"; exit 0 ;;
 esac
 exit 0
 STUB
@@ -218,5 +235,138 @@ JSON
 else
   fail P.jq "jq fehlt im Container (Pflicht fuer die Paket-Faelle)"
 fi
+
+# ---------------------------------------------------------------------------- S: master-Wechsel (Update im Verbund, Fund 6)
+# Rolle 1 (master_swap_begin), Rolle 2 (swap_helper_main) und die Entscheidung von Rolle 3 (master_swap_resolve) gegen die
+# docker-Attrappe: vor dem Helfer aendert sich nichts am Verbund; der Helfer kommt aus dem ALTEN Image; Rueckweg bei Fehler.
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/master_swap.sh"
+export LIFEAGENTS_RUNTIME=compose LA_PROJECT=lifeagents LA_EDGE_PORT=5880 LA_WIZARD_PORT=5881 LA_PG_SUPERPW=pw-erfunden \
+  LA_MASTER_IMAGE=reg.example/master@sha256:aaaa LA_PROBE_IMAGE=busybox:test LIFEAGENTS_UPDATE_LOCK="$W/upd.lock"
+unset LIFEAGENTS_UPDATE_LOCK_HELD
+SWAP_DIR="$W/swap"; SWAP_STATE="$SWAP_DIR/state"
+printf 'services: {}\n' > "$W/compose.old.src"; printf 'services: {new: 1}\n' > "$W/compose.new.src"
+LA_COMPOSE_FILE="$W/compose.old.src"
+NEW=reg.example/master@sha256:bbbb
+sget() { read_env_value "$SWAP_STATE" "$1" 2>/dev/null || true; }
+: > "$STUB_LOG"; : > "${STUB_LOG}.env"
+if ( LIFEAGENTS_UPDATE_REQUEST_ID=7 master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then pass S.begin-ok; else fail S.begin-ok "Abbruch"; fi
+eq S.zustand-handoff "handoff|v9.1.0|$LA_MASTER_IMAGE|$NEW|7" "$(sget PHASE)|$(sget TAG)|$(sget FROM)|$(sget TO)|$(sget REQUEST_ID)"
+eq S.env-datei-0600 600 "$(stat -c %a "$SWAP_DIR/stack.env" 2>/dev/null)"
+eq S.env-datei-ziel-image "LA_MASTER_IMAGE=$NEW" "$(grep '^LA_MASTER_IMAGE=' "$SWAP_DIR/stack.env")"
+if grep -qx 'LA_PG_SUPERPW=pw-erfunden' "$SWAP_DIR/stack.env"; then pass S.env-datei-vollstaendig; else fail S.env-datei-vollstaendig "Passwort fehlt"; fi
+if cmp -s "$SWAP_DIR/compose.new.yml" "$W/compose.new.src" && cmp -s "$SWAP_DIR/compose.old.yml" "$W/compose.old.src"; then pass S.beide-dateien-abgelegt; else fail S.beide-dateien-abgelegt "compose.old/new fehlen"; fi
+r="$(grep '^docker|run|' "$STUB_LOG" | head -1)"
+case "$r" in
+  "docker|run|--rm|-d|--name|lifeagents-swap|"*"|--network|none|"*"|$LA_MASTER_IMAGE|/opt/lifeagents/provisioning/compose/swap_helper.sh|$SWAP_DIR|stdin=") pass S.helfer-aus-altem-image ;;
+  *) fail S.helfer-aus-altem-image "$r" ;;
+esac
+if grep -q '|up|' "$STUB_LOG"; then fail S.vor-helfer-nichts-geaendert "compose up schon im alten master"; else pass S.vor-helfer-nichts-geaendert; fi
+if ( master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.zweiter-wechsel-gesperrt "kein Abbruch"; else pass S.zweiter-wechsel-gesperrt; fi
+# Helfer laeuft -> warten; Helfer fertig + eigenes Image = Ziel -> fortsetzen; = Ausgang -> zurueckgerollt.
+eq S.resolve-helfer-laeuft wait "$(STUB_RUNNING=lifeagents-swap master_swap_resolve)"
+eq S.resolve-handoff-frisch-wartet wait "$(master_swap_resolve)"
+_swap_set PHASE swapped
+eq S.resolve-ziel apply "$(LA_MASTER_IMAGE=$NEW master_swap_resolve)"
+eq S.resolve-ausgang rolled_back "$(master_swap_resolve)"
+_swap_set PHASE applying;    eq S.resolve-abgebrochen-nie-wiederholen interrupted "$(LA_MASTER_IMAGE=$NEW master_swap_resolve)"
+_swap_set PHASE rolled_back; eq S.resolve-zurueck rolled_back "$(LA_MASTER_IMAGE=$NEW master_swap_resolve)"
+# Rolle 2: gelingt der Selbsttest, bleibt das neue Image; scheitert er, legt der Helfer den alten master mit alter Datei an.
+_swap_set PHASE handoff; cp "$W/compose.new.src" "$SWAP_DIR/compose.new.yml"; cp "$W/compose.old.src" "$SWAP_DIR/compose.old.yml"
+: > "${STUB_LOG}.env"
+( SWAP_GRACE_SECS=0 SWAP_CHECK_SECS=1 STUB_RUNNING=lifeagents-master swap_helper_main "$SWAP_DIR" ) >/dev/null 2>&1
+eq S.helfer-erfolg swapped "$(sget PHASE)"
+eq S.helfer-neue-datei-neues-image "$SWAP_DIR/compose.new.yml|$NEW" "$(head -n1 "${STUB_LOG}.env")"
+if [ -e "$SWAP_DIR/stack.env" ]; then fail S.helfer-raeumt-env "stack.env blieb liegen"; else pass S.helfer-raeumt-env; fi
+# Selbsttest scheitert (master laeuft nicht) -> Rueckweg mit alter Datei + altem Image; scheitert auch der, bleibt das sichtbar.
+_swap_set PHASE handoff; : > "${STUB_LOG}.env"; printf 'LA_PROJECT=lifeagents\n' > "$SWAP_DIR/stack.env"
+( SWAP_GRACE_SECS=0 SWAP_CHECK_SECS=1 STUB_RUNNING='' swap_helper_main "$SWAP_DIR" ) >/dev/null 2>&1
+eq S.helfer-rueckweg-ausgefuehrt "$SWAP_DIR/compose.old.yml|$LA_MASTER_IMAGE" "$(sed -n 2p "${STUB_LOG}.env")"
+eq S.helfer-rueckweg-zustand rollback_failed "$(sget PHASE)"
+master_swap_close
+if [ -e "$SWAP_STATE" ] || [ ! -e "$SWAP_DIR/compose.prev.yml" ]; then fail S.abschluss "state blieb oder compose.prev fehlt"; else pass S.abschluss; fi
+# Image nicht ladbar / Helfer startet nicht -> Abbruch, KEIN Zustand bleibt liegen.
+rm -rf "$SWAP_DIR"
+if ( STUB_IMAGE_PRESENT=0 STUB_FAIL='|pull|' master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.pull-fehler-bricht-ab "kein Abbruch"; else pass S.pull-fehler-bricht-ab; fi
+if [ -e "$SWAP_STATE" ]; then fail S.pull-fehler-kein-zustand "state angelegt"; else pass S.pull-fehler-kein-zustand; fi
+if ( STUB_FAIL='|run|--rm|-d|' master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.helfer-startfehler "kein Abbruch"; else pass S.helfer-startfehler; fi
+if [ -e "$SWAP_STATE" ] || [ -e "$SWAP_DIR/stack.env" ]; then fail S.helfer-startfehler-raeumt "Reste"; else pass S.helfer-startfehler-raeumt; fi
+# Rueckweg: Zusatz-Angaben stehen schon VOR dem Helfer-Start in der Datei (kein zweiter Schreiber neben dem Helfer).
+( SWAP_DROP_DB_AFTER=n8n_before_rollback SWAP_NOTIFY='Fertig, mit Komma' master_swap_begin v9.0.0 "$W/compose.old.src" "$NEW" rollback ) >/dev/null 2>&1
+eq S.rueckweg-angaben-vor-helfer 'n8n_before_rollback|Fertig, mit Komma|rollback' "$(sget DROP_DB_AFTER)|$(sget NOTIFY)|$(sget MODE)"
+rm -rf "$SWAP_DIR"
+# Ziel-Image steht in der Release-compose.yml, NIE aus der Umgebung des laufenden master (sonst waere jedes Ziel = Ist).
+: > "${STUB_LOG}.env"
+eq S.ziel-aus-datei "$NEW" "$(STUB_CONFIG_JSON="{\"services\":{\"master\":{\"image\":\"$NEW\"}}}" rt_master_image_of "$W/compose.new.src")"
+eq S.ziel-ohne-umgebung "$W/compose.new.src|-" "$(head -n1 "${STUB_LOG}.env")"
+eq S.ziel-fehlt-leer '' "$(STUB_CONFIG_JSON='' rt_master_image_of "$W/compose.new.src")"
+
+# ---------------------------------------------------------------------------- U: Upgrade-Erkennung im Verbund
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/upgrade_guard.sh"
+export LA_N8N_IMAGE=n8nio/n8n:neu LA_PG_IMAGE=postgres:17@neu PG_VERSION=17
+eq U.gleich-kein-tausch '' "$(STUB_IMG_lifeagents_n8n=n8nio/n8n:neu STUB_IMG_lifeagents_postgres=postgres:17@neu _upg_changes_compose)"
+eq U.n8n-image-wechsel 'n8n-Image n8nio/n8n:alt -> n8nio/n8n:neu' "$(STUB_IMG_lifeagents_n8n=n8nio/n8n:alt STUB_IMG_lifeagents_postgres=postgres:17@neu _upg_changes_compose)"
+eq U.pg-image-wechsel 'PostgreSQL-Image postgres:17@alt -> postgres:17@neu' "$(STUB_IMG_lifeagents_n8n=n8nio/n8n:neu STUB_IMG_lifeagents_postgres=postgres:17@alt _upg_changes_compose)"
+eq U.erstinstallation-kein-tausch '' "$(_upg_changes_compose)"
+if ( STUB_RUNNING=lifeagents-postgres STUB_PG_MAJOR=16 upgrade_detect ) >/dev/null 2>&1; then fail U.pg-hauptversion-bricht-ab "kein Abbruch"; else pass U.pg-hauptversion-bricht-ab; fi
+eq U.sicherung-auf-volume /var/lib/lifeagents/backups "$UPGRADE_BACKUP_DIR"
+
+# ---------------------------------------------------------------------------- R: Sicherungs-Ordner auf dem Rechner (Fund 7)
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/backup_cli.sh"
+for d in /Users/erika/Sicherung '/Users/erika/Meine Sicherung'; do
+  if _bkp_host_dir_valid "$d"; then pass "R.ordner-gueltig:$d"; else fail "R.ordner-gueltig:$d" "abgelehnt"; fi
+done
+for d in relativ/pfad '/a,b' "$(printf '/a\nb')" ''; do
+  n="$(printf '%s' "${d:-leer}" | tr '\n' '~')"
+  if _bkp_host_dir_valid "$d"; then fail "R.ordner-ungueltig:$n" "angenommen"; else pass "R.ordner-ungueltig:$n"; fi
+done
+: > "$STUB_LOG"; printf 'chiffrat' | rt_host_put /Users/erika/Sicherung lifeagents-backup-1.nla.enc
+case "$(last)" in
+  "docker|run|--rm|-i|--label|io.lifeagents.install=lifeagents|--network|none|--mount|type=bind,src=/Users/erika/Sicherung,dst=/out|busybox:test|sh|-c|"*"|_|lifeagents-backup-1.nla.enc|stdin=") pass R.schreiben-nur-dieser-ordner ;;
+  *) fail R.schreiben-nur-dieser-ordner "$(last)" ;;
+esac
+: > "$STUB_LOG"; rt_host_get /Users/erika/Sicherung x.nla.enc >/dev/null
+case "$(last)" in *"type=bind,src=/Users/erika/Sicherung,dst=/in,readonly|"*) pass R.lesen-nur-lesend ;; *) fail R.lesen-nur-lesend "$(last)" ;; esac
+if grep -qE '\|-v\||prune' "$STUB_LOG"; then fail R.kein-breiter-schalter "$(cat "$STUB_LOG")"; else pass R.kein-breiter-schalter; fi
+
+# ---------------------------------------------------------------------------- D: Entfernen (Pruefliste Nr. 17, stack.sh)
+unset LIFEAGENTS_RUNTIME
+dst() { : > "$STUB_LOG"; ( cd "$W" && LA_PROJECT=lifeagents bash "$ROOT/provisioning/compose/stack.sh" uninstall "$@" ) >/dev/null 2>&1; }
+STUB_VOL_LABEL=lifeagents dst
+if grep -q '^docker|compose|-p|lifeagents|-f|.*|down|--remove-orphans|stdin=$' "$STUB_LOG"; then pass D.down-ohne-v; else fail D.down-ohne-v "$(grep compose "$STUB_LOG")"; fi
+eq D.ohne-daten-nur-abgeleitete 'lifeagents_gw_code lifeagents_n8n_patches lifeagents_shared' "$(grep '^docker|volume|rm|' "$STUB_LOG" | cut -d'|' -f4 | sort | tr '\n' ' ' | sed 's/ $//')"
+STUB_VOL_LABEL=lifeagents dst --delete-data
+read -ra _vols <<<"$LA_STATE_VOLUMES"
+eq D.mit-daten-alle-eigenen "$(( ${#_vols[@]} + 3 ))" "$(grep -c '^docker|volume|rm|' "$STUB_LOG")"
+if STUB_VOL_LABEL=fremd dst --delete-data; then fail D.fremdes-label-abbruch "Exit 0"; else pass D.fremdes-label-abbruch; fi
+eq D.fremdes-label-unberuehrt 0 "$(grep -c '^docker|volume|rm|' "$STUB_LOG")"
+if grep -qE 'prune|\|-v\||--volumes|--rmi|\|-a\||--all' "$STUB_LOG"; then fail D.nie-breit "$(grep -E 'prune|-v|--rmi' "$STUB_LOG" | head -1)"; else pass D.nie-breit; fi
+if STUB_RUNNING=lifeagents-swap dst; then fail D.nicht-waehrend-wechsel "Exit 0"; else pass D.nicht-waehrend-wechsel; fi
+if grep -q '|down|' "$STUB_LOG"; then fail D.waehrend-wechsel-unberuehrt "down lief"; else pass D.waehrend-wechsel-unberuehrt; fi
+
+# ---------------------------------------------------------------------------- K: Tick (Ersatz der Update-Timer im Verbund)
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/update_runner.sh"
+export LIFEAGENTS_RUNTIME=compose
+update_run_requested() { echo run >> "$W/tick.log"; }
+update_check() { echo check >> "$W/tick.log"; }
+printf '#!/usr/bin/env bash\necho "cli $*" >> "$TICK_LOG"\n' > "$W/bin/lifeagents"
+chmod +x "$W/bin/lifeagents"; export TICK_LOG="$W/tick.log"
+lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }
+lifeagents_env_file() { printf '%s' "$W/core.env"; }
+printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$W/core.env"
+UPDATE_TICK_STATE="$W/tick.state"; rm -f "$W/VERSION_TICK" "$W/tick.log" "$UPDATE_TICK_STATE"
+( update_tick ); eq K.vor-installation-still '' "$(cat "$W/tick.log" 2>/dev/null)"
+echo v9.0.0 > "$W/VERSION_TICK"
+( UPDATE_CHECK_AT=0000 BACKUP_AUTO_AT=0000 update_tick )
+eq K.erster-tick-alles 'run check cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+: > "$W/tick.log"; ( UPDATE_CHECK_AT=0000 BACKUP_AUTO_AT=0000 update_tick )
+eq K.einmal-am-tag 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+case "$(read_env_value "$UPDATE_TICK_STATE" LAST_TICK)" in ''|*[!0-9]*) fail K.lebenszeichen "LAST_TICK fehlt" ;; *) pass K.lebenszeichen ;; esac
+rm -f "$UPDATE_TICK_STATE"; : > "$W/tick.log"; ( UPDATE_CHECK_AT=2400 BACKUP_AUTO_AT=2400 update_tick )
+eq K.vor-der-uhrzeit-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+unset LIFEAGENTS_RUNTIME
 
 exit "$fails"

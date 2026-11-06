@@ -23,6 +23,8 @@
 
 UPGRADE_STATE_DIR="${UPGRADE_STATE_DIR:-/var/lib/lifeagents}"
 UPGRADE_MARKER="${UPGRADE_STATE_DIR}/upgrade.pending"
+# Verbund: auf dem Volume var_la — das Container-Dateisystem des master verschwindet mit jedem Image-Wechsel (Rueckweg!).
+if rt_is_compose; then UPGRADE_BACKUP_DIR="${UPGRADE_BACKUP_DIR:-/var/lib/lifeagents/backups}"; fi
 UPGRADE_BACKUP_DIR="${UPGRADE_BACKUP_DIR:-/var/backups/lifeagents}"
 UPGRADE_KEEP=2
 UPGRADE_DRAIN_SECS="${UPGRADE_DRAIN_SECS:-120}"
@@ -51,7 +53,10 @@ _UPG_N8N_VER=''
 _UPG_N8N_VER_SET=0
 _upg_n8n_version() {
   if [ "$_UPG_N8N_VER_SET" -eq 0 ]; then
-    if need_cmd n8n; then _UPG_N8N_VER="$(n8n --version 2>/dev/null || true)"; fi
+    if rt_is_compose; then
+      # Verbund: die Version des LAUFENDEN n8n-Containers (vor dem Tausch = die alte), nicht die des Pins.
+      if svc_is_active n8n; then _UPG_N8N_VER="$(n8n_exec n8n --version 2>/dev/null || true)"; fi
+    elif need_cmd n8n; then _UPG_N8N_VER="$(n8n --version 2>/dev/null || true)"; fi
     _UPG_N8N_VER_SET=1
   fi
   printf '%s' "$_UPG_N8N_VER"
@@ -59,6 +64,25 @@ _upg_n8n_version() {
 
 # _upg_changes -> eine Zeile je anstehendem Tausch (leer = nichts zu tun).
 _upg_changes() {
+  if rt_is_compose; then _upg_changes_compose; else _upg_changes_systemd; fi
+  _upg_release_change
+  return 0
+}
+
+# _upg_changes_compose — Verbund: Image des laufenden Containers != Pin der compose.yml im master (n8n, Postgres). Die
+#   Node-Version steckt im n8n-Image (ein Tausch kommt als n8n-Image-Wechsel). Ein noch nie angelegter Container ist
+#   kein Tausch (Erstinstallation).
+_upg_changes_compose() {
+  local cur
+  cur="$(rt_container_image "$LA_N8N_CONTAINER" || true)"
+  if [ -n "$cur" ] && [ -n "${LA_N8N_IMAGE:-}" ] && [ "$cur" != "$LA_N8N_IMAGE" ]; then printf 'n8n-Image %s -> %s\n' "$cur" "$LA_N8N_IMAGE"; fi
+  cur="$(rt_container_image "$LA_PG_CONTAINER" || true)"
+  if [ -n "$cur" ] && [ -n "${LA_PG_IMAGE:-}" ] && [ "$cur" != "$LA_PG_IMAGE" ]; then printf 'PostgreSQL-Image %s -> %s\n' "$cur" "$LA_PG_IMAGE"; fi
+  return 0
+}
+
+# _upg_changes_systemd — LXC: installierte Pakete gegen die Pins (npm-n8n, Node, apt-Kandidat von PostgreSQL).
+_upg_changes_systemd() {
   local cur inst cand
   if need_cmd n8n; then
     cur="$(_upg_n8n_version)"
@@ -73,9 +97,15 @@ _upg_changes() {
      && dpkg --compare-versions "$cand" gt "$inst"; then
     printf 'PostgreSQL %s -> %s\n' "$inst" "$cand"
   fi
-  # Release-Wechsel (Update im Chat; GitLab Omnibus sichert vor JEDEM Paket-Upgrade): ein neues Release bringt Schema-
-  # Migrationen mit, die sich nicht automatisch umkehren -> auch ohne n8n-/Node-/PG-Wechsel erst sichern. So hat jeder
-  # Rueckweg (lifeagents rollback) eine Sicherung von direkt davor. Erneut anwenden (gleiches Tag) sichert nicht.
+  return 0
+}
+
+# _upg_release_change — beide Betriebsarten. Release-Wechsel (Update im Chat; GitLab Omnibus sichert vor JEDEM Paket-
+#   Upgrade): ein neues Release bringt Schema-Migrationen mit, die sich nicht automatisch umkehren -> auch ohne n8n-/Node-/
+#   PG-Wechsel erst sichern. So hat jeder Rueckweg (lifeagents rollback) eine Sicherung von direkt davor. Erneut anwenden
+#   (gleiches Tag) sichert nicht.
+_upg_release_change() {
+  local cur
   cur="$(_upg_installed_release)"
   if [ -n "$cur" ] && [ -n "${RELEASE_TAG:-}" ] && [ "$RELEASE_TAG" != dev ] && [ "$cur" != "$RELEASE_TAG" ]; then
     printf 'Release %s -> %s\n' "$cur" "$RELEASE_TAG"
@@ -164,6 +194,14 @@ _upg_snapshot() {
      && [ -s "$part" ]; then
     mv -f "$part" "$out"; chmod 0600 "$out"
     ok "Sicherung geschrieben: ${out} ($(du -h "$out" | cut -f1))"
+    # Verbund (Fund 7): zusaetzlich eine Kopie in den Ordner auf dem Rechner — die Docker-Platte kann samt Volume verschwinden.
+    local hd
+    hd="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
+    if rt_is_compose && [ -n "$hd" ]; then
+      # shellcheck disable=SC2094  # liest die fertige Sicherung, der Name ist nur das Ziel im Rechner-Ordner
+      rt_host_put "$hd" "$(basename "$out")" < "$out" \
+        || warn "Kopie der Update-Sicherung in den Rechner-Ordner '${hd}' fehlgeschlagen — sie liegt nur in ${out}."
+    fi
     return 0
   fi
   rm -f "$part"
@@ -181,10 +219,20 @@ _upg_stop_n8n() {
 # upgrade_detect — 0, wenn dieser Lauf geschuetzt tauschen muss (fuellt UPGRADE_CHANGES). Nach install_base_packages
 # rufen (apt-Kandidaten aktuell), VOR install_postgres.
 upgrade_detect() {
+  # Verbund: das Datenverzeichnis gehoert einer PostgreSQL-Hauptversion; ein Pin auf eine andere (compose.yml, contract_lint 33
+  # haelt ihn = PG_VERSION) liesse den neuen Container auf den alten Daten nicht starten -> Abbruch, bevor etwas getauscht wird.
+  if rt_is_compose && svc_is_active postgresql; then
+    local major
+    major="$(pg_su_exec cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null | tr -d '[:space:]' || true)"
+    if [ -n "$major" ] && [ "$major" != "$PG_VERSION" ]; then
+      die_because pg_major "Die Datenbank ist PostgreSQL ${major}, dieser Stand erwartet ${PG_VERSION} — ein Wechsel der Hauptversion braucht eine Umwandlung der Daten; Update abgebrochen, es wurde nichts geändert."
+    fi
+  fi
   [ -f "$UPGRADE_MARKER" ] && return 0
   UPGRADE_CHANGES="$(_upg_changes)"
   [ -n "$UPGRADE_CHANGES" ] || return 1
-  dpkg -s "postgresql-${PG_VERSION}" >/dev/null 2>&1 || return 1
+  if rt_is_compose; then svc_is_active postgresql || return 1   # Verbund: kein dpkg, der Datenbank-Container zaehlt
+  else dpkg -s "postgresql-${PG_VERSION}" >/dev/null 2>&1 || return 1; fi
   _upg_db_exists || return 1
   return 0
 }
@@ -240,6 +288,9 @@ upgrade_prepare() {
   printf 'FROM_N8N=%s\nFROM_NODE=%s\nFROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=%s\nSTARTED=%s\n' \
     "$from" "$(node_major)" "$(cat "$(lifeagents_version_marker)" 2>/dev/null || true)" "$backup" \
     "$_UPG_KEY_TABLE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | write_file "$UPGRADE_MARKER" 0600
+  # Verbund: der Rueckweg wechselt den master auf das VORHERIGE Image zurueck (lib/master_swap.sh). Laeuft dieser Lauf nach
+  # einem master-Wechsel, stehen Image + compose.yml von vorher noch im Wechsel-Ordner; sonst ist es das laufende.
+  if rt_is_compose; then _upg_record_master_from; fi
 
   _upg_drain
   _upg_stop_n8n
@@ -275,6 +326,20 @@ upgrade_node_switched() {
   [ -n "$from" ] && [ "$from" != "$NODE_MAJOR" ]
 }
 
+# _upg_record_master_from — Verbund: Image + compose.yml VOR diesem Update in den Merkzettel (FROM_MASTER_IMAGE, FROM_COMPOSE).
+#   Nach einem master-Wechsel (lib/master_swap.sh) stehen sie noch im Wechsel-Ordner, sonst gilt das laufende. Die Datei liegt
+#   neben der Sicherung (<sicherung>.compose.yml), damit der Rueckweg auch nach upgrade_finish weiss, wohin zurueck.
+_upg_record_master_from() {
+  local img="${LA_MASTER_IMAGE:-}" src="$LA_COMPOSE_FILE" dst backup
+  if master_swap_pending; then img="$(_swap_get FROM)"; src="$SWAP_DIR/compose.old.yml"; fi
+  backup="$(read_env_value "$UPGRADE_MARKER" BACKUP || true)"
+  dst="${backup:-$UPGRADE_MARKER}.compose.yml"
+  mkdir -p "$(dirname "$dst")"
+  install -m 0600 "$src" "$dst"
+  env_upsert "$UPGRADE_MARKER" FROM_MASTER_IMAGE "$img"
+  env_upsert "$UPGRADE_MARKER" FROM_COMPOSE "$dst"
+}
+
 # upgrade_finish — sobald der Tausch steht (n8n bereit, Gateway neu gestartet; vor dem Workflow-Deploy): Merkzettel weg,
 # alte Sicherungen bis auf die letzten UPGRADE_KEEP raeumen (erst JETZT, damit ein gescheiterter Tausch nie die juengste loescht).
 upgrade_finish() {
@@ -286,7 +351,7 @@ upgrade_finish() {
     local old
     find "$UPGRADE_BACKUP_DIR" -maxdepth 1 -name 'pre-upgrade-*.dump.gpg' -printf '%T@\t%p\n' 2>/dev/null \
       | sort -rn | tail -n +$((UPGRADE_KEEP + 1)) | cut -f2- \
-      | while IFS= read -r old; do rm -f -- "$old" "${old}.meta"; done
+      | while IFS= read -r old; do rm -f -- "$old" "${old}.meta" "${old}.compose.yml"; done
   fi
   ok "Update abgeschlossen${backup:+ — Sicherung von vorher: ${backup}}."
 }
@@ -364,8 +429,14 @@ _rb_resume() { svc_start n8n lifeagents-update-run.timer lifeagents-update-check
 #   Braucht: common.sh, fetch_release.sh (_gh_release_json/_gh_fetch), deploy_workflows.sh (Owner-chat_id fuer die Meldung).
 upgrade_rollback() {
   require_root
+  # --yes nur im Docker-Verbund: dort fragt die Start-App selbst nach (Rueckweg-Knopf, Fund 6) und hat kein Terminal.
+  local assume_yes=0
+  if [ "${1:-}" = --yes ]; then
+    rt_is_compose || die "--yes gibt es nur im Docker-Verbund — hier bitte im Terminal bestätigen."
+    assume_yes=1
+  fi
   lifeagents_db_name >/dev/null
-  local src backup from_rel ktab key choice when work url kr profile rc=0 keep="${N8N_DB_NAME}_before_rollback"
+  local src backup from_rel ktab key choice when work url kr profile rc=0 keep="${N8N_DB_NAME}_before_rollback" from_img="" from_compose=""
   if [ -f "$UPGRADE_MARKER" ]; then
     src="$UPGRADE_MARKER"; backup="$(read_env_value "$src" BACKUP || true)"
   else
@@ -387,7 +458,8 @@ upgrade_rollback() {
   when="$(date -r "$backup" '+%d.%m.%Y %H:%M' 2>/dev/null || printf '?')"
   printf '\n  Rückweg auf %s\n  Die Daten werden auf den Stand der Sicherung vom %s zurückgesetzt:\n    %s\n  Alles, was seitdem gespeichert wurde, geht dabei verloren.\n\n' \
     "$from_rel" "$when" "$backup" >&2
-  choice="$(printf '%s\t%s\n%s\t%s\n' "Ja, zurück auf ${from_rel}" yes 'Abbrechen' no | ui_choose 'Wirklich zurücksetzen?')"
+  if [ "$assume_yes" -eq 1 ]; then choice=yes
+  else choice="$(printf '%s\t%s\n%s\t%s\n' "Ja, zurück auf ${from_rel}" yes 'Abbrechen' no | ui_choose 'Wirklich zurücksetzen?')"; fi
   [ "$choice" = yes ] || die "Abgebrochen — es wurde nichts geändert (der Rückweg braucht ein Terminal für die Bestätigung)."
 
   update_lock_acquire 30 || die_because locked "Gerade läuft ein Update oder eine Einrichtung — danach erneut starten."
@@ -402,6 +474,15 @@ upgrade_rollback() {
   # Vorgaenger-Release scheitert damit HIER (sein install.sh verlangte mit dem installierten Bund dieselbe Unterschrift
   # erst NACH dem Zuruecksetzen der Daten). Ohne Bund: Abbruch (Security-Audit 2026-10 — nie ein ungepruefter
   # install.sh als root; Paritaet fetch_and_run_release).
+  # Docker-Verbund: kein install.sh — der vorherige Stand IST das vorherige master-Image (lief hier schon, per Digest
+  # festgelegt) samt seiner compose.yml aus dem Merkzettel; beides muss vor jeder Aenderung bereitliegen.
+  if rt_is_compose; then
+    from_img="$(read_env_value "$src" FROM_MASTER_IMAGE || true)"; from_compose="$(read_env_value "$src" FROM_COMPOSE || true)"
+    [ -n "$from_img" ] && [ -r "$from_compose" ] \
+      || die "Der Merkzettel nennt kein vorheriges Programm-Paket (FROM_MASTER_IMAGE/FROM_COMPOSE) — kein automatischer Rückweg, es wurde nichts geändert."
+    rt_image_ensure "$from_compose" "$from_img" \
+      || die "Das vorherige Programm-Paket ${from_img} ist nicht ladbar — Rückweg abgebrochen, es wurde nichts geändert."
+  else
   work="$(mktemp -d)"
   _gh_release_json "${PROVISION_GH_API}/repos/${PROVISION_REPO_SLUG}/releases/tags/${from_rel}" "$work/rel.json"
   url="$(_asset_url "$work/rel.json" install.sh)"
@@ -409,6 +490,7 @@ upgrade_rollback() {
   kr="$(_release_keyring)"
   [ -n "$kr" ] || die "Der Release-Signierschlüssel fehlt (/etc/lifeagents/release-signing.gpg) — der Rückweg lädt nichts Ungeprüftes, es wurde nichts geändert. Abhilfe: install.sh der gewünschten Version erneut ausführen."
   _release_fetch_verify "$work/rel.json" "$work" install.sh "$from_rel" "$kr"
+  fi
 
   log "Dienste anhalten und die Datenbank aus der Sicherung herstellen ..."
   svc_stop lifeagents-update-run.timer lifeagents-update-check.timer n8n 2>/dev/null || true
@@ -425,6 +507,10 @@ upgrade_rollback() {
   rm -f "$UPGRADE_MARKER"
   ok "Daten vom ${when} wiederhergestellt."
 
+  if rt_is_compose; then
+    _rb_compose_switch "$from_rel" "$from_img" "$from_compose" "$keep" "$when"
+    return 0
+  fi
   profile="$(read_env_value "$(lifeagents_env_file core)" INSTALL_PROFILE 2>/dev/null || true)"
   log "Vorherigen Stand ${from_rel} einspielen ..."
   LIFEAGENTS_ALLOW_DOWNGRADE=1 bash "$work/install.sh" --version "$from_rel" --profile "${profile:-release}" || rc=$?
@@ -437,4 +523,29 @@ upgrade_rollback() {
   pg_su_exec dropdb --if-exists --force "$keep" >/dev/null 2>&1 || true
   notify_owner_telegram "Rückweg fertig: dein System läuft wieder auf ${from_rel}, mit den Daten vom ${when}." || true
   ok "Rückweg fertig: ${from_rel} mit den Daten vom ${when}."
+}
+
+# _rb_compose_switch <from_rel> <image> <compose-datei> <beiseite-db> <wann> — Verbund-Schluss von upgrade_rollback: die Daten
+#   sind schon zurueck, jetzt den master auf das vorherige Image wechseln (lib/master_swap.sh, Modus rollback, Downgrade
+#   erlaubt); der vorherige master spielt danach seinen Stand ein, schliesst ab und loescht die beiseitegelegte DB.
+#   Laeuft schon das vorherige Image (kein Image-Wechsel seitdem), spielt dieser master den Stand direkt ein.
+_rb_compose_switch() {
+  local rel="$1" img="$2" cf="$3" keep="$4" when="$5" rc=0
+  if [ "$img" != "${LA_MASTER_IMAGE:-}" ]; then
+    LIFEAGENTS_ALLOW_DOWNGRADE=1 LIFEAGENTS_UPDATE_REQUEST_ID='' SWAP_DROP_DB_AFTER="$keep" \
+      SWAP_NOTIFY="Rückweg fertig: dein System läuft wieder auf ${rel}, mit den Daten vom ${when}." \
+      master_swap_begin "$rel" "$cf" "$img" rollback
+    ok "Daten zurück; der vorherige Stand ${rel} wird gerade eingespielt (docker logs $(rt_master_container))."
+    return 0
+  fi
+  log "Vorherigen Stand ${rel} einspielen ..."
+  RELEASE_TAG="$rel" LIFEAGENTS_ALLOW_DOWNGRADE=1 bash "${MASTER_IMAGE_TREE}/provisioning/provision.sh" </dev/null || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    _rb_resume
+    warn "Die Daten sind zurückgesetzt, das Einspielen von ${rel} ist aber gescheitert (Exit ${rc}). Die vorige Datenbank liegt noch als ${keep}."
+    return 1
+  fi
+  pg_su_exec dropdb --if-exists --force "$keep" >/dev/null 2>&1 || true
+  notify_owner_telegram "Rückweg fertig: dein System läuft wieder auf ${rel}, mit den Daten vom ${when}." || true
+  ok "Rückweg fertig: ${rel} mit den Daten vom ${when}."
 }

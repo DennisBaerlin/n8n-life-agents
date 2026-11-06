@@ -133,6 +133,51 @@
 .fb .v-v4, .fb[data-v="v4"] .v-ds { display: none; }
 .fb[data-v="v4"] .v-v4 { display: inline; }
 
+/* ---------- Tailscale-Nachzeichnung (data-art="ts-login" / "ts-funnel"): Browserfenster, Seiten hell, Knöpfe fast schwarz ---------- */
+.ts text { fill: var(--ink); font-size: 13px; }
+.ts .c, .ts .t-b-dark, .ts .t-or, .ts .t-av, .ts .t-warn-i { text-anchor: middle; }
+.ts .pg, .ts .card, .ts .in, .ts .b-out, .ts .opt, .ts .hdr2 { fill: var(--bg); }
+.ts .card, .ts .in, .ts .b-out, .ts .opt, .ts .row { stroke: var(--hairline); stroke-width: 1.3; }
+.ts .row { fill: var(--bg); }
+.ts .chrome { fill: var(--bg-soft); }
+.ts .tl { fill: var(--hairline); }
+.ts .addr { fill: var(--bg); stroke: var(--hairline); }
+.ts .lock { fill: none; stroke: var(--gray); stroke-width: 1.3; }
+.ts .t-addr { fill: var(--gray); font-size: 12.5px; display: none; }
+.ts:not([data-scene]) .t-addr, .ts[data-scene="login"] .a-login, .ts[data-scene="idp"] .a-idp, .ts[data-scene="connect"] .a-connect, .ts[data-scene="mach"] .a-mach { display: inline; }
+.ts .t-word { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+.ts .t-ph { fill: var(--gray); }
+.ts .b-dark { fill: var(--ink); }
+.ts .t-b-dark { fill: var(--bg); font-weight: 600; }
+.ts .t-or, .ts .t-sm, .ts .t-th { fill: var(--gray); font-size: 12px; }
+.ts .t-th { font-size: 11.5px; font-weight: 600; letter-spacing: .4px; }
+.ts .t-b { font-size: 13px; }
+.ts .ico { fill: var(--gray); opacity: .4; }
+.ts .ph { fill: var(--hairline); }
+.ts .av { fill: var(--accent-pale); }
+.ts .t-av { fill: var(--accent); font-weight: 700; }
+.ts .t-s { font-size: 12.5px; }
+.ts .t-m { font-size: 14px; }
+.ts .t-h { font-size: 20px; font-weight: 700; }
+.ts .t-strong { font-weight: 700; }
+.ts .t-nav { font-size: 13px; }
+.ts .tab-line { fill: var(--ink); }
+.ts .ln { stroke: var(--hairline); stroke-width: 1.3; fill: none; }
+.ts .dev { fill: none; stroke: var(--gray); stroke-width: 1.6; }
+.ts .chip { fill: var(--bg-soft); stroke: var(--hairline); }
+.ts .okdot { fill: var(--ok); }
+.ts .cb { fill: var(--ink); }
+.ts .tick, .ts .tick-ok { fill: none; stroke: var(--bg); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ts .warnbox { fill: var(--warn-wash); stroke: var(--warn); stroke-width: 1.2; }
+.ts .warn-ico { fill: var(--warn); }
+.ts .t-warn-i { fill: var(--bg); font-size: 11px; font-weight: 700; }
+.ts .b-ok { fill: var(--ok); }
+.ts .t-ok { fill: var(--bg); font-weight: 700; }
+.ts .s { opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
+.ts[data-scene="login"] .s-login, .ts[data-scene="idp"] .s-idp, .ts[data-scene="connect"] .s-connect, .ts[data-scene="mach"] .s-mach { opacity: 1; visibility: visible; }
+.ts .post, .ts[data-done="1"] .pre { display: none; }
+.ts[data-done="1"] .post { display: inline; }
+
 /* Lupe braucht Breite (Start-App 760 px) und etwas Höhe; sonst entfällt die Animation */
 /* Zu wenig Platz: Zeichnung und Schritt-Knöpfe weg; sichtbar bleiben die Schritte als Liste, der Hinweis und der Link */
 @container art (max-width: 460px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; }

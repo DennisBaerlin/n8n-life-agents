@@ -199,6 +199,11 @@ test('Texte der Einrichtung: jeder feste Katalog-Key im Code steht in allen Spra
   for (const m of src.matchAll(/(\w+): '([a-z_]+)'/g)) if (/_(title|help|link|wait|note)$/.test(m[2])) keys.add(`core.wizard.reach.${m[2]}`);
   for (const k of ['owner_language', 'owner_first_name', 'owner_last_name', 'owner_birth_date', 'owner_persona', 'telegram_bot_token', 'anthropic_api_key',
     'google_api_key', 'domain']) keys.add(`core.wizard.q.${k}.title`);
+  // Bilder (ui/art/art.js): Schritt-Beschriftungen (key: '…') und Bild-Namen (<bild>_label) stehen in core.wizard.art.*.
+  const art = fs.readFileSync(path.join(WIZ, 'ui', 'art', 'art.js'), 'utf8');
+  for (const m of art.matchAll(/key: '([a-z0-9_]+)'/g)) keys.add(`core.wizard.art.${m[1]}`);
+  for (const m of art.matchAll(/name: '([a-z]+-[a-z]+)'/g)) keys.add(`core.wizard.art.${m[1].replace('-', '_')}_label`);
+  assert.ok(keys.has('core.wizard.art.ts_funnel_4') && keys.has('core.wizard.art.ts_login_label'), 'Bild-Keys gefunden');
   assert.ok(keys.size > 100, 'Keys gefunden');
   for (const k of keys) for (const l of ['de', 'en', 'ko']) assert.ok(typeof cat[l][k] === 'string' && cat[l][k], `${k} fehlt in ${l}.json`);
 });

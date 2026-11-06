@@ -39,5 +39,10 @@ config/.sqlfluff text eol=lf
 # normalisieren, sonst passt der Bund nicht mehr zu RELEASE_KEY_B64 in install.sh (contract_lint 24).
 *.gpg binary
 *.sig binary
+# Start-App (Tauri): gehoert nicht in das Server-Release (git archive), das der Installer auf dem Rechner/LXC auspackt;
+# DMG und Setup baut desktop.yml/release.yml aus dem Baum. Symbole sind binaer (provisioning/** oben waere sonst Text).
+provisioning/desktop/** export-ignore
+*.icns binary
+*.ico binary
 # Pruefwert des Bot-Profilbilds (scripts/dev/render_bot_profile.ps1) -- LF wie der Rest des Baums.
 packages/core/build/bot_profile/source.sha256 text eol=lf

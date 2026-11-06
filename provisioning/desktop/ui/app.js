@@ -9,7 +9,7 @@ const listen = (ev, fn) => T.event.listen(ev, (e) => fn(e.payload));
 
 const $ = (id) => document.getElementById(id);
 const main = $('screen');
-const state = { os: 'mac', startup: null, sys: null, docker: null, power: null, powerYes: true, poll: null };
+const state = { os: 'mac', startup: null, sys: null, docker: null, power: null, powerYes: true, poll: null, step: null };
 
 /** Kleines Element-Werkzeug: h('p', {class: 'lead'}, 'Text', kind, …) */
 function h(tag, attrs, ...kids) {
@@ -61,12 +61,96 @@ const ERRORS = {
 
 // ------------------------------------------------------------------------------------------ Darstellung
 
+/* ui-copy:begin ui.steps.js (kopiert von scripts/build_ui_tokens.ps1 aus config/ui.steps.js, nicht von Hand aendern) */
+// Schritt-Leiste der Einrichtung, gemeinsam für Start-App und Fragebogen im selben Fenster: Jede Seite zeichnet sie selbst,
+// mit derselben Reihenfolge und demselben Aussehen (config/ui.steps.css). Kopie per scripts/build_ui_tokens.ps1 als Block in
+// die Datei jeder Oberfläche (so liegt sie auch im Release-Paket des Fragebogens), kein Nachladen zur Laufzeit.
+// Die App zeichnet prepare, docker, power und done; der Fragebogen questions (mit Unterschritten), install und connect.
+// Texte stehen hier keine: Der Aufrufer gibt sie mit (Fragebogen aus dem Textkatalog, Schlüssel core.wizard.step.<id>).
+// Nur textContent, kein HTML, keine Abhängigkeit.
+const UiSteps = {
+  steps: [
+    { id: 'prepare' },
+    { id: 'docker' },
+    { id: 'questions', sub: [{ id: 'about' }, { id: 'access' }, { id: 'modules' }, { id: 'reach' }, { id: 'check' }] },
+    { id: 'install' },
+    { id: 'connect' },
+    { id: 'power' },
+    { id: 'done' },
+  ],
+
+  /**
+   * Leiste in `el` zeichnen. current = id aus steps, sub = id eines Unterschritts (nur bei questions) oder leer.
+   * text = { step: (id) => Beschriftung, short: (n, total, name) => „Schritt 3 von 7 · Fragen“, aria: Name der Leiste }.
+   * Davor = erledigt, danach = offen; Unterschritte stehen nur beim aktuellen Schritt (sonst wird es zu lang).
+   * Unter 600 px Breite zeigt das CSS statt der Liste die kurze Zeile.
+   */
+  render(el, current, sub, text) {
+    const mk = (tag, cls, txt) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (txt != null) e.textContent = txt;
+      return e;
+    };
+    const at = this.steps.findIndex((s) => s.id === current);
+    const last = this.steps.length - 1;
+    const list = mk('ol', 'la-rail-list');
+    this.steps.forEach((s, i) => {
+      // Der letzte Schritt („Fertig“) ist erreicht = erledigt, daher dort das Häkchen statt des offenen Kreises.
+      const state = i < at || (i === at && i === last) ? 'done' : i === at ? 'now' : 'todo';
+      const li = mk('li', 'la-rail-step ' + state);
+      if (i === at) li.setAttribute('aria-current', 'step');
+      li.append(mk('i', null, state === 'done' ? '✓' : ''), mk('span', null, text.step(s.id)));
+      if (state === 'now' && s.sub) {
+        const subAt = s.sub.findIndex((x) => x.id === sub);
+        const ul = mk('ul', 'la-rail-sub');
+        s.sub.forEach((x, k) => {
+          const sli = mk('li', k < subAt ? 'done' : k === subAt ? 'now' : 'todo', text.step(x.id));
+          if (k === subAt) sli.setAttribute('aria-current', 'step');
+          ul.append(sli);
+        });
+        li.append(ul);
+      }
+      list.append(li);
+    });
+    const short = mk('p', 'la-rail-short', at < 0 ? '' : text.short(at + 1, this.steps.length, text.step(this.steps[at].id)));
+    el.setAttribute('aria-label', text.aria);
+    el.replaceChildren(list, short);
+  },
+};
+/* ui-copy:end */
+
+// Schritt der Leiste je Bildschirm; Warte-Seiten nennen ihn selbst (`busy`), Fehler-Seiten behalten den vorigen. `null` = ohne
+// Leiste (Seiten außerhalb der Einrichtung). Fragen, Installation und Verbinden zeichnet der Fragebogen selbst.
+const STEP_OF = {
+  move: 'prepare', welcome: 'prepare', need: 'prepare', sys: 'prepare', 'sys-stop': 'prepare',
+  'dk-missing': 'docker', 'dk-fetch': 'docker', 'dk-stopped': 'docker', 'dk-ready': 'docker', 'dk-old': 'docker',
+  'dk-memory': 'docker', 'dk-other': 'docker', 'dk-help': 'docker', 'wizard-missing': 'questions',
+  power: 'power', 'power-result': 'power', done: 'done',
+  resume: null, home: null, report: null, 'rolled-back': null, 'power-restore': null, 'power-restored': null, uninstall: null, uninstalled: null,
+};
+function drawRail(id, step) {
+  if (step !== undefined) state.step = step;
+  else if (id in STEP_OF) state.step = STEP_OF[id];
+  const rail = $('rail');
+  rail.hidden = !state.step;
+  if (state.step) UiSteps.render(rail, state.step, null, RAIL_TEXT);
+}
+// Beschriftungen der Leiste. Die App spricht Deutsch; der Fragebogen nimmt dieselben Wörter aus dem Textkatalog
+// (core.wizard.step.<id>). Offen: Sobald sie dort stehen, kopiert scripts/build_ui_tokens.ps1 sie hierher (ein Ort je Wort).
+const RAIL_TEXT = {
+  step: (id) => ({ prepare: 'Vorbereiten', docker: 'Docker', questions: 'Fragen', install: 'Installation', connect: 'Verbinden', power: 'Dauerbetrieb', done: 'Fertig' })[id],
+  short: (n, total, name) => 'Schritt ' + n + ' von ' + total + ' · ' + name,
+  aria: 'Schritte der Einrichtung',
+};
+
 /**
- * Einen Bildschirm zeigen. s = {title, body: [Elemente], next: {label, run}, alt: {label, run}, back: bool}
+ * Einen Bildschirm zeigen. s = {title, body: [Elemente], next: {label, run}, alt: {label, run}, back: bool, step: Leiste}
  */
 function show(id, s) {
   clearInterval(state.poll);
   state.current = id;
+  drawRail(id, s.step);
   main.replaceChildren(h("h1", {}, s.title), ...(s.body || []).filter((x) => x != null && x !== false));
   main.scrollTop = 0;
   const next = $('next');
@@ -108,8 +192,9 @@ function bar(done, total) {
 const note = (cls, ...kids) => h('div', { class: 'note ' + (cls || '') }, ...kids);
 const link = (label, target) => h('a', { href: '#', onclick: (e) => { e.preventDefault(); invoke('open_link', { target }); } }, label);
 
-function busy(title, text) {
-  show("busy", { title, body: [steps([["run", text]])] });
+/** Warte-Seite; step = Schritt der Leiste (null = ohne Leiste). */
+function busy(step, title, text) {
+  show("busy", { step, title, body: [steps([["run", text]])] });
 }
 
 function failed(code, retry) {
@@ -143,22 +228,8 @@ const SCREENS = {
         h('p', { class: 'lead' }, 'Du beantwortest eine Frage nach der anderen. Am Ende schreibst du in Telegram mit deinem Assistenten (dort heißt er Bot), und deine Daten bleiben auf diesem Rechner.'),
         h('p', {}, 'Plane rund 30 Minuten ein. Du kannst jederzeit aufhören und später genau hier weitermachen.'),
       ],
-      next: { label: 'Was brauche ich?', run: () => SCREENS.need() },
-      // Owner-Entscheid: Die geladene Datei auf Wunsch in den Papierkorb, nie ungefragt (nur bei genau einem Treffer).
-      alt: state.startup && state.startup.download ? { label: 'Download wegräumen', run: () => SCREENS.trashDownload() } : null,
+      next: { label: 'Loslegen', run: () => SCREENS.need() },
     });
-  },
-
-  async trashDownload() {
-    try {
-      await invoke('trash_download');
-      state.startup.download = null;
-      SCREENS.welcome();
-      main.append(note('', 'Die geladene Datei liegt jetzt im Papierkorb.'));
-    } catch (e) {
-      state.startup.download = null;
-      SCREENS.welcome();
-    }
   },
 
   need() {
@@ -172,7 +243,7 @@ const SCREENS = {
           h('li', {}, h('b', {}, 'Diesen Rechner, und er bleibt an.'), ' Der Bot läuft hier. Am Ende fragen wir dich, ob der Rechner dafür durchlaufen soll.')),
         note('', 'Ein Mac mini oder ein anderer Rechner, der immer am Strom hängt, passt am besten.'),
       ],
-      next: { label: 'Los geht es', run: () => SCREENS.sys() },
+      next: { label: 'Rechner prüfen', run: () => SCREENS.sys() },
       back: true,
     });
   },
@@ -190,7 +261,7 @@ const SCREENS = {
   },
 
   async rollback() {
-    busy('Alles wird zurückgenommen', 'Schritte der Einrichtung zurücknehmen');
+    busy('prepare', 'Alles wird zurückgenommen', 'Schritte der Einrichtung zurücknehmen');
     try {
       await invoke('rollback');
       show('rolled-back', {
@@ -204,7 +275,7 @@ const SCREENS = {
   },
 
   async sys() {
-    busy('Dein ' + machine() + ' wird geprüft', 'Bauart, System, Speicher und freier Platz');
+    busy('prepare', 'Dein ' + machine() + ' wird geprüft', 'Bauart, System, Speicher und freier Platz');
     const r = await invoke('check_system');
     state.sys = r;
     const items = r.checks.map(checkLine).filter(Boolean);
@@ -223,13 +294,13 @@ const SCREENS = {
     show('sys', {
       title: hints.length ? 'Fast alles passt' : 'Dein ' + machine() + ' passt',
       body: [steps(items), hints.length ? note('', 'Das ist kein Hindernis. Wenn du magst, mach später weiter: Bis hierher hat die App nichts verändert.') : null],
-      next: { label: hints.length ? 'Trotzdem weiter' : 'Weiter zu Docker', run: () => SCREENS.docker() },
+      next: { label: hints.length ? 'Trotzdem weiter' : 'Weiter', run: () => SCREENS.docker() },
       back: true,
     });
   },
 
   async docker() {
-    busy('Docker wird geprüft', 'Ist Docker auf diesem ' + machine() + ' schon da, und läuft es?');
+    busy('docker', 'Docker wird geprüft', 'Ist Docker auf diesem ' + machine() + ' schon da, und läuft es?');
     const o = await invoke('check_docker');
     state.docker = o;
     const v = o.finding.verdict;
@@ -322,7 +393,7 @@ const SCREENS = {
   },
 
   async dkWait(fresh) {
-    busy(fresh ? 'Docker wird gestartet' : 'Docker startet', 'Warten, bis Docker antwortet. Das dauert beim ersten Mal ein bis zwei Minuten.');
+    busy('docker', fresh ? 'Docker wird gestartet' : 'Docker startet', 'Warten, bis Docker antwortet. Das dauert beim ersten Mal ein bis zwei Minuten.');
     try {
       await invoke('wait_docker');
       const o = await invoke('check_docker');
@@ -341,7 +412,7 @@ const SCREENS = {
     const programs = n === 0
       ? 'In Docker läuft gerade nichts anderes.'
       : n === 1
-        ? 'Dort läuft schon ' + o.programs[0] + '. Es bleibt, wie es ist.'
+        ? 'In Docker läuft schon ' + o.programs[0] + '. Es bleibt, wie es ist.'
         : 'Dort laufen schon ' + n + ' Programme, zum Beispiel ' + o.programs[0] + '. Sie bleiben, wie sie sind.';
     show('dk-ready', {
       title: 'Docker ist schon da, wir nutzen es mit',
@@ -349,7 +420,7 @@ const SCREENS = {
         h('p', { class: 'lead' }, 'Du musst nichts installieren. Die App legt sich daneben und fasst nichts an, was schon läuft.'),
         steps([
           ['ok', (v.engine === 'docker-desktop' ? 'Docker' : ENGINE[v.engine]) + ' läuft und ist aktuell genug'],
-          ['ok', 'Genug freier Speicher auch für den Assistenten'],
+          ['ok', 'Genug freier Arbeitsspeicher auch für den Assistenten'],
           ['ok', programs],
         ]),
         v.tested ? null : note('warn', 'Die App ist mit Docker Desktop getestet. ' + ENGINE[v.engine] + ' sollte genauso gehen, sicher ist das nicht.'),
@@ -413,7 +484,7 @@ const SCREENS = {
   },
 
   async coreStart() {
-    busy('Der Fragebogen wird vorbereitet', 'Das dauert beim ersten Mal ein paar Minuten.');
+    busy('questions', 'Der Fragebogen wird vorbereitet', 'Das dauert beim ersten Mal ein paar Minuten.');
     try {
       await invoke('start_core');
     } catch (e) {
@@ -466,7 +537,7 @@ const SCREENS = {
   },
 
   async powerApply() {
-    busy('Bestätige die Änderung', 'Dein ' + machine() + ' fragt dich gleich, ob die App die Energie-Einstellungen ändern darf.');
+    busy('power', 'Bestätige die Änderung', 'Dein ' + machine() + ' fragt dich gleich, ob die App die Energie-Einstellungen ändern darf.');
     try {
       const r = await invoke('power_apply');
       await invoke('power_answer');
@@ -502,7 +573,7 @@ const SCREENS = {
   },
 
   async finish() {
-    busy('Einen Moment', 'Start bei der Anmeldung eintragen und nachsehen, ob alles andere unverändert ist');
+    busy('done', 'Einen Moment', 'Start bei der Anmeldung eintragen und nachsehen, ob alles andere unverändert ist');
     let f;
     try {
       f = await invoke('finish_setup');
@@ -518,6 +589,7 @@ const SCREENS = {
           h('li', {}, 'Neue Versionen meldet dir der Bot im Chat. Du tippst auf ', h('b', {}, 'Jetzt aktualisieren'), ', das Update sichert vorher deine Daten.'),
           h('li', {}, 'Deine Daten liegen nur auf diesem Rechner. Mach ab und zu eine Sicherung, der Bot erklärt dir, wie.')),
         f.deviations.length ? note('bad', 'Bei anderen Programmen in Docker hat sich während der Einrichtung etwas verändert (' + f.deviations.length + ' Stellen). Schick bitte den Fehlerbericht.') : null,
+        tidyCard(),
       ],
       next: { label: 'Telegram öffnen', run: () => invoke('open_link', { target: 'telegram' }) },
       alt: f.deviations.length ? { label: 'Fehlerbericht ansehen', run: () => SCREENS.report() } : null,
@@ -583,7 +655,7 @@ const SCREENS = {
         run: async () => {
           const c = (k) => !!($('u-' + k) && $('u-' + k).checked);
           const choices = { delete_data: c('delete_data'), restore_power: c('restore_power'), remove_autostart: c('remove_autostart'), remove_docker: c('remove_docker') };
-          busy('Wird entfernt', 'Assistent anhalten und seine Teile entfernen');
+          busy(null, 'Wird entfernt', 'Assistent anhalten und seine Teile entfernen');
           const o = await invoke('uninstall_run', { choices });
           // Je Auswahl eine Zeile, was jetzt gilt; ein fehlgeschlagener Schritt steht als Warnung (Codes aus uninstall.rs).
           const bad = (code) => o.failed.some((f) => f === code || f.startsWith(code + ':'));
@@ -610,7 +682,37 @@ const SCREENS = {
   },
 };
 
-/** Seite „Das wird geändert“ (Prüfliste Nr. 8), eingebettet in die Zustimmungs-Seite. */
+/**
+ * Letzter Schritt auf der Fertig-Seite: die geladene Datei auf Wunsch in den Papierkorb (Owner: am Ende, nicht am Anfang;
+ * nie ungefragt, nur bei genau einem Treffer). Das Auswerfen der DMG macht die App schon beim Start.
+ */
+function tidyCard() {
+  const file = state.startup && state.startup.download;
+  if (!file) return null;
+  const card = h('div', { class: 'note tidy' });
+  const draw = (done) => {
+    card.replaceChildren(
+      h('h2', {}, done ? 'Aufgeräumt' : 'Zum Schluss: aufräumen'),
+      done
+        ? h('p', {}, 'Die Datei ' + file + ' liegt jetzt im Papierkorb. Dort kannst du sie bei Bedarf zurückholen.')
+        : h('p', {}, 'Die geladene Datei ' + file + ' brauchst du nicht mehr. Die App legt sie in den Papierkorb.'),
+      ...(done ? [] : [h('button', { type: 'button', id: 'trash', onclick: (e) => run(e.currentTarget, trash) }, 'Download wegräumen')]));
+  };
+  const trash = async () => {
+    try {
+      await invoke('trash_download');
+      state.startup.download = null;
+      draw(true);
+    } catch (e) {
+      // Datei schon weg oder nicht zu bewegen: Karte verschwindet, nichts weiter zu tun.
+      state.startup.download = null;
+      card.remove();
+    }
+  };
+  draw(false);
+  return card;
+}
+
 // Ziel von „Zurück“ je Bildschirm; Hilfs-Bildschirme (Bericht, Entfernen) führen zum Start.
 const BACKS = {
   need: () => SCREENS.welcome(),

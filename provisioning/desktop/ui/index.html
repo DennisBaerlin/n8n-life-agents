@@ -15,12 +15,18 @@
     </svg>
     <span>lifeagents</span>
   </header>
-  <main id="screen" aria-live="polite"></main>
-  <footer class="nav" id="nav">
-    <button type="button" class="link" id="back">Zurück</button>
-    <button type="button" class="link" id="alt" hidden></button>
-    <button type="button" class="primary" id="next"></button>
-  </footer>
+  <div class="frame">
+    <!-- Schritt-Leiste: dieselbe wie im Fragebogen (config/ui.steps.js) -->
+    <nav class="la-rail" id="rail" hidden></nav>
+    <div class="col">
+      <main id="screen" aria-live="polite"></main>
+      <footer class="nav" id="nav">
+        <button type="button" class="link" id="back">Zurück</button>
+        <button type="button" class="link" id="alt" hidden></button>
+        <button type="button" class="primary" id="next"></button>
+      </footer>
+    </div>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

@@ -4,7 +4,8 @@
 //                   blocked, hints, interrupted, dmg, complete, wizard, laptop
 //   ?os=win         Windows statt Mac       ?screen=<name>  direkt zu einem Bildschirm (z. B. power, report, uninstall)
 //   ?hold=1         Laden bzw. Starten bleibt stehen (Fortschritt aufnehmen)   ?fail=<code>  Docker holen scheitert
-//   ?click=next     nach dem Bildschirm einmal den Hauptknopf drücken (Ergebnis-Seiten aufnehmen)
+//   ?click=<id>     nach dem Bildschirm einmal den Knopf mit dieser id drücken, z. B. next (Hauptknopf) oder trash
+//                   (Download wegräumen auf der Fertig-Seite), um Ergebnis-Seiten aufzunehmen
 'use strict';
 (function () {
   // Aufnahme ohne Server (build_ui_review.ps1 -Surface desktop) setzt die Parameter vorab, sonst die Adresse.
@@ -68,7 +69,7 @@
       journal: { kind: fall === 'interrupted' ? 'interrupted' : fall === 'complete' ? 'complete' : 'fresh', step: { step: 'core-started' } },
       version: '0.1.0',
       compose_ready: fall === 'wizard',
-      download: fall === 'missing' ? (os === 'mac' ? 'lifeagents.dmg' : 'lifeagents-setup.exe') : null,
+      download: ['missing', 'wizard'].includes(fall) ?(os === 'mac' ? 'lifeagents.dmg' : 'lifeagents-setup.exe') : null,
     }),
     trash_download: async () => wait(300),
     check_system: async () => (await wait(500), sys),
@@ -143,7 +144,15 @@
     window.addEventListener('load', () =>
       setTimeout(() => {
         window.__lifeagents.SCREENS[screen]();
-        if (q.get('click') === 'next') setTimeout(() => document.getElementById('next').click(), 400);
+        // Knopf drücken, sobald er da ist (Bildschirme mit Warten davor erscheinen später)
+        const id = q.get('click');
+        let tries = 0;
+        const press = () => {
+          const b = document.getElementById(id);
+          if (b && !b.hidden) return b.click();
+          if (++tries < 30) setTimeout(press, 100);
+        };
+        if (id) setTimeout(press, 400);
       }, 50)
     );
   }

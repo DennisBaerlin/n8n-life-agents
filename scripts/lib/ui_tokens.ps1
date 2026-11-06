@@ -49,10 +49,28 @@ function Get-UiSurfaces {
     )
 }
 
+# Geteilte Bausteine, die mehrere Oberflaechen gleich zeigen (Schritt-Leiste von Start-App und Fragebogen im selben Fenster):
+# Quelle unter config/, wortgleich als markierter Block in jede Datei kopiert (gleicher Grund wie bei den Farben: kein Nachladen
+# zur Laufzeit, der Fragebogen ist eine fremde Seite ohne Zugriff auf die Dateien der App). Neuer Verbraucher = Pfad in Files.
+function Get-UiCopies {
+    @(
+        [pscustomobject]@{ Source = 'config/ui.steps.js'; Files = @('provisioning/desktop/ui/app.js') }
+        [pscustomobject]@{ Source = 'config/ui.steps.css'; Files = @('provisioning/desktop/ui/app.css') }
+    )
+}
+function Get-UiCopyRegex([string]$Name) {
+    [regex]::new('/\* ui-copy:begin ' + [regex]::Escape($Name) + '\b[^\n]*\*/\n[\s\S]*?/\* ui-copy:end \*/')
+}
+function Get-UiCopyText([string]$RepoRoot, $Copy) {
+    $name = Split-Path $Copy.Source -Leaf
+    $body = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $Copy.Source), $script:UiTokensUtf8).Replace("`r`n", "`n").TrimEnd("`n")
+    "/* ui-copy:begin $name (kopiert von scripts/build_ui_tokens.ps1 aus $($Copy.Source), nicht von Hand aendern) */`n$body`n/* ui-copy:end */"
+}
+
 # Wurzeln, unter denen der Lint Farb-Literale sucht. Eine UI-Datei ausserhalb dieser Wurzeln (und ausserhalb von
 # Get-UiExcludedPrefixes) ist ein Fehler: so rutscht eine neue Oberflaeche nicht unbemerkt durch.
 function Get-UiScanRoots {
-    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/desktop/ui/', 'provisioning/desktop/preview/')
+    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/desktop/ui/', 'provisioning/desktop/preview/', 'config/ui.')
 }
 # public/ = Hugo-Output der Quellen oben; mods = Erweiterung des Entwickler-Werkzeugs, keine Projekt-Oberflaeche.
 function Get-UiExcludedPrefixes { @('docs/site/public/', '.claude/mods/') }

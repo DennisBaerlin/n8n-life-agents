@@ -69,12 +69,12 @@ if ($Capture) {
         $ui = Join-Path $RepoRoot 'provisioning\desktop\ui'
         $mock = Join-Path $RepoRoot 'provisioning\desktop\preview\mock.js'
         $url = { param($p) 'file:///' + $p.Replace('\', '/') }
-        $cases = @('welcome:missing:welcome', 'welcome-trashed:missing:trashDownload', 'need:missing:need', 'move:dmg:move', 'resume:interrupted:resume',
+        $cases = @('welcome:missing:welcome','need:missing:need', 'move:dmg:move', 'resume:interrupted:resume',
             'rolled-back:interrupted:rollback', 'sys-hint:hints:sys', 'sys-stop:blocked:sys', 'dk-missing:missing:docker', 'dk-fetch:missing:dkFetch:hold=1',
             'dk-fetch-fail:missing:dkFetch:fail=signature-failed', 'dk-stopped:stopped:docker', 'dk-ready:ready:docker', 'dk-orbstack:ready-orbstack:docker',
             'dk-old:old:docker', 'dk-memory:memory:docker', 'dk-other:other:docker', 'dk-help:colima:docker', 'dk-remote:remote:docker',
             'dk-foreign:foreign:docker', 'core-start:wizard:coreStart:hold=1', 'wizard-missing:missing:wizardMissing', 'power:missing:power',
-            'power-laptop:laptop:power', 'power-result:missing:powerApply', 'done:missing:finish', 'home:complete:home', 'report:missing:report',
+            'power-laptop:laptop:power', 'power-result:missing:powerApply', 'done:missing:finish', 'done-trashed:missing:finish:click=trash', 'done-no-download:ready:finish','home:complete:home', 'report:missing:report',
             'uninstall:missing:uninstall', 'uninstalled:missing:uninstall:click=next', 'power-restore:missing:powerRestore',
             'power-restored:missing:powerRestore:click=next', 'win-sys:hints:sys:os=win', 'win-power:missing:power:os=win', 'win-dk-missing:missing:docker:os=win')
         if ($Screens.Count) { $cases = @($cases | Where-Object { $Screens -contains ($_ -split ':')[0] }) }
@@ -84,7 +84,7 @@ if ($Capture) {
             $h = $h.Replace('href="app.css"', "href=`"$(& $url (Join-Path $ui 'app.css'))`"")
             $h = $h.Replace('<script src="app.js"></script>', "<script>window.__previewParams = '$Params';</script><script src=`"$(& $url $mock)`"></script><script src=`"$(& $url (Join-Path $ui 'app.js'))`"></script>")
             # Ganzer Inhalt: Hoehe frei, Knopfleiste mit Linie darunter (sonst schneidet -TrimBottom sie ab)
-            if ($Full) { $h = $h.Replace('</head>', '<style>html,body{height:auto}main{overflow:visible;flex:none}.nav{border-bottom:1px solid var(--hairline)}</style></head>') }
+            if ($Full) { $h = $h.Replace('</head>', '<style>html,body{height:auto}main{overflow:visible;flex:none;-webkit-mask-image:none;mask-image:none}.nav{border-bottom:1px solid var(--hairline)}</style></head>') }
             $h
         }
         foreach ($c in $cases) {

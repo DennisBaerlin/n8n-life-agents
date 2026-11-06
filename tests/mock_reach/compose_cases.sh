@@ -229,6 +229,11 @@ grep -q '@lifeagents path' "$CY" && fail C_no_second_list "compose.yml traegt ei
 grep -q 'reverse_proxy edge:8088' "$CY" && ! grep -qE 'reverse_proxy edge:(8080|8081)' "$CY" && pass C_wan_only_public || fail C_wan_only_public "wan muss nur an edge:8088"
 grep -q "REACH_PUBLIC_TARGET='http://127.0.0.1:8088'" "$ROOT/provisioning/lib/reach.sh" && pass C_funnel_target || fail C_funnel_target "Funnel-Ziel nicht :8088"
 
+# Nur lib/ ohne templates/ (Basis-Image des Test-Substrats) unter set -euo pipefail: das Einlesen darf nicht abbrechen.
+mkdir -p "$W/libonly/lib" && cp "$ROOT/provisioning/lib/"{common,runtime,reach}.sh "$W/libonly/lib/"
+bash -c "set -euo pipefail; . '$W/libonly/lib/common.sh'; echo geladen" 2>/dev/null | grep -qx geladen \
+  && pass C_source_without_templates || fail C_source_without_templates "common.sh/reach.sh brechen ohne templates/ ab"
+
 # --- I: eigene IPv4 (DS-Lite/Carrier-NAT) ----------------------------------------------------------------------------
 A_DNS4=''; A_DNS6=''; A_ECHO=''
 _reach_dns4() { printf 'dns4 %s\n' "$1" >> "$LOG"; printf '%s' "$A_DNS4"; }

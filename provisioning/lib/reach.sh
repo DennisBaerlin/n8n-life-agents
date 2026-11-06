@@ -205,7 +205,9 @@ reach_ipv4_eval() {
 # --- Oeffentliche Pfade fuer den Rand -------------------------------------------------------------------------------
 # reach_edge_public_write — den Baustein der CLI (common.sh caddy_webhook_block, Upstream anchor:5678) nach
 #   reach_conf/edge-public.caddy schreiben; edge laedt ihn binnen 5 s ohne Neustart (compose.yml). rc 0 = geaendert.
-REACH_TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../templates" 2>/dev/null && pwd)"
+# `|| true`: gesourcte Libs laufen unter dem set -e des Aufrufers; ohne templates/ daneben (Basis-Image des
+# Test-Substrats kopiert nur lib/) braeche sonst schon das Einlesen ab.
+REACH_TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../templates" 2>/dev/null && pwd || true)"
 reach_edge_public_write() {
   local f="$REACH_CONF_DIR/edge-public.caddy" new
   new="$(caddy_webhook_block "${TEMPLATE_DIR:-$REACH_TEMPLATE_DIR}" anchor:5678)" || return 1

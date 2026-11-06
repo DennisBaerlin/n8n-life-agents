@@ -539,12 +539,147 @@ ${scenes}
     return { el: fig, select, side: true };   // neben die Auswahl (app.js .with-art), unter der Auswahl wäre bei 640 px kein Platz
   }
 
+  // ---------- A3/A4: Tailscale im Schritt „Verbinden“ (Tunnel-Weg; Seite connect, Bild-Name page.art vom Server) ----------
+  // Nachzeichnung von login.tailscale.com (Stand 2026): Anmeldeseite (E-Mail-Feld, „Sign in“, dann die Anbieter Google,
+  // Microsoft, GitHub, Apple, Passkey), Anbieter-Anmeldung nur schematisch (fremde Seite, Sprache des Anbieters), „Connect
+  // device“, danach die Geräteliste der Verwaltung; Freigabe-Seite /f/funnel mit HTTPS-Zertifikaten (Warnung „public
+  // ledger“) und Funnel, Knopf „Enable HTTPS and Funnel“. Tailscale ist nur englisch, darum bleibt der Wortlaut der Seiten
+  // englisch; die Schritt-Beschriftungen kommen aus dem Katalog (core.wizard.art.ts_*). Kein Logo (nur der Name als Text),
+  // Anbieter-Zeichen als neutrale Platzhalter. Rechnername „bot“ = Standard von LA_TS_HOSTNAME (compose.yml).
+  const TS_CHROME = (addrs) => `
+  <rect class="chrome" x="0" y="0" width="780" height="44"/>
+  <circle class="tl" cx="20" cy="22" r="5"/><circle class="tl" cx="36" cy="22" r="5"/><circle class="tl" cx="52" cy="22" r="5"/>
+  <rect class="addr" x="170" y="10" width="440" height="24" rx="12"/>
+  <path class="lock" d="M186 21 v-3 a4 4 0 0 1 8 0 v3 M184 21 h12 v8 h-12 z"/>
+  ${addrs}`;
+  const TS_BTN = (y, label) => `<rect class="b-out" x="265" y="${y}" width="250" height="32" rx="4"/><rect class="ico" x="302" y="${y + 9}" width="14" height="14" rx="3"/><text class="t-b" x="326" y="${y + 21}">${label}</text>`;
+  const TS_LOGIN_SVG = `
+<svg class="ts" aria-hidden="true" preserveAspectRatio="xMidYMin meet" data-scene="login">
+ <g class="cam">
+  <rect class="pg" x="0" y="0" width="780" height="560"/>
+  ${TS_CHROME(`<text class="t-addr a-login a-connect" x="202" y="27">login.tailscale.com/a/…</text><text class="t-addr a-idp" x="202" y="27">accounts.example.com</text><text class="t-addr a-mach" x="202" y="27">login.tailscale.com/admin/machines</text>`)}
+
+  <g class="s s-login">
+   <text class="t-word c" x="390" y="96">tailscale</text>
+   <rect class="in" x="265" y="118" width="250" height="32" rx="4"/><text class="t-ph" x="277" y="139">Enter your email…</text>
+   <rect class="b-dark" x="265" y="160" width="250" height="32" rx="4"/><text class="t-b-dark" x="390" y="181">Sign in</text>
+   <text class="t-or" x="390" y="223">OR</text>
+   ${TS_BTN(240, 'Sign in with Google')}${TS_BTN(281, 'Sign in with Microsoft')}${TS_BTN(322, 'Sign in with GitHub')}
+   ${TS_BTN(363, 'Sign in with Apple')}${TS_BTN(404, 'Sign in with a passkey')}
+   <text class="t-sm c" x="390" y="472">First time? Learn more at tailscale.com.</text>
+   <rect class="ph" x="250" y="510" width="280" height="7" rx="3"/><rect class="ph" x="290" y="524" width="200" height="7" rx="3"/>
+  </g>
+
+  <g class="s s-idp">
+   <rect class="card" x="250" y="84" width="280" height="300" rx="8"/>
+   <circle class="ico" cx="390" cy="118" r="13"/>
+   <rect class="ph" x="320" y="146" width="140" height="11" rx="5"/><rect class="ph" x="300" y="166" width="180" height="7" rx="3"/>
+   <rect class="row" x="270" y="192" width="240" height="52" rx="6"/>
+   <circle class="av" cx="296" cy="218" r="14"/><text class="t-av" x="296" y="223">D</text>
+   <rect class="ph" x="320" y="206" width="90" height="8" rx="4"/><text class="t-s" x="320" y="233">du@example.com</text>
+   <rect class="row" x="270" y="252" width="240" height="40" rx="6"/><rect class="ph" x="286" y="268" width="120" height="8" rx="4"/>
+   <rect class="ph" x="270" y="318" width="220" height="7" rx="3"/><rect class="ph" x="270" y="332" width="160" height="7" rx="3"/>
+  </g>
+
+  <g class="s s-connect">
+   <text class="t-word c" x="390" y="96">tailscale</text>
+   <rect class="card" x="230" y="116" width="320" height="196" rx="8"/>
+   <text class="t-h c" x="390" y="152">Connect device</text>
+   <rect class="dev" x="306" y="170" width="34" height="24" rx="3"/><path class="ln" d="M316 199 h14"/>
+   <text class="t-m t-strong" x="352" y="182">bot</text><text class="t-sm" x="352" y="198">Linux</text>
+   <text class="t-sm c" x="390" y="228">Tailnet: du@example.com</text>
+   <rect class="b-dark" x="270" y="246" width="240" height="36" rx="4"/><text class="t-b-dark" x="390" y="269">Connect</text>
+  </g>
+
+  <g class="s s-mach">
+   <rect class="hdr2" x="0" y="44" width="780" height="52"/><line class="ln" x1="0" y1="96" x2="780" y2="96"/>
+   <text class="t-word" x="24" y="77">tailscale</text>
+   <text class="t-nav t-strong" x="140" y="76">Machines</text><rect class="tab-line" x="140" y="92" width="62" height="3"/>
+   <text class="t-nav" x="216" y="76">Apps</text><text class="t-nav" x="256" y="76">Services</text><text class="t-nav" x="318" y="76">Users</text>
+   <text class="t-nav" x="364" y="76">Access controls</text><text class="t-nav" x="476" y="76">Logs</text><text class="t-nav" x="514" y="76">DNS</text>
+   <text class="t-nav" x="552" y="76">Settings</text>
+   <text class="t-h" x="40" y="138">Machines</text>
+   <text class="t-sm" x="40" y="160">Manage the devices connected to your tailnet.</text>
+   <rect class="b-dark" x="636" y="120" width="110" height="30" rx="4"/><text class="t-b-dark" x="691" y="140">Add device</text>
+   <text class="t-th" x="40" y="198">MACHINE</text><text class="t-th" x="210" y="198">ADDRESSES</text><text class="t-th" x="340" y="198">VERSION</text><text class="t-th" x="440" y="198">LAST SEEN</text>
+   <line class="ln" x1="30" y1="208" x2="750" y2="208"/>
+   <text class="t-m t-strong" x="40" y="232">bot</text><text class="t-sm" x="40" y="249">du@example.com</text>
+   <rect class="ph" x="210" y="230" width="90" height="8" rx="4"/><rect class="ph" x="340" y="230" width="44" height="8" rx="4"/>
+   <circle class="okdot" cx="446" cy="235" r="4.5"/><text class="t-s" x="456" y="240">Connected</text>
+   <line class="ln" x1="30" y1="262" x2="750" y2="262"/>
+   <text class="t-m t-strong" x="40" y="286">laptop</text><text class="t-sm" x="40" y="303">du@example.com</text>
+   <rect class="ph" x="210" y="284" width="90" height="8" rx="4"/><rect class="ph" x="340" y="284" width="44" height="8" rx="4"/><rect class="ph" x="440" y="284" width="70" height="8" rx="4"/>
+   <line class="ln" x1="30" y1="316" x2="750" y2="316"/>
+  </g>
+
+  <rect class="ring" x="0" y="0" width="0" height="0" rx="6"/>
+  <circle class="ripple" cx="0" cy="0" r="14"/>
+  <g class="cursor"><path d="M0 0 V17 L4.5 13 L7.6 20 L10.4 18.8 L7.4 12 H13 Z"/></g>
+ </g>
+</svg>`;
+  const TS_LOGIN_STEPS = [
+    { key: 'ts_login_1', acts: [{ to: [470, 260], click: true, ring: [261, 236, 258, 40] }] },
+    { key: 'ts_login_2', start: { set: { scene: 'idp' }, cam: { x: 390, y: 230, s: 1 } }, acts: [{ to: [480, 222], click: true, ring: [266, 188, 248, 60] }] },
+    { key: 'ts_login_3', start: { set: { scene: 'connect' }, cam: { x: 390, y: 215, s: 1 } },
+      acts: [{ to: [420, 188], ring: [298, 164, 118, 42], cam: { x: 390, y: 215, s: 1 }, wait: 1100 }, { to: [470, 270], click: true, ring: [266, 242, 248, 44], cam: { x: 390, y: 215, s: 1 } }] },
+    { key: 'ts_login_4', start: { set: { scene: 'mach' }, cam: { x: 390, y: 200, s: 1 } }, acts: [{ to: [300, 244], ring: [30, 212, 720, 48] }] },
+  ];
+
+  const TS_FUNNEL_SVG = `
+<svg class="ts" aria-hidden="true" preserveAspectRatio="xMidYMin meet" data-done="0">
+ <g class="cam">
+  <rect class="pg" x="0" y="0" width="780" height="560"/>
+  ${TS_CHROME('<text class="t-addr" x="202" y="27">login.tailscale.com/f/funnel?node=…</text>')}
+  <text class="t-word c" x="390" y="86">tailscale</text>
+  <rect class="card" x="170" y="104" width="440" height="432" rx="8"/>
+  <text class="t-h" x="200" y="142">Start using Funnel</text>
+  <rect class="chip" x="200" y="158" width="80" height="26" rx="13"/><rect class="dev" x="211" y="165" width="15" height="11" rx="2"/>
+  <text class="t-s t-strong" x="234" y="176">bot</text>
+  <rect class="opt" x="200" y="196" width="380" height="136" rx="6"/>
+  <rect class="cb" x="216" y="212" width="16" height="16" rx="3"/><path class="tick" d="M219 220 l4 4 l7 -8"/>
+  <text class="t-m t-strong" x="242" y="225">HTTPS certificates</text>
+  <text class="t-sm" x="242" y="246">Encrypt connections to this device with</text><text class="t-sm" x="242" y="261">certificates from Let's Encrypt.</text>
+  <rect class="warnbox" x="212" y="274" width="356" height="48" rx="4"/>
+  <path class="warn-ico" d="M232 284 l9 16 h-18 z"/><text class="t-warn-i" x="232" y="298">!</text>
+  <text class="t-s" x="250" y="293">Machine names and your tailnet DNS name will</text><text class="t-s" x="250" y="310">be published on a public ledger.</text>
+  <rect class="opt" x="200" y="344" width="380" height="82" rx="6"/>
+  <rect class="cb" x="216" y="360" width="16" height="16" rx="3"/><path class="tick" d="M219 368 l4 4 l7 -8"/>
+  <text class="t-m t-strong" x="242" y="373">Tailscale Funnel</text>
+  <text class="t-sm" x="242" y="394">Lets anyone on the internet reach services</text><text class="t-sm" x="242" y="409">you share from this device.</text>
+  <g class="pre"><rect class="b-dark" x="200" y="444" width="380" height="40" rx="6"/><text class="t-b-dark" x="390" y="469">Enable HTTPS and Funnel</text></g>
+  <g class="post"><rect class="b-ok" x="200" y="444" width="380" height="40" rx="6"/><path class="tick-ok" d="M352 464 l5 5 l9 -10"/><text class="t-ok" x="374" y="469">Enabled</text></g>
+  <rect class="ph" x="250" y="504" width="280" height="7" rx="3"/>
+  <rect class="ring" x="0" y="0" width="0" height="0" rx="6"/>
+  <circle class="ripple" cx="0" cy="0" r="14"/>
+  <g class="cursor"><path d="M0 0 V17 L4.5 13 L7.6 20 L10.4 18.8 L7.4 12 H13 Z"/></g>
+ </g>
+</svg>`;
+  const TS_FUNNEL_STEPS = [
+    { key: 'ts_funnel_1', acts: [{ to: [272, 176], ring: [194, 153, 92, 36], cam: { x: 390, y: 170, s: 1 } }] },
+    { key: 'ts_funnel_2', acts: [{ to: [540, 300], ring: [206, 268, 368, 60], cam: { x: 390, y: 270, s: 1 } }] },
+    { key: 'ts_funnel_3', acts: [{ to: [440, 372], ring: [196, 340, 388, 90], cam: { x: 390, y: 385, s: 1 } }] },
+    { key: 'ts_funnel_4', acts: [{ to: [500, 466], ring: [196, 440, 388, 48], cam: { x: 390, y: 440, s: 1 }, wait: 1300 }, { to: [500, 466], click: true, set: { done: '1' }, cam: { x: 390, y: 440, s: 1 } }] },
+  ];
+
+  // Hülle wie fbGuided: Beschriftungen und Name aus dem Katalog (ts_<bild>_<n>, ts_<bild>_label).
+  function tsGuided(page, o) {
+    const tx = texts(page);
+    return guided(Object.assign({ width: 780, height: 560, cursor: [600, 120], light: true, tx, label: tx(o.name.replace('-', '_') + '_label') }, o,
+      { steps: o.steps.map((s) => Object.assign({ cap: tx(s.key) }, s)) }));
+  }
+  // page.art (Server, Seite connect): needs_login/key_expired → ts_login, needs_funnel → ts_funnel. ts_machine (Gerät in der
+  // Verwaltung freigeben) hat noch kein Bild.
+  const tsLogin = (page) => tsGuided(page, { name: 'ts-login', svg: TS_LOGIN_SVG, steps: TS_LOGIN_STEPS, initial: { scene: 'login' } });
+  const tsFunnel = (page) => tsGuided(page, { name: 'ts-funnel', svg: TS_FUNNEL_SVG, steps: TS_FUNNEL_STEPS, initial: { done: '0' } });
+
   // ---------- Zuordnung Seite → Bild (die eine Adresse) ----------
   const ART = {
     fb_guide: fbShare,
     dslite: fbDslite,   // page.art: nur wenn die Erkennung unsicher war (Server)
     myfritz_name: fbName,   // page.art: MyFRITZ!-Adresse nicht automatisch gefunden (Server)
     'h:OWNER_PERSONA': persona,
+    ts_login: tsLogin,   // page.art auf der Seite connect (Tunnel-Zustand, Server)
+    ts_funnel: tsFunnel,
   };
 
   window.WizardArt = {

@@ -175,7 +175,10 @@
 .ts .t-ok { fill: var(--bg); font-weight: 700; }
 .ts .s { opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
 .ts[data-scene="login"] .s-login, .ts[data-scene="idp"] .s-idp, .ts[data-scene="connect"] .s-connect, .ts[data-scene="mach"] .s-mach { opacity: 1; visibility: visible; }
-.ts .post, .ts[data-done="1"] .pre { display: none; }
+/* Werte dieser Installation (art.js tsFill): k-* nur mit Wert, u-* (grauer Balken) nur ohne */
+.ts .k-host, .ts .k-tailnet, .ts .k-account { display: none; }
+.ts[data-has-host="1"] .k-host, .ts[data-has-tailnet="1"] .k-tailnet, .ts[data-has-account="1"] .k-account { display: inline; }
+.ts[data-has-host="1"] .u-host, .ts[data-has-tailnet="1"] .u-tailnet, .ts[data-has-account="1"] .u-account { display: none; }.ts .post, .ts[data-done="1"] .pre { display: none; }
 .ts[data-done="1"] .post { display: inline; }
 
 /* Lupe braucht Breite (Start-App 760 px) und etwas Höhe; sonst entfällt die Animation */

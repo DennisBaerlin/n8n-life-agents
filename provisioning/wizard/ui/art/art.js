@@ -522,7 +522,9 @@ ${scenes}
   // device“, danach die Geräteliste der Verwaltung; Freigabe-Seite /f/funnel mit HTTPS-Zertifikaten (Warnung „public
   // ledger“) und Funnel, Knopf „Enable HTTPS and Funnel“. Tailscale ist nur englisch, darum bleibt der Wortlaut der Seiten
   // englisch; die Schritt-Beschriftungen kommen aus dem Katalog (core.wizard.art.ts_*). Kein Logo (nur der Name als Text),
-  // Anbieter-Zeichen als neutrale Platzhalter. Rechnername „bot“ = Standard von LA_TS_HOSTNAME (compose.yml).
+  // Anbieter-Zeichen als neutrale Platzhalter. Echte Werte dieser Installation (page.ts: host, tailnet, account; Server prüft
+  // sie) setzt tsFill nur per textContent in die Felder v-<feld>; k-<feld> zeigt sich nur mit Wert, u-<feld> (grauer Balken) nur
+  // ohne. Was vor der Anmeldung unbekannt ist (Konto, Tailnet), bleibt so neutral.
   const TS_CHROME = (addrs) => `
   <rect class="chrome" x="0" y="0" width="780" height="44"/>
   <circle class="tl" cx="20" cy="22" r="5"/><circle class="tl" cx="36" cy="22" r="5"/><circle class="tl" cx="52" cy="22" r="5"/>
@@ -552,8 +554,8 @@ ${scenes}
    <circle class="ico" cx="390" cy="118" r="13"/>
    <rect class="ph" x="320" y="146" width="140" height="11" rx="5"/><rect class="ph" x="300" y="166" width="180" height="7" rx="3"/>
    <rect class="row" x="270" y="192" width="240" height="52" rx="6"/>
-   <circle class="av" cx="296" cy="218" r="14"/><text class="t-av" x="296" y="223">D</text>
-   <rect class="ph" x="320" y="206" width="90" height="8" rx="4"/><text class="t-s" x="320" y="233">du@example.com</text>
+   <circle class="av" cx="296" cy="218" r="14"/><text class="t-av k-account v-initial" x="296" y="223"></text>
+   <rect class="ph" x="320" y="206" width="90" height="8" rx="4"/><text class="t-s k-account v-account" x="320" y="233"></text><rect class="ph u-account" x="320" y="226" width="130" height="8" rx="4"/>
    <rect class="row" x="270" y="252" width="240" height="40" rx="6"/><rect class="ph" x="286" y="268" width="120" height="8" rx="4"/>
    <rect class="ph" x="270" y="318" width="220" height="7" rx="3"/><rect class="ph" x="270" y="332" width="160" height="7" rx="3"/>
   </g>
@@ -563,8 +565,8 @@ ${scenes}
    <rect class="card" x="230" y="116" width="320" height="196" rx="8"/>
    <text class="t-h c" x="390" y="152">Connect device</text>
    <rect class="dev" x="306" y="170" width="34" height="24" rx="3"/><path class="ln" d="M316 199 h14"/>
-   <text class="t-m t-strong" x="352" y="182">bot</text><text class="t-sm" x="352" y="198">Linux</text>
-   <text class="t-sm c" x="390" y="228">Tailnet: du@example.com</text>
+   <text class="t-m t-strong v-host" x="352" y="182"></text><text class="t-sm" x="352" y="198">Linux</text>
+   <text class="t-sm c k-tailnet" x="390" y="228">Tailnet: <tspan class="v-tailnet"></tspan></text><rect class="ph u-tailnet" x="320" y="222" width="140" height="8" rx="4"/>
    <rect class="b-dark" x="270" y="246" width="240" height="36" rx="4"/><text class="t-b-dark" x="390" y="269">Connect</text>
   </g>
 
@@ -580,11 +582,11 @@ ${scenes}
    <rect class="b-dark" x="636" y="120" width="110" height="30" rx="4"/><text class="t-b-dark" x="691" y="140">Add device</text>
    <text class="t-th" x="40" y="198">MACHINE</text><text class="t-th" x="210" y="198">ADDRESSES</text><text class="t-th" x="340" y="198">VERSION</text><text class="t-th" x="440" y="198">LAST SEEN</text>
    <line class="ln" x1="30" y1="208" x2="750" y2="208"/>
-   <text class="t-m t-strong" x="40" y="232">bot</text><text class="t-sm" x="40" y="249">du@example.com</text>
+   <text class="t-m t-strong v-host" x="40" y="232"></text><text class="t-sm k-account v-account" x="40" y="249"></text><rect class="ph u-account" x="40" y="242" width="110" height="7" rx="3"/>
    <rect class="ph" x="210" y="230" width="90" height="8" rx="4"/><rect class="ph" x="340" y="230" width="44" height="8" rx="4"/>
    <circle class="okdot" cx="446" cy="235" r="4.5"/><text class="t-s" x="456" y="240">Connected</text>
    <line class="ln" x1="30" y1="262" x2="750" y2="262"/>
-   <text class="t-m t-strong" x="40" y="286">laptop</text><text class="t-sm" x="40" y="303">du@example.com</text>
+   <rect class="ph" x="40" y="278" width="70" height="9" rx="4"/><rect class="ph" x="40" y="296" width="110" height="7" rx="3"/>
    <rect class="ph" x="210" y="284" width="90" height="8" rx="4"/><rect class="ph" x="340" y="284" width="44" height="8" rx="4"/><rect class="ph" x="440" y="284" width="70" height="8" rx="4"/>
    <line class="ln" x1="30" y1="316" x2="750" y2="316"/>
   </g>
@@ -610,8 +612,8 @@ ${scenes}
   <text class="t-word c" x="390" y="86">tailscale</text>
   <rect class="card" x="170" y="104" width="440" height="432" rx="8"/>
   <text class="t-h" x="200" y="142">Start using Funnel</text>
-  <rect class="chip" x="200" y="158" width="80" height="26" rx="13"/><rect class="dev" x="211" y="165" width="15" height="11" rx="2"/>
-  <text class="t-s t-strong" x="234" y="176">bot</text>
+  <rect class="chip" x="200" y="158" width="220" height="26" rx="13"/><rect class="dev" x="211" y="165" width="15" height="11" rx="2"/>
+  <text class="t-s t-strong v-host" x="234" y="176"></text>
   <rect class="opt" x="200" y="196" width="380" height="136" rx="6"/>
   <rect class="cb" x="216" y="212" width="16" height="16" rx="3"/><path class="tick" d="M219 220 l4 4 l7 -8"/>
   <text class="t-m t-strong" x="242" y="225">HTTPS certificates</text>
@@ -632,17 +634,39 @@ ${scenes}
  </g>
 </svg>`;
   const TS_FUNNEL_STEPS = [
-    { key: 'ts_funnel_1', acts: [{ to: [272, 176], ring: [194, 153, 92, 36], cam: { x: 390, y: 170, s: 1 } }] },
+    { key: 'ts_funnel_1', acts: [{ to: [272, 176], ring: [194, 153, 232, 36], cam: { x: 390, y: 170, s: 1 } }] },
     { key: 'ts_funnel_2', acts: [{ to: [540, 300], ring: [206, 268, 368, 60], cam: { x: 390, y: 270, s: 1 } }] },
     { key: 'ts_funnel_3', acts: [{ to: [440, 372], ring: [196, 340, 388, 90], cam: { x: 390, y: 385, s: 1 } }] },
     { key: 'ts_funnel_4', acts: [{ to: [500, 466], ring: [196, 440, 388, 48], cam: { x: 390, y: 440, s: 1 }, wait: 1300 }, { to: [500, 466], click: true, set: { done: '1' }, cam: { x: 390, y: 440, s: 1 } }] },
   ];
 
-  // Hülle wie fbGuided: Beschriftungen und Name aus dem Katalog (ts_<bild>_<n>, ts_<bild>_label).
+  // Werte dieser Installation (page.ts vom Server). Nur erwartete Zeichen; alles andere gilt als unbekannt. Ohne Rechnernamen
+  // gilt der Standard von LA_TS_HOSTNAME (compose.yml), den der Tailscale-Container dann trägt.
+  const TS_VALUE = /^[A-Za-z0-9._@+-]{1,100}$/;
+  function tsValues(page) {
+    const ts = (page && page.ts) || {};
+    const v = {};
+    for (const k of ['host', 'tailnet', 'account']) if (typeof ts[k] === 'string' && TS_VALUE.test(ts[k])) v[k] = ts[k];
+    if (!v.host) v.host = 'bot';
+    return v;
+  }
+  function tsFill(el, v) {
+    const svg = el.querySelector('svg.ts');
+    const short = (x) => (x.length > 30 ? x.slice(0, 29) + '…' : x);
+    for (const k of ['host', 'tailnet', 'account']) {
+      svg.setAttribute('data-has-' + k, v[k] ? '1' : '0');
+      if (v[k]) svg.querySelectorAll('.v-' + k).forEach((t) => { t.textContent = short(v[k]); });
+    }
+    if (v.account) svg.querySelectorAll('.v-initial').forEach((t) => { t.textContent = v.account.charAt(0).toUpperCase(); });
+  }
+  // Hülle wie fbGuided: Beschriftungen und Name aus dem Katalog (ts_<bild>_<n> mit {name} = Rechnername, ts_<bild>_label).
   function tsGuided(page, o) {
     const tx = texts(page);
-    return guided(Object.assign({ width: 780, height: 560, cursor: [600, 120], light: true, tx, label: tx(o.name.replace('-', '_') + '_label') }, o,
-      { steps: o.steps.map((s) => Object.assign({ cap: tx(s.key) }, s)) }));
+    const v = tsValues(page);
+    const r = guided(Object.assign({ width: 780, height: 560, cursor: [600, 120], light: true, tx, label: tx(o.name.replace('-', '_') + '_label') }, o,
+      { steps: o.steps.map((s) => Object.assign({ cap: tx(s.key, { name: v.host }) }, s)) }));
+    tsFill(r.el, v);
+    return r;
   }
   // page.art (Server, Seite connect): needs_login/key_expired → ts_login, needs_funnel → ts_funnel. ts_machine (Gerät in der
   // Verwaltung freigeben) hat noch kein Bild.

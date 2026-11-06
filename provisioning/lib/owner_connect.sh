@@ -42,6 +42,8 @@ _OC_ACT_ERR=''
 emit_ingress_help() {
   local tpl_dir="$1" domain="$2" port="$3" webhook_url="$4" caddyfile list nonloop upstream proxies bind
   [ -n "$domain" ] || return 0
+  # Docker-Verbund: der Rand bringt seinen Proxy mit (Tunnel oder FritzBox) — statt Caddyfile die Hilfe zum Weg.
+  if rt_is_compose; then DOMAIN="$domain" reach_ingress_help; return 0; fi
   list="$(normalize_trusted_proxies "${TRUSTED_PROXIES:-}" 2>/dev/null || printf '127.0.0.1')"
   nonloop="$(_proxy_nonloop "$list")"
   if [ -z "$nonloop" ]; then

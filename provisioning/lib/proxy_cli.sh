@@ -18,9 +18,44 @@ _proxy_load() {
   N8N_ENV_FILE="$PROXY_N8N_ENV"
 }
 
+# _proxy_compose_show — Docker-Verbund: kein eigener Proxy und keine Firewall; der Rand (lib/reach.sh) bringt beides mit.
+#   Zeigt den Weg nach aussen und seinen Stand (reach_status_json) in Worten.
+_proxy_compose_show() {
+  local js state url dns days wh
+  js="$(reach_status_json)"
+  state="$(printf '%s' "$js" | jq -r '.state')"; url="$(printf '%s' "$js" | jq -r '.url')"
+  dns="$(printf '%s' "$js" | jq -r '.dns_name')"; days="$(printf '%s' "$js" | jq -r '.key_days_left // ""')"
+  wh="$(printf '%s' "$js" | jq -r '.webhook')"
+  ui_box 'Weg nach außen (Docker-Verbund)' <<EOF
+Weg:              $(case "$(reach_mode)" in tunnel) printf 'Tunnel (Tailscale Funnel)' ;; fritzbox) printf 'FritzBox' ;; *) printf '— noch keiner gewählt' ;; esac)
+Stand:            $(_proxy_reach_state_text "$state")${url:+
+Link:             ${url}}
+Internet-Adresse: ${dns:-—}
+Telegram:         $(case "$wh" in ours) printf 'zeigt auf diese Adresse' ;; none) printf 'noch kein Webhook' ;; foreign) printf 'zeigt auf eine ANDERE Adresse' ;; *) printf 'gerade nicht prüfbar' ;; esac)${days:+
+Tailscale-Anmeldung läuft ab in: ${days} Tag(en) — abschalten im Tailscale-Konto: Machines → Gerät → „Disable key expiry“}
+n8n-Editor:       nur auf diesem Rechner, http://127.0.0.1:${LA_EDGE_PORT:-<port>}
+EOF
+}
+
+# _proxy_reach_state_text <state> -> ein Satz fuer den Stand aus reach_status_json.
+_proxy_reach_state_text() {
+  case "$1" in
+    ready)              printf 'bereit — Telegram erreicht den Bot' ;;
+    pending_activation) printf 'Weg steht, der Bot wird gleich umgestellt (oder: lifeagents update)' ;;
+    needs_login)        printf 'bei Tailscale anmelden (Link unten)' ;;
+    needs_machine_auth) printf 'Gerät im Tailscale-Konto freigeben (Machines)' ;;
+    needs_funnel)       printf 'Funnel im Tailscale-Konto erlauben (Link unten)' ;;
+    key_expired)        printf 'Tailscale-Anmeldung abgelaufen — neu anmelden' ;;
+    ports_busy)         printf 'Port 80 oder 443 ist auf diesem Rechner belegt — Tunnel empfohlen' ;;
+    starting)           printf 'startet …' ;;
+    *)                  printf 'nicht verfügbar' ;;
+  esac
+}
+
 proxy_cmd_show() {
   # root noetig: core.env ist 640 root:n8n — ohne Leserecht saehe show "kein Proxy" und laege falsch.
   [ "$(id -u)" -eq 0 ] || die "lifeagents proxy show braucht root (liest /etc/lifeagents/core.env)."
+  if rt_is_compose; then _proxy_compose_show; return 0; fi
   _proxy_load
   local list nonloop bind fw
   list="$(normalize_trusted_proxies "${TRUSTED_PROXIES:-}" 2>/dev/null || printf 'UNGÜLTIG: %s' "$TRUSTED_PROXIES")"
@@ -51,6 +86,7 @@ EOF
 proxy_cmd_set() {
   local raw="${1:-}" list ip confirm
   [ "$(id -u)" -eq 0 ] || die "lifeagents proxy set braucht root (ändert Firewall + n8n-Einstellungen)."
+  rt_is_compose && die "Im Docker-Verbund gibt es keinen eigenen Proxy: der Rand bringt Tunnel bzw. FritzBox-Weg mit (lifeagents proxy show)."
   if [ -z "$raw" ] && ui_interactive; then
     raw="$(ui_input "IP-Adresse des Proxy-Rechners (127.0.0.1 = Proxy auf diesem Rechner): " 0)"
   fi

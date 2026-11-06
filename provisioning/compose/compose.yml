@@ -4,11 +4,12 @@
 # network_mode: service:anchor daran. Dadurch gelten 127.0.0.1:5432 (Postgres), :5678 (n8n) und :8090 (Gateway) wie
 # auf dem LXC, und der Installer bleibt derselbe (lib/runtime.sh). Postgres und Gateway lauschen nur auf 127.0.0.1.
 #
-# DER RAND (`edge`, Caddy; beim Tunnel-Weg zusaetzlich `tailscale` in DESSEN Namensraum) liegt AUSSERHALB des Pods:
+# DER RAND (`edge`, Caddy; beim Tunnel-Weg zusaetzlich `tailscale` in DESSEN Namensraum, beim FritzBox-Weg `wan` mit 80/443
+# und Zertifikat) liegt AUSSERHALB des Pods:
 # nur er veroeffentlicht Ports (Port-Wechsel ohne neuen anchor) und erreicht den Pod nur ueber das interne Netz
 # `internal` (Docker veroeffentlicht an einem internal-Netz keine Ports, darum zusaetzlich `edge_public`). n8n lauscht im
-# Pod auf 0.0.0.0 und ist so fuer den Rand erreichbar, Postgres/Gateway nicht (Probe edge-probe). Pfad-Liste und
-# Zertifikat des Rands: Paket 3; hier nur die Weiterleitung auf n8n.
+# Pod auf 0.0.0.0 und ist so fuer den Rand erreichbar, Postgres/Gateway nicht (Probe edge-probe). Die eine Liste
+# oeffentlicher Pfade, die Sperre aus dem Tailnet und beide Wege nach aussen: Kopf von lib/reach.sh.
 #
 # SCHUTZ FUER NACHBARN (Paperless & Co., Plan *Wenn Docker schon da ist*): fester Projektname, alle Namen mit Vorsatz
 # ${LA_PROJECT}, alles traegt das Label io.lifeagents.install, alle Images per Digest (ein Pull verschiebt nie ein Tag des
@@ -22,7 +23,7 @@
 # PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
 # nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
 # Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5). Optional: LA_HOST_IP,
-# LA_TS_HOSTNAME.
+# LA_TS_HOSTNAME (neutraler Tailscale-Name, Standard `bot`; Zertifikats-Protokolle sind oeffentlich).
 # Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
 # dort nicht.
 name: lifeagents
@@ -171,6 +172,8 @@ services:
       # Optional: Heimnetz-Adresse des Rechners (setzt die Start-App, wenn sie eine findet); der Wizard schlaegt damit die
       # Paperless-Adresse vor. Leer = kein Vorschlag. Nie aus der Antwort-Datei (LA_* ist dort gesperrt).
       LA_HOST_IP: ${LA_HOST_IP:-}
+      # Gleicher Tailscale-Name wie beim Start durch die App (der master startet den Dienst tailscale, lib/reach.sh).
+      LA_TS_HOSTNAME: ${LA_TS_HOSTNAME:-bot}
       LA_PG_SUPERPW: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
       LA_MASTER_IMAGE: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
       LA_COMPOSE_FILE: /opt/lifeagents/provisioning/compose/compose.yml
@@ -193,6 +196,7 @@ services:
       - gw_state:/var/lib/lifeagents-llm-gateway
       - n8n_patches:/opt/n8n-patches
       - wizard_state:/var/lib/lifeagents-wizard   # Fortschritt des Wizards; nur der master sieht ihn
+      - reach_conf:/var/lib/lifeagents-reach      # Adresse fuer wan (FritzBox-Weg), lib/reach.sh
 
   edge:
     image: *img_caddy
@@ -208,24 +212,49 @@ services:
       # antwortet der Rand mit 502. Host und Origin bleiben unveraendert (der Wizard prueft sie gegen 127.0.0.1:<port>).
       - "127.0.0.1:${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}:8081"
     # Konfiguration aus der Umgebung statt aus einer Datei (keine Bind-Mounts, s. Kopf). `admin off`: keine
-    # Verwaltungs-Schnittstelle, die ein Prozess im Netz umkonfigurieren koennte. Die Liste der oeffentlichen Pfade und
-    # das Zertifikat beim FritzBox-Weg kommen mit Paket 3.
+    # Verwaltungs-Schnittstelle, die ein Prozess im Netz umkonfigurieren koennte. Drei Eingaenge (lib/reach.sh):
+    #   :8080 n8n samt Editor, :8081 Wizard — nur ueber die veroeffentlichten Ports auf 127.0.0.1 des Rechners. Verbindungen
+    #         aus dem EIGENEN Namensraum (127.0.0.1/::1) bricht Caddy ab: dort sitzt nur Tailscale, und Tailscale (Userspace)
+    #         reicht Zugriffe aus dem Tailnet auf 127.0.0.1 weiter — so kaeme sonst jedes Tailnet-Geraet an Editor und
+    #         Wizard. Ueber Docker veroeffentlichte Verbindungen kommen nie von 127.0.0.1 (Absender = Docker-Gateway).
+    #   :8088 die EINE Liste oeffentlicher Pfade (= templates/Caddyfile.tpl der CLI, contract_lint 34), alles andere 404.
+    #         Ziel von Funnel (tunnel) und wan (fritzbox). trusted_proxies: Funnel und wan setzen X-Forwarded-For selbst,
+    #         n8n sieht so den echten Absender (N8N_PROXY_HOPS=2 im Verbund).
     environment:
       LA_CADDYFILE: |
         {
           admin off
           auto_https off
+          servers {
+            trusted_proxies static private_ranges
+          }
         }
         :8080 {
+          @own_netns remote_ip 127.0.0.0/8 ::1
+          abort @own_netns
           reverse_proxy anchor:5678
         }
         :8081 {
+          @own_netns remote_ip 127.0.0.0/8 ::1
+          abort @own_netns
           reverse_proxy anchor:8091
+        }
+        :8088 {
+          @lifeagents path /webhook/* /webhook-test/* /webhook-waiting/* /webhook-waiting-telegram
+          handle @lifeagents {
+            reverse_proxy anchor:5678
+          }
+          handle {
+            respond "Not Found" 404
+          }
         }
     command: ["sh", "-c", "printf '%s' \"$$LA_CADDYFILE\" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile"]
 
   tailscale:
-    # Nur beim Tunnel-Weg (`--profile tunnel`); teilt den Namensraum des Rands, nie den des Pods (Plan *Der Rand*).
+    # Nur beim Tunnel-Weg (Profil tunnel; der master startet ihn gezielt: `up --no-deps tailscale`, lib/reach.sh). Teilt den
+    # Namensraum des Rands, nie den des Pods (Plan *Der Rand*): Funnel -> 127.0.0.1:8088 = die Pfad-Liste des Rands.
+    # Anmeldung ohne Schluessel (Anmelde-Link im Status), danach bleibt der Knoten im Volume ts_state. TS_AUTH_ONCE: bei
+    # einem Neustart nur anmelden, wenn noetig. Rechnername neutral (Zertifikats-Protokolle sind oeffentlich): LA_TS_HOSTNAME.
     profiles: [tunnel]
     image: *img_tailscale
     container_name: ${LA_PROJECT:-lifeagents}-tailscale
@@ -237,9 +266,51 @@ services:
     environment:
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "true"
-      TS_HOSTNAME: ${LA_TS_HOSTNAME:-lifeagents}
+      TS_AUTH_ONCE: "true"
+      TS_ACCEPT_DNS: "false"
+      TS_HOSTNAME: ${LA_TS_HOSTNAME:-bot}
     volumes:
       - ts_state:/var/lib/tailscale
+
+  wan:
+    # Nur beim FritzBox-Weg (Profil fritzbox; der master startet ihn gezielt, nachdem 80/443 frei sind, lib/reach.sh). Eigener
+    # Caddy ausserhalb des Pods: veroeffentlicht 80/443 am Rechner (Weiterleitung der FritzBox), holt das Zertifikat fuer die
+    # Adresse aus reach_conf/domain selbst und reicht ALLES an edge:8088 weiter — die Pfad-Liste lebt nur dort. Vertraut
+    # keinem Vorgaenger: X-Forwarded-For setzt er neu (kein Faelschen von aussen).
+    profiles: [fritzbox]
+    image: *img_caddy
+    container_name: ${LA_PROJECT:-lifeagents}-wan
+    restart: unless-stopped
+    labels: *labels
+    mem_limit: 128m
+    depends_on: [edge]
+    networks: [edge_public]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      LA_CADDYFILE: |
+        {
+          admin off
+        }
+        {$$LA_DOMAIN} {
+          reverse_proxy edge:8088
+        }
+    # Adresse pruefen (nur Kleinbuchstaben, Ziffern, Punkt, Bindestrich), sonst warten statt einen falschen Namen zu bestellen.
+    command:
+      - sh
+      - -c
+      - |
+        d="$$(cat /reach/domain 2>/dev/null || true)"
+        case "$$d" in
+          ''|*[!a-z0-9.-]*|.*|*..*|*.) echo "wan: keine gueltige Adresse in reach_conf/domain" >&2; sleep 30; exit 1 ;;
+        esac
+        printf '%s' "$$LA_CADDYFILE" > /tmp/Caddyfile
+        export LA_DOMAIN="$$d"
+        exec caddy run --config /tmp/Caddyfile --adapter caddyfile
+    volumes:
+      - caddy_data:/data
+      - reach_conf:/reach:ro
 
 networks:
   internal:
@@ -285,4 +356,8 @@ volumes:
   gw_code:
     labels: *labels
   n8n_patches:
+    labels: *labels
+  reach_conf:     # Weg nach aussen: Adresse fuer wan (aus core.env ableitbar)
+    labels: *labels
+  caddy_data:     # Zertifikat des FritzBox-Wegs (neu holbar)
     labels: *labels

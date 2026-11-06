@@ -6,7 +6,9 @@
 #   - Box-Namen-Regel <kennung>.myfritz.net (ohne Netz);
 #   - Abruf je Adresse per --resolve gegen Mock-Gegenstellen (n8n / FRITZ!Box / fremder Dienst / aus / selbstsigniert);
 #   - Einstufung fuer den Installer (Hairpin neutral, IPv6-Zertifikatsfehler = IPv6 woanders, Server ohne IPv6);
-#   - Hinweis-Text (MyFRITZ!-Freigabe statt des alten Portfreigabe-Wegs), /etc/hosts-Pin aufraeumen, Check ohne TTY.
+#   - Hinweis-Text (MyFRITZ!-Freigabe statt des alten Portfreigabe-Wegs), /etc/hosts-Pin aufraeumen, Check ohne TTY;
+#   - zweiter Runner tests/mock_reach/compose_cases.sh: Weg nach aussen im Docker-Verbund (lib/reach.sh: Tailscale-Status,
+#     Funnel, reach_status_json, Installer-Haken, Rand-Konfiguration) gegen Attrappen.
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur den laufenden Container (bash, curl, node, openssl).
 # Usage:  .\scripts\dev\reachability_test.ps1 [-Port 8084] [-Verbose]   (belegt Port und Port+1; 8086/8087 = update_chat)
 # Exit-Code = Anzahl Fehler.
@@ -42,6 +44,12 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_reach', 'mo
 
 $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_reach/cases.sh", $root, "$Port")
 $lines = @($r.Output)
+# Zweiter Teil: Weg nach aussen im Docker-Verbund (lib/reach.sh) gegen Attrappen (Tailscale-Status, Telegram, Docker).
+$r2 = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_reach/compose_cases.sh", $root)
+$lines += @($r2.Output)
+if ($r2.Code -ne 0 -and @($r2.Output | Where-Object { $_ -match '^FAIL ' }).Count -eq 0) {
+    $lines += "FAIL compose_cases.sh brach ab (exit $($r2.Code)): $($r2.Output -join ' | ')"
+}
 foreach ($l in $lines) {
     if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }
     elseif ($l -match '^SKIP ') { Write-Host "    [SKIP] $($l.Substring(5))" -ForegroundColor Yellow }

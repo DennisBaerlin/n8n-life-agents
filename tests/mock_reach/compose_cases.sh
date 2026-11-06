@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# compose_cases.sh — Fall-Runner von scripts/dev/reachability_test.ps1 (zweiter Teil): Weg nach aussen im Docker-Verbund
+# (provisioning/lib/reach.sh) gegen Attrappen, ohne Docker, ohne Tailscale-Konto, ohne Telegram:
+#   E  Einordnung von `tailscale status --json` (Anmelde-Link nur von login.tailscale.com, Geraete-Freigabe, Funnel fehlt,
+#      Ablauf der Anmeldung in Tagen, abgelaufen, kaputtes JSON).
+#   F  Funnel: erkannt nur fuer <name>:443 -> 127.0.0.1:8088; Einschalten ruft `tailscale funnel --bg` genau dann.
+#   S  reach_status_json je Weg und Zustand (Format, Telegram-Webhook ours/foreign/none/unknown, Ports belegt).
+#   P  Installer-Haken: REACH_MODE pruefen und merken, Tunnel-Adresse als DOMAIN nur bei fertigem Tunnel, FritzBox-Weg
+#      startet wan nur bei freien Ports und ueberschreibt nichts, ungueltige Adresse = Abbruch.
+#   C  Rand-Konfiguration: die oeffentlichen Pfade in compose.yml = die der CLI (templates/Caddyfile.tpl), Editor/Wizard
+#      aus dem eigenen Namensraum gesperrt, wan reicht nur an edge:8088.
+# Die Attrappen ersetzen nur die Docker-/Telegram-Wrapper (rt_edge_*, rt_stack_up, rt_host_port_free, tg_api_curl);
+# alles andere ist der echte Lib-Code des Checkouts.
+#
+# Usage: bash compose_cases.sh <root>     Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
+# shellcheck disable=SC2015,SC2329,SC2034  # Attrappen-Funktionen ruft der Lib-Code; "a && pass || fail" gewollt (pass = rc 0)
+set -uo pipefail
+ROOT="$1"
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1
+fails=0
+pass() { printf 'PASS %s\n' "$1"; }
+fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
+eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "erwartet '$2', bekommen '$3'"; fi; }
+
+W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT
+export LIFEAGENTS_DIR="$W/etc" REACH_CONF_DIR="$W/reach" REACH_RUN_DIR="$W/run" LIFEAGENTS_RUNTIME=compose LA_PROJECT=t
+mkdir -p "$LIFEAGENTS_DIR"
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/common.sh"
+# Der Lib-Kopf liest LIFEAGENTS_DIR beim Sourcen.
+REACH_CORE_ENV="$LIFEAGENTS_DIR/core.env"
+ensure_lifeagents_dir() { mkdir -p "$LIFEAGENTS_DIR"; }
+
+NOW=1800000000   # feste Zeit: 2027-01-15
+iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+ts_json() {   # ts_json <BackendState> <AuthURL> <caps-json-array> [KeyExpiry] [Expired]
+  jq -nc --arg b "$1" --arg u "$2" --argjson caps "$3" --arg ke "${4:-}" --argjson ex "${5:-false}" \
+    '{BackendState:$b, AuthURL:$u, Self:({DNSName:"bot.tail-fantasy.ts.net.", Expired:$ex,
+      CapMap:($caps | map({key:., value:null}) | from_entries)} + (if $ke == "" then {} else {KeyExpiry:$ke} end))}'
+}
+
+# --- E: Einordnung -------------------------------------------------------------------------------------------------
+st() { reach_ts_eval "$1" "$NOW"; printf '%s|%s|%s|%s' "$REACH_TS_STATE" "$REACH_TS_URL" "$REACH_TS_DNS" "$REACH_TS_KEY_DAYS"; }
+LOGIN='https://login.tailscale.com/a/1a2b3c4d5e'
+eq E_needs_login   "needs_login|$LOGIN|bot.tail-fantasy.ts.net|" "$(st "$(ts_json NeedsLogin "$LOGIN" '[]')")"
+eq E_foreign_link  "needs_login||bot.tail-fantasy.ts.net|"       "$(st "$(ts_json NeedsLogin 'https://evil.example.com/a/1' '[]')")"
+eq E_link_lookalike "needs_login||bot.tail-fantasy.ts.net|"      "$(st "$(ts_json NeedsLogin 'https://login.tailscale.com.example.com/a' '[]')")"
+eq E_no_link_yet   "starting||bot.tail-fantasy.ts.net|"          "$(st "$(ts_json NeedsLogin '' '[]')")"
+eq E_machine_auth  "needs_machine_auth||bot.tail-fantasy.ts.net|" "$(st "$(ts_json NeedsMachineAuth '' '[]')")"
+eq E_no_funnel     "needs_funnel||bot.tail-fantasy.ts.net|"      "$(st "$(ts_json Running '' '["https"]')")"
+eq E_no_https      "needs_funnel||bot.tail-fantasy.ts.net|"      "$(st "$(ts_json Running '' '["funnel"]')")"
+eq E_running       "running||bot.tail-fantasy.ts.net|"           "$(st "$(ts_json Running '' '["https","funnel"]')")"
+eq E_caps_array    "running||bot.tail-fantasy.ts.net|" \
+  "$(st "$(ts_json Running '' '[]' | jq -c '.Self.Capabilities=["https","funnel"]')")"
+eq E_key_days      "running||bot.tail-fantasy.ts.net|10"         "$(st "$(ts_json Running '' '["https","funnel"]' "$(iso $((NOW + 10*86400 + 60)))")")"
+eq E_key_fraction  "running||bot.tail-fantasy.ts.net|10" \
+  "$(st "$(ts_json Running '' '["https","funnel"]' "$(date -u -d "@$((NOW + 10*86400 + 60))" +%Y-%m-%dT%H:%M:%S.123456789Z)")")"
+eq E_key_past      "key_expired||bot.tail-fantasy.ts.net|-2"     "$(st "$(ts_json Running '' '["https","funnel"]' "$(iso $((NOW - 2*86400 + 60)))")")"
+eq E_expired_flag  "key_expired|$LOGIN|bot.tail-fantasy.ts.net|"       "$(st "$(ts_json NeedsLogin "$LOGIN" '[]' '' true)")"
+eq E_stopped       "stopped||bot.tail-fantasy.ts.net|"           "$(st "$(ts_json Stopped '' '[]')")"
+eq E_garbage       "starting|||"                                  "$(st 'kein json {')"
+eq E_empty         "starting|||"                                  "$(st '')"
+eq E_bad_dns       "running|||" "$(st "$(ts_json Running '' '["https","funnel"]' | jq -c '.Self.DNSName="x;rm -rf /."')")"
+
+# --- F: Funnel -----------------------------------------------------------------------------------------------------
+FUN_ON='{"TCP":{"443":{"HTTPS":true}},"Web":{"bot.tail-fantasy.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8088"}}}},"AllowFunnel":{"bot.tail-fantasy.ts.net:443":true}}'
+reach_funnel_configured bot.tail-fantasy.ts.net "$FUN_ON" && pass F_on || fail F_on "nicht erkannt"
+reach_funnel_configured bot.tail-fantasy.ts.net "$(printf '%s' "$FUN_ON" | jq -c '.AllowFunnel={}')" \
+  && fail F_serve_only "nur Serve (Tailnet) als Funnel gewertet" || pass F_serve_only
+reach_funnel_configured bot.tail-fantasy.ts.net "$(printf '%s' "$FUN_ON" | jq -c '.Web[].Handlers["/"].Proxy="http://127.0.0.1:8080"')" \
+  && fail F_wrong_target "Ziel :8080 (Editor) als richtig gewertet" || pass F_wrong_target
+reach_funnel_configured other.tail-fantasy.ts.net "$FUN_ON" && fail F_other_name "fremder Name" || pass F_other_name
+reach_funnel_configured bot.tail-fantasy.ts.net '' && fail F_empty "leer" || pass F_empty
+
+# --- Attrappen fuer S/P ----------------------------------------------------------------------------------------------
+LOG="$W/calls.log"; : > "$LOG"
+A_TS_UP=1; A_WAN_UP=0; A_TS_JSON=''; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=0; A_PORTS_FREE=1; A_TG=''
+rt_edge_active() { case "$1" in tailscale) [ "$A_TS_UP" = 1 ] ;; wan) [ "$A_WAN_UP" = 1 ] ;; *) return 2 ;; esac; }
+rt_edge_restart() { printf 'restart %s\n' "$1" >> "$LOG"; }
+rt_edge_logs_hint() { printf 'logs %s' "$1"; }
+rt_stack_up() { printf 'up %s\n' "$*" >> "$LOG"; case "$*" in *wan*) A_WAN_UP=1 ;; esac; }
+rt_host_port_free() { printf 'portprobe %s\n' "$1" >> "$LOG"; [ "$A_PORTS_FREE" = 1 ]; }
+rt_edge_exec() {
+  [ "$1" = tailscale ] || return 2; shift
+  printf 'exec %s\n' "$*" >> "$LOG"
+  case "$*" in
+    'tailscale status --json --peers=false') printf '%s' "$A_TS_JSON" ;;
+    'tailscale funnel status --json') if [ -s "$W/funnel.json" ]; then cat "$W/funnel.json"; else printf '%s' "$A_FUNNEL_JSON"; fi ;;
+    *'tailscale funnel --bg --yes http://127.0.0.1:8088')
+      # Zustand in einer Datei: der Lib-Code ruft die Attrappe in $(…)-Subshells (wie Tailscale: bleibt gespeichert).
+      if [ "$A_FUNNEL_ALLOWED" = 1 ]; then printf '%s' "$FUN_ON" > "$W/funnel.json"
+      else printf '\nFunnel is not enabled on your tailnet.\n\n         https://login.tailscale.com/f/funnel?node=nFantasy1\n\n'; return 124; fi ;;
+    *) return 1 ;;
+  esac
+}
+tg_api_curl() { printf 'tg %s\n' "$2" >> "$LOG"; [ -n "$A_TG" ] && printf '%s' "$A_TG"; [ -n "$A_TG" ]; }
+tg_url() { jq -nc --arg u "$1" '{ok:true, result:{url:$u, pending_update_count:0}}'; }
+cfg() { rm -f "$REACH_CORE_ENV"; for kv in "$@"; do env_upsert "$REACH_CORE_ENV" "${kv%%=*}" "${kv#*=}"; done; }
+js() { reach_status_json; }
+field() { printf '%s' "$1" | jq -r ".$2 | if . == null then \"null\" else tostring end"; }
+
+# --- S: Status je Weg ----------------------------------------------------------------------------------------------
+unset REACH_MODE
+cfg TELEGRAM_BOT_TOKEN=123:fantasy
+out="$(js)"
+eq S_no_mode "none|unavailable|no_mode" "$(field "$out" mode)|$(field "$out" state)|$(field "$out" reason)"
+eq S_keys "dns_name,key_days_left,key_expiry,mode,reason,state,url,webhook" "$(printf '%s' "$out" | jq -r 'keys | join(",")')"
+
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy
+A_TS_UP=0; out="$(js)"
+eq S_ts_not_started "unavailable|not_started" "$(field "$out" state)|$(field "$out" reason)"
+A_TS_UP=1; A_TS_JSON="$(ts_json NeedsLogin "$LOGIN" '[]')"; out="$(js)"
+eq S_ts_login "needs_login|$LOGIN" "$(field "$out" state)|$(field "$out" url)"
+A_TS_JSON="$(ts_json Running '' '["https"]')"; : > "$LOG"; out="$(js)"
+eq S_ts_funnel_link "needs_funnel|https://login.tailscale.com/f/funnel?node=nFantasy1" "$(field "$out" state)|$(field "$out" url)"
+: > "$LOG"; out="$(js)"
+eq S_ts_funnel_cached "https://login.tailscale.com/f/funnel?node=nFantasy1" "$(field "$out" url)"
+grep -q 'funnel --bg' "$LOG" && fail S_ts_funnel_cache_hit "Link nicht zwischengespeichert (zweiter funnel-Aufruf)" || pass S_ts_funnel_cache_hit
+rm -f "$REACH_RUN_DIR/funnel-link"
+
+# Funnel erlaubt, aber noch nicht eingeschaltet -> Status schaltet ihn ein; Bot zeigt noch nirgends hin.
+A_TS_JSON="$(ts_json Running '' '["https","funnel"]' "$(iso $((NOW + 100*86400)))")"; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=1
+A_TG="$(tg_url '')"; : > "$LOG"; out="$(js)"
+eq S_ts_pending "pending_activation|none|bot.tail-fantasy.ts.net" "$(field "$out" state)|$(field "$out" webhook)|$(field "$out" dns_name)"
+grep -q 'exec timeout 20 tailscale funnel --bg --yes http://127.0.0.1:8088' "$LOG" && pass S_ts_funnel_switched_on || fail S_ts_funnel_switched_on "$(tr '\n' ';' < "$LOG")"
+[ "$(field "$out" key_days_left)" -ge 1 ] 2>/dev/null && pass S_ts_key_days || fail S_ts_key_days "$(field "$out" key_days_left)"
+: > "$LOG"; js >/dev/null
+grep -q 'funnel --bg' "$LOG" && fail S_ts_funnel_idempotent "schon an, trotzdem neu eingeschaltet" || pass S_ts_funnel_idempotent
+A_TG="$(tg_url 'https://old.example.org/webhook/x')"; out="$(js)"
+eq S_ts_foreign "pending_activation|foreign" "$(field "$out" state)|$(field "$out" webhook)"
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy DOMAIN=bot.tail-fantasy.ts.net
+A_TG="$(tg_url 'https://bot.tail-fantasy.ts.net/webhook/abc/webhook')"; out="$(js)"
+eq S_ts_ready "ready|ours" "$(field "$out" state)|$(field "$out" webhook)"
+A_TG="$(tg_url 'https://bot.tail-fantasy.ts.net.evil.example/webhook/abc')"; out="$(js)"
+eq S_ts_lookalike_webhook "pending_activation|foreign" "$(field "$out" state)|$(field "$out" webhook)"
+A_TG=''; out="$(js)"
+eq S_ts_tg_down "pending_activation|unknown" "$(field "$out" state)|$(field "$out" webhook)"
+A_TS_JSON="$(ts_json Stopped '' '[]')"; out="$(js)"
+eq S_ts_stopped "unavailable|stopped" "$(field "$out" state)|$(field "$out" reason)"
+
+cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy
+out="$(js)"
+eq S_fb_no_domain "unavailable|no_domain" "$(field "$out" state)|$(field "$out" reason)"
+cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy DOMAIN=meinproxy.deine-domain.myfritz.net
+A_WAN_UP=0; A_PORTS_FREE=0; out="$(js)"
+eq S_fb_ports_busy "ports_busy" "$(field "$out" state)"
+A_PORTS_FREE=1; out="$(js)"
+eq S_fb_not_started "starting|not_started" "$(field "$out" state)|$(field "$out" reason)"
+A_WAN_UP=1; A_TG="$(tg_url 'https://meinproxy.deine-domain.myfritz.net/webhook/abc/webhook')"; out="$(js)"
+eq S_fb_ready "ready|ours|meinproxy.deine-domain.myfritz.net" "$(field "$out" state)|$(field "$out" webhook)|$(field "$out" dns_name)"
+A_TG="$(tg_url '')"; out="$(js)"
+eq S_fb_pending "pending_activation|none" "$(field "$out" state)|$(field "$out" webhook)"
+
+# --- P: Installer-Haken --------------------------------------------------------------------------------------------
+cfg TELEGRAM_BOT_TOKEN=123:fantasy
+( REACH_MODE='tunnel;id' reach_prepare ) >/dev/null 2>&1 && fail P_bad_mode "ungueltiger Weg angenommen" || pass P_bad_mode
+eq P_bad_mode_not_saved "" "$(read_env_value "$REACH_CORE_ENV" REACH_MODE 2>/dev/null || true)"
+
+# Tunnel noch ohne Anmeldung: Container wird gestartet, DOMAIN bleibt leer.
+A_TS_UP=1; A_TS_JSON="$(ts_json NeedsLogin "$LOGIN" '[]')"; : > "$LOG"
+DOMAIN=''; REACH_MODE=tunnel reach_prepare >/dev/null 2>&1
+eq P_mode_saved tunnel "$(read_env_value "$REACH_CORE_ENV" REACH_MODE)"
+grep -q '^up --no-deps tailscale$' "$LOG" && pass P_ts_started || fail P_ts_started "$(tr '\n' ';' < "$LOG")"
+eq P_no_domain_before_login "|" "${DOMAIN}|$(read_env_value "$REACH_CORE_ENV" DOMAIN 2>/dev/null || true)"
+# Bestand mit Adresse, Tailscale gerade weg: die gespeicherte Adresse bleibt.
+env_upsert "$REACH_CORE_ENV" DOMAIN bot.tail-fantasy.ts.net
+DOMAIN=bot.tail-fantasy.ts.net; A_TS_JSON=''; unset REACH_MODE
+reach_prepare >/dev/null 2>&1
+eq P_keep_domain "bot.tail-fantasy.ts.net|bot.tail-fantasy.ts.net" "${DOMAIN}|$(read_env_value "$REACH_CORE_ENV" DOMAIN)"
+# Angemeldet + Funnel erlaubt: Funnel an, Name wird DOMAIN (Umgebung + core.env).
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy
+A_TS_JSON="$(ts_json Running '' '["https","funnel"]')"; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=1; DOMAIN=''
+reach_prepare >/dev/null 2>&1
+eq P_domain_from_tunnel "bot.tail-fantasy.ts.net|bot.tail-fantasy.ts.net" "${DOMAIN}|$(read_env_value "$REACH_CORE_ENV" DOMAIN)"
+# Funnel im Konto nicht erlaubt: keine Adresse (sonst zeigte der Webhook ins Leere).
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy
+A_TS_JSON="$(ts_json Running '' '["https"]')"; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=0; DOMAIN=''
+reach_prepare >/dev/null 2>&1
+eq P_no_domain_without_funnel "|" "${DOMAIN}|$(read_env_value "$REACH_CORE_ENV" DOMAIN 2>/dev/null || true)"
+# FritzBox: Prepare startet nichts.
+cfg TELEGRAM_BOT_TOKEN=123:fantasy; : > "$LOG"
+REACH_MODE=fritzbox reach_prepare >/dev/null 2>&1
+[ -s "$LOG" ] && fail P_fb_prepare_quiet "$(tr '\n' ';' < "$LOG")" || pass P_fb_prepare_quiet
+
+# reach_converge (FritzBox)
+cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy; unset REACH_MODE
+A_WAN_UP=0; A_PORTS_FREE=0; : > "$LOG"; rm -rf "$REACH_CONF_DIR"
+DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+grep -q '^up' "$LOG" && fail P_fb_busy_no_start "wan trotz belegter Ports gestartet" || pass P_fb_busy_no_start
+A_PORTS_FREE=1; : > "$LOG"
+DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+grep -q '^up --no-deps wan$' "$LOG" && pass P_fb_start || fail P_fb_start "$(tr '\n' ';' < "$LOG")"
+eq P_fb_domain_file meinproxy.deine-domain.myfritz.net "$(cat "$REACH_CONF_DIR/domain" 2>/dev/null)"
+: > "$LOG"; DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+[ -s "$LOG" ] && fail P_fb_second_run_noop "$(tr '\n' ';' < "$LOG")" || pass P_fb_second_run_noop
+: > "$LOG"; DOMAIN=zweiter.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+grep -q '^restart wan$' "$LOG" && pass P_fb_domain_change_restart || fail P_fb_domain_change_restart "$(tr '\n' ';' < "$LOG")"
+( DOMAIN='evil.example.org;touch /tmp/x' reach_converge ) >/dev/null 2>&1 && fail P_fb_bad_domain "ungueltige Adresse geschrieben" || pass P_fb_bad_domain
+eq P_fb_bad_domain_untouched zweiter.deine-domain.myfritz.net "$(cat "$REACH_CONF_DIR/domain")"
+cfg REACH_MODE=tunnel; : > "$LOG"; DOMAIN=bot.tail-fantasy.ts.net reach_converge >/dev/null 2>&1
+[ -s "$LOG" ] && fail P_tunnel_converge_noop "$(tr '\n' ';' < "$LOG")" || pass P_tunnel_converge_noop
+
+# Wrapper-Grenze (echter runtime.sh-Code, nicht die Attrappe): nur edge|tailscale|wan.
+( unset -f rt_edge_exec; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_exec postgres true ) >/dev/null 2>&1
+eq P_wrapper_fixed_list 2 "$?"
+
+# --- C: Rand-Konfiguration -----------------------------------------------------------------------------------------
+CY="$ROOT/provisioning/compose/compose.yml"
+cli_paths="$(sed -n 's/^[[:space:]]*@lifeagents path \(.*\)$/\1/p' "$ROOT/provisioning/templates/Caddyfile.tpl")"
+edge_paths="$(sed -n 's/^[[:space:]]*@lifeagents path \(.*\)$/\1/p' "$CY")"
+[ -n "$cli_paths" ] && eq C_one_path_list "$cli_paths" "$edge_paths" || fail C_one_path_list "Pfad-Liste der CLI nicht gefunden"
+[ "$(grep -c 'abort @own_netns' "$CY")" = 2 ] && pass C_editor_wizard_netns_blocked || fail C_editor_wizard_netns_blocked "erwartet 2 Sperren (8080, 8081)"
+[ "$(grep -cE '^[[:space:]]+admin off$' "$CY")" = 2 ] && pass C_admin_off || fail C_admin_off "edge und wan brauchen admin off"
+grep -q 'reverse_proxy edge:8088' "$CY" && ! grep -qE 'reverse_proxy edge:(8080|8081)' "$CY" && pass C_wan_only_public || fail C_wan_only_public "wan muss nur an edge:8088"
+grep -q "REACH_PUBLIC_TARGET='http://127.0.0.1:8088'" "$ROOT/provisioning/lib/reach.sh" && pass C_funnel_target || fail C_funnel_target "Funnel-Ziel nicht :8088"
+
+printf 'compose_cases: %s Fehler\n' "$fails"
+exit "$fails"

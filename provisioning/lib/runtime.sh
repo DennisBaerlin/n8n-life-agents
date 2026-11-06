@@ -252,3 +252,26 @@ rt_master_write() {
 }
 # rt_master_exec <befehl…> — im master ausfuehren (ohne stdin, s. pg_su_exec).
 rt_master_exec() { docker exec "$(rt_master_container)" "$@"; }
+
+# --- Rand (Paket 3, lib/reach.sh): edge, tailscale, wan -----------------------------------------------------------------
+# Feste Dienstliste ausserhalb des Pods, Container <projekt>-<dienst>; jeder andere Name = rc 2 (nie ein fremder Container).
+_rt_edge_container() { case "$1" in edge|tailscale|wan) printf '%s-%s' "$LA_PROJECT" "$1" ;; *) return 2 ;; esac; }
+# rt_edge_active <dienst> — 0 = Container laeuft.
+rt_edge_active() {
+  local c; c="$(_rt_edge_container "$1")" || return 2
+  [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ]
+}
+# rt_edge_restart <dienst> — Container neu starten (wan liest seine Adresse beim Start; Tailscale stellt neu einen Link aus).
+#   `docker restart` statt `compose restart`: tailscale/wan haengen an Profilen, die der Aufruf sonst erst aktivieren muesste.
+rt_edge_restart() {
+  local c; c="$(_rt_edge_container "$1")" || return 2
+  docker restart "$c" >/dev/null
+}
+# rt_edge_exec <dienst> <befehl…> — im Rand-Container ausfuehren (ohne stdin, s. pg_su_exec), z. B. `tailscale status`.
+rt_edge_exec() {
+  local c; c="$(_rt_edge_container "$1")" || return 2
+  shift
+  docker exec "$c" "$@"
+}
+# rt_edge_logs_hint <dienst> -> Diagnose-Befehl als Text (wird nicht ausgefuehrt).
+rt_edge_logs_hint() { printf 'docker logs --tail 100 %s-%s' "$LA_PROJECT" "$1"; }

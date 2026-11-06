@@ -371,6 +371,9 @@ main() {
       chown "root:${N8N_USER}" "$INSTALL_ENV_FILE" 2>/dev/null || true
     fi
   fi
+  # Docker-Verbund: Weg nach aussen (REACH_MODE) merken; beim Tunnel kommt die Internet-Adresse von Tailscale, sobald der
+  # Knoten angemeldet ist (lib/reach.sh) — darum VOR derive_network_config.
+  if rt_is_compose; then reach_prepare; fi
 
   # Befund 3 (Install-UX-Phase): `lifeagents update` reicht leere Args durch -> ohne Persistenz
   # liefe jedes Prod-Update als PROFILE=dev und die release-gegateten Schritte (collect_release_inputs
@@ -573,6 +576,8 @@ main() {
   # Public-Repo: ein GH_TOKEN aus der privaten Zeit braucht die NEUE CLI nicht mehr -> aus core.env + Alt-Bootstrap-Env
   # weg. Erst HIER (nach install_cli): scheitert der Lauf vorher, bleibt die alte CLI installiert, die ihn noch braucht.
   drop_legacy_repo_token "$INSTALL_ENV_FILE" /etc/n8n/install.env
+  # Docker-Verbund, FritzBox-Weg: wan (80/443, Zertifikat) erst jetzt starten — nach der Pruefung, dass 80/443 frei sind.
+  if rt_is_compose; then reach_converge; fi
 
   # Gefuehrtes Ende (interaktiv): Erreichbarkeit pruefen (ggf. Caddyfile + "Erneut pruefen/Spaeter"),
   # Pairing-Code als Deep-Link, auf /start warten, danach den Bot fertig einstellen. Ohne TTY / ohne

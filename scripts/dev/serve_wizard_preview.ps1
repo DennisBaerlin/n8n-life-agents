@@ -2,7 +2,8 @@
 # serve_wizard_preview.ps1 -- Vorschau des Einrichtungs-Wizards fuer den Browser der Claude-Desktop-App (Eintrag "wizard" in
 # .claude/launch.json). Liefert die ECHTE Seite (provisioning/wizard/ui) mit den festgehaltenen Seiten-Modellen des echten
 # Servers (scripts/dev/lib/wizard_preview.ps1, erfundene Werte) -- kein Container noetig, solange die Sammlung existiert.
-# Jede Anfrage baut die Seite neu (Aenderung an ui/ -> Neuladen genuegt); neue Seiten-Modelle: -Refresh (Docker, ~1 Min) oder
+# Jede Anfrage baut die Seite neu und liest die Sammlung frisch (Aenderung an ui/ oder neue Aufnahme -> Neuladen genuegt);
+# neue Seiten-Modelle: -Refresh (Docker, ~1 Min) oder
 # .\scripts\dev\build_ui_review.ps1 -Surface wizard -Capture nachher.
 #   .\scripts\dev\serve_wizard_preview.ps1 [-Port 8767] [-Refresh]
 #   http://localhost:8767/                 Liste aller Seiten
@@ -28,6 +29,8 @@ try {
             $name = [string]$ctx.Request.QueryString['p']
             $scheme = [string]$ctx.Request.QueryString['scheme']
             if ($scheme -notin @('light', 'dark')) { $scheme = 'auto' }
+            # Sammlung bei jedem Aufruf frisch lesen: eine neue Aufnahme (build_ui_review.ps1) zeigt sich ohne Neustart.
+            $pages = @(Get-WizardPreviewDump -RepoRoot $RepoRoot -Cached)
             $entry = $pages | Where-Object { $_.name -eq $name } | Select-Object -First 1
             if ($entry) {
                 $html = Get-WizardPreviewHtml -RepoRoot $RepoRoot -Entry $entry -Scheme $scheme

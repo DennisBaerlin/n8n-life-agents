@@ -3,7 +3,7 @@
 //! etwas ändert, mit festem Projektnamen. Breite Befehle (Aufräumen über alles, „alle“-Schalter beim Löschen,
 //! Listen nur aus IDs für Massen-Löschungen) gibt es hier nicht; der Test `no_broad_commands` hält das fest.
 
-use crate::contract::{MasterCmd, FIRST_SERVICES, MASTER_CONTAINER, PROJECT};
+use crate::contract::{MasterCmd, FIRST_SERVICES, LABEL, MASTER_CONTAINER, PROJECT};
 use crate::host::{CmdOut, Host};
 
 /// Gefundenes Docker: Pfad zum Befehl und der festgehaltene Kontext.
@@ -28,8 +28,17 @@ pub enum DockerCall<'a> {
     /// Objekte mit unserem Namen (Prüfliste Nr. 7): Name und unser Label.
     OurContainers,
     OurVolumes,
+    /// Label-Wert eines Volumes (leer = ohne unser Label). Fehlt das Volume, scheitert der Aufruf.
+    VolumeLabel(&'a str),
+    /// Compose-Datei und Pflicht-Variablen prüfen, ohne etwas auszugeben oder anzulegen.
+    ComposeConfig {
+        file: &'a str,
+        env_file: &'a str,
+    },
     // --- ändern, nur unser Projekt ---
-    /// Erste Zustimmung: `anchor` + `master` starten.
+    /// Zustandsführendes Volume anlegen (`external` in compose.yml), immer mit unserem Label.
+    VolumeCreate(&'a str),
+    /// Erste Zustimmung: `anchor`, `postgres`, `master`, `edge` starten (`contract::FIRST_SERVICES`).
     ComposeUpFirst {
         file: &'a str,
         env_file: &'a str,
@@ -102,6 +111,20 @@ impl Docker {
                 p(&mut a, &["volume", "ls", "--filter"]);
                 a.push(format!("name=^{PROJECT}_"));
                 p(&mut a, &["--format", "{{.Name}}|{{.Labels}}"]);
+            }
+            DockerCall::VolumeLabel(name) => {
+                p(&mut a, &["volume", "inspect", "--format"]);
+                a.push(format!("{{{{index .Labels \"{LABEL}\"}}}}"));
+                a.push(name.to_string());
+            }
+            DockerCall::ComposeConfig { file, env_file } => {
+                compose(&mut a, file, env_file);
+                p(&mut a, &["config", "--quiet"]);
+            }
+            DockerCall::VolumeCreate(name) => {
+                p(&mut a, &["volume", "create", "--label"]);
+                a.push(format!("{LABEL}={PROJECT}"));
+                a.push(name.to_string());
             }
             DockerCall::ComposeUpFirst { file, env_file } => {
                 compose(&mut a, file, env_file);
@@ -183,7 +206,10 @@ mod tests {
             DockerCall::ImageRemove("busybox@sha256:00"),
             DockerCall::Master(MasterCmd::WizardUrl),
             DockerCall::Master(MasterCmd::WizardStatus),
-            DockerCall::Master(MasterCmd::PowerDone(true)),
+            DockerCall::Master(MasterCmd::PowerDone),
+            DockerCall::VolumeLabel("lifeagents_pgdata"),
+            DockerCall::ComposeConfig { file: "c.yml", env_file: "e.env" },
+            DockerCall::VolumeCreate("lifeagents_pgdata"),
             DockerCall::Master(MasterCmd::ReleaseWebhook),
         ]
     }
@@ -217,10 +243,24 @@ mod tests {
         ];
         let d = Docker { bin: "docker".into(), context: "default".into() };
         for c in all_calls() {
-            for arg in d.args(&c) {
-                assert!(!banned.contains(&arg), "verbotenes Argument {arg} in {:?}", d.args(&c));
+            let a = d.args(&c);
+            for (i, arg) in a.iter().enumerate() {
+                // Einzige Ausnahme: `compose config --quiet` prüft nur und gibt nichts aus (kein ID-Listing).
+                if arg == "--quiet" && i > 0 && a[i - 1] == "config" {
+                    continue;
+                }
+                assert!(!banned.contains(arg), "verbotenes Argument {arg} in {a:?}");
             }
         }
+    }
+
+    #[test]
+    fn created_volumes_carry_our_label() {
+        let d = Docker { bin: "docker".into(), context: "default".into() };
+        assert_eq!(
+            d.args(&DockerCall::VolumeCreate("lifeagents_pgdata")).join(" "),
+            "--context default volume create --label io.lifeagents.install=lifeagents lifeagents_pgdata"
+        );
     }
 
     #[test]
@@ -236,10 +276,10 @@ mod tests {
     }
 
     #[test]
-    fn first_start_only_anchor_and_master() {
+    fn first_start_only_the_services_of_package_1() {
         let d = Docker { bin: "docker".into(), context: "default".into() };
         let a = d.args(&DockerCall::ComposeUpFirst { file: "c.yml", env_file: "e.env" });
-        assert_eq!(&a[a.len() - 2..], &["anchor".to_string(), "master".to_string()]);
+        assert_eq!(a[a.len() - 4..].join(" "), "anchor postgres master edge");
         assert!(a.contains(&"--no-recreate".to_string()));
     }
 }

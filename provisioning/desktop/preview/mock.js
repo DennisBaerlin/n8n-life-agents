@@ -66,7 +66,9 @@
       journal: { kind: fall === 'interrupted' ? 'interrupted' : fall === 'complete' ? 'complete' : 'fresh', step: { step: 'core-started' } },
       version: '0.1.0',
       compose_ready: fall === 'wizard',
+      download: fall === 'missing' ? (os === 'mac' ? 'lifeagents.dmg' : 'lifeagents-setup.exe') : null,
     }),
+    trash_download: async () => wait(300),
     check_system: async () => (await wait(500), sys),
     check_docker: async () => {
       await wait(500);

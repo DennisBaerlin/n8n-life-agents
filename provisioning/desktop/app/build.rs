@@ -1,8 +1,9 @@
 // App-Befehle brauchen eine ausdrückliche Erlaubnis (App-Manifest). Nur das App-Fenster bekommt sie
-// (capabilities/default.json); das Fragebogen-Fenster zeigt eine Seite des master-Containers und darf keinen Befehl rufen.
+// (capabilities/default.json, ohne `remote`); die Fragebogen-Seite im selben Fenster ist eine fremde Adresse und darf keinen Befehl rufen.
 // Neuer Befehl in src/commands.rs → hier eintragen und in capabilities/default.json als allow-<name> freigeben.
 const COMMANDS: &[&str] = &[
     "startup",
+    "trash_download",
     "check_system",
     "check_docker",
     "fetch_docker",

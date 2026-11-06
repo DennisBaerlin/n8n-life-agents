@@ -26,27 +26,27 @@ Tauri-2-App für Freunde ohne eigenen Server (Plan *Docker-Installer für Freund
 
 - Logik: `.\scripts\dev\test_desktop_core.ps1` (Wegwerf-Container `rust:1-slim`, kein Rust auf dem Rechner nötig), `-Lint` mit fmt + clippy.
 - Oberfläche: Vorschau `desktop-app` (`.claude/launch.json`), Fälle per `?state=` (Kopf von `preview/mock.js`), `?theme=dark`, `?os=win`.
-- App-Bau: nur CI (`.github/workflows/desktop.yml` → `desktop-build.yml`), Artefakte `desktop-dmg`/`desktop-nsis`; `desktop-vendor-ids.yml` liest Team-ID und Windows-Herausgeber von Docker am Original ab (bei Änderung der Konstanten, wöchentlich, von Hand).
+- App-Bau: nur CI (`.github/workflows/desktop.yml` → `desktop-build.yml`), Artefakte `desktop-dmg`/`desktop-nsis`; danach `--self-test` (alle lesenden Prüfungen gegen das echte macOS bzw. Windows des Runners) und ein kurzer Start der fertigen App; `desktop-vendor-ids.yml` liest Team-ID und Windows-Herausgeber von Docker am Original ab (bei Änderung der Konstanten, wöchentlich, von Hand).
 
 ## Schnittstelle zu den anderen Paketen
 
-Alle Namen an einer Stelle: `core/src/contract.rs` (Stand: Attrappe nach Plan, bis Paket 1 die Compose-Namen festlegt). Die App erwartet:
+Alle Namen an einer Stelle: `core/src/contract.rs`. Die App erwartet:
 
-- **Paket 1:** Compose-Datei als Ressource `compose.yml` im App-Paket (fehlt sie, zeigt die App „fehlt in dieser Test-Fassung“), Projekt `lifeagents`, Dienste `anchor` + `master`, Label `io.lifeagents.install` an allen Objekten, Port per `--env-file` als `LIFEAGENTS_HTTP_PORT` (App sucht 5880–5899 auf 127.0.0.1), `image:`-Zeilen mit Digest.
-- **Paket 4 (im `master`, je eine JSON-Zeile auf stdout):** `lifeagents wizard url` → `{"url":"http://127.0.0.1:<port>/…"}` (frische Einmal-Adresse; andere Adressen öffnet die App nicht), `lifeagents wizard status` → `{"phase":"running|power|done","bot":"<name>"}`, `lifeagents wizard power-done yes|no`. Bei `power` fragt die App selbst nach dem Dauerbetrieb.
+- **Paket 1:** Projekt `lifeagents`, Label `io.lifeagents.install=<projekt>` an allen Objekten. Vor dem ersten Start: `compose config --quiet`, dann die zustandsführenden Volumes (`contract::STATE_VOLUMES`, Quelle `provisioning/lib/runtime.sh`) mit Label anlegen (gleichnamiges ohne Label = Abbruch), dann `up -d anchor postgres master edge`. Env-Datei der App: `LA_EDGE_PORT` (5880–5899 auf 127.0.0.1), `LA_PG_SUPERPW` (einmal erzeugt, bleibt), `WIZARD_PUBLIC_ORIGIN`. `LA_MASTER_IMAGE` und die Quelle der Compose-Datei legt Paket 5 fest; bis dahin zeigt die App „fehlt in dieser Test-Fassung“.
+- **Paket 4 (im `master`, `node /opt/lifeagents/provisioning/wizard/ctl.js …`, je eine JSON-Zeile):** `url` → `{"url":"http://127.0.0.1:<port>/…"}` (Einmal-Wert; andere Adressen öffnet die App nicht), `status` → `{"phase":"questions|installing|failed|pairing|connected|handoff"}`, `power-done` nach der Dauerbetrieb-Frage. Der Fragebogen läuft im App-Fenster ohne App-Rechte (Test `acl_tests` in `app/src/main.rs`); bei `handoff` lädt die App ihre Seite mit `#power` neu.
 - **Paket 2:** `lifeagents telegram release-webhook` (Exit 0 = Webhook zurückgesetzt) vor dem Entfernen.
 - **Paket 5/Release:** DMG/EXE hängen mit `.sha256` am Release-Entwurf, stehen aber nicht in `SHA256SUMS`; eigene Prüfkette offen.
 
 ## Handliste für den Test auf echter Hardware (Paket 9)
 
-CI baut und signiert ad hoc, startet aber weder Docker noch die App. Auf dem Mac (vorher Paperless-Daten sichern):
+CI baut, signiert ad hoc, startet die App kurz und prüft lesend gegen das echte System (`--self-test`), startet aber kein Docker und ändert nichts. Auf dem Mac (vorher Paperless-Daten sichern):
 
 1. DMG öffnen, App in Programme ziehen; Start aus der DMG zeigt „Zieh die App zuerst …“.
 2. Erster Start: Sperre, *Systemeinstellungen → Datenschutz und Sicherheit → Dennoch öffnen*; erscheint der Knopf, wie lange dauert es, fragt er nach dem Passwort?
 3. Docker an, Paperless läuft: „Docker ist schon da“, Programmname stimmt, kein Passwort, keine Installation.
 4. Docker Desktop beendet: „Docker ist da, aber gerade aus“; nach Ja startet Docker, nichts wird installiert, Version unverändert (`docker version` vorher/nachher).
 5. Rechner ohne Docker: Download, Prüfung Team-ID, ein Passwort-Dialog, Docker läuft danach; Abbruch des Passwort-Dialogs ändert nichts.
-6. Fragebogen-Fenster öffnet nur `http://127.0.0.1:<port>` (sobald Paket 4 da ist); bis dahin Platzhalter.
+6. Fragebogen lädt im App-Fenster nur `http://127.0.0.1:<port>`; nach „Verbinden“ kommt die App von selbst mit „Dauerbetrieb“ zurück. Nach dem Start aus Programme ist die DMG ausgeworfen; „Download wegräumen“ legt die Datei in den Papierkorb (Finder: „Zurücklegen“ geht).
 7. Dauerbetrieb Ja: `pmset -g custom` vorher/nachher (nur AC-Bereich geändert), Ergebnis-Seite zeigt nur, was gilt; `fdesetup status` unverändert.
 8. Menüleisten-Symbol: Status „Läuft“/„Docker ist aus“ nach Docker beenden (bis 60 s), alle Menüpunkte.
 9. Abmelden/Anmelden: LaunchAgent `~/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist` startet die App ohne Fenster, Docker und Verbund kommen hoch. Ad-hoc-signierte App als LaunchAgent ist unbelegt.

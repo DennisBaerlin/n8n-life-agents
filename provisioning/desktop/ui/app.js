@@ -120,15 +120,6 @@ function failed(code, retry) {
   });
 }
 
-/** Das App-Fenster kann versteckt sein, während der Fragebogen läuft (main.rs). */
-function bringToFront() {
-  const w = T.window && T.window.getCurrentWindow ? T.window.getCurrentWindow() : null;
-  if (w) {
-    w.show();
-    w.setFocus();
-  }
-}
-
 // ---------------------------------------------------------------------------------------------- Bildschirme
 
 const SCREENS = {
@@ -151,7 +142,21 @@ const SCREENS = {
         h('p', {}, 'Plane rund 30 Minuten ein. Du kannst jederzeit aufhören und später genau hier weitermachen.'),
       ],
       next: { label: 'Was brauche ich?', run: () => SCREENS.need() },
+      // Owner-Entscheid: Die geladene Datei auf Wunsch in den Papierkorb, nie ungefragt (nur bei genau einem Treffer).
+      alt: state.startup && state.startup.download ? { label: 'Download wegräumen', run: () => SCREENS.trashDownload() } : null,
     });
+  },
+
+  async trashDownload() {
+    try {
+      await invoke('trash_download');
+      state.startup.download = null;
+      SCREENS.welcome();
+      main.append(note('', 'Die geladene Datei liegt jetzt im Papierkorb.'));
+    } catch (e) {
+      state.startup.download = null;
+      SCREENS.welcome();
+    }
   },
 
   need() {
@@ -422,17 +427,8 @@ const SCREENS = {
     } catch (e) {
       return failed(e, () => SCREENS.wizard());
     }
+    // Der Fragebogen lädt jetzt in diesem Fenster. Zurück kommt die App von selbst (main.rs, `#power`).
     if (!open) return SCREENS.wizardMissing();
-    show('wizard', {
-      title: 'Der Fragebogen ist im anderen Fenster offen',
-      body: [h('p', { class: 'lead' }, 'Beantworte dort die Fragen. Dieses Fenster meldet sich wieder, wenn es um den Dauerbetrieb geht.')],
-      next: { label: 'Fragebogen wieder zeigen', run: () => invoke('open_wizard') },
-    });
-    state.poll = setInterval(async () => {
-      const s = await invoke('wizard_status');
-      if (s.phase === 'power') { bringToFront(); SCREENS.power(); }
-      else if (s.phase === 'done') SCREENS.finish();
-    }, 3000);
   },
 
   wizardMissing() {
@@ -470,7 +466,7 @@ const SCREENS = {
     busy('Bestätige die Änderung', 'Dein ' + machine() + ' fragt dich gleich, ob die App die Energie-Einstellungen ändern darf.');
     try {
       const r = await invoke('power_apply');
-      await invoke('power_answer', { yes: true });
+      await invoke('power_answer');
       SCREENS.powerResult(r);
     } catch (e) {
       failed(e, () => SCREENS.power());
@@ -478,7 +474,7 @@ const SCREENS = {
   },
 
   async powerResult(r) {
-    if (!r) await invoke('power_answer', { yes: false });
+    if (!r) await invoke('power_answer');
     const p = state.power || (await invoke('power_info'));
     const holds = r ? r.holds : {};
     const line = (ok, yesText, noText) => (ok ? ['ok', yesText] : ['warn', noText]);
@@ -675,6 +671,8 @@ async function boot() {
   state.startup = s;
   state.os = s.os;
   if (s.location !== 'installed') return SCREENS.move();
+  // Zurück aus dem Fragebogen (main.rs lädt die App mit `#power`): weiter mit dem Dauerbetrieb.
+  if (location.hash === '#power') return SCREENS.power();
   if (!s.journal) return failed('journal-unreadable');
   const k = s.journal.kind;
   if (k === 'complete') return SCREENS.home();

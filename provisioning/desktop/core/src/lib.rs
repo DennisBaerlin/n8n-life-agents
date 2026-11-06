@@ -7,6 +7,7 @@
 pub mod admin;
 pub mod autostart;
 pub mod changes;
+pub mod cleanup;
 pub mod contract;
 pub mod core_start;
 pub mod detect;
@@ -27,6 +28,7 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
         ("admin.rs", include_str!("admin.rs")),
         ("autostart.rs", include_str!("autostart.rs")),
         ("changes.rs", include_str!("changes.rs")),
+        ("cleanup.rs", include_str!("cleanup.rs")),
         ("contract.rs", include_str!("contract.rs")),
         ("core_start.rs", include_str!("core_start.rs")),
         ("detect.rs", include_str!("detect.rs")),

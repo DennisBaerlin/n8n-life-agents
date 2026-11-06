@@ -23,6 +23,11 @@ pub enum Step {
     Inventory {
         file: String,
     },
+    /// Zustandsführende Volumes, die die App mit Label angelegt hat. Umkehrung: keine, sie tragen Daten;
+    /// gelöscht wird nur beim Entfernen nach ausdrücklicher Frage (`uninstall`).
+    VolumesCreated {
+        names: Vec<String>,
+    },
     /// Images, die vor dem Start fehlten und darum von uns geladen werden.
     ImagesPulled {
         refs: Vec<String>,
@@ -100,7 +105,7 @@ pub enum Undo {
 pub fn undo_of(step: &Step) -> Undo {
     match step {
         Step::DockerInstalled => Undo::AskRemoveDocker,
-        Step::DockerStarted | Step::Inventory { .. } | Step::SetupComplete => Undo::Nothing,
+        Step::DockerStarted | Step::Inventory { .. } | Step::VolumesCreated { .. } | Step::SetupComplete => Undo::Nothing,
         Step::ImagesPulled { refs } => Undo::RemoveImages { refs: refs.clone() },
         Step::CoreStarted { compose_file, env_file } => {
             Undo::ComposeDown { compose_file: compose_file.clone(), env_file: env_file.clone() }

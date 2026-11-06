@@ -9,6 +9,9 @@ description = "Start-App: prueft den Rechner, holt oder nutzt Docker und zeigt d
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"

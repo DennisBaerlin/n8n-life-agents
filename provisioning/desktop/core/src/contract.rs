@@ -1,50 +1,55 @@
 //! Die schmale Schnittstelle zwischen Start-App und dem Rest des Systems, an einer Stelle.
 //!
-//! **Stand: Attrappe.** Die Namen folgen dem Plan (Projekt `lifeagents`, Label `io.lifeagents.install`,
-//! Dienste `anchor` + `master`). Die endgültigen Werte legt Paket 1 (Compose-Betriebsart) fest, den
-//! Wizard-Einstieg Paket 4, das Master-Image Paket 5. Ändert sich dort etwas, ändert sich nur diese Datei.
-//!
-//! Was die App vom `master` erwartet (Paket 4/5 müssen es bedienen), steht bei `MasterCmd`.
+//! Namen von Paket 1 (Compose-Betriebsart, Branch-Stand 2026-11-06; Quelle der Volume-Liste ist
+//! `provisioning/lib/runtime.sh` `LA_STATE_VOLUMES`), Befehle von Paket 4 (Wizard, `ctl.js`). Ändert sich dort
+//! etwas, ändert sich nur diese Datei. Die Compose-Datei kommt später als signiertes Release-Asset (Paket 5);
+//! bis dahin liegt keine im App-Paket, und die App zeigt „fehlt in dieser Test-Fassung“.
 
-/// Compose-Projektname. Jedes Objekt unseres Verbunds trägt ihn (Label `com.docker.compose.project`).
+/// Compose-Projektname (`LA_PROJECT` von Paket 1, Standard). Jedes Objekt trägt ihn im Namen.
 pub const PROJECT: &str = "lifeagents";
-/// Eigenes Label an allen Objekten, die der Verbund anlegt. Ein Treffer mit unserem Namen, aber ohne
+/// Label an allen Diensten, Netzen und Volumes; Wert = Projektname. Ein Treffer mit unserem Namen, aber ohne
 /// dieses Label, heißt Abbruch (Plan, Einwand 29).
 pub const LABEL: &str = "io.lifeagents.install";
-/// Dienste, die die App nach der ersten Zustimmung startet. Alles Weitere startet der `master`.
-pub const FIRST_SERVICES: [&str; 2] = ["anchor", "master"];
-/// Container-Name des `master` (für `docker exec`).
+/// Dienste des ersten Starts nach der Zustimmung. `master` wartet per `depends_on` auf eine gesunde Datenbank,
+/// `edge` ist der einzige Dienst mit veröffentlichtem Port. n8n und gateway startet der `master` selbst.
+pub const FIRST_SERVICES: [&str; 4] = ["anchor", "postgres", "master", "edge"];
+/// Zustandsführende Volumes (`external` in compose.yml): legt die App vor dem ersten Start mit Label an.
+pub const STATE_VOLUMES: [&str; 8] = ["pgdata", "n8n_home", "etc_n8n", "etc_la", "var_la", "rt_tree", "gw_state", "ts_state"];
+/// Container-Name des `master` (für `docker exec`), Muster `<projekt>-<dienst>`.
 pub const MASTER_CONTAINER: &str = "lifeagents-master";
-/// Name der Compose-Datei im Ressourcen-Ordner der App. Fehlt sie, zeigt die App „noch nicht verfügbar“.
+/// Name der Compose-Datei im Ressourcen-Ordner der App (bis Paket 5 eine andere Quelle festlegt).
 pub const COMPOSE_FILE: &str = "compose.yml";
-/// Variable für den freien Port auf 127.0.0.1, den die App vorher sucht (Datei `--env-file`).
-pub const PORT_VAR: &str = "LIFEAGENTS_HTTP_PORT";
+/// Pflicht-Variablen jedes Compose-Aufrufs (Datei `--env-file` der App, nie im argv).
+pub const PORT_VAR: &str = "LA_EDGE_PORT";
+pub const PG_PASSWORD_VAR: &str = "LA_PG_SUPERPW";
+/// Adresse, unter der der Wizard sich selbst sieht (Host-/Origin-Prüfung im Wizard, Paket 4).
+pub const WIZARD_ORIGIN_VAR: &str = "WIZARD_PUBLIC_ORIGIN";
 /// Suchbereich für den freien Port (wie im Testpaket).
 pub const PORT_RANGE: (u16, u16) = (5880, 5899);
 
-/// Befehle, die die App im `master` ausführt (`docker exec lifeagents-master <cmd>`). Jeder schreibt genau
-/// eine Zeile JSON auf stdout. Paket 4 (Wizard) liefert sie; bis dahin zeigt die App eine Platzhalter-Seite.
+/// Steuerung des Wizards im `master` (Paket 4): `docker exec lifeagents-master node <CTL> <befehl>`, je eine
+/// JSON-Zeile auf stdout. Die `lifeagents`-CLI gibt es im `master` erst nach der Installation.
+pub const WIZARD_CTL: &str = "/opt/lifeagents/provisioning/wizard/ctl.js";
+
 pub enum MasterCmd {
-    /// `{"url":"http://127.0.0.1:<port>/…?t=<einmalwert>"}` – frische Einmal-Adresse des Wizards. Der Wert
-    /// liegt nur im Arbeitsspeicher des `master`; ein erneuter Aufruf stellt eine neue Adresse aus.
+    /// `{"url":"http://127.0.0.1:<port>/start?t=<einmalwert>"}`: Einmal-Wert, 10 Minuten gültig, ein neuer Aufruf
+    /// macht den alten ungültig. Er liegt nur im Arbeitsspeicher des `master`.
     WizardUrl,
-    /// `{"phase":"running|power|done","bot":"<botname oder leer>"}` – Stand des Wizards. Bei `power` fragt
-    /// die App selbst nach dem Dauerbetrieb (braucht das System-Passwort) und meldet die Antwort zurück.
+    /// `{"phase":"questions|installing|failed|pairing|connected|handoff","step":"…"}`. Bei `handoff` übernimmt die
+    /// App (Dauerbetrieb, Fertig).
     WizardStatus,
-    /// `power-done yes|no` – Antwort auf die Dauerbetrieb-Frage; der Wizard geht danach zu „Fertig“.
-    PowerDone(bool),
-    /// Vor dem Entfernen (Nr. 17): Telegram-Webhook auf den Stand vor der Einrichtung zurück (alte Adresse aus
-    /// dem Journal des `master`) oder löschen. Exit 0 = erledigt. Gehört zu Paket 2 (`uninstall`).
+    /// Nach der letzten App-Seite: Der Wizard löscht seinen Fortschritt und endet.
+    PowerDone,
+    /// Vor dem Entfernen (Nr. 17): Telegram-Webhook zurücksetzen. Exit 0 = erledigt. Gehört zu Paket 2.
     ReleaseWebhook,
 }
 
 impl MasterCmd {
     pub fn args(&self) -> Vec<String> {
         let v: Vec<&str> = match self {
-            MasterCmd::WizardUrl => vec!["lifeagents", "wizard", "url"],
-            MasterCmd::WizardStatus => vec!["lifeagents", "wizard", "status"],
-            MasterCmd::PowerDone(true) => vec!["lifeagents", "wizard", "power-done", "yes"],
-            MasterCmd::PowerDone(false) => vec!["lifeagents", "wizard", "power-done", "no"],
+            MasterCmd::WizardUrl => vec!["node", WIZARD_CTL, "url"],
+            MasterCmd::WizardStatus => vec!["node", WIZARD_CTL, "status"],
+            MasterCmd::PowerDone => vec!["node", WIZARD_CTL, "power-done"],
             MasterCmd::ReleaseWebhook => vec!["lifeagents", "telegram", "release-webhook"],
         };
         v.into_iter().map(String::from).collect()
@@ -55,4 +60,9 @@ impl MasterCmd {
 pub fn is_our_name(name: &str) -> bool {
     let n = name.trim_start_matches('/');
     n.starts_with(&format!("{PROJECT}-")) || n.starts_with(&format!("{PROJECT}_"))
+}
+
+/// `lifeagents_pgdata` usw.
+pub fn state_volume_names() -> Vec<String> {
+    STATE_VOLUMES.iter().map(|v| format!("{PROJECT}_{v}")).collect()
 }

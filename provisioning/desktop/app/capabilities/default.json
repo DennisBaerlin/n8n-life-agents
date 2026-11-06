@@ -1,13 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "Nur das App-Fenster darf die App-Befehle rufen. Das Fragebogen-Fenster zeigt eine Seite des master-Containers und bekommt bewusst keine Rechte.",
+  "description": "Nur der eigene Inhalt des App-Fensters darf die App-Befehle rufen. Die Fragebogen-Seite des master-Containers laeuft im selben Fenster als fremde Adresse und bekommt ohne remote-Eintrag keine Rechte (Test acl_tests in src/main.rs).",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "core:window:allow-show",
-    "core:window:allow-set-focus",
     "allow-startup",
+    "allow-trash-download",
     "allow-check-system",
     "allow-check-docker",
     "allow-fetch-docker",

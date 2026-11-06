@@ -64,6 +64,12 @@ pub trait Host {
     fn port_free(&self, port: u16) -> bool;
     /// Sekunden seit 1970, für Journal-Einträge.
     fn now(&self) -> u64;
+    /// Zufall aus dem Betriebssystem als Hex-Text (`bytes` Bytes), z. B. für das Datenbank-Passwort.
+    fn random_hex(&self, bytes: usize) -> Result<String, String>;
+    /// Namen der Einträge eines Ordners (ohne Pfad); fehlt der Ordner, leer.
+    fn list_dir(&self, path: &str) -> Vec<String>;
+    /// In den Papierkorb legen (Mac: Papierkorb des Finders, Windows: Papierkorb), nie endgültig löschen.
+    fn trash(&self, path: &str) -> Result<(), String>;
 }
 
 pub fn sep(os: Os) -> char {
@@ -146,6 +152,13 @@ impl Host for RealHost {
         }
         let tmp = format!("{path}.tmp");
         std::fs::write(&tmp, content).map_err(|e| e.to_string())?;
+        // Nur für diesen Nutzer lesbar: Die Env-Datei trägt das Datenbank-Passwort. Windows: das Profil-Verzeichnis
+        // (LOCALAPPDATA) ist ohnehin nur für den Nutzer freigegeben.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+        }
         std::fs::rename(&tmp, p).map_err(|e| e.to_string())
     }
     fn remove_file(&self, path: &str) -> Result<(), String> {
@@ -163,6 +176,19 @@ impl Host for RealHost {
     }
     fn now(&self) -> u64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    }
+    fn random_hex(&self, bytes: usize) -> Result<String, String> {
+        let mut buf = vec![0u8; bytes];
+        getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
+        Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
+    }
+    fn list_dir(&self, path: &str) -> Vec<String> {
+        std::fs::read_dir(path)
+            .map(|it| it.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect())
+            .unwrap_or_default()
+    }
+    fn trash(&self, path: &str) -> Result<(), String> {
+        trash::delete(path).map_err(|e| e.to_string())
     }
 }
 
@@ -204,6 +230,7 @@ pub struct FakeHost {
     pub cmds: RefCell<BTreeMap<String, Vec<CmdOut>>>,
     pub calls: RefCell<Vec<String>>,
     pub spawned: RefCell<Vec<String>>,
+    pub trashed: RefCell<Vec<String>>,
     pub busy_ports: BTreeSet<u16>,
     pub clock: u64,
 }
@@ -227,6 +254,7 @@ impl FakeHost {
             cmds: RefCell::new(BTreeMap::new()),
             calls: RefCell::new(Vec::new()),
             spawned: RefCell::new(Vec::new()),
+            trashed: RefCell::new(Vec::new()),
             busy_ports: BTreeSet::new(),
             clock: 1_800_000_000,
         }
@@ -311,6 +339,29 @@ impl Host for FakeHost {
     }
     fn now(&self) -> u64 {
         self.clock
+    }
+    fn random_hex(&self, bytes: usize) -> Result<String, String> {
+        Ok("ab".repeat(bytes))
+    }
+    /// Einträge = alle bekannten Pfade/Dateien direkt unter `path`.
+    fn list_dir(&self, path: &str) -> Vec<String> {
+        let prefix = format!("{}{}", path.trim_end_matches(['/', '\\']), sep(self.os));
+        let mut out: Vec<String> = self
+            .paths
+            .borrow()
+            .iter()
+            .cloned()
+            .chain(self.files.borrow().keys().cloned())
+            .filter_map(|p| p.strip_prefix(&prefix).map(|rest| rest.split(['/', '\\']).next().unwrap_or("").to_string()))
+            .filter(|n| !n.is_empty())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+    fn trash(&self, path: &str) -> Result<(), String> {
+        self.trashed.borrow_mut().push(path.to_string());
+        self.remove_file(path)
     }
 }
 

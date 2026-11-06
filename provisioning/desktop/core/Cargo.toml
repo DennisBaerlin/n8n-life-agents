@@ -9,3 +9,5 @@ description = "Pruef- und Aenderungs-Logik der Start-App, ohne Tauri, gegen eine
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+getrandom = "0.3"
+trash = "5"

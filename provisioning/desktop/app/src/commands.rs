@@ -17,7 +17,7 @@ use lifeagents_desktop_core::journal::{self, Journal, Status, Step};
 use lifeagents_desktop_core::power::{self, FileVault, PowerError, PowerResult};
 use lifeagents_desktop_core::system::{self, Location, SystemReport};
 use lifeagents_desktop_core::uninstall::{self, Choices, Outcome, Plan};
-use lifeagents_desktop_core::{autostart, report};
+use lifeagents_desktop_core::{autostart, cleanup, report};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -57,8 +57,7 @@ fn core_paths(app: &AppHandle) -> Option<CorePaths> {
 /// Port aus der `--env-file` der App (einmal gewählt, danach fest).
 fn saved_port() -> Option<u16> {
     let p = join(RealHost.os(), &[&journal::dir(&RealHost), "app.env"]);
-    let text = RealHost.read_file(&p)?;
-    text.lines().find_map(|l| l.strip_prefix(&format!("{PORT_VAR}="))).and_then(|v| v.trim().parse().ok())
+    core_start::env_value(&RealHost.read_file(&p)?, PORT_VAR).and_then(|v| v.parse().ok())
 }
 
 /// Docker nur dann, wenn eine frische Erkennung „läuft und reicht“ meldet.
@@ -87,17 +86,33 @@ pub struct Startup {
     journal: Option<Status>,
     version: String,
     compose_ready: bool,
+    /// Name der geladenen Datei im Download-Ordner, nur wenn genau eine passt („Download wegräumen“).
+    download: Option<String>,
 }
 
 #[tauri::command(async)]
 pub fn startup(app: AppHandle) -> Startup {
+    let location = system::install_location(RealHost.os(), &exe_path());
+    // Läuft die App aus dem Programme-Ordner, braucht es die DMG nicht mehr: auswerfen (ohne Zwang).
+    if location == Location::Installed {
+        cleanup::eject_dmgs(&RealHost);
+    }
+    let download =
+        cleanup::find_download(&RealHost).and_then(|p| std::path::Path::new(&p).file_name().map(|n| n.to_string_lossy().to_string()));
     Startup {
         os: RealHost.os(),
-        location: system::install_location(RealHost.os(), &exe_path()),
+        location,
         journal: Journal::load(&RealHost).ok().map(|j| j.status()),
         version: app.package_info().version.to_string(),
         compose_ready: compose_path(&app).is_some(),
+        download,
     }
+}
+
+/// Knopf „Download wegräumen“: die eine geladene Datei in den Papierkorb.
+#[tauri::command(async)]
+pub fn trash_download() -> Result<(), String> {
+    cleanup::trash_download(&RealHost).map(|_| ())
 }
 
 #[tauri::command(async)]
@@ -289,20 +304,36 @@ pub fn open_wizard(app: AppHandle) -> Result<bool, String> {
         return Ok(false);
     };
     let parsed: tauri::Url = url.parse().map_err(|_| fail(&app, "wizard-unavailable"))?;
-    if let Some(w) = app.get_webview_window("wizard") {
-        let _ = w.navigate(parsed);
-        let _ = w.show();
-        let _ = w.set_focus();
-        return Ok(true);
-    }
-    tauri::WebviewWindowBuilder::new(&app, "wizard", tauri::WebviewUrl::External(parsed))
-        .title("lifeagents – Fragebogen")
-        .inner_size(960.0, 760.0)
-        .min_inner_size(420.0, 560.0)
-        .center()
-        .build()
-        .map_err(|_| fail(&app, "wizard-unavailable"))?;
+    let w = app.get_webview_window("main").ok_or_else(|| fail(&app, "wizard-unavailable"))?;
+    // Owner-Entscheid: ein Fenster. Die Fragebogen-Seite ist eine fremde Adresse und bekommt keine App-Rechte
+    // (Capability ohne `remote`, Test in main.rs). Zurück zur App holt sie dieser Faden, nicht die Seite selbst.
+    let back = w.url().map_err(|_| fail(&app, "wizard-unavailable"))?;
+    w.navigate(parsed).map_err(|_| fail(&app, "wizard-unavailable"))?;
+    let handle = app.clone();
+    std::thread::spawn(move || watch_wizard(handle, d, back));
     Ok(true)
+}
+
+/// Fragt den Fragebogen alle 3 s nach seinem Stand. Bei `handoff` lädt die App ihre eigene Seite wieder und zeigt
+/// „Dauerbetrieb“ (`#power`). Hört nach 6 Stunden auf; die App lässt sich dann über das Symbol neu öffnen.
+fn watch_wizard(app: AppHandle, d: Docker, mut back: tauri::Url) {
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(6 * 3600) {
+        std::thread::sleep(Duration::from_secs(3));
+        let s = core_start::wizard_status(&RealHost, &d);
+        if !s.bot.is_empty() {
+            *app.state::<AppState>().bot.lock().unwrap() = s.bot.clone();
+        }
+        if s.phase == WizardPhase::Handoff {
+            back.set_fragment(Some("power"));
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.navigate(back);
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+            return;
+        }
+    }
 }
 
 #[tauri::command(async)]
@@ -366,11 +397,12 @@ pub fn power_apply(app: AppHandle) -> Result<PowerResult, String> {
     }
 }
 
-/// Antwort an den Fragebogen weitergeben (er zeigt danach „Fertig“). Ohne Fragebogen (Paket 4) still.
+/// Dauerbetrieb entschieden: Der Fragebogen löscht seinen Fortschritt und endet (`ctl.js power-done`). Ohne Fragebogen still.
 #[tauri::command(async)]
-pub fn power_answer(yes: bool) {
+pub fn power_answer() {
+    // Der Fragebogen braucht nur das Ende, nicht die Antwort; sie steht im Journal der App.
     if let Some(d) = docker_if_ready() {
-        let _ = core_start::power_done(&RealHost, &d, yes);
+        let _ = core_start::power_done(&RealHost, &d);
     }
 }
 
@@ -512,6 +544,25 @@ pub fn open_link(app: AppHandle, target: String) -> Result<(), String> {
 }
 
 /// Docker-Status für das Symbol: `true` = Verbund läuft (Docker bereit).
+/// `--self-test`: alle lesenden Prüfungen gegen das echte System, ohne Fenster und ohne Änderung.
+pub fn self_test() -> serde_json::Value {
+    let h = RealHost;
+    let sys = system::check_system(&h);
+    let finding = detect::detect(&h);
+    serde_json::json!({
+        "system": sys,
+        "docker": finding,
+        "power": power::snapshot(&h),
+        "filevault": power::filevault(&h),
+        "location": system::install_location(h.os(), &exe_path()),
+        "journal": Journal::load(&h).map(|j| serde_json::to_value(j.status()).unwrap_or_default()).unwrap_or_else(|e| serde_json::json!({"error": e})),
+        "autostart": autostart::is_installed(&h),
+        "mounted_dmgs": cleanup::mounted_dmgs(&h).len(),
+        "download_found": cleanup::find_download(&h).is_some(),
+        "free_port": inventory::free_port(&h),
+    })
+}
+
 pub fn docker_running() -> bool {
     matches!(detect::detect(&RealHost).verdict, Verdict::Ready { .. })
 }

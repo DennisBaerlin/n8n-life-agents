@@ -178,9 +178,9 @@ function New-LongSummary([string]$Id) {
 # je Sprache; jeder abgefangene Button-Send wird darauf geprueft (nicht nur hitl08).
 $LangExpect = @{
     member = @{ approve = '✅ Confirm'; cancel = '❌ Cancel'; hint = 'To change something, cancel and write again.' }
-    # Zweitfreigabe (Owner gibt die Anfrage eines Mitglieds frei, Kopf "Mitglied X beantragt:"): eigener Schlusssatz
+    # Zweitfreigabe (Owner gibt die Anfrage eines Mitglieds frei, Fall-Tier owner_approval): eigener Schlusssatz
     owner  = @{ approve = '✅ Bestätigen'; cancel = '❌ Abbrechen'; hint = 'Zum Ändern abbrechen und neu schreiben.'
-                stage2 = 'beantragt:'; hintStage2 = 'Entscheide über die Knöpfe.' }
+                hintStage2 = 'Entscheide über die Knöpfe.' }
 }
 function Get-ButtonTexts($Msg) {
     $kb = $Msg.body.reply_markup
@@ -292,7 +292,8 @@ foreach ($tc in $cases) {
             # hitl16: eigener Knopf-Text aus summary.approve_key statt des Standard-Bestaetigen
             $wantApprove = if ($tc.approveText) { $tc.approveText[$snd.t] } else { $le.approve }
             if ($btn -notcontains $wantApprove -or $btn -notcontains $le.cancel) { $langBad += "Knoepfe [$($btn -join ' | ')]" }
-            $hint = if ($le.stage2 -and $txt.Contains($le.stage2)) { $le.hintStage2 } else { $le.hint }
+            # Zweitfreigabe am Fall erkennen, nicht am Text: bei langen Karten steht der Kopf im ersten Teil, die Knoepfe im letzten
+            $hint = if ($le.hintStage2 -and $tc.tier -eq 'owner_approval') { $le.hintStage2 } else { $le.hint }
             if (-not $txt.Contains($hint)) { $langBad += "Hinweis fehlt ('$hint')" }
             $want = if ($snd.t -eq 'member') { $tc.expectMember } else { $tc.expectOwner }
             foreach ($w in @($want)) { if ($w -and -not $txt.Contains($w)) { $langBad += "Text ohne '$w'" } }

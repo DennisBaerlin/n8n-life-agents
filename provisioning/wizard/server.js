@@ -37,7 +37,8 @@ const KEY_FILE = process.env.WIZARD_KEY_FILE || '/etc/lifeagents/wizard.key';
 const BRIDGE = process.env.WIZARD_BRIDGE || path.join(__dirname, 'bridge.sh');
 const PROVISION = process.env.LA_PROVISION || path.join(__dirname, '..', 'provision.sh');
 const LA_CLI = process.env.LA_CLI || 'lifeagents';
-const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox/';
+// Ausführliche FritzBox-Anleitung für den Docker-Weg (docs/site fritzbox.md, Abschnitt start-app, Paket 8).
+const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox/#start-app';
 const POLL_MS = Math.max(50, parseInt(process.env.WIZARD_POLL_MS || '1000', 10));
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');

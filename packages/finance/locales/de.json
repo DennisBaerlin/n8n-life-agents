@@ -77,7 +77,7 @@
   "finance.note.earmark_balance": "Das Geld bleibt auf dem Konto und ist nur für das Ziel vorgemerkt.",
   "finance.note.reassign_no_money": "Es fließt kein Geld, nur das Konto des Ziels wechselt.",
   "finance.note.rate_continues": "Die Monatsrate des Ziels fließt weiter auf {pot}.",
-  "finance.note.until_free_money": "Das System hat das Ende so berechnet, dass kein Geld deiner Sparziele angefasst wird. Danach sind auf {account} noch {free} frei.",
+  "finance.note.until_free_money": "Ich habe das Ende so berechnet, dass kein Geld deiner Sparziele angefasst wird. Danach sind auf {account} noch {free} frei.",
   "finance.note.until_free_money_bank": "Wichtig: Trag bei deiner Bank den {date} als letzte Überweisung ein.",
   "finance.note.until_free_money_manual": "Nach dem {date} überweist du einfach nicht mehr.",
   "finance.note.until_free_money_unsure": "Liegt dafür ein Dauerauftrag bei deiner Bank, trag dort den {date} als letzte Überweisung ein.",

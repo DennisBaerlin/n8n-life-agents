@@ -77,7 +77,7 @@
   "finance.note.earmark_balance": "돈은 계좌에 그대로 있고 목표를 위해 따로 표시만 해 둬요.",
   "finance.note.reassign_no_money": "돈은 이체되지 않고 목표의 계좌만 바뀌어요.",
   "finance.note.rate_continues": "목표의 월 적립액은 계속 {pot}(으)로 들어가요.",
-  "finance.note.until_free_money": "저축 목표의 돈을 건드리지 않도록 시스템이 종료 시점을 계산했어요. 그 후에도 {account}에 {free}이(가) 남아요.",
+  "finance.note.until_free_money": "저축 목표의 돈을 건드리지 않도록 제가 종료 시점을 계산했어요. 그 후에도 {account}에 {free}이(가) 남아요.",
   "finance.note.until_free_money_bank": "중요: 은행에 마지막 이체일로 {date}을(를) 입력해 주세요.",
   "finance.note.until_free_money_manual": "{date} 이후에는 그냥 이체하지 않으시면 돼요.",
   "finance.note.until_free_money_unsure": "이 이체를 위한 자동이체가 은행에 있다면, 거기에 마지막 이체일로 {date}을(를) 입력해 주세요.",

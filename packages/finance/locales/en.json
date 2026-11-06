@@ -77,7 +77,7 @@
   "finance.note.earmark_balance": "The money stays on the account and is only set aside for the goal.",
   "finance.note.reassign_no_money": "No money moves, only the goal's account changes.",
   "finance.note.rate_continues": "The goal's monthly rate keeps going to {pot}.",
-  "finance.note.until_free_money": "The system worked out the end so that no money of your savings goals is touched. Afterwards {free} will still be free on {account}.",
+  "finance.note.until_free_money": "I worked out the end so that no money of your savings goals is touched. Afterwards {free} will still be free on {account}.",
   "finance.note.until_free_money_bank": "Important: enter {date} at your bank as the last transfer.",
   "finance.note.until_free_money_manual": "After {date} you simply stop transferring.",
   "finance.note.until_free_money_unsure": "If a standing order for this exists at your bank, enter {date} there as the last transfer.",

@@ -273,7 +273,8 @@ Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
 #      UMFANG aus dem Code abgeleitet: jedes Key-Literal in Build-Defs, die eine Karte bauen (New-HitlSummary/-Line/-Note),
 #      und in R__-Funktionen mit Kartenzeilen (card_lines / 'kind', 'note'), dazu die Gate-Texte core.hitl.*; ein Literal,
 #      das Praefix von Keys ist (Enum), nimmt seine Wert-Keys mit. Nie *.app.* (App-Fenster), *.help.*, *.wf.*.
-#      Regeln je Key: de hoechstens 3 Saetze, 20 Woerter je Satz, 160 Zeichen; en/ko hoechstens 3 Saetze (Uebersetzungen
+#      Regeln je Key: de hoechstens 3 Saetze, 20 Woerter je Satz ("• "-Zeilen = Zahlen-Zeilen, zaehlen nicht; keine
+#      Zeichengrenze, Regel E kennt keine); en/ko hoechstens 3 Saetze (Uebersetzungen
 #      wachsen, W3C). Keine Vorsilbe ACHTUNG:/Hinweis:/Aktion:; das Warnzeichen nur als Satzanfang "⚠️ " (E1, die Folge
 #      steht in Worten dahinter). Keine Woerter aus $CardDeniedWords (die Meldung nennt den Ersatz), keine Zeitspanne
 #      "<Zahl> Tage vor/nach" (ein Datum nennen). Satzzaehlung ignoriert Abkuerzungen (z. B.), Zahl- und Datumspunkte.
@@ -285,21 +286,21 @@ $CardDeniedWords = [ordered]@{
     'verrechnet' = 'zählt nur einmal'
 }
 $cardExcept = [ordered]@{     # Key = Grund; neue Zeile = Owner-Freigabe (Termin 3 der Sprint-Probe)
-    'finance.note.goal_derisk_window'           = 'Text gehoert dem Paket "Sparziel unter 5 Jahren" (neuer Text kommt mit dessen Merge)'
-    'finance.note.until_free_money'             = 'Text gehoert dem Paket "Bank-Hinweis nur, wo er passt" (neuer Text kommt mit dessen Merge)'
 }
 function Get-CardTextFindings([string]$Text, [string]$Lang) {
     $out = @()
     $t = [regex]::Replace($Text, '\s+', ' ').Trim()
+    # Zeilen mit "• " am Anfang sind Zahlen-Zeilen (Regel E: "drei kurze Saetze PLUS Zahlen"): kein Satz, nicht in der
+    # Zeichengrenze; Wortliste und Warnzeichen gelten trotzdem fuer den ganzen Text ($t).
+    $prose = [regex]::Replace((@($Text -split "`n" | Where-Object { -not $_.TrimStart().StartsWith('• ') }) -join ' '), '\s+', ' ').Trim()
     # Satzenden zaehlen: Abkuerzungen, Zahl-/Datumspunkte und Auslassung maskieren
-    $m = [regex]::Replace($t, '\b(z\.\s?B|d\.\s?h|u\.\s?a|e\.\s?g|i\.\s?e)\.', 'X')   # zweiteilige Abkuerzungen zuerst (sonst zaehlt "B." als Satzende)
+    $m = [regex]::Replace($prose, '\b(z\.\s?B|d\.\s?h|u\.\s?a|e\.\s?g|i\.\s?e)\.', 'X')   # zweiteilige Abkuerzungen zuerst (sonst zaehlt "B." als Satzende)
     $m = [regex]::Replace($m, '\b(bzw|ca|Nr|ggf|inkl|evtl|bspw|etc)\.', 'X')
     $m = [regex]::Replace($m, '(?<=\d)\.(?=\s?\d)|(?<=\{\w+\})\.(?=\d)', '')
     $m = $m.Replace('…', '')
     $sentences = @([regex]::Split($m, '(?<=[.!?])\s+') | Where-Object { $_.Trim() -ne '' })
     if ($sentences.Count -gt 3) { $out += "$($sentences.Count) Sätze (höchstens 3)" }
     if ($Lang -eq 'de') {
-        if ($t.Length -gt 160) { $out += "$($t.Length) Zeichen (höchstens 160)" }
         foreach ($s in $sentences) {
             $w = @($s.Trim() -split ' ' | Where-Object { $_ -match '[\p{L}\p{N}{]' }).Count
             if ($w -gt 20) { $out += "Satz mit $w Wörtern (höchstens 20): '$($s.Trim().Substring(0, [Math]::Min(40, $s.Trim().Length)))…'" }
@@ -320,6 +321,8 @@ Check 'Karten-Laien-Test: kurze Kartentexte ohne interne Begriffe (Ratchet je Ke
     if ($neg.Count -lt 4) { "Selbsttest: Negativfall meldet nur $($neg.Count) Funde (erwartet Vorsilbe, Sätze, Wort, Zeitspanne)" }
     $pos = @(Get-CardTextFindings '⚠️ Der Eintrag wird z. B. am 01.10.2026 endgültig gelöscht. Das gilt auch für Kopien. Falls falsch, abbrechen.' 'de')
     if ($pos.Count) { "Selbsttest: Positivfall meldet Funde: $($pos -join '; ')" }
+    $bul = @(Get-CardTextFindings "Eins ist klar. Zwei ist klar.`n• Rat: höchstens 100 € im Depot und sonst nichts weiter, auch nicht mehr als das, was du sonst noch hast`n• Verlust: 50 €`nDrei ist klar." 'de')
+    if ($bul.Count) { "Selbsttest: •-Zeilen zaehlen als Satz/Zeichen: $($bul -join '; ')" }
     $keys = @{}
     # Wildcard-Pfad + -Recurse liefert unter PS 5.1 nicht rekursiv -> je Paket-Ordner (wie der Corpus unten)
     $src = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object {

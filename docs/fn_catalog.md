@@ -739,7 +739,7 @@ Umfang: 483 fn-Dateien.
 ## finance.fn_emergency_reserve_card_lines (READ, STABLE) -- Karten-Hinweise zur Notreserve aus fn_emergency_reserve_status
 - `finance.fn_emergency_reserve_card_lines(p_status jsonb) -> jsonb`
 - jsonb-Keys: basis, covered_eur, everyday_eur, exists, fixed_eur, monthly_eur, months, target_eur, target_kind
-- Fuer die HITL-Karten von tool_create_savings_goal / tool_set_savings_goal (card_lines, typisierte Notes; die Karte rendert sie in der Sprache des Empfaengers): Ziel (bei Monaten mit Monatsbasis: feste Zahlungen + geschaetzter Alltag) und bisher gedeckt. Keine eigene Rechnung — nur Darstellung des Status-jsonb. RUECKGABE: jsonb-Array von {kind:'note', value:<key>, params}; ohne Notreserve leer. Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
+- Fuer die HITL-Karten von tool_create_savings_goal / tool_set_savings_goal (card_lines, typisierte Notes; die Karte rendert sie in der Sprache des Empfaengers): Ziel (bei Monaten mit Monatsbasis: feste Zahlungen + geschaetzter Alltag, als Schaetzwert in ganzen Einheiten angezeigt, Wert cent-genau) und bisher gedeckt. Keine eigene Rechnung — nur Darstellung des Status-jsonb. RUECKGABE: jsonb-Array von {kind:'note', value:<key>, params}; ohne Notreserve leer. Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 
 ## finance.fn_emergency_reserve_covered (READ, STABLE) -- gedecktes Notreserve-Geld je Konto in EUR (2026-10-30)
 - `finance.fn_emergency_reserve_covered() -> TABLE(account_id int, account_name text, share_eur numeric, covered_eur numeric, fx_gap boolean)`

@@ -2,7 +2,7 @@
 -- fn_emergency_reserve_card_lines (READ, STABLE) -- Karten-Hinweise zur Notreserve aus fn_emergency_reserve_status
 --   Fuer die HITL-Karten von tool_create_savings_goal / tool_set_savings_goal (card_lines, typisierte Notes; die Karte
 --   rendert sie in der Sprache des Empfaengers): Ziel (bei Monaten mit Monatsbasis: feste Zahlungen + geschaetzter
---   Alltag) und bisher gedeckt. Keine eigene Rechnung — nur Darstellung des Status-jsonb.
+--   Alltag, als Schaetzwert in ganzen Einheiten angezeigt, Wert cent-genau) und bisher gedeckt. Keine eigene Rechnung — nur Darstellung des Status-jsonb.
 --   RUECKGABE: jsonb-Array von {kind:'note', value:<key>, params}; ohne Notreserve leer.
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 -- ============================================================
@@ -16,7 +16,7 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
                               'months', core.fn_ui_num((p_status->>'months')::numeric, 1),
                               'monthly', core.fn_ui_money((p_status->'basis'->>'monthly_eur')::numeric),
                               'fixed', core.fn_ui_money((p_status->'basis'->>'fixed_eur')::numeric),
-                              'everyday', core.fn_ui_money((p_status->'basis'->>'everyday_eur')::numeric),
+                              'everyday', core.fn_ui_money((p_status->'basis'->>'everyday_eur')::numeric, p_whole := true),
                               'target', core.fn_ui_money((p_status->>'target_eur')::numeric)))
                  WHEN p_status->>'target_kind' = 'months'
                  THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.emergency_target_unknown',

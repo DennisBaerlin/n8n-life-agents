@@ -88,6 +88,15 @@ BEGIN
      OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")'
      OR v_res->'emergency_reserve' ? 'month_options' THEN
     RAISE EXCEPTION 'FAIL [2c] Notreserve angelegt (Name Default, keine Rate, Karte): %', v_res; END IF;
+  -- Regel E (2026-11-06): der geschaetzte Alltag zeigt ganze Euro (digits 0), der Wert dahinter bleibt cent-genau
+  IF (SELECT (n->'params'->'everyday'->>'digits')::int FROM jsonb_array_elements(v_res->'card_lines') n
+       WHERE n->>'value' = 'finance.note.emergency_target_months') IS DISTINCT FROM 0
+     OR (SELECT (n->'params'->'everyday'->>'value')::numeric FROM jsonb_array_elements(v_res->'card_lines') n
+          WHERE n->>'value' = 'finance.note.emergency_target_months')
+        IS DISTINCT FROM (finance.fn_emergency_reserve_status()->'basis'->>'everyday_eur')::numeric
+     OR (SELECT n->'params'->'monthly' ? 'digits' FROM jsonb_array_elements(v_res->'card_lines') n
+          WHERE n->>'value' = 'finance.note.emergency_target_months') THEN
+    RAISE EXCEPTION 'FAIL [2c2] Alltag ganzzahlig angezeigt, Wert exakt, Rest unveraendert: %', v_res->'card_lines'; END IF;
   v_goal := (v_res->>'goal_id')::int;
   IF (SELECT kind FROM finance.savings_goals WHERE id = v_goal) <> 'emergency_reserve'
      OR (SELECT target_months FROM finance.savings_goals WHERE id = v_goal) <> 3 THEN

@@ -48,7 +48,7 @@ function Get-UiSurfaces {
                 [pscustomobject]@{ Selector = '.phone'; Group = 'dark' }
                 [pscustomobject]@{ Selector = '.phone .screen'; Group = 'light' }
             )
-            Colors = @('ink', 'gray', 'hairline', 'accent', 'accent-hover', 'accent-mid', 'accent-pale', 'accent-wash', 'warn', 'warn-wash', 'alert', 'alert-wash', 'bg', 'bg-soft')
+            Colors = @('ink', 'gray', 'hairline', 'accent', 'accent-hover', 'accent-mid', 'accent-pale', 'accent-wash', 'ok', 'warn', 'warn-wash', 'alert', 'alert-wash', 'bg', 'bg-soft')
             Shape  = @('radius-sm', 'radius', 'radius-pill', 'font')
         }
     )

@@ -139,6 +139,12 @@ reach_webhook_eval() {
 # Telegram stellt Webhooks nur ueber IPv4 zu (Bot-API); ohne eigene oeffentliche IPv4 (DS-Lite, Carrier-NAT) kommt ueber
 # die FritzBox nichts an -> Tunnel. MyFRITZ! traegt fuer die Box ihre IPv4 im Internet ein; bei DS-Lite ist die Box laut
 # AVM nur ueber IPv6 erreichbar. Pruefung, ohne Nutzer und mit genau einem Fremd-Dienst:
+#   0. UPnP der FritzBox (fritz.box:49000, WANIPConnection:1, ohne Anmeldung, solange "Statusinformationen ueber UPnP
+#      uebertragen" an ist; je Aufruf 2 s). Nur bei NewConnectionStatus=Connected entscheidet NewExternalIPAddress:
+#      leer, 0.0.0.0 oder 192.0.0.0/29 (B4-Adresse des DS-Lite-Tunnels, RFC 6333) -> none; 100.64.0.0/10 -> none;
+#      oeffentlich -> own (anders als der Echo -> unknown, etwa VPN am Rechner). Privat (Box hinter einem anderen
+#      Router), keine Antwort, kein fritz.box -> weiter mit 1. SSDP-Suche nach anderen Routern verworfen: Multicast
+#      kommt aus dem Docker-Desktop-VM nicht ins Heimnetz.
 #   1. Zone <kennung>.myfritz.net (LA_MYFRITZ_ZONE in den Hinweisen der Start-App, aus dem Zertifikat der Box); fehlt
 #      sie -> unknown.
 #   2. A-Eintrag fehlt, AAAA da -> none. A in 100.64.0.0/10 (Carrier-NAT) oder privat -> none.
@@ -147,6 +153,7 @@ reach_webhook_eval() {
 #      Carrier-NAT mit oeffentlichem Bereich) oder nicht pruefbar -> unknown. Nie eine falsche Sicherheit: unknown
 #      fuehrt zum Weg von Hand (Online-Monitor der FritzBox), wie bisher.
 REACH_IPV4_ECHO='https://api.ipify.org'
+REACH_UPNP_URL='http://fritz.box:49000/igdupnp/control/WANIPConn1'
 
 # _reach_ipv4_shared <ipv4> -> 0, wenn die Adresse nicht oeffentlich ist (privat, Carrier-NAT, Loopback, Link-Local).
 _reach_ipv4_shared() {
@@ -179,7 +186,8 @@ reach_myfritz_zone() {
 }
 
 # reach_ipv4_eval — setzt REACH_IPV4 (own | none | unknown) und REACH_IPV4_REASON (no_zone | no_a_record | shared_address |
-#   matches | differs | dns_failed | echo_failed). Fuer die Fall-Tests sind DNS und Echo eigene Funktionen.
+#   matches | differs | dns_failed | echo_failed; aus UPnP: upnp_no_ipv4 | upnp_shared | upnp_public | upnp_differs). Fuer
+#   die Fall-Tests sind DNS, Echo und UPnP eigene Funktionen.
 _reach_dns4() { dns_first_addr "$1" 4; }
 _reach_dns6() { dns_first_addr "$1" 6; }
 _reach_echo4() { curl -4 -fsS --max-time 4 "$REACH_IPV4_ECHO" 2>/dev/null | head -c 64 || true; }
@@ -188,20 +196,64 @@ _reach_echo4() { curl -4 -fsS --max-time 4 "$REACH_IPV4_ECHO" 2>/dev/null | head
 #   pruefbar, kein gueltiger Wert, oder die Adresse ist selbst geteilt/privat). rc 0. DIE eine Stelle fuer den Echo-Dienst
 #   (DS-Lite-Pruefung hier, Adress-Vorschlag im Wizard): ein Erfolg gilt 10 Min (Zwischenspeicher), ein Fehlschlag nicht.
 reach_public_ipv4() {
-  local f="$REACH_RUN_DIR/public-ipv4" ip a b c d
+  local f="$REACH_RUN_DIR/public-ipv4" ip
   if [ -s "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) )) -lt 600 ]; then cat "$f"; return 0; fi
   ip="$(_reach_echo4 | tr -d '[:space:]')"
-  printf '%s' "$ip" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || return 0
-  IFS=. read -r a b c d <<<"$ip"
-  [ "$a" -le 255 ] && [ "$b" -le 255 ] && [ "$c" -le 255 ] && [ "$d" -le 255 ] || return 0
+  _reach_ipv4_valid "$ip" || return 0
   _reach_ipv4_shared "$ip" && return 0
   ( umask 077; mkdir -p "$REACH_RUN_DIR" && printf '%s' "$ip" > "$f" ) 2>/dev/null || true
   printf '%s' "$ip"
 }
 
+_reach_ipv4_valid() {
+  local a b c d
+  printf '%s' "$1" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || return 1
+  IFS=. read -r a b c d <<<"$1"
+  [ "$a" -le 255 ] && [ "$b" -le 255 ] && [ "$c" -le 255 ] && [ "$d" -le 255 ]
+}
+
+# _reach_upnp <Aktion> -> SOAP-Antwort der FritzBox (hoechstens 8 KB) oder leer. Kein Wert geht in ein Log.
+_reach_upnp() {
+  local svc='urn:schemas-upnp-org:service:WANIPConnection:1'
+  curl -fsS --connect-timeout 1 --max-time 2 --max-filesize 8192 -H 'Content-Type: text/xml; charset="utf-8"' \
+    -H "SOAPAction: $svc#$1" --data-binary "<?xml version=\"1.0\" encoding=\"utf-8\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:$1 xmlns:u=\"$svc\"/></s:Body></s:Envelope>" \
+    "$REACH_UPNP_URL" 2>/dev/null | head -c 8192 || true
+}
+
+# _reach_upnp_field <Aktion> <Feld> -> Inhalt von <Feld> in der Antwort auf <Aktion>; rc 1, wenn die Antwort fehlt oder
+#   das Feld nicht enthaelt (leeres Feld = rc 0, leere Ausgabe).
+_reach_upnp_field() {
+  local x
+  x="$(_reach_upnp "$1" | tr -d '\r\n')"
+  case "$x" in *"$1Response"*) ;; *) return 1 ;; esac
+  case "$x" in *"<$2/>"*) return 0 ;; esac
+  # Ohne Treffer waere die Ausgabe leer und saehe aus wie "keine IPv4" (Markup im Feld) -> rc 1.
+  printf '%s' "$x" | grep -q "<$2>[^<]*</$2>" || return 1
+  printf '%s' "$x" | sed -n "s#.*<$2>\([^<]*\)</$2>.*#\1#p" | head -c 64
+}
+
+# _reach_ipv4_upnp — Schritt 0; rc 0 = entschieden (REACH_IPV4/REACH_IPV4_REASON gesetzt), rc 1 = weiter mit MyFRITZ!.
+_reach_ipv4_upnp() {
+  local st ip me a b
+  st="$(_reach_upnp_field GetStatusInfo NewConnectionStatus)" || return 1
+  [ "$st" = Connected ] || return 1
+  ip="$(_reach_upnp_field GetExternalIPAddress NewExternalIPAddress)" || return 1
+  ip="$(printf '%s' "$ip" | tr -d '[:space:]')"
+  if [ -z "$ip" ] || [ "$ip" = 0.0.0.0 ]; then REACH_IPV4=none; REACH_IPV4_REASON=upnp_no_ipv4; return 0; fi
+  _reach_ipv4_valid "$ip" || return 1
+  IFS=. read -r a b _ _ <<<"$ip"
+  case "$ip" in 192.0.0.[0-7]) REACH_IPV4=none; REACH_IPV4_REASON=upnp_no_ipv4; return 0 ;; esac
+  if [ "$a" = 100 ] && [ "$b" -ge 64 ] && [ "$b" -le 127 ]; then REACH_IPV4=none; REACH_IPV4_REASON=upnp_shared; return 0; fi
+  _reach_ipv4_shared "$ip" && return 1
+  me="$(reach_public_ipv4)"
+  if [ -n "$me" ] && [ "$me" != "$ip" ]; then REACH_IPV4=unknown; REACH_IPV4_REASON=upnp_differs; return 0; fi
+  REACH_IPV4=own; REACH_IPV4_REASON=upnp_public
+}
+
 reach_ipv4_eval() {
   local z a6 a4 me
   REACH_IPV4=unknown; REACH_IPV4_REASON=''
+  _reach_ipv4_upnp && return 0
   z="$(reach_myfritz_zone)"
   [ -n "$z" ] || { REACH_IPV4_REASON=no_zone; return 0; }
   a4="$(_reach_dns4 "$z")"
@@ -265,6 +317,21 @@ reach_ipv4_cached() {
   reach_ipv4_eval
   ( umask 077; mkdir -p "$REACH_RUN_DIR" && printf '%s\n%s\n%s\n' "$REACH_IPV4" "$REACH_IPV4_REASON" "$z" > "$f" ) 2>/dev/null || true
 }
+
+# reach_dslite -> yes | no | unknown (ein Wort). yes = keine eigene oeffentliche IPv4 (DS-Lite oder Carrier-NAT), der
+#   FritzBox-Weg kann nicht klappen; unknown = der Wizard fragt von Hand. Dieselbe Pruefung wie das Statusfeld ipv4.
+#   REACH_DSLITE_SOURCE = upnp | myfritz | none (gilt nur ohne $(...)-Subshell, darum reach_dslite_json fuer bridge.sh).
+_reach_dslite_eval() {
+  reach_ipv4_cached
+  case "$REACH_IPV4" in own) REACH_DSLITE=no ;; none) REACH_DSLITE=yes ;; *) REACH_DSLITE=unknown ;; esac
+  case "$REACH_IPV4_REASON" in
+    upnp_*) REACH_DSLITE_SOURCE=upnp ;;
+    no_a_record|shared_address|matches|differs) REACH_DSLITE_SOURCE=myfritz ;;
+    *) REACH_DSLITE_SOURCE=none ;;
+  esac
+}
+reach_dslite() { _reach_dslite_eval; printf '%s\n' "$REACH_DSLITE"; }
+reach_dslite_json() { _reach_dslite_eval; jq -nc --arg d "$REACH_DSLITE" --arg s "$REACH_DSLITE_SOURCE" '{dslite:$d, source:$s}'; }
 
 reach_status_json() {
   local mode state='unavailable' url='' dns='' kexp='' kdays='' reason='' dom

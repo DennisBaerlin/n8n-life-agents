@@ -2083,7 +2083,7 @@ $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
 # Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
 # damit kein zweiter, breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt als Format (rt_published_ports_json,
 # Paperless-Vorschlag im Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
-$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(>|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
+$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
 $composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
@@ -2128,7 +2128,9 @@ foreach ($sa in @(
     @{ n = 'runtime: down fest ok';  r = $rtRel; t = "rt_stack_down() { _rt_compose down --remove-orphans; }`n";   want = 0 },
     @{ n = 'runtime: down -v';       r = $rtRel; t = "  _rt_compose down --remove-orphans -v`n";                   want = 2 },
     @{ n = 'runtime: volume rm ok';  r = $rtRel; t = "  docker volume rm `"`$1`" >/dev/null`n";                    want = 0 },
-    @{ n = 'runtime: volume rm frei'; r = $rtRel; t = "  docker volume rm `"`$name`"`n";                           want = 1 },
+    @{ n = 'runtime: volume rm Grund'; r = $rtRel; t = "  err=`"`$(docker volume rm `"`$1`" 2>&1 >/dev/null)`"`n"; want = 0 },
+    @{ n = 'runtime: down Profile';  r = $rtRel; t = "  COMPOSE_PROFILES=`"`$p`" _rt_compose down --remove-orphans`n"; want = 0 },
+    @{ n = 'runtime: volume rm frei';r = $rtRel; t = "  docker volume rm `"`$name`"`n";                           want = 1 },
     @{ n = 'runtime: volume prune';  r = $rtRel; t = "  docker volume prune -f`n";                                 want = 2 },
     @{ n = 'runtime: compose up ok'; r = $rtRel; t = "  _rt_compose up -d --no-deps n8n`n";                        want = 0 },
     @{ n = 'runtime: run ohne --rm'; r = $rtRel; t = "  docker run busybox true`n";                                want = 1 })) {
@@ -2149,13 +2151,18 @@ function Get-ComposePinIssues([string]$Cy, [hashtable]$Pin, [string[]]$StateVols
     $imgs = @{}
     foreach ($m in [regex]::Matches($Cy, '(?m)^\s+(\w+):\s*&img_\w+\s+(\S+)\s*$')) { $imgs[$m.Groups[1].Value] = $m.Groups[2].Value }
     if ($imgs.Count -lt 4) { $iss.Add("x-images-Block nicht lesbar ($($imgs.Count) Images) -- Check 33 ist defekt."); return , $iss }
+    $imgs.Remove('master')   # eigene Pruefung unten (Get-MasterPin)
     foreach ($k in $imgs.Keys) { if ($imgs[$k] -notmatch '@sha256:[0-9a-f]{64}$') { $iss.Add("Image '$k' ($($imgs[$k])) ohne Digest -- nur per @sha256 (Einwand 30).") } }
     if ($imgs['n8n'] -notmatch "^n8nio/n8n:$([regex]::Escape($Pin.N8N_VERSION))@") { $iss.Add("n8n-Image '$($imgs['n8n'])' passt nicht zu N8N_VERSION=$($Pin.N8N_VERSION) (provision.sh).") }
     if ($imgs['postgres'] -notmatch "^postgres:$([regex]::Escape($Pin.PG_VERSION))[.@]") { $iss.Add("Postgres-Image '$($imgs['postgres'])' passt nicht zu PG_VERSION=$($Pin.PG_VERSION).") }
     if ($imgs['node'] -notmatch "^node:$([regex]::Escape($Pin.NODE_MAJOR))[-.@]") { $iss.Add("Gateway-Image '$($imgs['node'])' passt nicht zu NODE_MAJOR=$($Pin.NODE_MAJOR).") }
     foreach ($m in [regex]::Matches($Cy, '(?m)^\s+image:\s*(\S+)')) {
-        if ($m.Groups[1].Value -notmatch '^\*img_\w+$|^\$\{LA_MASTER_IMAGE:\?') { $iss.Add("image '$($m.Groups[1].Value)' -- nur ueber einen &img_-Anker aus x-images (Digest) oder LA_MASTER_IMAGE.") }
+        if ($m.Groups[1].Value -notmatch '^\*img_\w+$') { $iss.Add("image '$($m.Groups[1].Value)' -- nur ueber einen &img_-Anker aus x-images (Digest; master = &img_master).") }
     }
+    # master: genau eine Pin-Zeile in einer der zwei Formen (scripts/lib/release_images.ps1); Dienst und Umgebung ueber den Anker,
+    # sonst laesen der Helfer (master_swap) und rt_master_image_of verschiedene Werte.
+    try { $null = Get-MasterPin $Cy } catch { $iss.Add("master-Pin: $($_.Exception.Message)") }
+    if ([regex]::Matches($Cy, '(?m)^\s+(?:image|LA_MASTER_IMAGE):\s*\*img_master\s*$').Count -ne 2) { $iss.Add("master-Dienst: image und LA_MASTER_IMAGE muessen beide *img_master sein.") }
     $svcBlock = [regex]::Match($Cy, '(?ms)^services:[ \t]*\r?\n(.*?)(?=^\S|\z)').Groups[1].Value
     $svcs = [regex]::Matches($svcBlock, '(?ms)^  ([a-z0-9_]+):[ \t]*\r?\n(.*?)(?=^  [a-z0-9_]+:[ \t]*\r?$|\z)')
     if ($svcs.Count -lt 6) { $iss.Add("services-Block nicht lesbar ($($svcs.Count) Dienste) -- Check 33 ist defekt.") }
@@ -2181,6 +2188,7 @@ function Get-ComposePinIssues([string]$Cy, [hashtable]$Pin, [string[]]$StateVols
     }
     return , $iss
 }
+. (Join-Path $RepoRoot 'scripts\lib\release_images.ps1')
 $composePath = Join-Path $provDir 'compose\compose.yml'
 $masterDf    = Join-Path $provDir 'compose\master.Dockerfile'
 $provTxt = [System.IO.File]::ReadAllText((Join-Path $provDir 'provision.sh'), $Utf8NoBom)
@@ -2231,6 +2239,21 @@ if (-not (Test-Path $composePath)) { $errors.Add("COMPOSE-PINS: provisioning/com
 elseif ($cPin.Count -eq 3) {
     foreach ($m in (Get-ComposePinIssues ([System.IO.File]::ReadAllText($composePath, $Utf8NoBom)) $cPin $cState $cPatches)) { $errors.Add("COMPOSE-PINS: $m") }
 }
+# Abgeleitete Volumes (von Compose verwaltet, nicht external) = LA_DERIVED_VOLUMES: sonst liesse der Deinstaller ein neues
+# Volume stehen, und `--delete-data` fiele spaeter ueber den Rest.
+function Get-ComposeDerivedVolumes([string]$Cy) {
+    $blk = [regex]::Match($Cy, '(?ms)^volumes:[ \t]*\r?\n(.*?)(?=^\S|\z)').Groups[1].Value
+    return @([regex]::Matches($blk, '(?ms)^  ([a-z_0-9]+):[^\n]*\n((?:(?!  [a-z_0-9]+:)[^\n]*\n?)*)') |
+        Where-Object { $_.Groups[2].Value -notmatch '(?m)^\s+external:\s*true' } | ForEach-Object { $_.Groups[1].Value } | Sort-Object)
+}
+$cDerived = @(([regex]::Match($rtTxt, '(?m)^LA_DERIVED_VOLUMES="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ } | Sort-Object)
+if (-not $cDerived.Count) { $errors.Add("COMPOSE-PINS: LA_DERIVED_VOLUMES in lib/runtime.sh nicht lesbar -- Check 33 ist defekt.") }
+elseif (Test-Path $composePath) {
+    $cyDerived = Get-ComposeDerivedVolumes ([System.IO.File]::ReadAllText($composePath, $Utf8NoBom))
+    if (($cyDerived -join ' ') -ne ($cDerived -join ' ')) { $errors.Add("COMPOSE-PINS: abgeleitete Volumes in compose.yml ($($cyDerived -join ', ')) != LA_DERIVED_VOLUMES in lib/runtime.sh ($($cDerived -join ', ')) -- der Deinstaller liesse sie stehen.") }
+}
+$saCy = "volumes:`n  a:`n    external: true`n    name: x`n  b:`n    labels: *labels`n  c:     # Kommentar`n    labels: *labels`nx-end: 1`n"
+if (((Get-ComposeDerivedVolumes $saCy) -join ' ') -ne 'b c') { $errors.Add("COMPOSE-PINS SELBST-ASSERT 'abgeleitete Volumes': erwartet 'b c', gefunden '$((Get-ComposeDerivedVolumes $saCy) -join ' ')' -- Check 33 ist defekt.") }
 if (Test-Path $masterDf) {
     foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($masterDf, $Utf8NoBom), '(?m)^FROM\s+(\S+)')) {
         $img = $m.Groups[1].Value
@@ -2240,8 +2263,9 @@ if (Test-Path $masterDf) {
 }
 $saPin = @{ N8N_VERSION = '2.45.4'; PG_VERSION = '17'; NODE_MAJOR = '24' }
 $saD = '@sha256:' + ('a' * 64)
-$saOk = "x-images:`n  busybox: &img_busybox busybox:1$saD`n  postgres: &img_postgres postgres:17$saD`n  n8n: &img_n8n n8nio/n8n:2.45.4$saD`n  node: &img_node node:24-alpine$saD`n" +
+$saOk = "x-images:`n  busybox: &img_busybox busybox:1$saD`n  postgres: &img_postgres postgres:17$saD`n  n8n: &img_n8n n8nio/n8n:2.45.4$saD`n  node: &img_node node:24-alpine$saD`n  master: &img_master $MasterPinNeutral`n" +
         "services:`n" + ((@('sa', 'sb', 'sc', 'sd', 'se') | ForEach-Object { "  ${_}:`n    image: *img_busybox`n    container_name: `${LA_PROJECT:-lifeagents}-$_`n    labels: *labels`n    mem_limit: 8m`n" }) -join '') +
+        "  master:`n    image: *img_master`n    container_name: `${LA_PROJECT:-lifeagents}-master`n    labels: *labels`n    mem_limit: 8m`n    environment:`n      LA_MASTER_IMAGE: *img_master`n" +
         "  n8n:`n    image: *img_n8n`n    container_name: `${LA_PROJECT:-lifeagents}-n8n`n    labels: *labels`n    mem_limit: 1g`n    volumes:`n      - type: volume`n        target: /x/node_modules/@n8n/p`n        read_only: true`n        volume:`n          subpath: fix-a`n" +
         "volumes:`n  pgdata:`n    external: true`n    name: `${LA_PROJECT:-lifeagents}_pgdata`n"
 $saP = @(@{ Id = 'fix-a'; Path = 'pkg/node_modules/@n8n/p/f.js' })
@@ -2252,7 +2276,10 @@ foreach ($sa in @(
     @{ n = 'ohne mem_limit';   t = $saOk -replace '    mem_limit: 1g\n', '';           want = 1 },
     @{ n = 'Bind-Mount';       t = $saOk -replace '      - type: volume', "      - /srv/x:/y`n      - type: volume"; want = 1 },
     @{ n = 'Volume-Liste';     t = $saOk -replace 'pgdata', 'pgdatax';                 want = 1 },
-    @{ n = 'Patch-Mount fehlt'; t = $saOk -replace 'subpath: fix-a', 'subpath: fix-b';  want = 1 })) {
+    @{ n = 'Patch-Mount fehlt'; t = $saOk -replace 'subpath: fix-a', 'subpath: fix-b';  want = 1 },
+    @{ n = 'master-Pin gesetzt'; t = $saOk.Replace($MasterPinNeutral, '${LA_MASTER_IMAGE:-ghcr.io/o/r/master' + $saD + '}'); want = 0 },
+    @{ n = 'master-Pin mit Tag'; t = $saOk.Replace($MasterPinNeutral, '${LA_MASTER_IMAGE:-ghcr.io/o/r/master:v1}'); want = 1 },
+    @{ n = 'master ohne Anker'; t = $saOk.Replace('      LA_MASTER_IMAGE: *img_master', '      LA_MASTER_IMAGE: x'); want = 1 })) {
     $got = (Get-ComposePinIssues $sa.t $saPin @('pgdata') $saP).Count
     if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got ($((Get-ComposePinIssues $sa.t $saPin @('pgdata') $saP) -join '; ')) -- Check 33 ist defekt.") }
 }

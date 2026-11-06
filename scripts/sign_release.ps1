@@ -4,10 +4,13 @@
 #
 # Warum lokal und nicht in der CI: ein Signierschluessel als Actions-Secret schuetzte nicht gegen ein gekapertes
 # GitHub-Konto (wer das Konto hat, laesst die CI signieren). Darum unterschreibt der Owner selbst — aber nie blind:
-#   1. Entwurfs-Assets laden (Tarball, install.sh, SHA256SUMS) und SHA256SUMS gegen die Dateien pruefen.
+#   1. Entwurfs-Assets laden (Tarball, install.sh, compose.yml, DMG, EXE, SHA256SUMS) und SHA256SUMS gegen die Dateien pruefen.
 #   2. Den Inhalt mit dem LOKALEN Tag vergleichen: der entpackte Tar-Strom muss byte-gleich mit `git archive` des Tags
 #      sein (gzip-Bytes duerfen je git-Version abweichen, der Tar-Strom nicht); sonst Datei fuer Datei per Blob-Hash.
-#      install.sh muss genau provisioning/install.sh des Tags sein.
+#      install.sh und compose.yml muessen genau die Dateien des Tags sein. Das master-Image aus dem Release-Pin muss anonym
+#      als Index fuer linux/amd64 + linux/arm64 im Register liegen und aus diesem Tag gebaut sein (Label revision, nur die
+#      Pin-Zeile darf seither anders sein; scripts/lib/release_images.ps1). DMG/EXE brauchen den Herkunftsnachweis von
+#      GitHub aus release.yml fuer dieses Tag (`gh attestation verify`).
 #   3. SHA256SUMS mit dem privaten Schluessel unterschreiben (detached, SHA256SUMS.sig) und gegen das Schluesselbund im
 #      Repo gegenpruefen.
 #   4. SHA256SUMS.sig hochladen, den Entwurf veroeffentlichen. Erst jetzt zeigt /releases/latest auf das Release.
@@ -19,6 +22,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # stdin an gpg (Passwort) als UTF-8, nicht ASCII (PS 5.1)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'lib\release_images.ps1')
 
 if ($Tag -notmatch '^v\d+\.\d+\.\d+$') { throw "Ungueltiges Tag '$Tag' (erwartet z. B. v0.14.0)." }
 $keyFile = Join-Path $RepoRoot 'provisioning\keys\release-signing.gpg'
@@ -73,15 +77,15 @@ $work = Join-Path ([System.IO.Path]::GetTempPath()) ("sign_release_" + [guid]::N
 New-Item -ItemType Directory $work | Out-Null
 try {
     $tarball = "n8n-life-agents-$Tag.tar.gz"
-    & gh release download $Tag -R $slug -D $work -p $tarball -p install.sh -p SHA256SUMS
-    if ($LASTEXITCODE -ne 0) { throw "Assets von $Tag nicht ladbar (Entwurf vorhanden? CI fertig?)." }
+    $dl = @('-p', $tarball, '-p', 'SHA256SUMS'); foreach ($a in $ReleaseSumAssets) { $dl += @('-p', $a) }
+    & gh release download $Tag -R $slug -D $work @dl
+    if ($LASTEXITCODE -ne 0) { throw "Assets von $Tag nicht ladbar (Entwurf vorhanden? CI fertig, auch der Job desktop-assets?)." }
     $isDraft = (& gh release view $Tag -R $slug --json isDraft --jq '.isDraft').Trim()
     if ($isDraft -ne 'true') { Write-Host "  Hinweis: $Tag ist schon veroeffentlicht — es wird nur die Unterschrift ergaenzt." -ForegroundColor Yellow }
 
-    # 1) SHA256SUMS passt zu den Dateien (genau diese zwei Zeilen)
-    $sums = [System.IO.File]::ReadAllLines((Join-Path $work 'SHA256SUMS'))
-    $expect = @("$(Get-Sha256 (Join-Path $work $tarball))  $tarball", "$(Get-Sha256 (Join-Path $work 'install.sh'))  install.sh")
-    if ((Compare-Object $sums $expect -SyncWindow 0)) { throw "SHA256SUMS passt nicht zu den geladenen Dateien:`n$($sums -join "`n")" }
+    # 1) SHA256SUMS passt zu den Dateien (Tarball + $ReleaseSumAssets, Reihenfolge wie release.yml)
+    $iss = Test-ReleaseSums $work $tarball
+    if ($iss.Count) { throw ($iss -join "`n") }
 
     # 2a) install.sh = provisioning/install.sh des Tags (Blob-Hash ohne Zeilenende-Filter)
     $blobWant = (& git -C $RepoRoot rev-parse "${Tag}:provisioning/install.sh").Trim()
@@ -90,7 +94,7 @@ try {
 
     # 2b) Tarball-Inhalt = git archive des Tags (gleiche Pathspec + Prefix wie .github/workflows/release.yml)
     $localTar = Join-Path $work 'local.tar'
-    Invoke-Git archive --format=tar "--prefix=n8n-life-agents-$Tag/" -o $localTar $Tag provisioning packages .gitattributes
+    Invoke-Git archive --format=tar "--prefix=n8n-life-agents-$Tag/" -o $localTar $Tag @ReleasePathspec
     $ciTar = Join-Path $work 'ci.tar'
     $in = [System.IO.File]::OpenRead((Join-Path $work $tarball))
     try {
@@ -105,7 +109,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'CI-Tarball nicht entpackbar.' }
         $root = Join-Path $ex "n8n-life-agents-$Tag"
         $want = @{}
-        foreach ($l in (& git -C $RepoRoot ls-tree -r $Tag -- provisioning packages .gitattributes)) {
+        foreach ($l in (& git -C $RepoRoot ls-tree -r $Tag -- @ReleasePathspec)) {
             $parts = $l -split "`t", 2; $want[$parts[1]] = ($parts[0] -split ' ')[2]
         }
         $have = @{}
@@ -119,6 +123,20 @@ try {
     } else {
         Write-Host '  Inhalt geprueft (byte-gleich mit git archive des Tags).' -ForegroundColor DarkGray
     }
+
+    # 2c) compose.yml = Datei des Tags mit Release-Pin; das master-Image liegt anonym fuer amd64 + arm64 im Register und ist
+    #     der Release-Baum dieses Tags bis auf die Pin-Zeile (Label revision, scripts/lib/release_images.ps1).
+    $rc = Test-ReleaseCompose $RepoRoot $Tag (Join-Path $work 'compose.yml')
+    if ($rc.Problems.Count) { throw "compose.yml/master-Image nicht in Ordnung — NICHT unterschreiben:`n$($rc.Problems -join "`n")" }
+    Write-Host ("  master-Image geprueft: {0}@{1} ({2}, Revision {3})." -f $rc.Pin.Ref, $rc.Pin.Digest.Substring(0, 19), ($rc.Report.Platforms -join ' + '), $rc.Report.Revision.Substring(0, 12)) -ForegroundColor DarkGray
+
+    # 2d) DMG/EXE: nicht reproduzierbar -> Herkunftsnachweis von GitHub (Job desktop-assets in release.yml, genau dieses Tag)
+    foreach ($a in @('lifeagents.dmg', 'lifeagents-setup.exe')) {
+        $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { & gh attestation verify (Join-Path $work $a) -R $slug --signer-workflow "$slug/.github/workflows/release.yml" --source-ref "refs/tags/$Tag" *> $null } finally { $ErrorActionPreference = $prevEap }
+        if ($LASTEXITCODE -ne 0) { throw "$a hat keinen gueltigen Herkunftsnachweis aus release.yml fuer $Tag — NICHT unterschreiben (Pruefen: gh attestation verify $a -R $slug)." }
+    }
+    Write-Host '  DMG und EXE: Herkunftsnachweis aus release.yml fuer dieses Tag geprueft.' -ForegroundColor DarkGray
 
     # 3) unterschreiben + gegenpruefen
     $sec = Read-Host -AsSecureString "Passwort des Signierschluessels ($fpr)"

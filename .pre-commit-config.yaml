@@ -294,6 +294,13 @@ repos:
         pass_filenames: false
         files: ^scripts/(lib/substrate_reservations|reserve_substrate_slot|dev/substrate_reservation_test)\.ps1$
 
+      - id: release-images-test
+        name: release_images_test (master image pin forms, image provenance in git, SHA256SUMS check; no Docker, no network)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/release_images_test.ps1
+        pass_filenames: false
+        files: ^(scripts/(lib/release_images|build_master_image|sign_release|dev/release_images_test)\.ps1|provisioning/compose/compose\.yml)$
+
       - id: capabilities-catalog
         name: build.ps1 -VerifyCatalog (capabilities catalog drift)
         language: system

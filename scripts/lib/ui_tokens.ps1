@@ -75,8 +75,7 @@ function Get-UiCopies {
         [pscustomobject]@{ Source = 'config/ui.steps.css'; Files = @('provisioning/desktop/ui/app.css', 'provisioning/wizard/ui/app.css') }
         # Lese-Hinweis am Hauptknopf (Werte der Leitung, Referenz im Fragebogen).
         [pscustomobject]@{ Source = 'config/ui.nudge.js'; Files = @('provisioning/desktop/ui/app.js', 'provisioning/wizard/ui/app.js') }
-        [pscustomobject]@{ Source = 'config/ui.nudge.css'; Files = @('provisioning/desktop/ui/app.css', 'provisioning/wizard/ui/app.css') }
-    )
+        [pscustomobject]@{ Source = 'config/ui.nudge.css'; Files = @('provisioning/desktop/ui/app.css', 'provisioning/wizard/ui/app.css') }    )
 }
 function Get-UiCopyRegex([string]$Name) {
     [regex]::new('/\* ui-copy:begin ' + [regex]::Escape($Name) + '\b[^\n]*\*/\n[\s\S]*?/\* ui-copy:end \*/')
@@ -91,7 +90,7 @@ function Get-UiCopyText([string]$RepoRoot, $Copy) {
 # Leitung 2026-11-06: eine Uebersetzungs-Quelle mit Bot und Fragebogen). Je Sprache die Schluessel mit den genannten
 # Praefixen, sortiert. Eigenes Serialisieren statt ConvertTo-Json: gleiche Ausgabe unter PowerShell 5.1 und 7.
 function Get-UiLocaleBlocks {
-    @([pscustomobject]@{ Name = 'desktop'; File = 'provisioning/desktop/ui/app.js'; Prefixes = @('core.desktop.', 'core.wizard.step.') })
+    @([pscustomobject]@{ Name = 'desktop'; File = 'provisioning/desktop/ui/app.js'; Prefixes = @('core.art.greeting.', 'core.desktop.', 'core.wizard.step.') })
 }
 function Get-UiLocaleRegex([string]$Name) {
     [regex]::new('/\* ui-locale:begin ' + [regex]::Escape($Name) + '\b[^\n]*\*/\n[\s\S]*?/\* ui-locale:end \*/')

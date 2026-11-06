@@ -33,6 +33,10 @@ LA_N8N_EXEC_USER="${LA_N8N_EXEC_USER:-node}"   # Nutzer des n8n-Images (uid 1000
 # Zustandsfuehrende Volumes (compose.yml: alle `external`, `compose down` loescht sie nie; nur der Deinstaller nach
 # Rueckfrage). EINE Liste fuer rt_volumes_ensure und den Deinstaller (Paket 2).
 LA_STATE_VOLUMES="pgdata n8n_home etc_n8n etc_la var_la rt_tree gw_state ts_state wizard_state"
+# Abgeleitete Volumes (compose.yml: von Compose verwaltet, jeder Installer-Lauf schreibt sie neu, keine Nutzerdaten):
+# der Deinstaller entfernt sie immer. contract_lint 33 haelt die Liste gleich mit compose.yml.
+# shellcheck disable=SC2034  # gelesen von compose/stack.sh
+LA_DERIVED_VOLUMES="shared gw_code n8n_patches reach_conf caddy_data"
 
 # _rt_compose <args…> — docker compose mit FESTEM Projekt und fester Datei (nie das Projekt aus der Umgebung raten).
 _rt_compose() { docker compose -p "$LA_PROJECT" -f "$LA_COMPOSE_FILE" "$@"; }
@@ -277,8 +281,8 @@ rt_container_image() { docker inspect -f '{{.Config.Image}}' "$1" 2>/dev/null; }
 # rt_container_running <container> — 0 = laeuft.
 rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
 # rt_master_image_of <compose-datei> -> das master-Image, das DIESE Datei selbst nennt (Release-Pin, Paket 5:
-#   `image: ${LA_MASTER_IMAGE:-<register>/master@sha256:…}`), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
-#   keins (heute `:?`). Die aufgeloeste Fassung enthaelt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.
+#   x-images.master `${LA_MASTER_IMAGE:-<register>/master@sha256:…}`, scripts/lib/release_images.ps1), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
+#   keins (neutrale Form `:?`). Die aufgeloeste Fassung enthaelt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.
 rt_master_image_of() {
   ( unset LA_MASTER_IMAGE; LA_COMPOSE_FILE="$1"; _rt_compose config --format json master 2>/dev/null ) \
     | jq -r '.services.master.image // empty' 2>/dev/null || true
@@ -353,16 +357,22 @@ rt_host_check() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'p=/out/.lifeag
 # shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
 rt_host_rotate() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'cd /out && ls -1 lifeagents-backup-*.nla.enc 2>/dev/null | sort -r | tail -n +$(($1 + 1)) | while IFS= read -r f; do rm -f -- "$f"; done' _ "$2"; }
 # rt_stack_down — Container + Netze DIESES Projekts entfernen (Deinstaller, Rechner-Seite). Ohne -v/--rmi: die externen
-#   Volumes (Daten) und alle Images bleiben. --remove-orphans erfasst nur Container mit unserem Compose-Projekt (z. B.
-#   tailscale aus einem Profil), nie fremde.
-rt_stack_down() { _rt_compose down --remove-orphans; }
+#   Volumes (Daten) und alle Images bleiben. Dienste aus Profilen (tailscale, wan) sind fuer Compose keine Waisen: `down`
+#   erfasst sie nur, wenn ihr Profil aktiv ist -> alle Profile aus compose.yml aktivieren. --remove-orphans erfasst nur
+#   Container mit unserem Compose-Projekt, nie fremde.
+rt_stack_down() {
+  local profiles
+  profiles="$(_rt_compose config --profiles | paste -sd, -)" || return 1
+  COMPOSE_PROFILES="$profiles" _rt_compose down --remove-orphans
+}
 # rt_volume_rm_own <name> — EIN Volume entfernen, aber nur, wenn es unser Label traegt (fremdes gleichen Namens: Abbruch).
-#   rc 0 = entfernt oder nicht vorhanden.
+#   rc 0 = entfernt oder nicht vorhanden, 1 = fremdes Label (unberuehrt), 2 = Docker lehnte ab (Meldung nennt den Grund,
+#   z. B. noch von einem Container belegt).
 rt_volume_rm_own() {
-  local lbl
+  local lbl err
   lbl="$(docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>/dev/null)" || return 0
   [ "$lbl" = "$LA_PROJECT" ] || { warn "Volume $1 trägt nicht unser Label — bleibt unangetastet."; return 1; }
-  docker volume rm "$1" >/dev/null
+  err="$(docker volume rm "$1" 2>&1 >/dev/null)" || { warn "Volume $1 ließ sich nicht entfernen: ${err:-Docker nannte keinen Grund}"; return 2; }
 }
 # --- Rand (Paket 3, lib/reach.sh): edge, tailscale, wan -----------------------------------------------------------------
 # Feste Dienstliste ausserhalb des Pods, Container <projekt>-<dienst>; jeder andere Name = rc 2 (nie ein fremder Container).

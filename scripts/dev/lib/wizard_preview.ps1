@@ -28,6 +28,23 @@ function Get-WizardTestImage([string]$RepoRoot) {
     $name
 }
 
+# Invoke-WizardContainer -- docker run im eigenen Netz (Name = Container + "-net", danach entfernt). Grund: die
+#   Paperless-Suche (provisioning/wizard/scan.js) tastet das Netz des Containers ab; im geteilten Standard-Netz fand sie die
+#   Paperless-Attrappen paralleler Wizard-Tests anderer Sessions (Ports 8000/8010), der Fall „keiner gefunden“ wurde rot.
+#   Gibt die Ausgabe zurueck; $LASTEXITCODE ist der des Containers.
+function Invoke-WizardContainer([string]$Container, [string[]]$DockerArgs) {
+    $net = "$Container-net"
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+        docker network rm $net *> $null
+        docker network create $net *> $null
+        docker run --rm --name $Container --network $net @DockerArgs
+        $code = $LASTEXITCODE
+        docker network rm $net *> $null
+        $global:LASTEXITCODE = $code
+    } finally { $ErrorActionPreference = $prev }
+}
+
 # Get-WizardPreviewDump -- Seiten-Modelle neu erzeugen (Docker, ~1 Min) und zwischenspeichern; gibt die Liste zurueck.
 function Get-WizardPreviewDump([string]$RepoRoot, [string]$Container = '', [switch]$Cached) {
     $cache = Get-WizardPreviewCacheFile $RepoRoot
@@ -35,10 +52,8 @@ function Get-WizardPreviewDump([string]$RepoRoot, [string]$Container = '', [swit
     if ($Cached -and (Test-Path $cache)) { return ([System.IO.File]::ReadAllText($cache, $u8) | ConvertFrom-Json).pages }
     $image = Get-WizardTestImage $RepoRoot
     if (-not $Container) { $Container = if ($env:WIZARDTEST_CONTAINER) { "$($env:WIZARDTEST_CONTAINER)-preview" } else { "wizardpreview-$PID" } }
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $json = docker run --rm --name $Container --entrypoint node -v "${RepoRoot}:/repo:ro" $image /repo/tests/wizard/preview_dump.js
+    $json = Invoke-WizardContainer $Container @('--entrypoint', 'node', '-v', "${RepoRoot}:/repo:ro", $image, '/repo/tests/wizard/preview_dump.js')
     $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
     if ($code -ne 0 -or -not $json) { throw "preview_dump.js fehlgeschlagen (Exit $code)." }
     $text = ($json | Select-Object -Last 1)
     New-Item -ItemType Directory -Force -Path (Split-Path $cache) | Out-Null

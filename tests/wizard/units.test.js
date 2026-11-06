@@ -194,7 +194,7 @@ test('Texte der Einrichtung: jeder feste Katalog-Key im Code steht in allen Spra
   for (const k of ['next', 'back', 'skip', 'retry', 'change', 'change_label', 'secret_kept', 'found_addresses', 'one_moment', 'report_show',
     'report_note', 'report_copied', 'offline', 'open_via_app', 'session_expired', 'doc_title']) keys.add(`core.wizard.ui.${k}`);
   for (const k of ['voice_no', 'voice_yes', 'tg_new', 'tg_take', 'reach_tunnel', 'reach_fritzbox', 'dslite_no', 'dslite_yes']) keys.add(`core.wizard.opt.${k}`);
-  // Beschreibung je Antwort (optionsFor); „Nein, dort steht kein DS-Lite“ hat bewusst keine.
+  // Beschreibung je Antwort (optionsFor); das DS-Lite-„Nein“ hat bewusst keine.
   for (const k of ['voice_no', 'voice_yes', 'tg_new', 'tg_take', 'reach_tunnel', 'reach_fritzbox', 'dslite_yes']) keys.add(`core.wizard.opt.${k}_desc`);
   for (const k of ['check', 'programs', 'database', 'access', 'bot', 'final']) keys.add(`core.wizard.stage.${k}`);
   for (const k of ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old']) keys.add(`core.wizard.paperless.${k}`);

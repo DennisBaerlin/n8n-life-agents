@@ -315,8 +315,8 @@ const UiNudge = {
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
-    // „Noch kein Telegram?“ (Token-Seite): zugeklappt zwischen Einleitung und Anleitung, damit Feld und Knöpfe im Fenster bleiben.
-    if (p.getApp) help.splice(help[0] ? 1 : 0, 0, getAppNode(p.getApp));
+    // „Noch kein Telegram?“ (Seite „Warum Telegram?“): zugeklappt unter dem Text, damit Bild und Knöpfe im Fenster bleiben.
+    if (p.getApp) help.push(getAppNode(p.getApp));
     kids.push(...help);
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
     else if (p.note && !takes.includes('note')) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));   // takes: das Bild zeigt den Hinweis selbst
@@ -331,12 +331,11 @@ const UiNudge = {
       // Fester Teil hinter dem Feld (z. B. .<kennung>.myfritz.net): nur der Gerätename vorne wird getippt.
       kids.push(h('label', { class: 'sr', for: 'in', text: p.title }),
         p.suffix ? h('div', { class: 'with-suffix' }, inp, h('span', { class: 'suffix', text: p.suffix })) : inp);
-      // Live-Prüfung (MyFRITZ): Stand der Adresse direkt unter dem Feld, dazu „Erneut prüfen“ (die FritzBox braucht etwa
-      // eine Minute, bis eine neue Freigabe eingetragen ist).
+      // Live-Prüfung (MyFRITZ): Stand der Adresse direkt unter dem Feld, rechts daneben „Erneut prüfen“ (die FritzBox braucht
+      // etwa eine Minute, bis eine neue Freigabe eingetragen ist). Eine Reihe, damit das Bild darüber Platz hat.
       if (p.live) {
-        kids.push(h('div', { class: 'live-row' },
-          h('button', { type: 'button', class: 'link', id: 'rc', on: { click: () => liveSoon(p.id, 0) } }, p.live.recheck)),
-        h('div', { class: 'live', id: 'live', role: 'status' }));
+        kids.push(h('div', { class: 'live-row' }, h('div', { class: 'live', id: 'live', role: 'status' }),
+          h('button', { type: 'button', class: 'link', id: 'rc', on: { click: () => liveSoon(p.id, 0) } }, p.live.recheck)));
       } else if ((p.suggestions || []).length) {
         // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
         kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': T.found_addresses }, p.suggestions.map((s) => h('button', {
@@ -348,7 +347,7 @@ const UiNudge = {
     }
     if (p.kind === 'choice' || p.kind === 'multi') {
       const multi = p.kind === 'multi';
-      const wrap = h('div', { class: 'choices' + (multi ? ' multi' : '') + ((p.options || []).length > 6 ? ' long' : ''), role: multi ? 'group' : 'radiogroup', 'aria-labelledby': 'title' });
+      const wrap = h('div', { class: 'choices' + (multi ? ' multi' : '') + ((p.options || []).length > 6 ? ' long' : '') + (p.row ? ' row' : ''), role: multi ? 'group' : 'radiogroup', 'aria-labelledby': 'title' });
       for (const o of p.options || []) {
         const sel = multi ? (p.value || []).includes(o.value) : p.value === o.value;
         const b = h('button', { type: 'button', class: 'choice' + (sel ? ' sel' : ''), [multi ? 'data-m' : 'data-c']: o.value,

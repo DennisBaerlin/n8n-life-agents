@@ -48,7 +48,7 @@ CI baut, signiert ad hoc, startet die App kurz und prüft lesend gegen das echte
 5. Rechner ohne Docker: Download, Prüfung Team-ID, ein Passwort-Dialog, Docker läuft danach; Abbruch des Passwort-Dialogs ändert nichts.
 6. Fragebogen lädt im App-Fenster nur `http://127.0.0.1:<port>`; nach „Verbinden“ kommt die App von selbst mit „Dauerbetrieb“ zurück. Nach dem Start aus Programme ist die DMG ausgeworfen; „Download wegräumen“ legt die Datei in den Papierkorb (Finder: „Zurücklegen“ geht).
 7. Dauerbetrieb Ja: `pmset -g custom` vorher/nachher (nur AC-Bereich geändert), Ergebnis-Seite zeigt nur, was gilt; `fdesetup status` unverändert.
-8. Menüleisten-Symbol: Status „Läuft“/„Docker ist aus“ nach Docker beenden (bis 60 s), alle Menüpunkte.
+8. Menüleisten-Symbol: Status „Assistent läuft“/„Assistent ist aus: Docker läuft nicht“ nach Docker beenden (bis 60 s), alle Menüpunkte.
 9. Abmelden/Anmelden: LaunchAgent `~/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist` startet die App ohne Fenster, Docker und Verbund kommen hoch. Ad-hoc-signierte App als LaunchAgent ist unbelegt.
 10. Stecker ziehen: Mac startet (`autorestart`), wartet bei FileVault auf das Passwort, danach kommt alles hoch.
 11. Dauerbetrieb zurückstellen und Deinstallieren (je Häkchen einzeln): `pmset -g custom` wie vorher, Plist weg, Paperless laut Vergleich unverändert.

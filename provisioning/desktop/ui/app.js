@@ -32,7 +32,7 @@ const ENGINE = {
   'docker-desktop': 'Docker Desktop',
   "orb-stack": "OrbStack",
   'rancher-desktop': 'Rancher Desktop',
-  colima: "Colima, ein anderes Programm für Docker,",
+  colima: 'Colima (ein anderes Programm für Docker)',
   podman: 'Podman',
   'homebrew-docker': 'Docker aus Homebrew',
   wsl: 'eine eigene Docker-Engine im Linux-Teil von Windows',
@@ -43,7 +43,7 @@ const ERRORS = {
   'system-blocked': 'Dieser Rechner reicht leider nicht.',
   'docker-unsupported': 'Docker ist hier in einer Form da, die die App nicht verändert.',
   'download-failed': 'Docker ließ sich nicht laden. Prüfe die Internet-Verbindung und versuche es noch einmal.',
-  'signature-failed': 'Die geladene Datei stammt nicht nachweislich von Docker. Die App hat sie gelöscht und nichts installiert.',
+  'signature-failed': 'Die geladene Datei ließ sich nicht als echte Datei von Docker bestätigen. Die App hat sie gelöscht und nichts installiert.',
   'install-failed': 'Docker ließ sich nicht einrichten.',
   'install-cancelled': 'Du hast die Passwort-Abfrage abgebrochen. Es wurde nichts installiert.',
   'docker-capability': 'Deinem Docker fehlt etwas, das der Assistent braucht. Die App hat nichts gestartet. Bring Docker Desktop auf den neuesten Stand und versuche es noch einmal.',
@@ -115,7 +115,7 @@ function busy(title, text) {
 function failed(code, retry) {
   show('error', {
     title: 'Das hat nicht geklappt',
-    body: [note('bad', ERRORS[code] || 'Etwas ist schiefgegangen.'), h('p', { class: 'lead' }, 'Wenn es wieder passiert, schick den Fehlerbericht an die Person, die dir die App gegeben hat. Er enthält keine Namen und keine Daten.')],
+    body: [note('bad', ERRORS[code] || 'Etwas ist schiefgegangen.'), h('p', { class: 'lead' }, 'Wenn es wieder passiert, schick den Fehlerbericht an die Person, die dir die App gegeben hat.')],
     next: retry ? { label: 'Noch einmal versuchen', run: retry } : { label: 'Fehlerbericht ansehen', run: () => SCREENS.report() },
     alt: retry ? { label: 'Fehlerbericht ansehen', run: () => SCREENS.report() } : null,
   });
@@ -129,8 +129,9 @@ const SCREENS = {
       title: 'Zieh die App zuerst in den Programme-Ordner',
       body: [
         h('p', { class: 'lead' }, 'Die App läuft gerade noch aus der geladenen Datei. So kann sie später nicht von selbst starten.'),
-        h('div', { class: 'dmg' }, h('div', { class: 'ico' }, h('div', { class: 'app-ico' }, '●'), 'lifeagents'), h('div', { class: 'arrow' }, '→'), h('div', { class: 'ico' }, h('div', { class: 'folder' }), 'Programme')),
-        h('ol', {}, h('li', {}, 'Beende die App.'), h('li', {}, 'Zieh das Symbol im Fenster der Datei auf den Ordner Programme.'), h('li', {}, 'Öffne lifeagents dann aus dem Programme-Ordner.')),
+        // Schema des Fensters der geladenen Datei; das App-Symbol ist dasselbe Zeichen wie oben im Kopf.
+        h('div', { class: 'dmg' }, h('div', { class: 'ico' }, h('div', { class: 'app-ico' }, document.querySelector('.top svg').cloneNode(true)), 'lifeagents'), h('div', { class: 'arrow' }, '→'), h('div', { class: 'ico' }, h('div', { class: 'folder' }), 'Programme')),
+        h('ol', {}, h('li', {}, 'Beende die App.'), h('li', {}, 'Zieh im Fenster der geladenen Datei das Symbol lifeagents auf den Ordner Programme.'), h('li', {}, 'Öffne lifeagents dann aus dem Programme-Ordner.')),
       ],
     });
   },
@@ -139,7 +140,7 @@ const SCREENS = {
     show('welcome', {
       title: 'Dein eigener Assistent, in ein paar Schritten',
       body: [
-        h('p', { class: 'lead' }, 'Du beantwortest eine Frage nach der anderen. Am Ende schreibst du mit deinem Bot in Telegram, und deine Daten bleiben auf diesem Rechner.'),
+        h('p', { class: 'lead' }, 'Du beantwortest eine Frage nach der anderen. Am Ende schreibst du in Telegram mit deinem Assistenten (dort heißt er Bot), und deine Daten bleiben auf diesem Rechner.'),
         h('p', {}, 'Plane rund 30 Minuten ein. Du kannst jederzeit aufhören und später genau hier weitermachen.'),
       ],
       next: { label: 'Was brauche ich?', run: () => SCREENS.need() },
@@ -169,7 +170,7 @@ const SCREENS = {
           h('li', {}, h('b', {}, 'Dein Handy mit Telegram.'), ' Darüber sprichst du später mit dem Bot.'),
           h('li', {}, h('b', {}, 'Eine Kreditkarte.'), ' Die KI von Anthropic rechnet nach Verbrauch direkt mit dir ab. Das Projekt selbst ist kostenlos.'),
           h('li', {}, h('b', {}, 'Diesen Rechner, und er bleibt an.'), ' Der Bot läuft hier. Am Ende fragen wir dich, ob der Rechner dafür durchlaufen soll.')),
-        note('', 'Ein Mac mini oder ein anderer Rechner, der immer am Strom hängt, passt am besten. Ein Laptop, der oft zugeklappt ist, antwortet entsprechend oft nicht.'),
+        note('', 'Ein Mac mini oder ein anderer Rechner, der immer am Strom hängt, passt am besten.'),
       ],
       next: { label: 'Los geht es', run: () => SCREENS.sys() },
       back: true,
@@ -193,8 +194,8 @@ const SCREENS = {
     try {
       await invoke('rollback');
       show('rolled-back', {
-        title: 'Alles ist zurückgenommen',
-        body: [h('p', { class: 'lead' }, 'Die App hat ihre Änderungen rückgängig gemacht. Andere Programme und deine Dateien sind unberührt.')],
+        title: 'Die Änderungen der App sind zurückgenommen',
+        body: [h('p', { class: 'lead' }, 'Andere Programme und deine Dateien sind unberührt. Docker selbst bleibt auf deinem Rechner; entfernen kannst du es über „Deinstallieren“.')],
         next: { label: 'Neu beginnen', run: () => SCREENS.welcome() },
       });
     } catch (e) {
@@ -262,7 +263,7 @@ const SCREENS = {
     const labels = {
       download: 'Docker laden',
       verify: 'Prüfen, ob die Datei wirklich vom Hersteller stammt',
-      password: mac() ? 'Dein Passwort bestätigen' : 'Die Frage von Windows bestätigen',
+      password: mac() ? 'Dein Mac fragt nach deinem Passwort: eingeben und bestätigen' : 'Windows fragt, ob die App etwas ändern darf: mit Ja bestätigen',
       start: 'Docker starten',
     };
     const order = ['download', 'verify', 'password', 'start'];
@@ -403,7 +404,8 @@ const SCREENS = {
       title: 'Hier brauchst du kurz Hilfe',
       body: [
         h('p', { class: 'lead' }, 'Auf diesem ' + machine() + ' gibt es schon ' + what + '. Die App installiert nichts dazu und ändert daran nichts, damit nichts kaputtgeht.'),
-        note('', 'Die App hat nichts geändert. Schick den Fehlerbericht an die Person, die dir die App gegeben hat. ', link('Hilfe auf der Projekt-Seite', 'help')),
+        note('', 'Die App hat nichts geändert. Schick den Fehlerbericht an die Person, die dir die App gegeben hat.'),
+        h('p', {}, link('Hilfe auf der Projekt-Seite lesen', 'help')),
       ],
       next: { label: 'Fehlerbericht ansehen', run: () => SCREENS.report() },
       back: true,
@@ -411,7 +413,7 @@ const SCREENS = {
   },
 
   async coreStart() {
-    busy('Der Fragebogen wird vorbereitet', 'Das dauert beim ersten Mal ein paar Minuten, weil die App zwei kleine Programmteile lädt.');
+    busy('Der Fragebogen wird vorbereitet', 'Das dauert beim ersten Mal ein paar Minuten.');
     try {
       await invoke('start_core');
     } catch (e) {
@@ -510,7 +512,8 @@ const SCREENS = {
     show('done', {
       title: 'Fertig. Schreib deinem Bot etwas',
       body: [
-        h('p', { class: 'lead' }, 'Dein Bot ist eingerichtet und hat dir in Telegram geschrieben. Tippe dort auf ', h('b', {}, 'Haushalt einrichten'), '.'),
+        // „Tippe dort auf Haushalt einrichten“ steht schon auf der letzten Seite des Fragebogens (ein Zuhause je Fakt).
+        h('p', { class: 'lead' }, 'Dein Assistent läuft jetzt auf diesem Rechner.'),
         h('ul', {},
           h('li', {}, 'Neue Versionen meldet dir der Bot im Chat. Du tippst auf ', h('b', {}, 'Jetzt aktualisieren'), ', das Update sichert vorher deine Daten.'),
           h('li', {}, 'Deine Daten liegen nur auf diesem Rechner. Mach ab und zu eine Sicherung, der Bot erklärt dir, wie.')),
@@ -545,9 +548,9 @@ const SCREENS = {
   async powerRestore() {
     show('power-restore', {
       title: 'Dauerbetrieb zurückstellen?',
-      body: [h('p', { class: 'lead' }, 'Dein ' + machine() + ' bekommt seine alten Energie-Einstellungen zurück. Danach schläft er wieder ein, und der Bot antwortet erst, wenn er wach ist.')],
+      body: [h('p', { class: 'lead' }, 'Dein ' + machine() + ' bekommt seine alten Energie-Einstellungen zurück. Danach schläft er wieder ein, und dein Assistent antwortet erst, wenn er wach ist.')],
       next: {
-        label: 'Zurückstellen',
+        label: 'Alte Einstellungen wiederherstellen',
         run: async () => {
           try {
             await invoke('power_restore');
@@ -566,26 +569,35 @@ const SCREENS = {
     const opts = [];
     const opt = (key, title, sub) => h('label', { class: 'opt' }, h('input', { type: 'checkbox', id: 'u-' + key }), h('span', {}, title, h('small', {}, sub)));
     if (p.data_volumes.length) opts.push(opt('delete_data', 'Auch meine Daten löschen', 'Gespräche, Belege und Einstellungen des Assistenten. Das lässt sich nicht rückgängig machen.'));
-    if (p.power) opts.push(opt('restore_power', 'Alte Energie-Einstellungen zurückholen', 'Der Rechner schläft danach wieder wie früher.'));
+    if (p.power) opts.push(opt('restore_power', 'Dauerbetrieb zurückstellen', 'Dein Rechner bekommt seine alten Energie-Einstellungen und schläft wieder wie früher.'));
     if (p.autostart) opts.push(opt('remove_autostart', 'Nicht mehr bei der Anmeldung starten', 'Ohne diesen Eintrag startet die App nur, wenn du sie öffnest.'));
     if (p.docker_installed_by_us) opts.push(opt('remove_docker', 'Docker Desktop entfernen', 'Nur sinnvoll, wenn kein anderes Programm Docker braucht.'));
     show('uninstall', {
-      title: 'Was soll entfernt werden?',
+      title: 'Was soll beim Deinstallieren weg?',
       body: [
         h('p', { class: 'lead' }, 'Der Assistent wird angehalten, und seine Teile in Docker verschwinden. Andere Programme in Docker bleiben, wie sie sind. Alles Weitere wählst du hier.'),
         ...opts,
       ],
       next: {
-        label: 'Entfernen',
+        label: 'Jetzt deinstallieren',
         run: async () => {
           const c = (k) => !!($('u-' + k) && $('u-' + k).checked);
           const choices = { delete_data: c('delete_data'), restore_power: c('restore_power'), remove_autostart: c('remove_autostart'), remove_docker: c('remove_docker') };
           busy('Wird entfernt', 'Assistent anhalten und seine Teile entfernen');
           const o = await invoke('uninstall_run', { choices });
+          // Je Auswahl eine Zeile, was jetzt gilt; ein fehlgeschlagener Schritt steht als Warnung (Codes aus uninstall.rs).
+          const bad = (code) => o.failed.some((f) => f === code || f.startsWith(code + ':'));
+          const done = [['ok', 'Der Assistent ist angehalten, seine Teile in Docker sind weg']];
+          if (p.data_volumes.length) done.push(choices.delete_data ? (bad('data') ? ['warn', 'Deine Daten ließen sich nicht ganz löschen'] : ['ok', 'Deine Daten sind gelöscht']) : ['ok', 'Deine Daten sind noch da']);
+          if (p.power) done.push(choices.restore_power ? (bad('power') ? ['warn', 'Die alten Energie-Einstellungen ließen sich nicht wiederherstellen'] : ['ok', 'Die alten Energie-Einstellungen gelten wieder']) : ['ok', 'Der Dauerbetrieb bleibt eingeschaltet']);
+          if (p.autostart) done.push(choices.remove_autostart ? (bad('autostart') ? ['warn', 'Der Start bei der Anmeldung ließ sich nicht entfernen'] : ['ok', 'Die App startet nicht mehr bei der Anmeldung']) : ['ok', 'Die App startet weiter bei der Anmeldung']);
+          if (p.docker_installed_by_us) done.push(choices.remove_docker ? (bad('docker') ? ['warn', 'Docker ließ sich nicht entfernen'] : ['ok', 'Docker ist entfernt']) : ['ok', 'Docker bleibt installiert']);
+          if (!o.deviations.length) done.push(['ok', 'Alle anderen Programme in Docker sind unverändert']);
           show('uninstalled', {
             title: o.failed.length || o.deviations.length ? 'Fast alles ist entfernt' : 'Der Assistent ist entfernt',
             body: [
-              o.deviations.length ? note('bad', 'Bei anderen Programmen in Docker hat sich etwas verändert (' + o.deviations.length + ' Stellen). Schick bitte den Fehlerbericht.') : steps([['ok', 'Alle anderen Programme in Docker sind unverändert']]),
+              steps(done),
+              o.deviations.length ? note('bad', 'Bei anderen Programmen in Docker hat sich etwas verändert (' + o.deviations.length + ' Stellen). Schick bitte den Fehlerbericht.') : null,
               o.failed.length ? note('warn', 'Nicht alles ließ sich entfernen. Der Fehlerbericht nennt die Stellen.') : null,
               h('p', { class: 'lead' }, 'Die App selbst kannst du jetzt in den Papierkorb ziehen.'),
             ],
@@ -618,7 +630,7 @@ function changeLists(c) {
   const change = {
     'install-docker': (x) => 'Docker kommt dazu (rund ' + x.size_mb + ' MB, direkt vom Hersteller)',
     'start-docker': (x) => ENGINE[x.engine] + ' wird gestartet',
-    'wizard-containers': () => 'Zwei kleine Hintergrund-Programme, die dir gleich die Fragen stellen. Mehr erst, wenn du am Ende noch einmal zustimmst',
+    'wizard-containers': () => 'Der Fragebogen, der dir gleich die Fragen stellt. Alles Weitere erst, wenn du am Ende des Fragebogens zustimmst',
     journal: () => 'Eine kleine Datei, in der sich die App ihre Schritte merkt, damit sie alles zurücknehmen kann',
   };
   const keep = {
@@ -640,10 +652,10 @@ function checkLine(c) {
   switch (c.id) {
     case 'os-version':
       return mac()
-        ? [lvl, 'macOS ' + c.value, c.level === 'ok' ? null : 'Docker braucht macOS ' + c.need + ' oder neuer.']
-        : [lvl, 'Windows (Build ' + c.value + ')', c.level === 'ok' ? null : 'Docker braucht Windows 10 22H2 oder Windows 11.'];
+        ? [lvl, 'macOS ' + c.value, c.level === 'ok' ? null : 'Das Hilfsprogramm Docker braucht macOS ' + c.need + ' oder neuer.']
+        : [lvl, 'Windows (Build ' + c.value + ')', c.level === 'ok' ? null : 'Das Hilfsprogramm Docker braucht Windows 10 22H2 oder Windows 11.'];
     case 'ram':
-      return [lvl, 'Arbeitsspeicher: ' + c.value + ' GB', c.level === 'ok' ? null : 'Docker braucht mindestens ' + c.need + ' GB.'];
+      return [lvl, 'Arbeitsspeicher: ' + c.value + ' GB', c.level === 'ok' ? null : 'Das Hilfsprogramm Docker braucht mindestens ' + c.need + ' GB.'];
     case 'disk':
       return [lvl, 'Freier Platz: ' + c.value + ' GB', c.level === 'ok' ? null : 'Nötig sind mindestens ' + c.need + ' GB.'];
     case 'virtualization':

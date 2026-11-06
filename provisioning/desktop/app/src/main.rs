@@ -44,7 +44,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<MenuItem<Wry>> {
     let power = MenuItem::with_id(app, "power-restore", "Dauerbetrieb zurückstellen", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "Fehlerbericht", true, None::<&str>)?;
     let uninstall = MenuItem::with_id(app, "uninstall", "Deinstallieren", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "App beenden", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &sep2, &uninstall, &quit])?;
@@ -72,7 +72,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<MenuItem<Wry>> {
 /// Hält die Status-Zeile im Menü aktuell: „Läuft“ oder „Docker ist aus“.
 fn watch_status(status: MenuItem<Wry>) {
     std::thread::spawn(move || loop {
-        let text = if commands::docker_running() { "Läuft" } else { "Docker ist aus" };
+        let text = if commands::docker_running() { "Assistent läuft" } else { "Assistent ist aus: Docker läuft nicht" };
         let _ = status.set_text(text);
         std::thread::sleep(Duration::from_secs(60));
     });

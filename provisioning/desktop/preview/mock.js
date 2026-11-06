@@ -3,6 +3,8 @@
 //   ?state=<fall>   missing (Standard), stopped, ready, ready-orbstack, old, memory, other, colima, remote, foreign,
 //                   blocked, hints, interrupted, dmg, complete, wizard, laptop
 //   ?os=win         Windows statt Mac       ?screen=<name>  direkt zu einem Bildschirm (z. B. power, report, uninstall)
+//   ?hold=1         Laden bzw. Starten bleibt stehen (Fortschritt aufnehmen)   ?fail=<code>  Docker holen scheitert
+//   ?click=next     nach dem Bildschirm einmal den Hauptknopf drücken (Ergebnis-Seiten aufnehmen)
 'use strict';
 (function () {
   // Aufnahme ohne Server (build_ui_review.ps1 -Surface desktop) setzt die Parameter vorab, sonst die Adresse.
@@ -85,7 +87,9 @@
       for (let mb = 0; mb <= total; mb += 97) {
         emit('fetch-progress', { stage: 'download', done_mb: mb, total_mb: total });
         await wait(250);
+        if (q.get('hold') && mb >= 291) await new Promise(() => {});
       }
+      if (q.get('fail')) throw q.get('fail');
       for (const stage of ['verify', 'password', 'start']) {
         emit('fetch-progress', { stage, done_mb: total, total_mb: total });
         await wait(700);
@@ -96,6 +100,7 @@
     wait_docker: async () => (await wait(800), { verdict: verdict() }),
     start_core: async () => {
       await wait(700);
+      if (q.get('hold')) await new Promise(() => {});
       if (fall !== 'wizard') throw 'compose-missing';
       return 5881;
     },
@@ -135,6 +140,11 @@
 
   const screen = q.get('screen');
   if (screen) {
-    window.addEventListener('load', () => setTimeout(() => window.__lifeagents.SCREENS[screen](), 50));
+    window.addEventListener('load', () =>
+      setTimeout(() => {
+        window.__lifeagents.SCREENS[screen]();
+        if (q.get('click') === 'next') setTimeout(() => document.getElementById('next').click(), 400);
+      }, 50)
+    );
   }
 })();

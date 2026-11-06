@@ -186,10 +186,11 @@ const UiNudge = {
     if (r.fatal) return fatal();
     if (r.offline || !r.page) { pollT = setTimeout(load, 3000); return; }
     apply(r);
-    if (PREVIEW) {   // Vorschau-Bilder: Eingabe und Fehlermeldung eines festgehaltenen Zustands
+    if (PREVIEW) {   // Vorschau-Bilder: Eingabe, Fehlermeldung und aufgeklappte Blöcke eines festgehaltenen Zustands
       const i = document.getElementById('in');
       if (i && PREVIEW.value) { i.value = PREVIEW.value; if (page.live) liveSoon(page.id, 0); }
       if (PREVIEW.error) setErr(PREVIEW.error);
+      if (PREVIEW.open) main.querySelectorAll('details').forEach((d) => { d.open = true; });
     }
   }
 
@@ -249,6 +250,16 @@ const UiNudge = {
     return (blocks || []).map((b) => (b.ol ? h('ol', null, b.ol.map((t) => h('li', { text: t }))) : h('p', { text: b.p })));
   }
 
+  function getAppNode(g) {
+    const box = h('div', { class: 'qr qr-small' });
+    box.innerHTML = g.qr;   // eigener Code (qr.js), fester Link, keine Nutzer- oder Fremddaten
+    const ext = (l) => h('a', { href: l.href, target: '_blank', rel: 'noopener noreferrer', text: l.label });
+    const links = [];
+    (g.links || []).forEach((l, i) => links.push(i ? ' · ' : '', ext(l)));
+    return h('details', { class: 'get-app' }, h('summary', { text: g.summary }),
+      h('div', { class: 'pair' }, box, h('div', null, h('p', { text: g.scan }), h('p', null, g.computer + ' ', ...links))));
+  }
+
   function setErr(t) { const e = document.getElementById('er'); if (e) e.textContent = t || ''; }
 
   async function post(path, body, okMsg) {
@@ -302,6 +313,8 @@ const UiNudge = {
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
+    // „Noch kein Telegram?“ (Token-Seite): zugeklappt zwischen Einleitung und Anleitung, damit Feld und Knöpfe im Fenster bleiben.
+    if (p.getApp) help.splice(help[0] ? 1 : 0, 0, getAppNode(p.getApp));
     kids.push(...help);
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
     else if (p.note && !takes.includes('note')) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));   // takes: das Bild zeigt den Hinweis selbst

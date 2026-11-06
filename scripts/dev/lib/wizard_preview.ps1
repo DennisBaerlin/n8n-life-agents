@@ -57,9 +57,9 @@ function Get-WizardPreviewHtml([string]$RepoRoot, $Entry, [int]$PhoneWidth = 0, 
     # Hell/Dunkel fest statt nach dem System (Headless-Chrome folgt sonst dem Windows-Design): die dunkle Regel gilt immer oder nie.
     if ($Scheme -ne 'auto') { $css = $css.Replace('@media (prefers-color-scheme: dark)', $(if ($Scheme -eq 'dark') { '@media all' } else { '@media not all' })) }
     $js = [System.IO.File]::ReadAllText((Join-Path $ui 'app.js'), $u8)
-    $model = @{ page = $Entry.page; error = $Entry.error; value = $Entry.value; live = $Entry.live } | ConvertTo-Json -Depth 20 -Compress
+    $model = @{ page = $Entry.page; error = $Entry.error; value = $Entry.value; live = $Entry.live; open = $Entry.open } | ConvertTo-Json -Depth 20 -Compress
     $model = $model.Replace('</', '<\/')
-    $stub = "window.WIZARD_PREVIEW = (function () { var m = $model; return { error: m.error, value: m.value, api: function (method, path) { return Promise.resolve(method === 'GET' && path === '/api/state' ? { csrf: 'vorschau', page: m.page } : path === '/api/check' && m.live ? { live: m.live } : { error: 'Vorschau: nichts wird gesendet.' }); } }; })();"
+    $stub = "window.WIZARD_PREVIEW = (function () { var m = $model; return { error: m.error, value: m.value, open: m.open, api: function (method, path) { return Promise.resolve(method === 'GET' && path === '/api/state' ? { csrf: 'vorschau', page: m.page } : path === '/api/check' && m.live ? { live: m.live } : { error: 'Vorschau: nichts wird gesendet.' }); } }; })();"
     $width = if ($PhoneWidth -gt 0) { "html { width: ${PhoneWidth}px; }" } else { '' }
     # Bilder (di9, ui/art/): eingebettet wie app.*, fehlen sie, bleibt die Stelle leer
     $artCss = ''; $artJs = ''

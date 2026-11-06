@@ -7,7 +7,8 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const { startWizard, ctl, login, state, post, answer, waitFor, lanIp } = require('./helpers');
+const { startWizard, ctl, login, state, post, answer, waitFor, lanIp, WIZ } = require('./helpers');
+const qr = require(path.join(WIZ, 'qr.js'));
 
 // Erfundenes Paperless: /api/ antwortet mit X-Version, prüft den Token.
 function paperlessMock() {
@@ -55,6 +56,11 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.deepEqual(pe.options.find((o) => o.value === 'neutral').frame, {});
     assert.equal((await answer(w, 'h:OWNER_PERSONA', 'pirat')).status, 422, 'nur angebotene Charaktere');
     await expectOk(await answer(w, 'h:OWNER_PERSONA', 'butler'));
+    // „Noch kein Telegram?“: QR-Code (lokal erzeugt) und Links nur zu offiziellen Telegram-Adressen, Texte aus dem Katalog.
+    const ga = (await page(w)).getApp;
+    assert.equal(ga.qr, qr.toSvg(qr.encode('https://telegram.org/dl')), 'QR-Code = Telegram-Link, der je Handy in den passenden Store führt');
+    assert.ok(ga.summary.startsWith('Noch kein Telegram?') && ga.scan && ga.computer);
+    assert.deepEqual(ga.links.map((l) => new URL(l.href).origin), ['https://macos.telegram.org', 'https://desktop.telegram.org']);
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', '')).status, 422, 'Pflicht');
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', 'bad-token')).status, 422);
     const tg = await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel-token'));

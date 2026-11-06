@@ -118,7 +118,8 @@
     const prevIn = document.getElementById('in');
     const keep = prevIn && renderedId === p.id && prevIn.value ? prevIn.value : null;
     renderedId = p.id;
-    let art = null;   // Bild dieser Seite (di9, ui/art/art.js), s. u.
+    // Bild dieser Seite (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild; side = neben die Auswahl.
+    const art = window.WizardArt && typeof window.WizardArt.mount === 'function' ? window.WizardArt.mount(p) : null;
     const kids = [
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
@@ -129,10 +130,12 @@
 
     if (['text', 'date', 'secret'].includes(p.kind)) {
       const type = p.kind === 'secret' ? 'password' : p.kind === 'date' ? 'date' : 'text';
+      const inp = h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? 'Schon eingetragen. Leer lassen, um es zu behalten.' : (p.placeholder || null),
+        autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'er',
+        on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } } } });
+      // Fester Teil hinter dem Feld (z. B. .<kennung>.myfritz.net): nur der Gerätename vorne wird getippt.
       kids.push(h('label', { class: 'sr', for: 'in', text: p.title }),
-        h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? 'Schon eingetragen. Leer lassen, um es zu behalten.' : (p.placeholder || null),
-          autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'er',
-          on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } } } }));
+        p.suffix ? h('div', { class: 'with-suffix' }, inp, h('span', { class: 'suffix', text: p.suffix })) : inp);
       // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
       if ((p.suggestions || []).length) {
         kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': 'Gefundene Adressen' }, p.suggestions.map((s) => h('button', {
@@ -158,7 +161,7 @@
         });
         wrap.appendChild(b);
       }
-      kids.push(wrap);
+      kids.push(art && art.side ? h('div', { class: 'with-art' }, wrap, art.el) : wrap);
     }
     if (p.kind === 'review') {
       kids.push(h('dl', null, (p.rows || []).map((r) => h('div', { class: 'rv' }, h('dt', { text: r.label }), h('dd', { text: String(r.value).replace(/\.(?=\S)/g, '.​') }),
@@ -187,8 +190,7 @@
     kids.push(h('div', { class: 'err', id: 'er', role: 'alert' }), h('div', { id: 'ck' }));
     // Einbaustelle für Bilder und Animationen (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild.
     // Platz und Verhalten im schmalen Fenster regelt art.css; die CSP gilt auch dort (kein style=, kein Inline-Skript).
-    art = window.WizardArt && typeof window.WizardArt.mount === 'function' ? window.WizardArt.mount(p) : null;
-    if (art && art.el) kids.push(art.el);
+    if (art && art.el && !art.side) kids.push(art.el);
     if (p.kind === 'install' && p.failed) {
       kids.push(h('p', null, h('button', { type: 'button', id: 'rp', on: { click: showReport } }, 'Bericht für die Hilfe anzeigen')), h('div', { id: 'rpt' }));
     }

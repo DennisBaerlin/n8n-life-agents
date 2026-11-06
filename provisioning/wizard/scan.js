@@ -1,6 +1,6 @@
 // scan.js — Paperless im eigenen Heimnetz finden (Owner-Runde 2026-11-06: „Service-Gedanke“), nur wenn das Modul
 // Dokumente gewählt ist und nur auf dessen Adress-Seite (server.js). Regeln:
-//   - nur das /24-Netz des Rechners (Adresse von der App, LA_HOST_IP; größere Netze werden auf dieses /24 begrenzt);
+//   - nur das /24-Netz des Rechners (Adresse aus hints.env der App, LA_HOST_IP; größere Netze werden auf dieses /24 begrenzt);
 //   - nur typische Paperless-Ports: 8000 (Standard von Paperless-ngx: PAPERLESS_PORT und die mitgelieferten
 //     docker-compose-Dateien), 8010 (verbreiteter Ausweichport, wenn 8000 schon belegt ist, z. B. durch Portainer),
 //     80 und 443 (Paperless hinter einem Reverse Proxy);

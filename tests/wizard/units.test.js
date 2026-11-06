@@ -108,6 +108,31 @@ test('Paperless-Adresse vorausfüllen: genau ein erreichbarer Treffer, sonst lee
   assert.equal(g([{ ip: '0.0.0.0', port: 0 }, { ip: '0.0.0.0', port: 'x' }], '192.0.2.10'), '');
 });
 
+test('MyFRITZ-Adresse: Zone und Kandidaten streng geprüft, erster auflösbarer Name gewinnt', async () => {
+  assert.equal(flow.myfritzZone('Deine-Domain.myfritz.net.'), 'deine-domain.myfritz.net');
+  for (const bad of ['', 'myfritz.net', 'zwei.deine-domain.myfritz.net', 'deine-domain.myfritz.net.evil.example', 'mein rechner.deine-domain.myfritz.net']) assert.equal(flow.myfritzZone(bad), '', bad);
+  assert.deepEqual(flow.myfritzCandidates('Mac-Mini, meinrechner mac-mini ;rm -rf /, -x'), ['mac-mini', 'meinrechner']);
+  const seen = [];
+  const resolve = async (n) => { seen.push(n); return n === 'meinrechner.deine-domain.myfritz.net'; };
+  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['mac-mini', 'meinrechner', 'x'], resolve), 'meinrechner.deine-domain.myfritz.net');
+  assert.deepEqual(seen, ['mac-mini.deine-domain.myfritz.net', 'meinrechner.deine-domain.myfritz.net'], 'stoppt beim ersten Treffer');
+  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['a'], async () => { throw new Error('x'); }), '');
+  assert.equal(await flow.myfritzGuess('', ['a'], async () => true), '');
+});
+
+test('Vorschläge vom Rechner: Sprache auf angebotene Codes, Name am letzten Leerzeichen', () => {
+  const L = [{ code: 'de' }, { code: 'en' }];
+  assert.equal(flow.userLanguage('de-DE', L), 'de');
+  assert.equal(flow.userLanguage('en_US.UTF-8', L), 'en');
+  assert.equal(flow.userLanguage('fr', L), '');
+  assert.equal(flow.userLanguage('', L), '');
+  assert.deepEqual(flow.userName('Lena Marie Beispiel'), { first: 'Lena Marie', last: 'Beispiel' });
+  assert.deepEqual(flow.userName('  Kim  '), { first: 'Kim', last: '' });
+  assert.deepEqual(flow.userName('Tom\nBeispiel'), { first: 'Tom', last: 'Beispiel' }, 'Zeilenumbruch wird Leerzeichen');
+  assert.deepEqual(flow.userName('x\u0000y'), { first: '', last: '' });
+  assert.deepEqual(flow.userName(''), { first: '', last: '' });
+});
+
 test('Hilfetext der CLI: Listen, Absätze, Terminal-Befehle entfallen', () => {
   const b = flow.helpBlocks('Erste Zeile\nzweite Zeile.\n  1. Eins\n  2. Zwei mit\n     Fortsetzung\nSpäter nachtragen: lifeagents reconfigure');
   assert.deepEqual(b, [{ p: 'Erste Zeile zweite Zeile.' }, { ol: ['Eins', 'Zwei mit Fortsetzung'] }]);
@@ -125,3 +150,24 @@ test('QR-Code: feste Fassung (gegen einen unabhängigen Decoder geprüft) und Gr
   assert.throws(() => qr.encode('x'.repeat(300)), /too long/);
 });
 const GOLDEN_QR = 'fd6f2b9619bde53cb828f90e06585aca1c8dc80dfb838c90ebbc8960aa84aa23';   // jsQR 1.4.0 las diesen Code am 2026-11-06 als den Link
+
+test('hints.env: streng gelesen, nie ausgeführt, eine verletzte Regel = keine Vorschläge', () => {
+  const p = flow.parseHints;
+  assert.deepEqual(p('LA_USER_LANG=de\nLA_USER_FULLNAME=Erika $(id) `x`\nLA_HOST_IP=\nANDERES=x\n'),
+    { LA_USER_LANG: 'de', LA_USER_FULLNAME: 'Erika $(id) `x`' }, 'roh, leere und unbekannte Schlüssel zählen nicht');
+  assert.deepEqual(p('LA_MYFRITZ_ZONE=deine-domain.myfritz.net\r\nLA_USER_LANG=en\r\n'), { LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_USER_LANG: 'en' }, 'CRLF');
+  for (const bad of ['LA_USER_LANG=de\nLA_USER_LANG=en\n', '# kommentar\nLA_USER_LANG=de\n', 'LA_USER_LANG=de\n\nLA_HOST_IP=192.0.2.10\n',
+    'LA_USER_LANG=d\u0007e\n', 'export LA_USER_LANG=de\n', '=de\n', 'LA_USER_LANG=de\r\r\n', 'x'.repeat(9000), null]) {
+    assert.deepEqual(p(bad), {}, JSON.stringify(bad));
+  }
+});
+
+test('Zustellfehler: nur frisch und mit wartenden Nachrichten (Format Paket 3)', () => {
+  const f = flow.webhookFailing; const now = 1800000000;
+  assert.equal(f({ webhook_error: 'Connection timed out', webhook_error_at: now - 60, webhook_pending: 2 }, now), true);
+  assert.equal(f({ webhook_error: 'Connection timed out' }, now), true, 'ohne Zeit und Zähler zählt der Text');
+  assert.equal(f({ webhook_error: 'Connection timed out', webhook_error_at: now - 3600, webhook_pending: 2 }, now), false, 'alt');
+  assert.equal(f({ webhook_error: 'Connection timed out', webhook_error_at: now - 60, webhook_pending: 0 }, now), false, 'nichts wartet');
+  assert.equal(f({ webhook_error: '' }, now), false);
+  assert.equal(f(null, now), false);
+});

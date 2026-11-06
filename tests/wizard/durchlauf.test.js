@@ -32,12 +32,14 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
   const ip = lanIp();
   assert.ok(ip, 'Container braucht eine Netz-Adresse für die Paperless-Attrappe');
   const plUrl = `http://${ip}:${pl.address().port}`;
-  const w = await startWizard({ env: { LA_HOST_IP: '192.0.2.10' } });
+  const w = await startWizard({ hints: { LA_HOST_IP: '192.0.2.10', LA_USER_LANG: 'en-US', LA_USER_FULLNAME: 'Lena Marie Beispiel',
+    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini,meinrechner' }, env: { WIZARD_FAKE_DNS: '' } });
   try {
     await login(w);
     assert.equal((await page(w)).id, 'h:OWNER_LANGUAGE');
-    assert.equal((await page(w)).value, 'de', 'Vorauswahl Deutsch wie in der CLI');
+    assert.equal((await page(w)).value, 'en', 'Sprache vom Rechner vorgeschlagen (hints.env)');
     await expectOk(await answer(w, 'h:OWNER_LANGUAGE', 'de'));
+    assert.equal((await page(w)).value, 'Lena Marie', 'Vorname vom Rechner vorgeschlagen (hints.env)');
     await expectOk(await answer(w, 'h:OWNER_FIRST_NAME', "Lena $(id)"));
     await expectOk(await answer(w, 'h:OWNER_LAST_NAME', "O'Beispiel"));
     // Geburtsdatum mit den Regeln der CLI (_validate_birthdate): kein 30. Februar, nicht in der Zukunft.
@@ -91,10 +93,14 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal(guide.id, 'fb_guide');
     assert.equal(guide.link.href, 'https://beispiel.example/anleitung/');
     await expectOk(await answer(w, 'fb_guide', null));
+    // Kennung der FritzBox von der App, kein Gerätename löst auf: .<zone> steht fest, nur der Name vorne fehlt.
+    const dom = await waitFor(async () => { const x = await page(w); return x.poll ? null : x; });
+    assert.equal(dom.suffix, '.deine-domain.myfritz.net');
+    assert.match(dom.note.text, /Gerätenamen/);
     const box = await answer(w, 'h:DOMAIN', 'deine-domain.myfritz.net');
     assert.equal(box.status, 422);
     assert.match(box.json.error, /FritzBox selbst/);
-    await expectOk(await answer(w, 'h:DOMAIN', 'https://MeinRechner.Deine-Domain.myfritz.net/'));
+    await expectOk(await answer(w, 'h:DOMAIN', 'meinrechner'));
 
     // Übersicht: Ändern springt zur Seite und zurück zur Übersicht.
     let rv = await page(w);
@@ -232,12 +238,35 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
     const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
     assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
-    // Tunnel steht, Telegram zeigt noch nicht darauf: der Wizard fährt einmal reach.sh activate, danach Pairing.
+    // Tunnel steht, Telegram zeigt noch nicht darauf: der Wizard fährt einmal reach_ctl.sh activate, danach Pairing.
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'pending_activation', url: '' }));
     await waitFor(async () => !!(await page(w)).qr);
     assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['activate'], 'genau einmal aktiviert');
+    // Selbsttest beim Warten: Telegram meldet einen Zustellfehler -> Erklärung mit nächstem Schritt (Tunnel: Funnel).
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'ready', webhook: 'ours', webhook_error: 'Connection timed out', key_days_left: 12 }));
+    const err = await waitFor(async () => { const x = await page(w); return x.qr && x.note ? x : null; }, 30000);
+    assert.match(err.note.text, /Funnel/);
     fs.writeFileSync(path.join(w.fake, 'paired'), '');
     const ho = await waitFor(async () => { const p = await page(w); return p.id === 'handoff' ? p : null; });
     assert.match(ho.note.text, /in 12 Tagen ab/, 'Hinweis zum Ablauf der Tailscale-Anmeldung');
+  } finally { await w.stop(); }
+});
+
+test('MyFRITZ-Adresse: Gerätename löst per DNS auf -> vorausgefüllt mit Hinweis', async () => {
+  // hints.env roh mit CRLF (Windows-Schreiber): ein CR am Zeilenende wird geduldet.
+  const w = await startWizard({ hints: 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net\r\nLA_HOST_NAME_CANDIDATES=kim-pc mac-mini\r\n',
+    env: { WIZARD_FAKE_DNS: 'mac-mini.deine-domain.myfritz.net' } });
+  try {
+    await login(w);
+    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'fritzbox'], ['fb_dslite', 'no'],
+      ['fb_guide', null]]) await expectOk(await answer(w, id, v));
+    const dom = await waitFor(async () => { const x = await page(w); return x.id === 'h:DOMAIN' && !x.poll ? x : null; });
+    assert.equal(dom.value, 'mac-mini.deine-domain.myfritz.net');
+    assert.ok(!dom.suffix);
+    assert.match(dom.note.text, /Gefunden/);
+    await expectOk(await answer(w, 'h:DOMAIN', dom.value));
+    assert.equal((await page(w)).id, 'review');
   } finally { await w.stop(); }
 });

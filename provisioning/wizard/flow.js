@@ -243,7 +243,7 @@ function parseAnswers(text) {
 
 // paperlessGuess(ports, lanIp) -> vorausgefüllte Paperless-Adresse oder '' (Owner-Runde 2026-11-06: „wenn was gefunden
 //   wird, sonst leer lassen“). Nur DIESER Rechner: ports = veröffentlichte Ports von Containern mit Paperless-Image
-//   ([{ip, port}], aus runtime.sh), lanIp = Heimnetz-Adresse des Rechners (die App setzt LA_HOST_IP). Ein Port nur an
+//   ([{ip, port}], aus runtime.sh), lanIp = Heimnetz-Adresse des Rechners (LA_HOST_IP aus hints.env der App). Ein Port nur an
 //   127.0.0.1/::1 ist aus dem Verbund nicht erreichbar und zählt nicht. Genau ein Treffer -> http://<lanIp>:<port>; keiner
 //   oder mehrere (mehrdeutig) -> ''. Bestätigt wird wie bei einer Eingabe per Live-Check.
 const IPV4_RE = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
@@ -260,6 +260,72 @@ function paperlessGuess(ports, lanIp) {
   return ok.size === 1 ? `http://${lanIp}:${[...ok][0]}` : '';
 }
 
+// MyFRITZ-Adresse vorausfüllen (Owner-Wunsch über die Leitung): die App liest die Kennung der FritzBox aus deren
+//   Zertifikat (LA_MYFRITZ_ZONE = <kennung>.myfritz.net) und mögliche Gerätenamen dieses Rechners
+//   (LA_HOST_NAME_CANDIDATES, Komma oder Leerzeichen). myfritzZone/myfritzCandidates prüfen beides streng;
+//   myfritzGuess probiert per DNS (resolve = async name -> bool) der Reihe nach <kandidat>.<zone>, der erste Treffer zählt.
+const ZONE_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.myfritz\.net$/;
+const LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+function myfritzZone(z) { const v = String(z || '').trim().toLowerCase().replace(/\.$/, ''); return ZONE_RE.test(v) ? v : ''; }
+function myfritzCandidates(s) {
+  const out = [];
+  for (const c of String(s || '').toLowerCase().split(/[\s,]+/)) if (LABEL_RE.test(c) && !out.includes(c)) out.push(c);
+  return out.slice(0, 8);
+}
+async function myfritzGuess(zone, candidates, resolve) {
+  if (!zone) return '';
+  for (const c of candidates) {
+    const name = `${c}.${zone}`;
+    try { if (await resolve(name)) return name; } catch (_) { /* nächster */ }
+  }
+  return '';
+}
+
+// Vorschläge vom Rechner (nur Vorschlag, änderbar): Sprache aus LA_USER_LANG („de“, „en-US“, „de_DE.UTF-8“) auf eine der
+//   angebotenen Sprachen, Name aus LA_USER_FULLNAME am letzten Leerzeichen geteilt. Unbrauchbares = kein Vorschlag.
+function userLanguage(lang, languages) {
+  const code = String(lang || '').trim().toLowerCase().split(/[-_.@]/)[0];
+  return (languages || []).some((l) => l.code === code) ? code : '';
+}
+function userName(full) {
+  const v = String(full || '').trim().replace(/\s+/g, ' ');
+  if (!v || valueProblem(v) || v.length > 120) return { first: '', last: '' };
+  const i = v.lastIndexOf(' ');
+  return i > 0 ? { first: v.slice(0, i), last: v.slice(i + 1) } : { first: v, last: '' };
+}
+
+// parseHints(text) -> {KEY: wert}: Vorschläge der Start-App aus /run/lifeagents-wizard/hints.env (flüchtig, 0600; Entscheid
+//   der Leitung: keine Umgebungsvariablen, die stünden dauerhaft in `docker inspect`). Gelesen, nie ausgeführt, nach den
+//   Regeln der Antwort-Datei ohne Kopfzeile: KEY=wert roh, kein doppelter Schlüssel, keine Steuerzeichen (ein CR am
+//   Zeilenende wird geduldet). Eine verletzte Regel = gar kein Vorschlag; unbekannte Schlüssel und leere Werte zählen nicht.
+const HINT_KEYS = ['LA_HOST_IP', 'LA_MYFRITZ_ZONE', 'LA_HOST_NAME_CANDIDATES', 'LA_USER_FULLNAME', 'LA_USER_LANG'];
+function parseHints(text) {
+  if (typeof text !== 'string' || text.length > 8192) return {};
+  const lines = text.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  const out = {}; const seen = new Set();
+  for (const raw of lines) {
+    const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const eq = l.indexOf('=');
+    const k = eq > 0 ? l.slice(0, eq) : '';
+    const v = l.slice(eq + 1);
+    if (!KEY_RE.test(k) || seen.has(k) || CTRL_RE.test(v)) return {};
+    seen.add(k);
+    if (HINT_KEYS.includes(k) && v !== '') out[k] = v;
+  }
+  return out;
+}
+
+// webhookFailing(r, nowSec) -> true, wenn Telegram laut reach_status_json (Paket 3) gerade nicht bei diesem Rechner ankommt:
+//   Fehlertext von getWebhookInfo, frisch (webhook_error_at jünger als 15 Min) und Nachrichten warten (webhook_pending > 0).
+//   Fehlt Zeit oder Zähler, zählt der Fehlertext allein (lieber ein Hinweis zu viel als still warten).
+function webhookFailing(r, nowSec) {
+  if (!r || typeof r.webhook_error !== 'string' || r.webhook_error === '') return false;
+  if (Number.isInteger(r.webhook_error_at) && nowSec - r.webhook_error_at > 900) return false;
+  if (Number.isInteger(r.webhook_pending) && r.webhook_pending <= 0) return false;
+  return true;
+}
+
 // packagesArg(Q, A) -> Wert für `provision.sh --packages` (der bestehende Weg der CLI): Komma-Liste oder none.
 function packagesArg(Q, A) {
   const p = (A.__packages || []).filter((x) => pkgDef(Q, x));
@@ -267,4 +333,5 @@ function packagesArg(Q, A) {
 }
 
 module.exports = { PHASES, PH, steps, reachMode, answered, envOf, question, phaseOf, helpBlocks, valueProblem,
-  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, hostDef, pkgDef };
+  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, myfritzZone, myfritzCandidates, myfritzGuess,
+  userLanguage, userName, parseHints, webhookFailing, hostDef, pkgDef };

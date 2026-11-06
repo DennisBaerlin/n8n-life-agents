@@ -43,6 +43,12 @@ async function startWizard(opts = {}) {
     LA_PROVISION: fx['fake_provision.sh'], LA_CLI: fx['fake_lifeagents.sh'], LA_REACH: fx['fake_reach.sh'], WIZARD_POLL_MS: '50',
     WIZARD_GUIDE_URL: 'https://beispiel.example/anleitung/',
   }, opts.env || {});
+  // Vorschläge der Start-App: wie im master als flüchtige Datei hints.env (Objekt -> KEY=wert-Zeilen, Text roh).
+  if (opts.hints !== undefined) {
+    fs.mkdirSync(path.join(dir, 'run'), { recursive: true, mode: 0o700 });
+    const t = typeof opts.hints === 'string' ? opts.hints : Object.entries(opts.hints).map(([k, v]) => `${k}=${v}\n`).join('');
+    fs.writeFileSync(path.join(dir, 'run', 'hints.env'), t, { mode: 0o600 });
+  }
   const proc = spawn(process.execPath, [path.join(WIZ, 'server.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errOut = '';
   proc.stderr.on('data', (d) => { errOut += d; });

@@ -580,6 +580,7 @@ pub fn self_test() -> serde_json::Value {
         "mounted_dmgs": cleanup::mounted_dmgs(&h).len(),
         "download_found": cleanup::find_download(&h).is_some(),
         "free_port": inventory::free_port(&h),
+        "lan_ip_found": lifeagents_desktop_core::network::lan_ip(&h).is_some(),
     })
 }
 

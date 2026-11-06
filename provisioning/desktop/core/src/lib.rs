@@ -16,6 +16,7 @@ pub mod docker_desktop;
 pub mod host;
 pub mod inventory;
 pub mod journal;
+pub mod network;
 pub mod power;
 pub mod report;
 pub mod system;
@@ -38,6 +39,7 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
         ("inventory.rs", include_str!("inventory.rs")),
         ("journal.rs", include_str!("journal.rs")),
         ("lib.rs", include_str!("lib.rs")),
+        ("network.rs", include_str!("network.rs")),
         ("power.rs", include_str!("power.rs")),
         ("report.rs", include_str!("report.rs")),
         ("system.rs", include_str!("system.rs")),

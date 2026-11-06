@@ -2,7 +2,7 @@
 //! `up -d anchor postgres master edge`), danach bei jeder Anmeldung nur `start`; Schnittstelle zum Wizard (Paket 4).
 //! Namen und Befehle kommen aus `contract`.
 
-use crate::contract::{self, MasterCmd, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, WIZARD_PORT_VAR};
+use crate::contract::{self, MasterCmd, HOST_IP_VAR, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, WIZARD_PORT_VAR};
 use crate::docker::{Docker, DockerCall};
 use crate::host::{join, Host};
 use crate::journal::{self, Journal, Step};
@@ -33,7 +33,11 @@ pub fn write_env(host: &dyn Host, p: &CorePaths, ports: Ports) -> Result<(), Str
         None => host.random_hex(32)?,
     };
     let Ports { edge, wizard } = ports;
-    let text = format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n");
+    let mut text = format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n");
+    // Heimnetz-Adresse für den master (Paperless vorausfüllen); bei jedem Start neu, sie kann wechseln.
+    if let Some(ip) = crate::network::lan_ip(host) {
+        text.push_str(&format!("{HOST_IP_VAR}={ip}\n"));
+    }
     host.write_file(&p.env_file, &text)
 }
 
@@ -333,6 +337,18 @@ mod tests {
         assert!(pos("config --quiet") < pos("volume create"));
         assert!(pos("volume-subpath=sub") < pos("create --label io.lifeagents.install=lifeagents lifeagents_pgdata"));
         assert!(pos("create --label io.lifeagents.install=lifeagents lifeagents_pgdata") < pos(" up --detach"));
+    }
+
+    #[test]
+    fn host_ip_only_when_a_private_address_is_known() {
+        let h = FakeHost::mac();
+        let p = paths(&h, "/x/compose.yml");
+        write_env(&h, &p, ports(5880)).unwrap();
+        assert_eq!(env_value(&h.read_file(&p.env_file).unwrap(), "LA_HOST_IP"), None, "ohne Netz keine Zeile");
+        h.set("/sbin/route -n get default", CmdOut::ok("  interface: en0\n"));
+        h.set("/usr/sbin/ipconfig getifaddr en0", CmdOut::ok("192.168.178.20\n"));
+        write_env(&h, &p, ports(5880)).unwrap();
+        assert_eq!(env_value(&h.read_file(&p.env_file).unwrap(), "LA_HOST_IP").as_deref(), Some("192.168.178.20"));
     }
 
     #[test]

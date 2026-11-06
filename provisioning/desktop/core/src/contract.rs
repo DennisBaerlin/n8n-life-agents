@@ -24,6 +24,8 @@ pub const COMPOSE_FILE: &str = "compose.yml";
 /// Pflicht-Variablen jedes Compose-Aufrufs (Datei `--env-file` der App, nie im argv).
 pub const PORT_VAR: &str = "LA_EDGE_PORT";
 pub const PG_PASSWORD_VAR: &str = "LA_PG_SUPERPW";
+/// Heimnetz-Adresse des Rechners für den `master` (Paperless vorausfüllen). Fehlt sie, fehlt die Zeile ganz.
+pub const HOST_IP_VAR: &str = "LA_HOST_IP";
 /// Zweiter freier Port auf 127.0.0.1, nur für den Wizard (veröffentlicht vom Dienst `edge`).
 pub const WIZARD_PORT_VAR: &str = "LA_WIZARD_PORT";
 /// Suchbereich für den freien Port (wie im Testpaket).

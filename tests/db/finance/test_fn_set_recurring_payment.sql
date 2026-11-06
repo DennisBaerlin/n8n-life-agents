@@ -237,4 +237,74 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT srp_fold;
 
+-- ===== „Bank-Hinweis nur, wo er passt": executed_by am Uebertrag setzen (In-Place, Split, Kette, Ablehnungen) =====
+SAVEPOINT srp_exec;
+DO $$
+DECLARE
+  v_res JSONB; v_a INT; v_b INT; v_rp INT; v_new INT; v_plain INT; v_first TEXT := (CURRENT_DATE + 1)::text;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__srp_x_a__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__srp_x_b__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_res := finance.fn_create_recurring_transfer(jsonb_build_object('name','__srp_x_t__','from_account_id',v_a,
+             'to_account_id',v_b,'amount',100,'schedule_unit','month','first_payment_date',v_first));
+  v_rp := (v_res->>'recurring_payment_id')::int;
+
+  -- [X1] In-Place: Nutzer sagt "laeuft als Dauerauftrag bei meiner Bank" -> gespeichert, Antwort traegt execution (kein Split)
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'executed_by', 'bank'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'split')::boolean IS DISTINCT FROM false
+     OR v_res->>'execution' IS DISTINCT FROM 'bank'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM 'bank'
+     OR (v_res->'effective') ? 'execution' OR (v_res->'effective') ? 'executed_by' THEN
+    RAISE EXCEPTION 'FAIL [X1] in-place executed_by=bank, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [X1] set executed_by in-place: gespeichert, execution=bank';
+
+  -- [X2] ohne executed_by bleibt der gespeicherte Wert, die Antwort nennt den aufgeloesten (bank)
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'notes', 'nur Notiz'));
+  IF v_res->>'execution' IS DISTINCT FROM 'bank'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM 'bank' THEN
+    RAISE EXCEPTION 'FAIL [X2] ohne Angabe bleibt bank, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [X2] ohne executed_by bleibt der Wert';
+
+  -- [X3] Ablehnungen: ungueltiger Wert, Zeile ohne Ziel-Konto -> {ok:false}, nichts geaendert
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'executed_by', 'auto'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM 'bank' THEN
+    RAISE EXCEPTION 'FAIL [X3a] ungueltiger Wert, got %', v_res; END IF;
+  v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__srp_x_plain__','account_id',v_a,
+             'direction','expense','amount',30,'schedule_unit','month','first_payment_date',v_first));
+  v_plain := (v_res->>'recurring_payment_id')::int;
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_plain, 'executed_by', 'bank'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_plain) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [X3b] Nicht-Uebertrag, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [X3] ungueltiger Wert und Nicht-Uebertrag -> ok:false ohne Aenderung';
+
+  -- [X4] Betrag + executed_by zusammen (Split): die NEUE Zeile traegt den Wert, die noch laufende alte auch
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'amount', 120,
+             'valid_from', (CURRENT_DATE + 30)::text, 'executed_by', 'manual'));
+  v_new := (v_res->>'recurring_payment_id')::int;
+  IF (v_res->>'split')::boolean IS DISTINCT FROM true OR v_new = v_rp OR v_res->>'execution' IS DISTINCT FROM 'manual'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_new) IS DISTINCT FROM 'manual'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM 'manual' THEN
+    RAISE EXCEPTION 'FAIL [X4] Split mit executed_by, got % / neu=% alt=%', v_res,
+      (SELECT executed_by FROM finance.recurring_payments WHERE id = v_new),
+      (SELECT executed_by FROM finance.recurring_payments WHERE id = v_rp); END IF;
+  RAISE NOTICE 'PASS [X4] Betrag + executed_by: neue und noch laufende alte Zeile tragen den Wert';
+
+  -- [X5] Kette: ein spaeteres Setzen auf einem Glied erreicht ALLE noch laufenden Glieder (Alarm liest den Kopf,
+  --      die Uebersicht das gueltige Glied: beide muessen dasselbe zeigen)
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_new, 'executed_by', 'bank'));
+  IF (SELECT count(*) FROM finance.recurring_payments WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp)) AND executed_by = 'bank') <> 2 THEN
+    RAISE EXCEPTION 'FAIL [X5] Kette einheitlich bank: %', (SELECT jsonb_agg(executed_by) FROM finance.recurring_payments
+                                                           WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp))); END IF;
+  -- und ein Split ohne neue Angabe erbt (neue Zeile traegt den bisherigen Wert)
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_new, 'amount', 140,
+             'valid_from', (CURRENT_DATE + 60)::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int) IS DISTINCT FROM 'bank' THEN
+    RAISE EXCEPTION 'FAIL [X5b] Split erbt executed_by, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [X5] Kette einheitlich, Split ohne Angabe erbt';
+END $$;
+ROLLBACK TO SAVEPOINT srp_exec;
+
 ROLLBACK;

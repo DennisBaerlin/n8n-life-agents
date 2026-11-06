@@ -38,4 +38,72 @@ BEGIN
     RAISE EXCEPTION 'FAIL [b] gedeckt, got %', v_r; END IF;
   RAISE NOTICE 'PASS [b] zweiter Zubringer -> gedeckt';
 END $$;
+
+-- „Bank-Hinweis nur, wo er passt": executed_by (bank|manual|leer) wird gespeichert, die Antwort traegt den aufgeloesten Wert
+--   als EIGENES Feld `execution` (nie unter `effective`: New-FnWriteGate mischt effective in den echten Write, ein
+--   abgeleitetes manual/unknown wuerde sonst fest gespeichert). Ohne Angabe wird NULL gespeichert (kein Backfill durch den Standard).
+DO $$
+DECLARE
+  v_giro INT; v_giro2 INT; v_p2p INT; v_r JSONB; v_id INT; v_first TEXT := (CURRENT_DATE + 3)::text;
+BEGIN
+  v_giro  := (finance.fn_create_account('{"name":"__test_rtx_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_giro2 := (finance.fn_create_account('{"name":"__test_rtx_giro2__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_rtx_p2p__','p2p','EUR','active') RETURNING id INTO v_p2p;
+
+  -- [c] Giro-Quelle, Nutzer sagt "ich ueberweise selbst" -> gespeichert manual, execution manual
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__RTX selbst__','from_account_id',v_giro,
+           'to_account_id',v_giro2,'amount',70,'schedule_unit','month','first_payment_date',v_first,'executed_by','manual'));
+  v_id := (v_r->>'recurring_payment_id')::int;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'execution' IS DISTINCT FROM 'manual'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_id) IS DISTINCT FROM 'manual' THEN
+    RAISE EXCEPTION 'FAIL [c] manual gespeichert, got %', v_r; END IF;
+  RAISE NOTICE 'PASS [c] executed_by=manual gespeichert, execution=manual';
+
+  -- [d] Giro-Quelle, Dauerauftrag bei der Bank -> bank
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__RTX bank__','from_account_id',v_giro,
+           'to_account_id',v_giro2,'amount',60,'schedule_unit','month','first_payment_date',v_first,'executed_by','bank'));
+  v_id := (v_r->>'recurring_payment_id')::int;
+  IF v_r->>'execution' IS DISTINCT FROM 'bank'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_id) IS DISTINCT FROM 'bank' THEN
+    RAISE EXCEPTION 'FAIL [d] bank gespeichert, got %', v_r; END IF;
+  RAISE NOTICE 'PASS [d] executed_by=bank gespeichert, execution=bank';
+
+  -- [e] ohne Angabe von einem Geld-Konto: NULL gespeichert, execution = unknown, nichts unter effective
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__RTX offen__','from_account_id',v_giro,
+           'to_account_id',v_giro2,'amount',50,'schedule_unit','month','first_payment_date',v_first));
+  v_id := (v_r->>'recurring_payment_id')::int;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'execution' IS DISTINCT FROM 'unknown'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_id) IS NOT NULL
+     OR (v_r->'effective') ? 'execution' OR (v_r->'effective') ? 'executed_by' THEN
+    RAISE EXCEPTION 'FAIL [e] offen: NULL gespeichert, execution unknown, effective ohne execution, got %', v_r; END IF;
+  RAISE NOTICE 'PASS [e] ohne Angabe von Giro: NULL gespeichert, execution=unknown';
+
+  -- [f] ohne Angabe von P2P: ebenfalls NULL gespeichert (der Standard wird nicht festgeschrieben), execution = manual
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__RTX p2p__','from_account_id',v_p2p,
+           'to_account_id',v_giro2,'amount',40,'schedule_unit','month','first_payment_date',v_first));
+  v_id := (v_r->>'recurring_payment_id')::int;
+  IF v_r->>'execution' IS DISTINCT FROM 'manual'
+     OR (SELECT executed_by FROM finance.recurring_payments WHERE id = v_id) IS NOT NULL
+     OR (v_r->'effective') ? 'execution' OR (v_r->'effective') ? 'executed_by' THEN
+    RAISE EXCEPTION 'FAIL [f] P2P ohne Angabe: NULL gespeichert, execution manual, got %', v_r; END IF;
+  RAISE NOTICE 'PASS [f] P2P-Quelle ohne Angabe: NULL gespeichert, execution=manual';
+
+  -- [g] ungueltiger Wert -> {ok:false, reason} ohne Zeile
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__RTX falsch__','from_account_id',v_giro,
+           'to_account_id',v_giro2,'amount',30,'schedule_unit','month','first_payment_date',v_first,'executed_by','auto'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' IS NULL
+     OR EXISTS (SELECT 1 FROM finance.recurring_payments WHERE name = '__RTX falsch__') THEN
+    RAISE EXCEPTION 'FAIL [g] ungueltiger Wert muss ok:false ohne Zeile liefern, got %', v_r; END IF;
+  RAISE NOTICE 'PASS [g] ungueltiger executed_by -> ok:false ohne Write';
+
+  -- [h] zusammen mit einem Enddatum (der Fall der Karte): execution bleibt, valid_to wie bisher
+  v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__RTX bis__','from_account_id',v_giro,
+           'to_account_id',v_giro2,'amount',20,'schedule_unit','month','first_payment_date',v_first,
+           'valid_to',(CURRENT_DATE + 100)::text,'executed_by','bank'));
+  v_id := (v_r->>'recurring_payment_id')::int;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'execution' IS DISTINCT FROM 'bank'
+     OR (SELECT valid_to FROM finance.recurring_payments WHERE id = v_id) IS DISTINCT FROM CURRENT_DATE + 101 THEN
+    RAISE EXCEPTION 'FAIL [h] mit Enddatum, got %', v_r; END IF;
+  RAISE NOTICE 'PASS [h] executed_by zusammen mit Enddatum';
+END $$;
 ROLLBACK;

@@ -1272,7 +1272,7 @@ BEGIN
   -- zwei Termine (heute+5, ~heute+35) -> letzter Termin im 42-Tage-Fenster
   PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name', '__adv_so_umzug__', 'from_account_id', v_p2p,
             'to_account_id', v_settle, 'amount', 5000, 'schedule_unit', 'month', 'first_payment_date', v_first::text,
-            'valid_to', (v_first + 40)::text));
+            'valid_to', (v_first + 40)::text, 'executed_by', 'bank'));   -- Bank-Variante: Satzteile unveraendert (SO2)
   -- letzter Termin in ~65 Tagen -> noch kein Hinweis
   PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name', '__adv_so_spaet__', 'from_account_id', v_far,
             'to_account_id', v_settle, 'amount', 100, 'schedule_unit', 'month', 'first_payment_date', v_first::text,
@@ -1302,6 +1302,32 @@ BEGIN
    WHERE x->>'metric_key' = 'standing_order_ending:' || (SELECT id FROM finance.recurring_payments WHERE name = '__adv_so_eng_t__');
   IF a IS NULL OR jsonb_typeof(a->'msg'->2) <> 'null' THEN RAISE EXCEPTION 'FAIL [SO4 Rest zu klein]: %', a; END IF;
   RAISE NOTICE 'PASS [SO1-SO4: letzter Termin in 42 Tagen -> Hinweis mit Bank/Sparplan/frei/Ziele, spaeter noch nicht, Rest zu klein ohne Satz]';
+  -- (SO5) „Bank-Hinweis nur, wo er passt": ohne Angabe von einem P2P-Konto ueberweist der Nutzer selbst -> eigener Schluesselsatz,
+  --       kein Bank-Satz; (SO6) von einem Geld-Konto ohne Angabe -> vorsichtiger Satz (Dauerauftrag moeglich); (SO7) mit
+  --       manual gespeichert von einem Geld-Konto -> wie P2P
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x
+   WHERE x->>'metric_key' = 'standing_order_ending:' || (SELECT id FROM finance.recurring_payments WHERE name = '__adv_so_eng_t__');
+  IF a->'msg'->0->>'value' <> 'finance.advisor.order_ending_manual' THEN
+    RAISE EXCEPTION 'FAIL [SO5 P2P ohne Angabe = manual]: %', a; END IF;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__adv_so_cash__','cash','EUR','active');
+  PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name', '__adv_so_cash_t__',
+            'from_account_id', (SELECT id FROM finance.accounts WHERE name = '__adv_so_cash__'),
+            'to_account_id', v_settle, 'amount', 5000, 'schedule_unit', 'month', 'first_payment_date', v_first::text,
+            'valid_to', (v_first + 40)::text));
+  PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name', '__adv_so_cash_m__',
+            'from_account_id', (SELECT id FROM finance.accounts WHERE name = '__adv_so_cash__'),
+            'to_account_id', v_settle, 'amount', 4000, 'schedule_unit', 'month', 'first_payment_date', v_first::text,
+            'valid_to', (v_first + 40)::text, 'executed_by', 'manual'));
+  r := finance.fn_advisor_review('finance');
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x
+   WHERE x->>'metric_key' = 'standing_order_ending:' || (SELECT id FROM finance.recurring_payments WHERE name = '__adv_so_cash_t__');
+  IF a IS NULL OR a->'msg'->0->>'value' <> 'finance.advisor.order_ending_unsure' THEN
+    RAISE EXCEPTION 'FAIL [SO6 Geld-Konto ohne Angabe = unsicher]: %', a; END IF;
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x
+   WHERE x->>'metric_key' = 'standing_order_ending:' || (SELECT id FROM finance.recurring_payments WHERE name = '__adv_so_cash_m__');
+  IF a IS NULL OR a->'msg'->0->>'value' <> 'finance.advisor.order_ending_manual' THEN
+    RAISE EXCEPTION 'FAIL [SO7 manual gespeichert]: %', a; END IF;
+  RAISE NOTICE 'PASS [SO5-SO7: Satz je Ausfuehrung: P2P ohne Angabe manual, Geld-Konto ohne Angabe unsicher, gespeichertes manual]';
 END $$;
 ROLLBACK TO SAVEPOINT order_ending;
 

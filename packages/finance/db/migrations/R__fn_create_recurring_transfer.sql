@@ -16,11 +16,17 @@
 --   until_free_money (opt, true): das Ende setzt die DB (fn_transfer_free_end: letzter Termin, bevor Ziel-Geld der Quelle
 --   angefasst wird); nicht zusammen mit valid_to. Lehnt der Helper ab, rollt ein Savepoint den Insert zurueck (LA002).
 --   valid_from der Zahlung = spaetester Eroeffnungssaldo-Stichtag beider Konten (fn_recurring_valid_from).
+--   executed_by (opt, bank|manual): Nutzerangabe, ob der Uebertrag als Dauerauftrag bei der Bank laeuft (bank) oder der Nutzer
+--   selbst ueberweist (manual); leer = nicht angegeben, gespeichert wird NULL (nie der Standard; Regel allein in
+--   fn_transfer_executed_by). Steuert nur den Schlusssatz der Karte und die Hinweise, nie die Buchung.
 --   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines, effective (+ last_execution,
---   free_after bei until_free_money)} + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage:
+--   free_after bei until_free_money), execution} + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage:
 --   Spar-Deckung von Quelle UND Ziel nach dem Write, je Deckungs-Konto eine Kartenzeile „Danach ...").
---   Korrigierbar (amount<=0 / Quelle==Ziel / until_free_money mit valid_to / Ablehnung von fn_transfer_free_end)
---   -> {ok:false, reason} OHNE Write.
+--   execution = aufgeloeste Ausfuehrung (bank|manual|unknown, fn_transfer_executed_by) als EIGENES Feld, bewusst NICHT unter
+--   effective: New-FnWriteGate mischt effective in die Eingabe des echten Writes, ein abgeleitetes manual/unknown wuerde
+--   sonst fest gespeichert.
+--   Korrigierbar (amount<=0 / Quelle==Ziel / until_free_money mit valid_to / ungueltiger executed_by / Ablehnung von
+--   fn_transfer_free_end) -> {ok:false, reason} OHNE Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_recurring_transfer(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -41,6 +47,7 @@ DECLARE
     v_fold     JSONB;
     v_free     BOOLEAN  := COALESCE(NULLIF(p->>'until_free_money', '')::boolean, false);
     v_end      JSONB    := '{}'::jsonb;
+    v_exec     TEXT     := NULLIF(p->>'executed_by', '');
 BEGIN
     -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from', 'valid_to']);
@@ -71,6 +78,10 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Give either an end date or "until the free money is used up", not both.');
     END IF;
+    IF v_exec IS NOT NULL AND v_exec NOT IN ('bank', 'manual') THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'executed_by must be "bank" (standing order at the bank) or "manual" (the user transfers it themselves), got "' || v_exec || '". Leave it empty when the user did not say.');
+    END IF;
 
     -- INSERT via gemeinsamen Helper (single source), amount Quell-seitig negativ; target via Folge-UPDATE.
     -- until_free_money: das Ende braucht die Zeile schon (Projektion MIT ihr) -> Savepoint, Ablehnung rollt zurueck.
@@ -81,7 +92,7 @@ BEGIN
             GREATEST(finance.fn_recurring_valid_from(v_from, v_from_dt), finance.fn_recurring_valid_from(v_to, v_from_dt)),
             v_to_dt, NULL, NULLIF(p->>'notes',''));
 
-        UPDATE finance.recurring_payments SET target_account_id = v_to WHERE id = v_rp_id;
+        UPDATE finance.recurring_payments SET target_account_id = v_to, executed_by = v_exec WHERE id = v_rp_id;
         IF v_free THEN
             v_end := finance.fn_transfer_free_end(v_rp_id);
             IF (v_end->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -101,7 +112,8 @@ BEGIN
 
     RETURN finance.fn_merge_fold(
         jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                           'card_lines', v_nc->'card_lines', 'effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end),
+                           'card_lines', v_nc->'card_lines', 'effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end,
+                           'execution', finance.fn_transfer_executed_by(v_rp_id)),
         v_fold);
 END;
 $$;

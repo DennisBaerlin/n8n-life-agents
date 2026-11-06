@@ -7,7 +7,7 @@ function Build-SetRecurringPayment {
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('payment_name','new_name','amount','valid_from','status','valid_to',
-                           'schedule_day_of_month','notes','until_free_money')
+                           'schedule_day_of_month','notes','until_free_money','executed_by')
 
     # Resolve ueber ALLE Status (active_only=false): findet auch pausierte (resume) und nach Split
     # mehrere gleichnamige -> Ambiguitaet zeigt Kandidaten (status/valid_from/valid_to) zum Auswaehlen.
@@ -21,7 +21,7 @@ function Build-SetRecurringPayment {
         "=Recurring payment '{{ `$('Start').item.json.payment_name }}' resolves to {{ `$('Resolve Payment').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Payment').item.json.candidates) }}. Ask the user which exact entry (by valid_from / status)."
 
     $readCur = Build-Pg 'Read Current' @(660, 0) `
-        "=SELECT rp.amount, rp.valid_from, rp.status::text AS status, a.currency FROM finance.recurring_payments rp JOIN finance.accounts a ON a.id = rp.account_id WHERE rp.id = ((`$1::jsonb)->>'id')::int;" `
+        "=SELECT rp.amount, rp.valid_from, rp.status::text AS status, a.currency, a.name AS account_name FROM finance.recurring_payments rp JOIN finance.accounts a ON a.id = rp.account_id WHERE rp.id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Payment'').item.json.id' })
 
     # "DB ist das Gesetz": fn_set_recurring_payment laeuft als Probelauf VOR der Karte (Standalone-Guard, Stichtag nach
@@ -40,6 +40,7 @@ function Build-SetRecurringPayment {
             name                  = '$(''Start'').item.json.new_name'
             notes                 = '$(''Start'').item.json.notes'
             until_free_money      = '$(''Start'').item.json.until_free_money'
+            executed_by           = '$(''Start'').item.json.executed_by'
         })
 
     # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Betrag in der Konto-Waehrung (Read Current).
@@ -47,6 +48,10 @@ function Build-SetRecurringPayment {
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
     $free = "(!!" + (Get-DryEffectiveExpr 'last_execution') + ")"   # aus dem Probelauf, nie aus der LLM-Eingabe: Karte = Write
+    # Ausfuehrung (bank|manual|unknown) aus dem Probelauf (fn_transfer_executed_by, EIGENES Feld r.execution, nicht unter effective:
+    # das Gate mischt effective in den echten Write): waehlt den Schlusssatz; nie aus der LLM-Eingabe geraten.
+    $exec = "`$('Dry run').item.json.r.execution"
+    $lastDate = New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'last_execution')
     $dom = Get-FinanceDomTpl "$S.schedule_day_of_month"
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.set_recurring_payment' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.payment'    "$S.payment_name")
@@ -58,11 +63,18 @@ function Build-SetRecurringPayment {
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.status') })
         (New-HitlLine 'finance.label.valid_to'   (Get-DryEffectiveExpr 'valid_to') -Kind date -If "$S.valid_to")
+        # Nutzerangabe zum Uebertrag: ohne diese Zeile zeigte die Karte bei "nur executed_by" keine Aenderung (Review-Fund)
+        (New-HitlLine 'finance.label.executed_by' "$S.executed_by" -Kind enum -Enum 'finance.enum.executed_by' -If "$S.executed_by")
         (New-HitlLine 'finance.label.last_transfer' (Get-DryEffectiveExpr 'last_execution') -Kind date -If $free)
         (New-HitlLine 'finance.label.debit_day'  $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.schedule_day_of_month")
         (New-HitlLine 'core.label.note'          "$S.notes" -If "$S.notes")
         (New-HitlNote -Key 'finance.note.until_free_money' -If $free -Params @{
-            free = (New-HitlValue -Kind money -Value "`$('Dry run').item.json.r.effective.free_after" -Currency "$R.currency") })   # 0 ist ein Wert: ohne || aus Get-DryEffectiveExpr
+            account = "$R.account_name"
+            free    = (New-HitlValue -Kind money -Value "`$('Dry run').item.json.r.effective.free_after" -Currency "$R.currency") })   # 0 ist ein Wert: ohne || aus Get-DryEffectiveExpr
+        # Schlusssatz je Ausfuehrung (genau einer): Bank-Dauerauftrag / ueberweist selbst / nicht bekannt (Geld-Konto ohne Angabe)
+        (New-HitlNote -Key 'finance.note.until_free_money_bank'   -If "$free && $exec === 'bank'"   -Params @{ date = $lastDate })
+        (New-HitlNote -Key 'finance.note.until_free_money_manual' -If "$free && $exec === 'manual'" -Params @{ date = $lastDate })
+        (New-HitlNote -Key 'finance.note.until_free_money_unsure' -If "$free && $exec !== 'bank' && $exec !== 'manual'" -Params @{ date = $lastDate })
     )
 
     $gateId = $GateId
@@ -88,11 +100,11 @@ function Build-SetRecurringPayment {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(880, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_set_recurring_payment mit denselben Werten, immer zurückgerollt. ok:false (entitäts-besessene Zeile, Stichtag vor der letzten gebuchten Rate u. ä.) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?); cashflow_coverage kommt nur aus diesem echten Write.' 200 400
+        'Dry run = fn_set_recurring_payment mit denselben Werten, immer zurückgerollt. ok:false (entitäts-besessene Zeile, Stichtag vor der letzten gebuchten Rate u. ä.) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; bei until_free_money wählt r.execution (fn_transfer_executed_by, bewusst nicht unter effective) den Schlusssatz der Karte: bank / manual / unknown. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?); cashflow_coverage kommt nur aus diesem echten Write.' 200 400
 
     $stickyOv = Build-Sticky 'Doc set_recurring_payment' @(2200, -240) `
         'fn_set_recurring_payment: Split vs In-Place + Standalone-Guard + Cashflow-Fold' `
-        'Betrags-Änderung = Validity-Split über fn_split_recurring_payment (alte Zeile valid_to=Stichtag, neue ab Stichtag; Vorzeichen, Ziel-Konto, Status, Ende, Rhythmus-Anker geerbt; Stichtag nach der letzten gebuchten Rate). Sonst In-Place (status/valid_to/name/tag/notes). until_free_money (nur freistehende Überträge, nicht mit amount/valid_to): fn_transfer_free_end setzt das Ende auf den letzten Termin, bevor Ziel-Geld der Quelle angefasst wird (Rechnung = fn_account_funding mit dieser Zahlung); Ablehnung (funding_unknown, no_free_money, free_money_beyond_horizon) rollt per Savepoint zurück; die Karte zeigt die letzte Überweisung und das danach freie Geld aus dem Probelauf. valid_to-Eingabe = letzter gültiger Tag (inklusiv, so zeigt es die Karte); die fn speichert +1 Tag (halboffen). NUR standalone: entitäts-besessene Zeile (insurance/loan/savings_goal/pension) -> {ok:false} (über das set_<entity>-Tool ändern). monthly_equivalent ist GENERATED. Phase L WS-3 / Audit Paket 3: nach dem Write liest die fn monthly_free (frei nach Konsum + Kreditraten, Sparraten zählen nicht); frei<0 -> Note in cashflow_coverage (M3: zukünftig-datierter Split -> KEIN Sofort-Hinweis, der Cron fängt es; bei Stichtag heute schon). Bookkeeper relayed.' 240 470
+        'Betrags-Änderung = Validity-Split über fn_split_recurring_payment (alte Zeile valid_to=Stichtag, neue ab Stichtag; Vorzeichen, Ziel-Konto, Status, Ende, Rhythmus-Anker geerbt; Stichtag nach der letzten gebuchten Rate). Sonst In-Place (status/valid_to/name/tag/notes). executed_by (nur Überträge; bank oder manual, vom Nutzer genannt) schreibt die fn auf alle noch laufenden Glieder der Kette, mit amount auch auf die neue Split-Zeile. until_free_money (nur freistehende Überträge, nicht mit amount/valid_to): fn_transfer_free_end setzt das Ende auf den letzten Termin, bevor Ziel-Geld der Quelle angefasst wird (Rechnung = fn_account_funding mit dieser Zahlung); Ablehnung (funding_unknown, no_free_money, free_money_beyond_horizon) rollt per Savepoint zurück; die Karte zeigt die letzte Überweisung und das danach freie Geld aus dem Probelauf. valid_to-Eingabe = letzter gültiger Tag (inklusiv, so zeigt es die Karte); die fn speichert +1 Tag (halboffen). NUR standalone: entitäts-besessene Zeile (insurance/loan/savings_goal/pension) -> {ok:false} (über das set_<entity>-Tool ändern). monthly_equivalent ist GENERATED. Phase L WS-3 / Audit Paket 3: nach dem Write liest die fn monthly_free (frei nach Konsum + Kreditraten, Sparraten zählen nicht); frei<0 -> Note in cashflow_coverage (M3: zukünftig-datierter Split -> KEIN Sofort-Hinweis, der Cron fängt es; bei Stichtag heute schon). Bookkeeper relayed.' 240 470
 
     $nodes = @($trig, $resRp, $ifRp, $errRp, $readCur) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)

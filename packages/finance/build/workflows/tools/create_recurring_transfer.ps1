@@ -11,7 +11,7 @@ function Build-CreateRecurringTransfer {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','from_account_name','to_account_name','amount','schedule_interval',
                            'schedule_unit','schedule_day_of_month','first_payment_date','valid_from','valid_to','notes',
-                           'until_free_money')
+                           'until_free_money','executed_by')
 
     $resFrom = Build-Pg 'Resolve From' @(220, 0) `
         "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account((`$1::jsonb)->>'from_account_name');" `
@@ -49,6 +49,7 @@ function Build-CreateRecurringTransfer {
             valid_to              = '$(''Start'').item.json.valid_to'
             notes                 = '$(''Start'').item.json.notes'
             until_free_money      = '$(''Start'').item.json.until_free_money'
+            executed_by           = '$(''Start'').item.json.executed_by'
         })
 
     # --- HITL approval gate (before the atomic write) ---
@@ -56,6 +57,10 @@ function Build-CreateRecurringTransfer {
     # until_free_money: das Ende setzt die DB (Probelauf: effective.last_execution / free_after) statt „unbegrenzt".
     $S = "`$('Start').item.json"
     $free = "(!!" + (Get-DryEffectiveExpr 'last_execution') + ")"   # aus dem Probelauf, nie aus der LLM-Eingabe: Karte = Write
+    # Ausfuehrung (bank|manual|unknown) aus dem Probelauf (fn_transfer_executed_by, EIGENES Feld r.execution, nicht unter effective:
+    # das Gate mischt effective in den echten Write): waehlt den Schlusssatz; nie aus der LLM-Eingabe geraten.
+    $exec = "`$('Dry run').item.json.r.execution"
+    $lastDate = New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'last_execution')
     $dom = Get-FinanceDomTpl "$S.schedule_day_of_month" -Empty "'finance.value.relative_to_start'"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_recurring_transfer' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'core.label.name'            "$S.name")
@@ -73,7 +78,12 @@ function Build-CreateRecurringTransfer {
         (New-HitlLine 'finance.label.last_transfer' (Get-DryEffectiveExpr 'last_execution') -Kind date -If $free)
         (New-HitlLine 'core.label.note'            "$S.notes" -If "$S.notes")
         (New-HitlNote -Key 'finance.note.until_free_money' -If $free -Params @{
-            free = (New-HitlValue -Kind money -Value "`$('Dry run').item.json.r.effective.free_after" -Currency "`$('Resolve From').item.json.currency") })   # 0 ist ein Wert: ohne || aus Get-DryEffectiveExpr
+            account = "$S.from_account_name"
+            free    = (New-HitlValue -Kind money -Value "`$('Dry run').item.json.r.effective.free_after" -Currency "`$('Resolve From').item.json.currency") })   # 0 ist ein Wert: ohne || aus Get-DryEffectiveExpr
+        # Schlusssatz je Ausfuehrung (genau einer): Bank-Dauerauftrag / ueberweist selbst / nicht bekannt (Geld-Konto ohne Angabe)
+        (New-HitlNote -Key 'finance.note.until_free_money_bank'   -If "$free && $exec === 'bank'"   -Params @{ date = $lastDate })
+        (New-HitlNote -Key 'finance.note.until_free_money_manual' -If "$free && $exec === 'manual'" -Params @{ date = $lastDate })
+        (New-HitlNote -Key 'finance.note.until_free_money_unsure' -If "$free && $exec !== 'bank' && $exec !== 'manual'" -Params @{ date = $lastDate })
     )
 
     $gateId = $GateId
@@ -106,11 +116,11 @@ function Build-CreateRecurringTransfer {
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -260) `
         'fn-Rückgabe {ok:false, reason}' `
-        'amount<=0, Quelle==Ziel, until_free_money zusammen mit valid_to oder eine Ablehnung von fn_transfer_free_end (not_running, funding_unknown, source_short, no_free_money, free_money_beyond_horizon; Savepoint rollt den Insert zurück) liefert die fn als {ok:false, reason} -> Recurring transfer rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Der No-Self-Transfer-CHECK ist der strukturelle Backstop.' 220 380
+        'amount<=0, Quelle==Ziel, ein ungültiger executed_by (nur bank oder manual), until_free_money zusammen mit valid_to oder eine Ablehnung von fn_transfer_free_end (not_running, funding_unknown, source_short, no_free_money, free_money_beyond_horizon; Savepoint rollt den Insert zurück) liefert die fn als {ok:false, reason} -> Recurring transfer rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Der No-Self-Transfer-CHECK ist der strukturelle Backstop.' 220 380
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1100, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_create_recurring_transfer mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (amount kleiner/gleich 0, Quelle gleich Ziel, Ablehnungen von until_free_money) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. until_free_money: fn_transfer_free_end setzt das Ende auf den letzten Termin, bevor Ziel-Geld der Quelle angefasst wird (Rechnung = fn_account_funding mit dieser Zahlung); die Karte zeigt effective.last_execution + free_after aus diesem Probelauf statt der Zeile Gültig bis. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
+        'Dry run = fn_create_recurring_transfer mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (amount kleiner/gleich 0, Quelle gleich Ziel, Ablehnungen von until_free_money) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. until_free_money: fn_transfer_free_end setzt das Ende auf den letzten Termin, bevor Ziel-Geld der Quelle angefasst wird (Rechnung = fn_account_funding mit dieser Zahlung); die Karte zeigt effective.last_execution + free_after aus diesem Probelauf statt der Zeile Gültig bis. Den Schlusssatz darunter wählt r.execution (fn_transfer_executed_by: gespeicherte Nutzerangabe, sonst Kontoart der Quelle): bank = beim Bank-Dauerauftrag das Enddatum eintragen, manual = nach dem Datum nicht mehr überweisen, unknown = vorsichtig (falls ein Dauerauftrag besteht). execution steht bewusst NICHT unter effective, weil das Gate effective in den echten Write mischt. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
 
     $nodes = @($trig, $resFrom, $ifFrom, $errFrom, $resTo, $ifTo, $errTo) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyFlow, $stickyOk,
                $stickyDry)

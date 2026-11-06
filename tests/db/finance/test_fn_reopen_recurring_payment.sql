@@ -136,4 +136,25 @@ BEGIN
   END;
 END $$;
 
+-- „Bank-Hinweis nur, wo er passt": ein wieder eroeffneter Uebertrag erbt executed_by (sonst vergaesse die Folge-Zeile,
+-- dass der Nutzer ihn selbst ueberweist bzw. dass er bei der Bank liegt).
+DO $$
+DECLARE v_a INT; v_b INT; v_old INT; v_new INT; v_res JSONB;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__test_reo_xa__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__test_reo_xb__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_res := finance.fn_create_recurring_transfer(jsonb_build_object('name','__test_reo_xt__','from_account_id',v_a,
+             'to_account_id',v_b,'amount',90,'schedule_unit','month','first_payment_date',(CURRENT_DATE + 2)::text,
+             'executed_by','manual'));
+  v_old := (v_res->>'recurring_payment_id')::int;
+  -- beenden (Soft-Close) und Folge-Zeile eroeffnen
+  UPDATE finance.recurring_payments SET valid_to = CURRENT_DATE + 3 WHERE id = v_old;
+  v_res := finance.fn_reopen_recurring_payment(v_old, CURRENT_DATE + 3);
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL reopen Uebertrag: %', v_res; END IF;
+  v_new := (v_res->>'recurring_payment_id')::int;
+  IF (SELECT executed_by FROM finance.recurring_payments WHERE id = v_new) IS DISTINCT FROM 'manual' THEN
+    RAISE EXCEPTION 'FAIL reopen [executed_by geerbt]: %', (SELECT executed_by FROM finance.recurring_payments WHERE id = v_new); END IF;
+  RAISE NOTICE 'PASS reopen [Folge-Zeile erbt executed_by]';
+END $$;
+
 ROLLBACK;

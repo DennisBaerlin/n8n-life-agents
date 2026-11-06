@@ -53,7 +53,10 @@ BEGIN
   SELECT * INTO v_row FROM finance.standing_order_overview WHERE recurring_payment_id = v_rp;
   IF v_row.kind IS DISTINCT FROM 'transfer' OR v_row.from_account IS DISTINCT FROM '__t_arv_giro__'
      OR v_row.to_account IS DISTINCT FROM '__t_arv_pot__' OR v_row.amount_per_execution IS DISTINCT FROM 150
-     OR v_row.monthly_amount IS DISTINCT FROM 150 OR v_row.rhythm IS NULL OR v_row.starts_on IS DISTINCT FROM t + 1 THEN
+     OR v_row.monthly_amount IS DISTINCT FROM 150 OR v_row.rhythm IS NULL OR v_row.starts_on IS DISTINCT FROM t + 1
+     -- „Bank-Hinweis nur, wo er passt": aufgeloeste Ausfuehrung (Giro-Quelle ohne Angabe = unknown), damit der Berater
+     -- ein selbst ueberwiesenes Konto nicht als Bank-To-do nennt
+     OR v_row.executed_by IS DISTINCT FROM 'unknown' THEN
     RAISE EXCEPTION 'FAIL standing_order Zeile: %', row_to_json(v_row); END IF;
   IF EXISTS (SELECT 1 FROM finance.standing_order_overview WHERE from_account = '__t_arv_pot__' AND name <> 'arv Rueckfluss') THEN
     RAISE EXCEPTION 'FAIL standing_order: Sparplan-Abbuchung als Dauerauftrag gelistet'; END IF;

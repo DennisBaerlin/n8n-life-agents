@@ -135,6 +135,9 @@ BEGIN
         EXECUTE format('SET LOCAL ROLE %I', v_role);
         PERFORM finance.fn_get_account_close_blockers(-1);
         PERFORM count(*) FROM finance.fn_recurring_due_open(CURRENT_DATE);
+        -- „Bank-Hinweis nur, wo er passt": die Regel liest recurring_payments + accounts (Karte unter finance_rw, Berater-Frei-SQL unter finance_ro)
+        IF finance.fn_transfer_executed_by(-1) IS DISTINCT FROM 'unknown' THEN
+          RESET ROLE; RAISE EXCEPTION 'FAIL [% -> fn_transfer_executed_by]: unbekannte Zeile muss unknown liefern', v_role; END IF;
         BEGIN
           PERFORM finance.fn_get_loan_payment_split(jsonb_build_object('loan_id', -1, 'payment_amount', 1,
             'payment_date', CURRENT_DATE::text));
@@ -186,7 +189,7 @@ BEGIN
       SET LOCAL ROLE finance_ro;
       SELECT count(*) INTO v_cnt FROM (SELECT state, runs_out_on, monthly_in FROM finance.account_funding_overview
                                        WHERE account_name = '__rp_adv_src__' AND state IS NOT NULL) q;
-      PERFORM name, from_account, to_account, rhythm, monthly_amount, last_valid_day, last_execution FROM finance.standing_order_overview;
+      PERFORM name, from_account, to_account, rhythm, monthly_amount, last_valid_day, last_execution, executed_by FROM finance.standing_order_overview;
       PERFORM account_name, everyday_per_day, everyday_per_month, provisional FROM finance.account_everyday_spending;
       PERFORM finance.fn_savings_goal_pace(id) FROM finance.savings_goal_progress WHERE status = 'active';
       v_res := finance.fn_account_outlook(v_short);

@@ -537,12 +537,14 @@ BEGIN
     -- ---------- (2e) Umschichtung mit Enddatum: ein Dauerauftrag ueberweist bald zum letzten Mal ----------
     -- Freistehende Uebertrags-Kette (fn_standing_orders kind transfer, ohne Besitzer: keine Ziel-Rate), deren letzter
     -- Termin (fn_recurring_last_due) in 0..42 Tagen liegt und die ein Sparplan-Verrechnungskonto oder ein Konto mit
-    -- Ziel-Geld speist. Die Bank meldet sich nicht -> Hinweis: dort beenden, Sparplan braucht eine neue Quelle, noch
+    -- Ziel-Geld speist. Erster Satz je Ausfuehrung (fn_transfer_executed_by, „Bank-Hinweis nur, wo er passt"): bank ->
+    -- order_ending (Bank pruefen), manual -> order_ending_manual (nichts mehr ueberweisen), unknown -> order_ending_unsure
+    -- (falls ein Dauerauftrag besteht, beenden); dazu: Sparplan braucht eine neue Quelle, noch
     -- freies Geld (fn_account_funding.min_free der Quelle), langfristige Ziele auf der Quelle (ausserhalb des Derisk-
     -- Fensters). Key = Ketten-Kopf, latch_keys = letzter Termin (ein verschobenes Ende meldet erneut).
     FOR r IN
         SELECT so.head_id AS head, h.name, abs(h.amount) AS amount, sa.currency, h.account_id AS src, sa.name AS src_name,
-               ta.name AS to_name, ld.d AS last_due,
+               ta.name AS to_name, ld.d AS last_due, finance.fn_transfer_executed_by(so.head_id) AS execution,
                (SELECT string_agg(DISTINCT sp.name, ', ')
                   FROM finance.savings_plans sp
                   JOIN finance.recurring_payments c ON c.id = finance.fn_recurring_current(sp.recurring_payment_id, current_date)
@@ -570,7 +572,9 @@ BEGIN
             'value',      r.last_due,
             'latch_keys', jsonb_build_array(r.last_due::text),
             'msg',        jsonb_build_array(
-                              core.fn_ui_tpl('finance.advisor.order_ending', jsonb_build_object(
+                              core.fn_ui_tpl(CASE r.execution WHEN 'manual'  THEN 'finance.advisor.order_ending_manual'
+                                                              WHEN 'unknown' THEN 'finance.advisor.order_ending_unsure'
+                                                              ELSE 'finance.advisor.order_ending' END, jsonb_build_object(
                                   'name', r.name, 'amount', core.fn_ui_money(r.amount, r.currency),
                                   'to', r.to_name, 'date', core.fn_ui_date(r.last_due))),
                               CASE WHEN r.plans IS NOT NULL THEN core.fn_ui_tpl('finance.advisor.order_ending_plan',

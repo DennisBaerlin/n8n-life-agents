@@ -1111,6 +1111,26 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS finance_recurring_payments_predecessor_uq
     ON finance.recurring_payments (predecessor_id) WHERE predecessor_id IS NOT NULL;
 
+-- „Bank-Hinweis nur, wo er passt" (2026-11-06): wer fuehrt einen wiederkehrenden Uebertrag aus -- 'bank' = Dauerauftrag bei
+-- der Bank des Nutzers, 'manual' = der Nutzer ueberweist selbst (z. B. Auszahlung beim P2P-Anbieter). NULL = nicht angegeben.
+-- Reine Nutzerangabe, gar nicht ableitbar (ob bei einem Giro ein Dauerauftrag besteht, steht nirgends in unseren Daten; keine
+-- Ausnahme (a)-(c) der Regel „keine ableitbaren Spalten" noetig). Bewusst KEIN Buchungsschalter: gebucht wird nie von der App
+-- selbst (Kontoauszug-Abgleich oder Zuruf), die Spalte steuert nur Hinweise. Der Standard je Kontoart (P2P/Depot/Festgeld/
+-- Kredit -> manual, Geld-Konto -> unknown) steckt allein in finance.fn_transfer_executed_by; hier wird kein Standard
+-- festgeschrieben (kein Backfill, NULL bleibt NULL). Nur an Uebertraegen (target_account_id gesetzt). Split/Reopen erben.
+-- Additiv/nullable -> Init-only; DROP+ADD CONSTRAINT = idempotent je Apply.
+ALTER TABLE finance.recurring_payments ADD COLUMN IF NOT EXISTS executed_by text;
+DO $$ BEGIN
+    ALTER TABLE finance.recurring_payments DROP CONSTRAINT IF EXISTS finance_recurring_payments_executed_by_chk;
+    ALTER TABLE finance.recurring_payments ADD CONSTRAINT finance_recurring_payments_executed_by_chk
+        CHECK (executed_by IS NULL OR executed_by IN ('bank', 'manual'));
+    ALTER TABLE finance.recurring_payments DROP CONSTRAINT IF EXISTS finance_recurring_payments_executed_by_transfer_chk;
+    ALTER TABLE finance.recurring_payments ADD CONSTRAINT finance_recurring_payments_executed_by_transfer_chk
+        CHECK (executed_by IS NULL OR target_account_id IS NOT NULL);
+END $$;
+COMMENT ON COLUMN finance.recurring_payments.executed_by IS
+    'Nutzerangabe zu einem Uebertrag: bank = Dauerauftrag bei der Bank, manual = der Nutzer ueberweist selbst, NULL = nicht angegeben. Nicht ableitbar, kein Buchungsschalter. Aufgeloest (mit Kontoart-Standard) nur ueber finance.fn_transfer_executed_by.';
+
 -- fn_recurring_lineage: ids ALLER Glieder der Kette von p_rp_id (Vorgaenger UND Nachfolger, inkl. sich selbst).
 -- EINE Adresse fuer "gehoert dieses Vorkommen zu einem Sparplan/Kredit/..." (Besitzer zeigen auf den Kopf),
 -- Historie ueber alle Glieder und Doppel-Pruefung ueber die Kette. Init (nicht R__), weil Views

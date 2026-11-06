@@ -1,7 +1,8 @@
 -- ============================================================
 -- finance.standing_order_overview (Lese-View, Berater-Nachruestung 2026-10-30)
---   Die Dauerauftraege, die der Haushalt bei seiner Bank selbst einrichtet (finance.fn_standing_orders, dieselbe Auswahl
---   wie die Absender-Regel von fn_funding_accounts: laufend oder erst kommend), mit Konto-NAMEN statt ids, Betrag je Ausfuehrung,
+--   Die wiederkehrenden Ueberweisungen des Haushalts ohne Besitzer-Entitaet (finance.fn_standing_orders, dieselbe Auswahl
+--   wie die Absender-Regel von fn_funding_accounts: laufend oder erst kommend; ob der Auftrag bei der Bank liegt oder der
+--   Nutzer selbst ueberweist, sagt die letzte Spalte executed_by), mit Konto-NAMEN statt ids, Betrag je Ausfuehrung,
 --   Rhythmus in Klartext (fn_schedule_label) und Monatsbetrag (recurring_payments.monthly_equivalent).
 --   kind transfer = eigenes Konto -> eigenes Konto; debit = Spar-Abfluss ohne Ziel-Konto (Vorsorge-Beitrag,
 --   Sparziel-Rate ohne Topf). starts_on = erst kuenftiger Start (sonst NULL).
@@ -25,7 +26,9 @@ SELECT o.rp_id                                  AS recurring_payment_id,
        abs(r.monthly_equivalent)                AS monthly_amount,
        CASE WHEN r.valid_from > current_date THEN r.valid_from END AS starts_on,
        finance.fn_recurring_last_valid_day(o.head_id) AS last_valid_day,
-       finance.fn_recurring_last_due(o.head_id)       AS last_execution
+       finance.fn_recurring_last_due(o.head_id)       AS last_execution,
+       -- bank | manual | unknown (fn_transfer_executed_by, vom Kopf der Kette; Debit-Zeilen ohne Ziel: unknown)
+       finance.fn_transfer_executed_by(o.head_id)     AS executed_by
 FROM finance.fn_standing_orders() o
 JOIN finance.recurring_payments r ON r.id = o.rp_id
 JOIN finance.accounts sa ON sa.id = r.account_id

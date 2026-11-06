@@ -52,7 +52,8 @@ BEGIN
     -- Transfer-Ziel, Vorgaenger-Link und feste Monatstage erben (sonst kaeme ein 4-Tage-Plan still als 1x/Monat zurueck)
     UPDATE finance.recurring_payments
     SET target_account_id = v_old.target_account_id, predecessor_id = p_rp_id,
-        schedule_days_of_month = v_old.schedule_days_of_month
+        schedule_days_of_month = v_old.schedule_days_of_month,
+        executed_by = v_old.executed_by   -- Nutzerangabe zum Uebertrag (bank|manual|NULL) erben
     WHERE id = v_new_id;
     PERFORM finance.fn_repoint_recurring_owners(p_rp_id, v_new_id);
 

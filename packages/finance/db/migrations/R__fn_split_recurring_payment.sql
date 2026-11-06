@@ -18,6 +18,7 @@
 --   Stichtag schon beendet; Stichtag nicht nach der letzten gebuchten/uebersprungenen Rate (sonst gaelten
 --   Vorkommen doppelt; "gebucht" keyt auf die Faelligkeit recurring_due_date, nicht aufs Buchungsdatum);
 --   neues Ende nicht nach dem Stichtag.
+--   executed_by (Nutzerangabe: Dauerauftrag bei der Bank oder selbst ueberwiesen, NULL = nicht angegeben) erbt die neue Zeile.
 --   FESTE MONATSTAGE p_days (optional, letzter Parameter): NULL = von der alten Zeile erben, solange die Einheit
 --   'month' bleibt und kein neuer Einzeltag p_dom kommt; '{}' = leeren; sonst die neuen Tage (der Einzeltag wird
 --   dann NULL, CHECK finance_rp_schedule_days_chk). Andere Tage = Kadenzwechsel -> Neu-Anker am Stichtag.
@@ -109,7 +110,8 @@ BEGIN
     -- Transfer bleibt Transfer + Vorgaenger-Link + feste Monatstage (fn_add_recurring_payment-Signatur bewusst
     -- unveraendert; No-Self-Transfer- und Tage-CHECK sind zeilenweise und durch die geerbten Werte erfuellt).
     UPDATE finance.recurring_payments
-    SET target_account_id = v_old.target_account_id, predecessor_id = p_rp_id, schedule_days_of_month = v_days
+    SET target_account_id = v_old.target_account_id, predecessor_id = p_rp_id, schedule_days_of_month = v_days,
+        executed_by = v_old.executed_by   -- Nutzerangabe zum Uebertrag erben (CHECK: nur mit Ziel-Konto, oben mitgesetzt)
     WHERE id = v_new_id;
     PERFORM finance.fn_repoint_recurring_owners(p_rp_id, v_new_id);
 

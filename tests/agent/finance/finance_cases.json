@@ -1280,5 +1280,35 @@
         "expected_tool":  null,
         "expected_behavior":  "Nennt den Betrag nicht Ausgaben oder Alltagsausgaben und schlaegt nicht vor, den Rest zu stornieren: Er haelt den Stand gleich dem Bank-Stand. Sieht bei Bedarf per postgres_select nach und nennt eine wahrscheinliche Ursache (zum Beispiel eine Ueberweisung, die schon im Startbetrag steckt, oder eine noch nicht gezeigte Buchung) oder sagt, was fehlt, um sie zu klaeren. Ruft kein Write-Tool auf.",
         "notes":  "Befund 2026-11-03. Mock-Tier: kein Szenario noetig (kein Tool)."
+    },
+    {
+        "id":  "tc116",
+        "name":  "Dauerauftrag: Nutzer ueberweist selbst -> executed_by manual",
+        "task":  "Richte einen wiederkehrenden Uebertrag ein: jeden Monat am 25. 200 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, ab dem 25.11. Den Betrag ueberweise ich jeden Monat selbst, bei meiner Bank liegt dafuer kein Dauerauftrag.",
+        "chat_id":  "test_tc116",
+        "expected_tool":  "tool_create_recurring_transfer",
+        "expected_tool_args":  {
+                                   "from_account_name":  "Lindenbank Giro",
+                                   "to_account_name":  "Testbroker Cash Girokonto",
+                                   "amount":  "200",
+                                   "executed_by":  "manual"
+                               },
+        "expected_behavior":  "Ruft tool_create_recurring_transfer mit executed_by=manual auf, weil die Nutzerin sagt, dass sie selbst ueberweist. Erfindet keinen Bank-Hinweis und behauptet nicht, bei der Bank liege ein Dauerauftrag.",
+        "notes":  "Bank-Hinweis nur, wo er passt (2026-11-06): die Angabe kommt nur aus der Nutzer-Aussage, die Ausfuehrung der Karte entscheidet die DB. Gepaart mit tc117 (bank)."
+    },
+    {
+        "id":  "tc117",
+        "name":  "Dauerauftrag: laeuft bei der Bank -> executed_by bank",
+        "task":  "Richte einen wiederkehrenden Uebertrag ein: jeden Monat am 25. 300 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, ab dem 25.11. Das ist ein Dauerauftrag, den ich bei meiner Bank eingerichtet habe.",
+        "chat_id":  "test_tc117",
+        "expected_tool":  "tool_create_recurring_transfer",
+        "expected_tool_args":  {
+                                   "from_account_name":  "Lindenbank Giro",
+                                   "to_account_name":  "Testbroker Cash Girokonto",
+                                   "amount":  "300",
+                                   "executed_by":  "bank"
+                               },
+        "expected_behavior":  "Ruft tool_create_recurring_transfer mit executed_by=bank auf, weil die Nutzerin sagt, dass der Uebertrag als Dauerauftrag bei ihrer Bank laeuft.",
+        "notes":  "Bank-Hinweis nur, wo er passt (2026-11-06). Gepaart mit tc116 (manual)."
     }
 ]

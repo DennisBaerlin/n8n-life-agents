@@ -14,8 +14,14 @@
 --   valid_from (Stichtag des Splits; default heute), status, valid_to, schedule_day_of_month,
 --   name, notes, until_free_money (true: das Ende setzt die DB, fn_transfer_free_end; nur freistehende Uebertraege,
 --   nicht zusammen mit amount oder valid_to; Ablehnung rollt das Update per Savepoint zurueck, LA002).
---   RUECKGABE: {ok:true, recurring_payment_id, split}; bei split=true zusaetzlich previous_id. Korrigierbar (entitaets-besessen,
---   amount<=0, Split-Guards des Helfers inkl. last_booked) -> {ok:false}.
+--   executed_by (opt, bank|manual): Nutzerangabe zu einem Uebertrag (Dauerauftrag bei der Bank oder der Nutzer ueberweist
+--   selbst; leer = unveraendert). Wird auf ALLE noch laufenden Glieder der Kette geschrieben (Berater-Alarm liest den Kopf,
+--   die Uebersicht das gueltige Glied: beide muessen dasselbe zeigen) und mit amount zusaetzlich auf die neue Split-Zeile;
+--   nur an Uebertraegen (Zeile mit Ziel-Konto), sonst {ok:false}. Steuert nur Hinweise, nie die Buchung.
+--   RUECKGABE: {ok:true, recurring_payment_id, split}; bei split=true zusaetzlich previous_id; bei einem Uebertrag zusaetzlich
+--   execution (aufgeloest bank|manual|unknown, fn_transfer_executed_by; EIGENES Feld, nicht unter effective: das Gate mischt
+--   effective in den echten Write). Korrigierbar (entitaets-besessen, amount<=0, ungueltiger executed_by oder an einem
+--   Nicht-Uebertrag, Split-Guards des Helfers inkl. last_booked) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_recurring_payment(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -35,6 +41,7 @@ DECLARE
     v_dates    JSONB;
     v_free     BOOLEAN := COALESCE(NULLIF(p->>'until_free_money', '')::boolean, false);
     v_end      JSONB   := '{}'::jsonb;
+    v_exec     TEXT    := NULLIF(p->>'executed_by', '');
 BEGIN
     -- relative Datumsangaben ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from', 'valid_to']);
@@ -57,6 +64,14 @@ BEGIN
     IF v_owner IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'This recurring payment belongs to a ' || v_owner || '; change it via that entity set tool, not directly.');
+    END IF;
+    IF v_exec IS NOT NULL AND v_exec NOT IN ('bank', 'manual') THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'executed_by must be "bank" (standing order at the bank) or "manual" (the user transfers it themselves), got "' || v_exec || '". Leave it empty when the user did not say.');
+    END IF;
+    IF v_exec IS NOT NULL AND v_row.target_account_id IS NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'executed_by only applies to a transfer between own accounts; this payment goes to an outside party.');
     END IF;
     IF v_free AND (v_amount IS NOT NULL OR v_to IS NOT NULL) THEN
         RETURN jsonb_build_object('ok', false,
@@ -82,6 +97,14 @@ BEGIN
         IF v_status IS NOT NULL THEN
             UPDATE finance.recurring_payments SET status = v_status WHERE id = v_new_id;
         END IF;
+        -- executed_by: die neue Zeile erbt im Split den alten Wert; eine mitgenannte Angabe gilt fuer die neue Zeile UND alle
+        -- noch laufenden Glieder (gleiche Regel wie im In-Place-Zweig)
+        IF v_exec IS NOT NULL THEN
+            UPDATE finance.recurring_payments SET executed_by = v_exec
+             WHERE id = v_new_id
+                OR (id IN (SELECT finance.fn_recurring_lineage(v_new_id))
+                    AND (valid_to IS NULL OR valid_to > core.fn_today()));
+        END IF;
         v_core := jsonb_build_object('ok', true, 'recurring_payment_id', v_new_id, 'split', true, 'previous_id', v_id);
     ELSE
         -- IN-PLACE-Aenderung (kein Betrag); until_free_money: Ende aus der Projektion, Ablehnung rollt alles zurueck
@@ -101,6 +124,13 @@ BEGIN
                 WHERE id IN (SELECT finance.fn_recurring_lineage(v_id)) AND id <> v_id
                   AND (valid_to IS NULL OR valid_to > CURRENT_DATE)
                   AND (v_status <> 'active' OR valid_from > v_row.valid_from);
+            END IF;
+            -- executed_by gilt fuer die Zahlung, nicht fuer ein Glied: dieses und alle noch laufenden Glieder der Kette
+            IF v_exec IS NOT NULL THEN
+                UPDATE finance.recurring_payments SET executed_by = v_exec
+                 WHERE id = v_id
+                    OR (id IN (SELECT finance.fn_recurring_lineage(v_id))
+                        AND (valid_to IS NULL OR valid_to > core.fn_today()));
             END IF;
             IF v_free THEN
                 v_end := finance.fn_transfer_free_end(v_id);
@@ -123,6 +153,11 @@ BEGIN
     -- (pausiert, „laeuft wieder ab ...“), zaehlt die neue Zeile, sobald sie im Fenster liegt. Audit Paket 3: der eine Fold-Helfer
     -- fn_cashflow_coverage_fold (Pflichtausgaben > Einnahmen, gelatcht, Re-Arm bei Erholung; geteilt mit
     -- fn_create_recurring_payment) -> Note (advisory, nicht-blockierend).
+    -- Ausfuehrung eines Uebertrags (Schlusssatz der Karte) als EIGENES Feld, nicht unter effective (siehe Header)
+    IF v_row.target_account_id IS NOT NULL THEN
+        v_core := v_core || jsonb_build_object('execution',
+            finance.fn_transfer_executed_by((v_core->>'recurring_payment_id')::int));
+    END IF;
     RETURN v_core || jsonb_build_object('effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end)
                   || finance.fn_cashflow_coverage_fold();
 END;

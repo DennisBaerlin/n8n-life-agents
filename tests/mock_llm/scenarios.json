@@ -1378,6 +1378,22 @@
     "final": "Der Dauerauftrag wurde nicht angelegt."
   },
   {
+    "_comment": "tc116 Bank-Hinweis nur, wo er passt: Nutzerin ueberweist selbst -> executed_by manual.",
+    "match": "Den Betrag ueberweise ich jeden Monat selbst, bei meiner Bank liegt dafuer kein Dauerauftrag",
+    "calls": [
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "2027-11-25", "executed_by": "manual" } }
+    ],
+    "final": "Der Uebertrag wurde nicht angelegt."
+  },
+  {
+    "_comment": "tc117 Bank-Hinweis nur, wo er passt: Dauerauftrag bei der Bank -> executed_by bank.",
+    "match": "Das ist ein Dauerauftrag, den ich bei meiner Bank eingerichtet habe",
+    "calls": [
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 300, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "2027-11-25", "executed_by": "bank" } }
+    ],
+    "final": "Der Uebertrag wurde nicht angelegt."
+  },
+  {
     "_comment": "tc105 Sparziel umziehen ins Depot -> reassign ohne Betrag und ohne Quellkonto.",
     "match": "Zieh mein Sparziel Altersvorsorge 2050 komplett ins Testbroker Depot um",
     "calls": [

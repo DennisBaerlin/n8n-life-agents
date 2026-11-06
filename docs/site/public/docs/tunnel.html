@@ -220,7 +220,7 @@
   </details>
   <article class="docs-content">
     <h1>Tunnel einrichten (empfohlen)</h1>
-    <p>Mit der <a href="start-app.html">Start-App</a> erreicht Telegram deinen Rechner am einfachsten über einen <strong>Tunnel</strong>. Dein Rechner baut dabei selbst eine verschlüsselte Verbindung nach außen zu einem Dienst namens <strong>Tailscale</strong> auf (genauer: Tailscale Funnel). Telegram schickt deine Nachrichten an eine öffentliche Adresse bei Tailscale, und Tailscale reicht sie durch diese Verbindung an deinen Rechner weiter. An deiner FritzBox oder deinem Router änderst du nichts, und es klappt auch bei Anschlüssen ohne eigene IPv4-Adresse (DS-Lite).</p>
+    <p>Mit der <a href="start-app.html">Start-App</a> erreicht Telegram deinen Rechner am einfachsten über einen <strong>Tunnel</strong>. Dein Rechner baut dabei selbst eine verschlüsselte Verbindung nach außen zu einem Dienst namens <strong>Tailscale</strong> auf (genauer: Tailscale Funnel). Telegram schickt deine Nachrichten an eine öffentliche Adresse bei Tailscale, und Tailscale reicht sie durch diese Verbindung an deinen Rechner weiter. An deiner FritzBox oder deinem Router änderst du nichts, und der Weg ist auch bei Anschlüssen ohne eigene IPv4-Adresse (DS-Lite) möglich.</p>
 
 <figure class="schema">
 
@@ -267,7 +267,6 @@
 <figcaption>Eigene Schema-Zeichnung: Telegram schickt an die öffentliche Tailscale-Adresse, von dort geht es durch den Tunnel und durch den unveränderten Router zum Mac. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch.</figcaption>
 </figure>
 
-<p><strong>Stand:</strong> Der Tunnel-Weg ist noch im Bau. Bevor die App ihn anbietet, prüfen wir ihn mit einem Test-Bot. Wo hier „wird geprüft“ steht, ist das Ergebnis noch offen.</p>
 <h2 id="was-du-brauchst">Was du brauchst</h2>
 <ul>
 <li>Die <a href="start-app.html">Start-App</a>, die bis zur Frage nach dem Weg ins Internet gekommen ist.</li>
@@ -276,7 +275,7 @@
 <h2 id="schritt-für-schritt">Schritt für Schritt</h2>
 <ol>
 <li>
-<p><strong>Tunnel wählen:</strong> In der App bei der Frage nach dem Weg ins Internet <strong>Tunnel (empfohlen)</strong> wählen.</p>
+<p><strong>Tunnel wählen:</strong> In der App bei der Frage nach dem Weg ins Internet den Tunnel wählen.</p>
 <p><em>Erwartet:</em> Nach wenigen Sekunden zeigt die App einen Knopf zum Anmelden bei Tailscale.</p>
 </li>
 <li>
@@ -284,12 +283,11 @@
 <p><em>Erwartet:</em> Tailscale fragt, ob du das neue Gerät mit deinem Konto verbinden willst. Bestätige das.</p>
 </li>
 <li>
-<p><strong>Öffentliche Adresse erlauben:</strong> Tailscale verlangt, dass du öffentliche Adressen (Funnel) und Zertifikate (HTTPS) für dein Konto erlaubst. Dabei weist Tailscale darauf hin, dass Rechnernamen öffentlich sichtbar werden. Das ist normal; warum dich das nicht stört, steht <a href="#neutraler-name">unten</a>.
-<strong>Wird geprüft:</strong> ob die App dich dafür direkt auf die richtige Seite bei Tailscale führt oder ob es von selbst klappt. Hier steht danach der genaue Weg.</p>
+<p><strong>Öffentliche Adresse erlauben:</strong> Für eine öffentliche Adresse verlangt Tailscale, dass in deinem Konto Zertifikate (HTTPS) und Funnel erlaubt sind (<a href="https://tailscale.com/kb/1223/funnel">Tailscale Funnel</a>). Fragt Tailscale dich danach, stimme zu. Dabei weist Tailscale darauf hin, dass Rechnernamen öffentlich sichtbar werden. Das ist normal; warum dich das nicht stört, steht <a href="#neutraler-name">unten</a>.</p>
 </li>
 <li>
 <p><strong>Zurück zur App:</strong> Die App vergibt deinem Rechner bei Tailscale einen neutralen Namen und zeigt dir die neue Adresse. Sie endet auf <code>.ts.net</code>.</p>
-<p><em>Erwartet:</em> Die App prüft, ob Telegram deinen Bot über diese Adresse erreicht. Bei einem neuen Konto kann es laut <a href="https://tailscale.com/kb/1223/funnel">Tailscale</a> bis zu 10 Minuten dauern, bis die Adresse im Internet bekannt ist. Prüf in diesem Fall nach ein paar Minuten noch einmal.</p>
+<p><em>Erwartet:</em> Die App prüft, ob Telegram deinen Bot über diese Adresse erreicht. Bei einem neuen Konto kann es laut Tailscale bis zu 10 Minuten dauern, bis die Adresse im Internet bekannt ist. Prüf in diesem Fall nach ein paar Minuten noch einmal.</p>
 </li>
 </ol>
 <p>Danach geht es in der App mit der Übersicht weiter. Die Adresse brauchst du dir nicht zu merken.</p>
@@ -300,22 +298,20 @@
 <ul>
 <li>Das Paket <strong>Personal</strong> von Tailscale kostet nichts, für bis zu 6 Nutzer und beliebig viele Geräte (<a href="https://tailscale.com/pricing">Tailscale-Preise</a>).</li>
 <li>Funnel, also die öffentliche Adresse, gibt es laut Tailscale in allen Paketen (<a href="https://tailscale.com/kb/1223/funnel">Tailscale Funnel</a>).</li>
-<li>Tailscale begrenzt die Datenmenge über Funnel, nennt aber keine Zahl. Durch den Tunnel laufen nur Telegrams kurze Benachrichtigungen und die <a href="uebersicht-app.html">Übersicht</a>; Fotos und Dateien holt der Bot selbst bei Telegram ab.</li>
+<li>Tailscale begrenzt die Datenmenge über Funnel und nennt dafür keine Zahl.</li>
 </ul>
-<p><strong>Wird geprüft:</strong> ob das kostenlose Paket den Dauerbetrieb ohne Einschränkung abdeckt. Bis dahin ist das eine Annahme.</p>
+<p>Preise und Bedingungen legt Tailscale fest und kann sie ändern. Maßgeblich sind die verlinkten Seiten.</p>
 <h2 id="grenzen">Grenzen</h2>
 <ul>
-<li><strong>Du brauchst ein Konto bei Tailscale</strong>, und Tailscale sieht, dass Verbindungen zu deinem Rechner laufen. Die Verschlüsselung endet erst auf deinem Rechner.</li>
-<li><strong>Fällt Tailscale aus</strong>, erreicht Telegram deinen Bot so lange nicht. Telegram stellt verpasste Nachrichten danach eine Zeit lang nach.</li>
+<li><strong>Du brauchst ein Konto bei Tailscale</strong>, und Tailscale sieht, dass Verbindungen zu deinem Rechner laufen.</li>
+<li><strong>Fällt Tailscale aus</strong>, erreicht Telegram deinen Bot so lange nicht.</li>
 <li><strong>Dein Rechner muss laufen</strong>, sonst antwortet niemand (siehe <a href="start-app.html#dauerbetrieb">Dauerbetrieb</a>).</li>
-<li><strong>Nur die Telegram-Wege gehen durch.</strong> Die Verwaltungsoberfläche bleibt zu. <strong>Wird geprüft:</strong> dass sie auch aus deinem Tailscale-Netz heraus gesperrt ist.</li>
-<li><strong>Wird geprüft:</strong> Tailscale lässt die Anmeldung eines Geräts nach einiger Zeit ablaufen. Ob die App das für deinen Rechner abschaltet oder dich rechtzeitig erinnert, steht nach dem Test hier.</li>
-<li><strong>Läuft Tailscale schon auf deinem Rechner</strong>, bringt die App trotzdem ihren eigenen Tunnel-Teil mit; dein vorhandenes Tailscale bleibt, wie es ist. <strong>Wird geprüft:</strong> dass sich beide nicht stören.</li>
+<li><strong>Nur die Telegram-Wege und die Übersicht sind von außen erreichbar.</strong> Den Rest, etwa die Verwaltungsoberfläche, lässt der Türsteher der App nicht durch.</li>
 </ul>
 <h2 id="rückgängig-machen">Rückgängig machen</h2>
 <ul>
 <li><strong>Ganz entfernen:</strong> In der App <strong>Deinstallieren</strong> wählen (siehe <a href="start-app.html#entfernen">Entfernen</a>). Danach in deinem Tailscale-Konto in der Geräteliste den Rechner entfernen. Dein Tailscale-Konto selbst bleibt, bis du es dort löschst.</li>
-<li><strong>Zur FritzBox wechseln:</strong> Den Weg ins Internet stellst du in der App um. <strong>Wird geprüft:</strong> wo die App diesen Punkt anbietet.</li>
+<li><strong>Zur FritzBox wechseln:</strong> Den Weg ins Internet stellst du in der App um und richtest dann die <a href="fritzbox.html#start-app">FritzBox</a> ein.</li>
 </ul>
 
   </article>

@@ -92,6 +92,6 @@ test('Schnittstellen zu Paket 1/3: frischer Rechner ohne Weg = nicht verfügbar,
   assert.equal(r.reason, 'no_mode');
   assert.deepEqual(run(['reach-ports']), { state: 'unknown' }, 'nicht messbar ist nicht belegt');
   assert.deepEqual(run(['reach-ports'], '', { LA_PROBE_IMAGE: '' }), { state: 'unknown' }, 'ohne Probe-Image nicht messbar');
-  assert.deepEqual(run(['paperless-ports']), { ports: [] }, 'rt_published_ports_json fehlt in runtime.sh: keine Suche');
+  assert.deepEqual(run(['paperless-ports']), { ports: [] }, 'ohne Docker keine Suche');
   assert.deepEqual(run(['tg-check'], '', { TELEGRAM_BOT_TOKEN: '' }), { ok: false, reason: 'unauthorized' });
 });

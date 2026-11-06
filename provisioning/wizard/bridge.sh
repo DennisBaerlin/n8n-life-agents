@@ -240,11 +240,12 @@ br_reach_ports() {
 
 # paperless-ports — veröffentlichte Ports der Paperless-Container auf DIESEM Rechner (Vorausfüllung der Adresse, Owner-Runde
 #   2026-11-06; kein Abtasten des Heimnetzes). Docker-Abfragen nur über runtime.sh (contract_lint 32):
-#   rt_published_ports_json <image-muster> <container-port> -> [{"ip":"0.0.0.0","port":8010}, …]. Ohne die Funktion: keine.
+#   rt_published_ports_json <image-teil> <container-port> -> [{"ip":"0.0.0.0","port":8010}, …], ohne Docker [] mit rc 1.
 #   Ausgabe {"ports":[…]}; die Entscheidung (genau ein erreichbarer Treffer) trifft flow.paperlessGuess.
 br_paperless_ports() {
-  local p='[]'
-  if declare -F rt_published_ports_json >/dev/null; then p="$(rt_published_ports_json paperless-ngx 8000 2>/dev/null || echo '[]')"; fi
+  local p
+  # rc != 0 (kein Docker, Fehler) gibt selbst schon [] aus: ersetzen statt anhängen.
+  p="$(rt_published_ports_json paperless-ngx 8000 2>/dev/null)" || p='[]'
   jq -nc --argjson p "$(jq -c 'if type == "array" then . else [] end' <<<"${p:-[]}" 2>/dev/null || echo '[]')" '{ports:$p}'
 }
 

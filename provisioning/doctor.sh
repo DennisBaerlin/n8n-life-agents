@@ -109,6 +109,15 @@ _doctor_compose_pod() {
       _pass "Pod teilt einen Netz-Namensraum (anchor, postgres, n8n, gateway, master)"
     fi
   fi
+  # Rand: tailscale haengt per network_mode am Namensraum von edge — wird edge neu angelegt (z. B. anderer Port), bleibt
+  # tailscale sonst an einem toten Namensraum haengen (derselbe Einwand 17).
+  if rt_container_running "${LA_PROJECT}-tailscale"; then
+    if [ "$(rt_netns "${LA_PROJECT}-tailscale" || true)" = "$(rt_netns "${LA_PROJECT}-edge" || echo x)" ]; then
+      _pass "tailscale teilt den Netz-Namensraum des Rands"
+    else
+      _red "tailscale hängt nicht mehr am Rand (edge wurde neu angelegt) — Abhilfe: docker compose -p ${LA_PROJECT} restart tailscale (hängt sich beim Start an den aktuellen Rand)"
+    fi
+  fi
   if rt_probe_internal "$N8N_PORT"; then _pass "Rand erreicht n8n (gemessen aus dem internen Netz, n8n bindet $1 im Verbund)"
   else _red "Rand erreicht n8n nicht — Telegram und Mini-App kommen nicht an (gemessen aus dem internen Netz)"; fi
   local open=0

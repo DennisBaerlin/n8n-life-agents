@@ -587,7 +587,7 @@
   "core.wizard.page.ports_busy_help2": "대신 „안전한 터널로“를 고르세요. 다른 것에 영향을 주지 않아요.",
   "core.wizard.page.ports_busy_next": "터널 쓰기",
   "core.wizard.page.fb_guide_title": "FritzBox 설정하기",
-  "core.wizard.page.fb_guide_help": "FritzBox에서 인터넷 메시지가 이 컴퓨터로 오도록 설정해요. 단계는 아래에 있어요. 모든 특수한 경우까지 포함한 자세한 내용은 안내에 있어요.",
+  "core.wizard.page.fb_guide_help": "FritzBox에서 이 단계를 따라 해 주세요.",
   "core.wizard.page.fb_guide_note": "FritzBox에 „공유가 이미 있음“이라고 나오면 다른 무언가가 이미 이 경로를 쓰고 있어요. 아무것도 지우지 마세요. 지우면 그것이 멈춰요. 돌아가서 „안전한 터널로“를 고르세요.",
   "core.wizard.page.fb_guide_link": "자세한 안내 열기",
   "core.wizard.page.fb_guide_next": "포트 공유를 만들었어요",

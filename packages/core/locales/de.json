@@ -587,7 +587,7 @@
   "core.wizard.page.ports_busy_help2": "Wähle stattdessen „Über einen sicheren Tunnel“, der stört nichts.",
   "core.wizard.page.ports_busy_next": "Den Tunnel nehmen",
   "core.wizard.page.fb_guide_title": "Richte die FritzBox ein",
-  "core.wizard.page.fb_guide_help": "In der FritzBox stellst du ein, dass Nachrichten aus dem Internet bei diesem Rechner ankommen. Unten siehst du die Schritte. Ausführlich, mit allen Sonderfällen, steht es in der Anleitung.",
+  "core.wizard.page.fb_guide_help": "Mach diese Schritte in deiner FritzBox mit.",
   "core.wizard.page.fb_guide_note": "Meldet die FritzBox „Freigabe existiert bereits“, nutzt schon etwas anderes diesen Weg. Lösche nichts, sonst fällt es aus. Geh dann zurück und wähle „Über einen sicheren Tunnel“.",
   "core.wizard.page.fb_guide_link": "Ausführliche Anleitung öffnen",
   "core.wizard.page.fb_guide_next": "Ich habe die Freigaben angelegt",

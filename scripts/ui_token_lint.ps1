@@ -17,6 +17,8 @@
 #   (7) Zeichen        das Site-Partial ist aus config/ui.mark.svg erzeugt (sonst: scripts/build_ui_tokens.ps1); jede inline-SVG im
 #                    Zeichen-Kasten (viewBox 0 0 26 26) unter den Wurzeln aus Get-UiScanRoots traegt die Pfade der Quelle, nur die
 #                    Farben duerfen abweichen. Ausnahmen mit Begruendung: Get-UiMarkExempt.
+#   (8) Erklaer-Bilder die Ordner aus Get-UiArtDirs enthalten genau die aus config/ui.art.*.svg erzeugten Dateien (feste Farben dort
+#                    sind gewollt: das Bild wird per <img> gezeigt und erreicht keine var(--token) der Seite).
 # -Baseline: druckt die gefundenen Literale als JSON-Geruest (reason:'TODO').
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose)
@@ -24,6 +26,7 @@ param([switch]$Baseline, [switch]$Verbose)
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . (Join-Path (Join-Path $PSScriptRoot 'lib') 'ui_tokens.ps1')
+. (Join-Path (Join-Path $PSScriptRoot 'lib') 'ui_art.ps1')
 $u8 = [System.Text.UTF8Encoding]::new($false)
 $fails = 0
 function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
@@ -139,7 +142,7 @@ $tracked = @(git -c core.quotepath=off -C $RepoRoot ls-files)   # ohne die Optio
 if ($tracked.Count -eq 0) { Fail 'Scope-Selbst-Assert: git ls-files leer -- Scan tot'; exit $fails }
 $scanRoots = @(Get-UiScanRoots)
 $scanExt = @(Get-UiScanExtensions)
-$excluded = @(Get-UiExcludedPrefixes)
+$excluded = @(Get-UiExcludedPrefixes) + @((Get-UiArtDirs).Values | ForEach-Object { "$_/" })
 function Test-UnderPrefix([string]$Path, [string[]]$Prefixes) { foreach ($p in $Prefixes) { if ($Path.StartsWith($p, [StringComparison]::Ordinal)) { return $true } }; return $false }
 $scanFiles = @($tracked | Where-Object { (Test-UnderPrefix $_ $scanRoots) -and -not (Test-UnderPrefix $_ $excluded) -and ($scanExt -contains [System.IO.Path]::GetExtension($_).ToLowerInvariant()) })
 if ($scanFiles.Count -eq 0) { Fail 'Scope-Selbst-Assert: keine Oberflaechen-Dateien gefunden -- Scan tot (Pfade?)' }
@@ -212,6 +215,21 @@ elseif (-not (Test-Path $markAbs)) { Fail "Bot-Profilbild: Zeichen fehlt: $($bp.
 elseif (-not (Test-Path $shaAbs)) { Fail "Bot-Profilbild: Pruefwert fehlt ($($bp.Dir)/$($bp.Sha)) -- $bpStale" }
 elseif ([System.IO.File]::ReadAllText($shaAbs, $u8).Trim() -cne (Get-UiTextSha256 (Get-UiBotProfileSvg $markAbs $tokens))) {
     Fail "Bot-Profilbild passt nicht mehr zu Zeichen oder Farbdatei -- $bpStale"
+}
+
+# --- (8) Erklaer-Bilder -----------------------------------------------------------------------------------------
+if (@(Split-UiArtLines 'aa bb cc' 5).Count -ne 2 -or @(Split-UiArtLines 'aa' 0).Count -ne 1 -or (Get-UiArtTextWidth ([string][char]0xAC00)) -le 1) { Fail 'Selbst-Assert Erklaer-Bilder: Zeilenumbruch oder Breiten-Schaetzung defekt (scripts/lib/ui_art.ps1)' }
+$artOut = @(Get-UiArtOutputs $RepoRoot $tokens)
+if ($artOut.Count -eq 0) { Fail 'Erklaer-Bilder: Generator liefert nichts -- Pruefung waere tot' }
+$artWant = @{}; foreach ($o in $artOut) { $artWant[$o.Path] = $o.Text }
+foreach ($o in $artOut) {
+    if ($tracked -notcontains $o.Path) { Fail "Erklaer-Bild fehlt im Repo: $($o.Path) -- .\scripts\build_ui_tokens.ps1 und mitcommitten"; continue }
+    if ([System.IO.File]::ReadAllText((Join-Path $RepoRoot $o.Path), $u8) -cne $o.Text) { Fail "Erklaer-Bild $($o.Path) passt nicht zur Quelle (erzeugt, nicht von Hand aendern) -- .\scripts\build_ui_tokens.ps1" }
+}
+foreach ($dir in (Get-UiArtDirs).Values) {
+    foreach ($f in ($tracked | Where-Object { $_.StartsWith("$dir/", [StringComparison]::Ordinal) })) {
+        if (-not $artWant.ContainsKey($f)) { Fail "Fremde Datei im erzeugten Bild-Ordner: $f -- Bilder nur ueber config/ui.art.*.svg" }
+    }
 }
 
 if ($fails -eq 0) { Write-Host "ui_token_lint: OK ($($pairs.Count) Kontrast-Paarungen je hell/dunkel, $($surfaces.Count) Block, $($scanFiles.Count) Dateien, $($found.Count) begruendete Altstellen)" -ForegroundColor Green }

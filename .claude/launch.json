@@ -26,6 +26,12 @@
       "port": 8766
     },
     {
+      "name": "explain-art",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/dev/serve_art_preview.ps1", "-Port", "8790"],
+      "port": 8790
+    },
+    {
       "name": "n8n-test",
       "url": "http://localhost:5680"
     }

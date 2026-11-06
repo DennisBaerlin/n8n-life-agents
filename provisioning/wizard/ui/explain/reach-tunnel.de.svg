@@ -1,0 +1,66 @@
+<!-- Erzeugt von scripts/build_ui_tokens.ps1 aus config/ui.art.reach.svg, nicht von Hand ändern. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 520" width="360" height="520" role="img" lang="de">
+  <style>
+:root { --ink: #17212B; --gray: #55636E; --hairline: #E2E7EC; --accent: #12638A; --accent-hover: #0D4D6C; --accent-mid: #A8D3E6; --accent-pale: #DCF0F8; --accent-wash: #F1F8FB; --code-wash: #F1F8FB; --ok: #1E9E6A; --warn: #CC8600; --warn-wash: #FDF3D8; --alert: #D23F44; --alert-wash: #FDE8E8; --bg: #FFFFFF; --bg-soft: #F1F8FB; --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --ink: #EEF3F6; --gray: #A2B1BC; --hairline: #2A343C; --accent: #5DB7DD; --accent-hover: #A8D3E6; --accent-mid: #2A5A70; --accent-pale: #183A4A; --accent-wash: #1B2329; --code-wash: #2A343C; --ok: #3CC08C; --warn: #E0A030; --warn-wash: #3A2E10; --alert: #E5605F; --alert-wash: #3D1F20; --bg: #12181D; --bg-soft: #1B2329; } }
+@keyframes in1 { 0% { opacity: 0 } 4%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on1 { 0% { opacity: 0 } 4%, 21% { opacity: 1 } 25%, 100% { opacity: 0 } }
+.on1 { opacity: 0 }
+@media (prefers-reduced-motion: no-preference) { .in1 { animation: in1 10s linear infinite } .on1 { animation: on1 10s linear infinite } }
+@keyframes in2 { 0%, 25% { opacity: 0 } 29%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on2 { 0%, 25% { opacity: 0 } 29%, 46% { opacity: 1 } 50%, 100% { opacity: 0 } }
+.on2 { opacity: 0 }
+@media (prefers-reduced-motion: no-preference) { .in2 { animation: in2 10s linear infinite } .on2 { animation: on2 10s linear infinite } }
+@keyframes in3 { 0%, 50% { opacity: 0 } 54%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on3 { 0%, 50% { opacity: 0 } 54%, 71% { opacity: 1 } 75%, 100% { opacity: 0 } }
+.on3 { opacity: 0 }
+@media (prefers-reduced-motion: no-preference) { .in3 { animation: in3 10s linear infinite } .on3 { animation: on3 10s linear infinite } }
+@keyframes in4 { 0%, 75% { opacity: 0 } 79%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on4 { 0%, 75% { opacity: 0 } 79%, 97% { opacity: 1 } 100% { opacity: 0 } }
+.on4 { opacity: 1 }
+@media (prefers-reduced-motion: no-preference) { .in4 { animation: in4 10s linear infinite } .on4 { animation: on4 10s linear infinite } }
+text { font-family: var(--font); fill: var(--ink); }
+    .cap { font-size: 15px; text-anchor: middle; }
+    .lbl { font-size: 15px; }
+    .note { font-size: 13px; }
+    .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+    .dot { opacity: 0; }
+    @keyframes dot {
+      0% { opacity: 0; transform: translateY(0); }
+      2% { opacity: 1; transform: translateY(0); }
+      22%, 27% { opacity: 1; transform: translateY(68px); }
+      47%, 52% { opacity: 1; transform: translateY(188px); }
+      72%, 74% { opacity: 1; transform: translateY(294px); }
+      76%, 100% { opacity: 0; transform: translateY(294px); }
+    }
+    @media (prefers-reduced-motion: no-preference) { .dot { animation: dot 10s linear infinite; } }
+</style>
+  <path d="M70 82 V346" stroke="var(--gray)" stroke-width="2" stroke-dasharray="6 6" fill="none" />
+  <rect x="50" y="18" width="40" height="64" rx="8" fill="var(--bg)" stroke="var(--ink)" stroke-width="2.5" />
+  <rect x="57" y="28" width="22" height="8" rx="4" fill="var(--accent-pale)" />
+  <path d="M63 74 H77" stroke="var(--hairline)" stroke-width="3" stroke-linecap="round" />
+  <text class="lbl" x="130" y="55">Dein Handy</text>
+  <path d="M47 170 a17 17 0 0 1 2 -34 a24 24 0 0 1 44 -8 a20 20 0 0 1 16 42 Z" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round" transform="translate(-8 0)" />
+  <text class="lbl" x="130" y="155">Telegram im Internet</text>
+  <g>
+    <rect x="22" y="232" width="96" height="78" rx="10" fill="var(--bg)" stroke="var(--gray)" stroke-width="2" stroke-dasharray="5 4" />
+    <rect x="58" y="222" width="24" height="98" rx="12" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="2.5" />
+    <text class="lbl" x="130" y="264">Tunnel (Tailscale)</text>
+    <text class="note" x="130" y="290"><tspan x="130" dy="0">Dein Router bleibt, wie er</tspan><tspan x="130" dy="16">ist.</tspan></text>
+  </g>
+  <path d="M26 384 L70 348 L114 384" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+  <rect x="34" y="380" width="72" height="58" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="2.5" />
+  <rect x="50" y="390" width="40" height="28" rx="4" fill="var(--bg)" stroke="var(--ink)" stroke-width="2" />
+  <g transform="translate(60 394) scale(0.77)"><path xmlns="http://www.w3.org/2000/svg" d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round" /><path xmlns="http://www.w3.org/2000/svg" d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></g>
+  <path d="M70 418 V426 M61 428 H79" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" />
+  <text class="lbl" x="130" y="395">Dein Rechner zu Hause</text>
+  <circle class="dot" cx="70" cy="82" r="7" fill="var(--accent)" />
+  <rect class="ring on1" x="8" y="8" width="344" height="84" rx="14" />
+  <rect class="ring on2" x="8" y="112" width="344" height="80" rx="14" />
+  <rect class="ring on3" x="8" y="212" width="344" height="130" rx="14" />
+  <rect class="ring on4" x="8" y="340" width="344" height="104" rx="14" />
+  <text class="cap on1" x="180" y="482"><tspan x="180" dy="-9.5">Du schreibst deinem Assistenten auf dem</tspan><tspan x="180" dy="19">Handy.</tspan></text>
+  <text class="cap on2" x="180" y="482"><tspan x="180" dy="-9.5">Telegram schickt die Nachricht über das</tspan><tspan x="180" dy="19">Internet weiter.</tspan></text>
+  <text class="cap on3" x="180" y="482"><tspan x="180" dy="-19">Ein geschützter Tunnel führt durch</tspan><tspan x="180" dy="19">deinen Router, dort stellst du nichts</tspan><tspan x="180" dy="19">um.</tspan></text>
+  <text class="cap on4" x="180" y="482"><tspan x="180" dy="-9.5">Dein Rechner antwortet, deine Daten</tspan><tspan x="180" dy="19">bleiben zu Hause.</tspan></text>
+</svg>

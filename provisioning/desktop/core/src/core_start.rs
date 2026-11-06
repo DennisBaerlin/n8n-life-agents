@@ -2,7 +2,7 @@
 //! `up -d anchor postgres master edge`), danach bei jeder Anmeldung nur `start`; Schnittstelle zum Wizard (Paket 4).
 //! Namen und Befehle kommen aus `contract`.
 
-use crate::contract::{self, MasterCmd, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, WIZARD_ORIGIN_VAR, WIZARD_PORT_VAR};
+use crate::contract::{self, MasterCmd, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, WIZARD_PORT_VAR};
 use crate::docker::{Docker, DockerCall};
 use crate::host::{join, Host};
 use crate::journal::{self, Journal, Step};
@@ -33,8 +33,7 @@ pub fn write_env(host: &dyn Host, p: &CorePaths, ports: Ports) -> Result<(), Str
         None => host.random_hex(32)?,
     };
     let Ports { edge, wizard } = ports;
-    let text =
-        format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n{WIZARD_ORIGIN_VAR}=http://127.0.0.1:{wizard}\n");
+    let text = format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n");
     host.write_file(&p.env_file, &text)
 }
 
@@ -319,7 +318,8 @@ mod tests {
         let env = h.read_file(&p.env_file).unwrap();
         assert_eq!(env_value(&env, "LA_EDGE_PORT").as_deref(), Some("5881"));
         assert_eq!(env_value(&env, "LA_WIZARD_PORT").as_deref(), Some("5891"));
-        assert_eq!(env_value(&env, "WIZARD_PUBLIC_ORIGIN").as_deref(), Some("http://127.0.0.1:5891"));
+        // Die Wizard-Adresse bildet der Wizard selbst aus LA_WIZARD_PORT (Paket 4); ein zweiter Fakt hier würde driften.
+        assert_eq!(env_value(&env, "WIZARD_PUBLIC_ORIGIN"), None);
         assert_eq!(env_value(&env, "LA_PG_SUPERPW").map(|v| v.len()), Some(64));
         let steps: Vec<Step> = j.entries.iter().map(|e| e.step.clone()).collect();
         // Images stehen vor der Fähigkeits-Prüfung im Journal, weil die Prüfung das busybox-Image laden kann.

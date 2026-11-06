@@ -14,7 +14,9 @@ pub const LABEL: &str = "io.lifeagents.install";
 /// `edge` ist der einzige Dienst mit veröffentlichtem Port. n8n und gateway startet der `master` selbst.
 pub const FIRST_SERVICES: [&str; 4] = ["anchor", "postgres", "master", "edge"];
 /// Zustandsführende Volumes (`external` in compose.yml): legt die App vor dem ersten Start mit Label an.
-pub const STATE_VOLUMES: [&str; 8] = ["pgdata", "n8n_home", "etc_n8n", "etc_la", "var_la", "rt_tree", "gw_state", "ts_state"];
+/// Eine Zeile, weil `contract_lint` 33 diese Liste mit `LA_STATE_VOLUMES` in runtime.sh vergleicht.
+#[rustfmt::skip]
+pub const STATE_VOLUMES: [&str; 9] = ["pgdata", "n8n_home", "etc_n8n", "etc_la", "var_la", "rt_tree", "gw_state", "ts_state", "wizard_state"];
 /// Container-Name des `master` (für `docker exec`), Muster `<projekt>-<dienst>`.
 pub const MASTER_CONTAINER: &str = "lifeagents-master";
 /// Name der Compose-Datei im Ressourcen-Ordner der App (bis Paket 5 eine andere Quelle festlegt).
@@ -24,8 +26,6 @@ pub const PORT_VAR: &str = "LA_EDGE_PORT";
 pub const PG_PASSWORD_VAR: &str = "LA_PG_SUPERPW";
 /// Zweiter freier Port auf 127.0.0.1, nur für den Wizard (veröffentlicht vom Dienst `edge`).
 pub const WIZARD_PORT_VAR: &str = "LA_WIZARD_PORT";
-/// Adresse, unter der der Wizard sich selbst sieht (Host-/Origin-Prüfung im Wizard, Paket 4).
-pub const WIZARD_ORIGIN_VAR: &str = "WIZARD_PUBLIC_ORIGIN";
 /// Suchbereich für den freien Port (wie im Testpaket).
 pub const PORT_RANGE: (u16, u16) = (5880, 5899);
 /// Volume der Fähigkeits-Prüfung (Plan Nr. 9): mit unserem Label, nach der Prüfung immer wieder entfernt.

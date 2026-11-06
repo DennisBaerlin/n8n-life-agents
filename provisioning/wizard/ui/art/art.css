@@ -11,6 +11,9 @@
 /* ---------- Geführte Animation: Bildrahmen mit Lupe, Hinweis und eigener Knopfleiste ---------- */
 /* Mit Bild wird der freie Raum ganz zum Bild (sonst hält der Abstand über der Knopfleiste 18 px fest) */
 .art ~ .spacer { min-height: 0; }
+/* Schmales Fenster (Handy-Breite): natürliche Höhe statt Restplatz, damit die Schrittliste als Rückfall ganz zu sehen ist */
+@media (max-width: 600px) { .art.art-guide { container-type: inline-size; flex: none; max-height: none; } }
+.art.art-guide { overflow-y: auto; }
 .art-frame { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; background: var(--bg-soft); }
 .art-guide .art-stage { flex: 1 1 auto; min-height: 0; }
 .art-stage svg { display: block; width: 100%; height: 100%; }
@@ -117,11 +120,13 @@
 .fb[data-rows="1"] .row-http, .fb[data-rows="2"] .row-http, .fb[data-rows="2"] .row-https, .fb[data-app="https"] .app-https { display: inline; }
 
 /* Lupe braucht Breite (Start-App 760 px) und etwas Höhe; sonst entfällt die Animation */
-/* Zu wenig Platz: Zeichnung und Schritt-Knöpfe weg, der übernommene Hinweis bleibt sichtbar */
+/* Zu wenig Platz: Zeichnung und Schritt-Knöpfe weg; sichtbar bleiben die Schritte als Liste, der Hinweis und der Link */
 @container art (max-width: 460px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; }
-  .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin-top: 10px; } }
+  .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin: 10px 0 0; }
+  .art-guide .art-list.sr { position: static; left: auto; order: -1; margin: 0 0 12px 22px; padding: 0; } }
 @container art (max-height: 220px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; }
-  .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin-top: 10px; } }
+  .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin: 10px 0 0; }
+  .art-guide .art-list.sr { position: static; left: auto; order: -1; margin: 0 0 12px 22px; padding: 0; } }
 
 /* ---------- Handy-Ausschnitt (Analog: docs/site/layouts/partials/phone-frame-*.html) ---------- */
 /* Neben der Auswahl (side: true → app.js .with-art): so hoch wie die Auswahl, schmal; im schmalen Fenster darunter */

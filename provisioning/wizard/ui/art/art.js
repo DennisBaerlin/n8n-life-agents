@@ -76,7 +76,8 @@
     const guide = o.link ? h('a', { class: 'art-guide-link', href: o.link.href, target: '_blank', rel: 'noopener noreferrer', title: o.link.label, text: 'Ausführliche Anleitung ↗' }) : null;
     const bar = h('figcaption', { class: 'art-bar' }, line,
       h('div', { class: 'art-ctl' }, back, h('span', { class: 'art-dots' }, dots), again, next));
-    fig.append(h('div', { class: 'art-frame' }, stage, guide, hintBox, bar), h('ol', { class: 'sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
+    // Schrittliste: für Screenreader immer, sichtbar als Rückfall, wenn für die Zeichnung kein Platz ist (art.css)
+    fig.append(h('div', { class: 'art-frame' }, stage, guide, hintBox, bar), h('ol', { class: 'art-list sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
     fig.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' && i + 1 < N) { e.preventDefault(); go(i + 1); next.focus(); }
       if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); go(i - 1); back.focus(); }

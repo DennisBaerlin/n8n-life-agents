@@ -218,6 +218,19 @@ br_tg_check() {
   if [ -z "$me" ]; then jq -nc '{ok:false, reason:"unreachable"}'; return 0; fi
   [ "$(jq -r '.ok // false' <<<"$me" 2>/dev/null || echo false)" = true ] || { jq -nc '{ok:false, reason:"unauthorized"}'; return 0; }
   bot="$(jq -r '.result.username // ""' <<<"$me")"
+  # Die Prüfung des Installers (telegram_webhook_json, release_inputs.sh, Paket 1) gilt, sobald es sie im Baum gibt:
+  # dieselbe Regel für Wizard und Installer-Sperre. „ours“ (zeigt schon auf diesen Rechner) ist kein Konflikt.
+  if declare -F telegram_webhook_json >/dev/null; then
+    info="$(telegram_webhook_json 2>/dev/null || true)"
+    if [ "$(jq -r '.ok // false' <<<"$info" 2>/dev/null || echo false)" != true ]; then
+      jq -nc --arg r "$(jq -r '.reason // "unreachable"' <<<"$info" 2>/dev/null || echo unreachable)" \
+        '{ok:false, reason:(if $r == "unreachable" then "unreachable" else "unauthorized" end)}'
+      return 0
+    fi
+    jq -c --arg bot "$bot" '{ok:true, bot:$bot, webhook_host:(if .state == "foreign" then (.webhook_host // "") else "" end),
+      polling_conflict:(.polling_conflict // false)}' <<<"$info"
+    return 0
+  fi
   info="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" getWebhookInfo -sS --max-time 10 2>/dev/null || true)"
   [ "$(jq -r '.ok // false' <<<"$info" 2>/dev/null || echo false)" = true ] || { jq -nc '{ok:false, reason:"unreachable"}'; return 0; }
   host="$(jq -r '.result.url // ""' <<<"$info" | sed -E 's#^[a-z]+://##; s#[/:?].*$##')"

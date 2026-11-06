@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
-# Attrappe von provision.sh für den Durchlauf: prüft den Aufruf und liest die Antwort-Datei so, wie es der Leser in
-# Paket 1 tun muss (Kopfzeile, KEY='wert' mit '\'' für ein ', nie ausführen), legt das Gelesene als JSON
-# ab und meldet die Stufen über LIFEAGENTS_RESULT_FILE wie result_set. Fehler auf Wunsch: Datei $WIZARD_FAKE_DIR/fail_stage,
-# Anhalten in einer Stufe (Vorschau-Bilder): $WIZARD_FAKE_DIR/hold_stage.
+# Attrappe von provision.sh für den Durchlauf: prüft den Aufruf (--profile release --unattended <datei> --packages <spec>)
+# und liest die Antwort-Datei wie install_answers_load (Paket 1): exakte Kopfzeile, danach nur KEY=wert roh (alles nach
+# dem ersten =), keine Leer-/Kommentarzeile, kein doppelter Schlüssel, keine Steuerzeichen, nie ausführen. Legt das Gelesene
+# als JSON ab (Modul-Wahl unter __packages) und meldet die Stufen über LIFEAGENTS_RESULT_FILE wie result_set.
+# Fehler auf Wunsch: Datei $WIZARD_FAKE_DIR/fail_stage; Anhalten in einer Stufe (Vorschau-Bilder): $WIZARD_FAKE_DIR/hold_stage.
 set -euo pipefail
 D="${WIZARD_FAKE_DIR:?}"
-[ "$#" -eq 4 ] && [ "$1 $2 $3" = "--profile release --unattended" ] || exit 64
-f="$4"
+[ "$#" -eq 6 ] && [ "$1 $2 $3" = "--profile release --unattended" ] && [ "$5" = "--packages" ] || exit 64
+f="$4"; pk="$6"
+[[ "$pk" =~ ^(none|[a-z][a-z0-9_]*(,[a-z][a-z0-9_]*)*)$ ]] || exit 73
 [ "$(stat -c %a "$f")" = 600 ] || exit 65
 [ -n "${LIFEAGENTS_RESULT_FILE:-}" ] || exit 66
-first=1; json='{}'
-q="'\\''"   # die Folge '\'' = ein einzelnes ' im Wert
+first=1; json="$(jq -nc --arg p "$pk" '{__packages:$p}')"
 while IFS= read -r l || [ -n "$l" ]; do
   if [ "$first" = 1 ]; then [ "$l" = '# lifeagents-answers v1' ] || exit 67; first=0; continue; fi
   case "$l" in *=*) : ;; *) exit 68 ;; esac
   k="${l%%=*}"; v="${l#*=}"
   [[ "$k" =~ ^[A-Z][A-Z0-9_]{0,63}$ ]] || exit 69
-  # KEY='…' (POSIX-Einfachquote): innen nur Text und '\''-Folgen, sonst Abbruch — wie install_answers_load, nie ausführen.
-  case "$v" in \'*\') v="${v:1:${#v}-2}" ;; *) exit 71 ;; esac
-  rest="${v//"$q"/}"
-  case "$rest" in *\'*) exit 72 ;; esac
-  v="${v//"$q"/\'}"
+  [[ "$v" =~ [[:cntrl:]] ]] && exit 71
   [ "$(jq -r --arg k "$k" 'has($k)' <<<"$json")" = false ] || exit 70
   json="$(jq -c --arg k "$k" --arg v "$v" '. + {($k): $v}' <<<"$json")"
 done < "$f"

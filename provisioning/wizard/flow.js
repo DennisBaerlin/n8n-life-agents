@@ -172,7 +172,7 @@ function valueProblem(v) {
 
 // allowedKeys(Q) -> Positivliste aller Schlüssel, die der Wizard schreiben darf.
 function allowedKeys(Q) {
-  const k = new Set(['REACH_MODE', 'PACKAGES_SELECTED', 'DOMAIN', 'TELEGRAM_WEBHOOK_TAKEOVER']);
+  const k = new Set(['REACH_MODE', 'DOMAIN', 'TELEGRAM_WEBHOOK_TAKEOVER']);
   for (const h of Q.host) k.add(h.key);
   for (const p of Q.packages) {
     for (const st of p.settings) k.add(st.env);
@@ -200,7 +200,6 @@ function answerLines(Q, A, secrets) {
   if (A.__voice === 'no') add('GOOGLE_API_KEY', '');
   if (reachMode(A) !== 'fritzbox') add('DOMAIN', '');
   add('REACH_MODE', reachMode(A));
-  add('PACKAGES_SELECTED', (A.__packages || []).filter((p) => pkgDef(Q, p)).join(','));
   // Prüfliste Nr. 10: der Nutzer hat einen schon anderswo verbundenen Bot ausdrücklich übernommen (sonst bricht der
   // Installer die unbeaufsichtigte Erstinstallation ab, telegram_webhook_preflight in Paket 1).
   if (A.__tg_conflict && A.__tg_choice === 'take') add('TELEGRAM_WEBHOOK_TAKEOVER', '1');
@@ -218,28 +217,35 @@ function renderAnswers(Q, lines) {
     seen.add(k);
     const pr = valueProblem(v);
     if (pr) throw new Error(`answers: bad value for ${k} (${pr})`);
-    // POSIX-Einfachquote, die eine Form, die der Leser des Installers (install_answers_load) ohne Ausführen versteht:
-    // innen ist nichts besonders, ein ' wird zu '\''.
-    txt += `${k}='${v.replace(/'/g, "'\\''")}'\n`;
+    // Roh wie core.env: alles nach dem ersten = ist der Wert. Der Leser des Installers (install_answers_load) erkennt
+    // diese Form an der Kopfzeile und setzt die Werte per printf -v, nie per source/eval.
+    txt += `${k}=${v}\n`;
   }
   return txt;
 }
 
-// parseAnswers(text) -> Map: Referenz-Leser genau der Form, die renderAnswers schreibt (ohne Ausführen). Dient den Tests
-//   und der Attrappe; der Leser des Installers (install_answers_load) versteht diese Form als Teilmenge.
-const LINE_RE = /^([A-Z][A-Z0-9_]{0,63})='((?:[^']|'\\'')*)'$/;
+// parseAnswers(text) -> Map: Referenz-Leser des Vertrags (ohne Ausführen), dieselben Regeln wie install_answers_load
+//   (Kopfzeile, KEY=wert roh, keine Leer-/Kommentarzeile, kein doppelter Schlüssel, keine Steuerzeichen). Für Tests und Attrappe.
 function parseAnswers(text) {
   const lines = text.split('\n');
   if (lines[lines.length - 1] === '') lines.pop();
   if (lines[0] !== '# lifeagents-answers v1') throw new Error('answers: header');
   const m = new Map();
   lines.slice(1).forEach((l, i) => {
-    const r = LINE_RE.exec(l);
-    if (!r || m.has(r[1]) || CTRL_RE.test(r[2])) throw new Error('answers: line ' + (i + 2));
-    m.set(r[1], r[2].replace(/'\\''/g, "'"));
+    const eq = l.indexOf('=');
+    const k = eq > 0 ? l.slice(0, eq) : '';
+    const v = l.slice(eq + 1);
+    if (!KEY_RE.test(k) || m.has(k) || CTRL_RE.test(v)) throw new Error('answers: line ' + (i + 2));
+    m.set(k, v);
   });
   return m;
 }
 
+// packagesArg(Q, A) -> Wert für `provision.sh --packages` (der bestehende Weg der CLI): Komma-Liste oder none.
+function packagesArg(Q, A) {
+  const p = (A.__packages || []).filter((x) => pkgDef(Q, x));
+  return p.length ? p.join(',') : 'none';
+}
+
 module.exports = { PHASES, PH, steps, reachMode, answered, envOf, question, phaseOf, helpBlocks, valueProblem,
-  allowedKeys, answerLines, renderAnswers, parseAnswers, hostDef, pkgDef };
+  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, hostDef, pkgDef };

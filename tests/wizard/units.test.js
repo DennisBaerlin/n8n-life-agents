@@ -32,7 +32,11 @@ test('Antwort-Datei: Sonderzeichen bleiben wörtlich, Kopf und Reihenfolge stimm
   assert.equal(m.get('OWNER_LAST_NAME'), 'Muster; rm -rf ~ \\ "q"');
   assert.equal(m.get('ANTHROPIC_API_KEY'), 'sk-ant-beispiel=mit=gleich');
   assert.equal(m.get('GOOGLE_API_KEY'), '');
-  assert.equal(m.get('PACKAGES_SELECTED'), 'estate');
+  assert.ok(!m.has('PACKAGES_SELECTED'), 'Module gehen als --packages an provision.sh, nicht in die Datei');
+  assert.equal(flow.packagesArg(Q, A), 'estate');
+  assert.equal(flow.packagesArg(Q, { __packages: [] }), 'none');
+  assert.equal(flow.packagesArg(Q, { __packages: ['estate', 'unbekannt'] }), 'estate');
+  assert.ok(txt.includes("\nOWNER_FIRST_NAME=O'Neil $(touch /tmp/x) `id`\n"), 'roh, ohne Quotes');
   assert.equal(m.get('REACH_MODE'), 'tunnel');
   assert.equal(m.get('DOMAIN'), '');
   assert.equal(m.get('CONFIG_GENERAL_BUNDESLAND'), 'bayern');
@@ -50,27 +54,21 @@ test('Antwort-Datei: Verstöße werfen, nie still reparieren', () => {
   assert.equal(flow.valueProblem('😀'.repeat(1025)), 'length');
 });
 
-test('Leser-Referenz: falscher Kopf, Zeile ohne =, ohne Quotes, offenes Quote, doppelter Schlüssel', () => {
-  assert.throws(() => flow.parseAnswers("KEY='1'\n"), /header/);
+test('Leser-Referenz (Regeln von install_answers_load): Kopf, Zeile ohne =, Leer-/Kommentarzeile, doppelt, Steuerzeichen', () => {
+  assert.throws(() => flow.parseAnswers('KEY=1\n'), /header/);
   assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\nKEY\n'), /line 2/);
-  assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\nKEY=1\n'), /line 2/);
-  assert.throws(() => flow.parseAnswers("# lifeagents-answers v1\nKEY='a'b'\n"), /line 2/);
-  assert.throws(() => flow.parseAnswers("# lifeagents-answers v1\nKEY='1'\nKEY='2'\n"), /line 3/);
-  assert.equal(flow.parseAnswers("# lifeagents-answers v1\nK='a=b'\n").get('K'), 'a=b');
+  assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\n\n'), /line 2/);
+  assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\n# x\n'), /line 2/);
+  assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\nKEY=1\nKEY=2\n'), /line 3/);
+  assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\nKEY=a\rb\n'), /line 2/);
+  assert.equal(flow.parseAnswers('# lifeagents-answers v1\nK=a=b\n').get('K'), 'a=b');
 });
 
-test('Antwort-Datei: Form KEY=\'…\' wie install_answers_load (Paket 1), auch eine POSIX-Shell liest denselben Wert', () => {
-  const A = { OWNER_FIRST_NAME: "O'Neil $(touch /tmp/wizard-quote-pwned) `id` \\ \"x\" ''", __tg_conflict: 'beispiel.example', __tg_choice: 'take', __reach: 'tunnel' };
-  const txt = flow.renderAnswers(Q, flow.answerLines(Q, A, {}));
-  assert.ok(txt.includes("OWNER_FIRST_NAME='O'\\''Neil $(touch /tmp/wizard-quote-pwned) `id` \\ \"x\" '\\'''\\'''\n"), txt);
-  assert.equal(flow.parseAnswers(txt).get('TELEGRAM_WEBHOOK_TAKEOVER'), '1', 'Übernahme des belegten Bots steht in der Datei');
-  // Gegenprobe der Quote-Regel (nur hier im Test, der Installer führt die Datei nie aus): bash liest denselben Wert.
-  const f = require('path').join(require('os').tmpdir(), `answers-${process.pid}.env`);
-  require('fs').writeFileSync(f, txt);
-  const out = require('child_process').execFileSync('bash', ['-c', 'set -a; . "$1"; printf %s "$OWNER_FIRST_NAME"', 'x', f]).toString();
-  require('fs').rmSync(f);
-  assert.equal(out, A.OWNER_FIRST_NAME);
-  assert.ok(!require('fs').existsSync('/tmp/wizard-quote-pwned'));
+test('Antwort-Datei: Übernahme eines belegten Bots nur nach ausdrücklicher Wahl', () => {
+  const take = flow.parseAnswers(flow.renderAnswers(Q, flow.answerLines(Q, { __tg_conflict: 'beispiel.example', __tg_choice: 'take' }, {})));
+  assert.equal(take.get('TELEGRAM_WEBHOOK_TAKEOVER'), '1');
+  const none = flow.parseAnswers(flow.renderAnswers(Q, flow.answerLines(Q, { __tg_conflict: 'beispiel.example' }, {})));
+  assert.ok(!none.has('TELEGRAM_WEBHOOK_TAKEOVER'));
 });
 
 test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBox-Weg', () => {

@@ -6,7 +6,6 @@
 (function () {
   const PREVIEW = window.WIZARD_PREVIEW || null;
   const main = document.getElementById('m');
-  const phasesEl = document.getElementById('phases');
   let csrf = '';
   let page = null;
   let pollT = null;
@@ -65,7 +64,6 @@
 
   function fatal() {
     clearTimeout(pollT);
-    phasesEl.textContent = '';
     main.replaceChildren(h('h1', { text: 'Bitte öffne die Einrichtung über die App' }),
       h('p', { class: 'lead', text: 'Die Sitzung ist abgelaufen. Schließe das Fenster und öffne die App lifeagents neu. Deine Antworten sind gespeichert.' }));
   }
@@ -115,8 +113,7 @@
   function render() {
     clearTimeout(pollT);
     const p = page;
-    phasesEl.replaceChildren(...p.phases.map((t, i) => h('li', { class: i < p.phase ? 'done' : i === p.phase ? 'now' : '', text: t })));
-    const kids = [h('div', { class: 'progress', text: `Schritt ${p.phase + 1} von ${p.phases.length}: ${p.phases[p.phase]}` }),
+    const kids = [
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
@@ -168,7 +165,8 @@
     } else if (p.link) {
       kids.push(h('p', null, h('a', { href: p.link.href, target: '_blank', rel: 'noopener noreferrer', text: p.link.label })));
     }
-    if (p.kind === 'handoff' && p.done) kids.push(h('div', { class: 'check', text: '✓ Die App übernimmt jetzt. Du kannst hier nichts mehr falsch machen.' }));
+    // Nach „Weiter“ holt die App (gleiches Fenster) ihre eigenen Seiten zurück, sobald sie phase=handoff sieht (alle 3 s).
+    if (p.kind === 'handoff' && p.done) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), 'Einen Moment …')));
 
     kids.push(h('div', { class: 'err', id: 'er', role: 'alert' }), h('div', { id: 'ck' }));
     if (p.kind === 'install' && p.failed) {

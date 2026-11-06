@@ -65,7 +65,7 @@ if ($Capture) {
             Write-Host "  [OK] $Capture/$s" -ForegroundColor Green
         }
     } elseif ($Surface -eq 'wizard') {
-        # Jede Seite des echten Ablaufs (preview_dump.js): Handy (375) und Fenster (1100), hell und dunkel; Text fuer den Pruef-Agenten.
+        # Jede Seite des echten Ablaufs (preview_dump.js): Handy (375) und App-Fenster (760, wie die Start-App), hell und dunkel; Text fuer den Pruef-Agenten.
         foreach ($e in (Get-WizardPreviewDump -RepoRoot $RepoRoot -Cached:$Cached)) {
             if ($Screens.Count -and $Screens -notcontains $e.name) { continue }
             $base = Join-Path $dir $e.name
@@ -74,7 +74,7 @@ if ($Capture) {
                 # Fenster: feste Hoehe ohne Zuschneiden (das Zuschneiden tastet nur fuenf Spalten ab und traefe die Seitenleiste nicht)
                 $tmp = "$base.wide.$scheme.tmp.html"
                 [System.IO.File]::WriteAllText($tmp, (Get-WizardPreviewHtml -RepoRoot $RepoRoot -Entry $e -Scheme $scheme), $Utf8NoBom)
-                Invoke-HeadlessShot -File $tmp -Out "$base-fenster-$scheme.png" -WidthPx 1100 -HeightPx 900 -WindowWidth 1100 -Scale 1 -Dark:($scheme -eq 'dark')
+                Invoke-HeadlessShot -File $tmp -Out "$base-fenster-$scheme.png" -WidthPx 760 -HeightPx 900 -WindowWidth 760 -Scale 1 -Dark:($scheme -eq 'dark')
                 Remove-Item $tmp -Force
             }
             $tmp = "$base.tmp.html"

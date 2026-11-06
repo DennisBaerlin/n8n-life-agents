@@ -125,7 +125,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
       OWNER_PERSONA: 'butler', TELEGRAM_BOT_TOKEN: '123456789:ABC-beispiel-token', ANTHROPIC_API_KEY: 'sk-ant-offline-beispiel',
       GOOGLE_API_KEY: 'AIza-beispiel', ADZUNA_APP_ID: 'beispiel-id', ADZUNA_APP_KEY: 'beispiel-key', JSEARCH_API_KEY: '',
       CONFIG_GENERAL_BUNDESLAND: 'thueringen', CONFIG_GENERAL_PAPERLESS_URL: plUrl + '/', PAPERLESS_API_TOKEN: 'beispieltoken0123',
-      DOMAIN: 'meinrechner.deine-domain.myfritz.net', REACH_MODE: 'fritzbox', PACKAGES_SELECTED: 'career,estate,paperless',
+      DOMAIN: 'meinrechner.deine-domain.myfritz.net', REACH_MODE: 'fritzbox', __packages: 'career,estate,paperless',
     });
 
     // Verbinden: QR-Code, dann Telegram-/start (Attrappe), dann Übergabe.
@@ -134,13 +134,13 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal(cn.link.href, 'https://t.me/beispiel_bot?start=0123456789abcdef');
     assert.ok(!fs.readFileSync(path.join(w.dir, 'state', 'progress.json'), 'utf8').includes('0123456789abcdef'), 'Pairing-Code nie auf der Platte');
     assert.equal(cn.canBack, false);
-    assert.deepEqual(await ctl(w, 'status'), { phase: 'pairing', step: 'connect' });
+    assert.deepEqual(await ctl(w, 'status'), { phase: 'pairing', step: 'connect', bot: 'beispiel_bot' });
     fs.writeFileSync(path.join(w.fake, 'paired'), '');
     const ho = await waitFor(async () => { const p = await page(w); return p.id === 'handoff' ? p : null; });
     assert.match(ho.help[0].p, /Haushalt einrichten/);
     assert.deepEqual(fs.readFileSync(path.join(w.fake, 'pair_calls'), 'utf8').trim().split('\n'), ['arm', 'finalize']);
     await expectOk(await post(w, '/api/action', { name: 'handoff' }));
-    assert.deepEqual(await ctl(w, 'status'), { phase: 'handoff', step: 'handoff' });
+    assert.deepEqual(await ctl(w, 'status'), { phase: 'handoff', step: 'handoff', bot: 'beispiel_bot' }, 'Bot-Name für „Telegram öffnen“ der App');
     assert.equal((await ctl(w, 'finish')).ok, true);
     assert.equal(await w.exited, 0);
   } finally { pl.close(); await w.stop(); }
@@ -210,7 +210,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.equal(parsed.GOOGLE_API_KEY, '');
     assert.equal(parsed.REACH_MODE, 'tunnel');
     assert.equal(parsed.DOMAIN, '');
-    assert.equal(parsed.PACKAGES_SELECTED, '');
+    assert.equal(parsed.__packages, 'none', 'keine Module = --packages none');
     assert.equal(parsed.OWNER_LANGUAGE, 'en');
 
     // Tunnel: Anmelde-Link als Knopf (nur login.tailscale.com), fremde Adressen nie.

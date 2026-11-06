@@ -7,13 +7,31 @@
 
 function Get-WizardPreviewCacheFile([string]$RepoRoot) { Join-Path $RepoRoot '.local\wizard_preview_pages.json' }
 
+# Get-WizardTestImage -- das schlanke Test-Bild (tests/wizard/Dockerfile: Node 24 + bash/jq/curl, kein n8n, belegt keinen
+#   Testplatz). Der Name traegt den Hash des Dockerfiles: aendert es sich, wird neu gebaut; sonst nie (kein Netz noetig).
+function Get-WizardTestImage([string]$RepoRoot) {
+    $df = Join-Path $RepoRoot 'tests\wizard\Dockerfile'
+    $hash = (Get-FileHash -Algorithm SHA256 $df).Hash.Substring(0, 12).ToLower()
+    $name = "lifeagents-wizardtest:$hash"
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    docker image inspect $name *> $null
+    $have = $LASTEXITCODE -eq 0
+    if (-not $have) {
+        Write-Host "  Baue Test-Bild $name (einmalig) ..." -ForegroundColor DarkGray
+        docker build -q -t $name -f $df (Split-Path $df) | Out-Null
+        $have = $LASTEXITCODE -eq 0
+    }
+    $ErrorActionPreference = $prev
+    if (-not $have) { throw "Test-Bild $name liess sich nicht bauen (Netz fuer apt noetig, einmalig)." }
+    $name
+}
+
 # Get-WizardPreviewDump -- Seiten-Modelle neu erzeugen (Docker, ~1 Min) und zwischenspeichern; gibt die Liste zurueck.
 function Get-WizardPreviewDump([string]$RepoRoot, [string]$Container = '', [switch]$Cached) {
     $cache = Get-WizardPreviewCacheFile $RepoRoot
     $u8 = [System.Text.UTF8Encoding]::new($false)
     if ($Cached -and (Test-Path $cache)) { return ([System.IO.File]::ReadAllText($cache, $u8) | ConvertFrom-Json).pages }
-    $image = @(docker images --format '{{.Repository}}:{{.Tag}}' | Where-Object { $_ -like 'lifeagents-substrate-base:*' } | Select-Object -First 1)[0]
-    if (-not $image) { throw 'Kein Image mit Node 24 + bash + jq + curl: erst .\scripts\dev\bootstrap_test_n8n.ps1 -Reset (baut das Basis-Image).' }
+    $image = Get-WizardTestImage $RepoRoot
     if (-not $Container) { $Container = if ($env:WIZARDTEST_CONTAINER) { "$($env:WIZARDTEST_CONTAINER)-preview" } else { "wizardpreview-$PID" } }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $json = docker run --rm --name $Container --entrypoint node -v "${RepoRoot}:/repo:ro" $image /repo/tests/wizard/preview_dump.js

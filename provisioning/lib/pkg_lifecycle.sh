@@ -272,6 +272,16 @@ _pkg_secrets_wizard() {
   _pkg_migrate_legacy_env "$pkg" "$envf"
   if ! ui_interactive; then
     log "Paket-Secrets ($pkg): keine interaktive Eingabe (unattended/kein TTY) — Env-/Store-Werte werden genutzt, Fehlendes skippt graceful."
+    # Werte aus der Prozess-Umgebung (z. B. --unattended-Datei des Wizards) wie eine Antwort speichern, sonst fehlen sie
+    # beim naechsten Update. Nur nicht-leere Werte; nie eine Seen-Zeile (unattended markiert nichts als gefragt).
+    local _k _v
+    while IFS= read -r _k; do
+      [ -n "$_k" ] || continue
+      _v="${!_k:-}"
+      [ -n "$_v" ] || continue
+      ( umask 077; env_upsert "$envf" "$_k" "$_v" )
+    done <<<"$(jq -r --arg only "$only" "$_PKG_CRED_ROWS_JQ | .k" "$mf" 2>/dev/null)"
+    if [ -f "$envf" ]; then chmod 0640 "$envf" 2>/dev/null || true; chown "root:${N8N_USER:-n8n}" "$envf" 2>/dev/null || true; fi
     return 0
   fi
   # Kein Sektions-Banner im Install-Pfad (Install-UX-Phase 4, Runde 2): jede WIRKLICH gestellte Frage bringt
@@ -441,7 +451,7 @@ _pkg_settings_wizard() {
   local pkg="$1" reask="${2:-0}" only="${3:-}" mf entry cat key prompt help validator choices vfn val i seenkey envf cur pre header
   mf="$(_pkg_dir)/$pkg/manifest.json"
   [ -r "$mf" ] || return 0
-  ui_interactive || return 0
+  if ! ui_interactive; then _pkg_settings_from_env "$pkg"; return 0; fi
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     cat="$(jq -r '.cat' <<<"$entry")"; key="$(jq -r '.key' <<<"$entry")"
@@ -598,6 +608,42 @@ _pkg_has_questions() {
     fi
   done
   return 1
+}
+
+# _pkg_settings_from_env <pkg> — unbeaufsichtigt (z. B. --unattended-Datei des Wizards): die erfragbaren Einstellungen
+#   (_PKG_SETTING_ROWS_JQ) aus CONFIG_<CAT>_<KEY> der Prozess-Umgebung puffern — derselbe Name wie die Seen-Zeile der CLI.
+#   Dieselben Regeln wie die Frage: Auswahl nur aus choices, sonst der Manifest-validator; ungueltig -> Warnung, nie
+#   gespeichert. Ein schon gesetzter core.config-Wert wird nie ueberschrieben (wie die Erstfrage). Immer rc 0.
+_pkg_settings_from_env() {
+  local pkg="$1" mf entry cat key envk val vfn rc
+  mf="$(_pkg_dir)/$pkg/manifest.json"
+  [ -r "$mf" ] || return 0
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    cat="$(jq -r '.cat' <<<"$entry")"; key="$(jq -r '.key' <<<"$entry")"
+    printf '%s\n%s\n' "$cat" "$key" | grep -qvE '^[a-z][a-z0-9_]*$' && continue   # SQL-Identifier-Schutz
+    envk="CONFIG_$(printf '%s_%s' "$cat" "$key" | tr '[:lower:]' '[:upper:]')"
+    val="${!envk:-}"
+    [ -n "$val" ] || continue
+    case "$val" in *$'\t'*|*$'\n'*|*$'\r'*) warn "Einstellung ${cat}.${key}: Steuerzeichen im Wert — übersprungen."; continue ;; esac   # Puffer ist TSV
+    [ -n "$(_pkg_setting_current "$cat" "$key")" ] && continue
+    if [ "$(jq -r '(.choices // []) | length' <<<"$entry")" != 0 ]; then
+      if ! jq -e --arg v "$val" 'any((.choices // [])[]; .value == $v)' <<<"$entry" >/dev/null; then
+        warn "Einstellung ${cat}.${key}: der Wert ist keine der möglichen Antworten — übersprungen (später: lifeagents config set ${cat} ${key} <wert>)."
+        continue
+      fi
+    else
+      vfn="$(_pkg_validator_fn "$(jq -r '.validator // "none"' <<<"$entry")")" || vfn='_validate_any'
+      rc=0; "$vfn" "$val" || rc=$?
+      if [ "$rc" -eq 1 ]; then
+        warn "Einstellung ${cat}.${key}: ungültiger Wert — übersprungen (später: lifeagents config set ${cat} ${key} <wert>)."
+        continue
+      fi
+    fi
+    _pkg_setting_unbuffer "$pkg" "$cat" "$key"
+    PKG_SETTINGS_ANSWERS="${PKG_SETTINGS_ANSWERS}${pkg}"$'\t'"${cat}"$'\t'"${key}"$'\t'"${val}"$'\n'
+  done <<<"$(jq -c "$_PKG_SETTING_ROWS_JQ" "$mf" 2>/dev/null)"
+  return 0
 }
 
 # _pkg_apply_settings <pkg> — die gepufferten Antworten dieses Pakets schreiben (UPDATE-only wie
@@ -823,6 +869,7 @@ pkg_install_one() {
   if [ "$no_seed" -eq 1 ]; then SEED_PKG="$pkg" SEED_SKIP_ONBOARDING=1 seed_data
   else                          SEED_PKG="$pkg" seed_data; fi
   # Stufe 5b: vorab erfragte Paket-Einstellungen (Manifest .config.prompt) in die eben geseedeten Zeilen.
+  ui_interactive || _pkg_settings_from_env "$pkg"   # unbeaufsichtigt: CONFIG_<CAT>_<KEY> aus der Antwort-Datei (Wizard)
   _pkg_apply_settings "$pkg"
 
   # Stufe 6: nur die Paket-Workflows deployen (Wortgrenze-Prefix aus provides.agents) + aktivieren.

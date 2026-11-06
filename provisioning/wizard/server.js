@@ -267,7 +267,7 @@ function pageFor(id) {
     case 'connect': return Object.assign(base, connectView());
     case 'handoff': return Object.assign(base, { kind: 'handoff', title: 'Dein Bot ist eingerichtet',
       help: [{ p: P.notes.welcome_sent ? 'Er hat dir in Telegram geschrieben. Tippe dort auf „Haushalt einrichten“.' : 'Schreib ihm in Telegram einfach /start, er zeigt dir den nächsten Schritt.' },
-        { p: 'Zum Schluss fragt dich das Fenster der App lifeagents noch, ob der Rechner wach bleiben soll, damit dein Bot jederzeit antwortet. Dieses Fenster kannst du danach schließen.' }],
+        { p: 'Zum Schluss fragen wir dich noch, ob dieser Rechner wach bleiben soll, damit dein Bot jederzeit antwortet.' }],
       next: P.phase === 'handoff' ? null : 'Weiter', action: 'handoff', done: P.phase === 'handoff' });
     default: return Object.assign(base, { kind: 'info', title: '…' });
   }
@@ -402,11 +402,11 @@ async function answer(id, raw, skip) {
     }
     setAnswer(q, v);
     if (q.key === 'TELEGRAM_BOT_TOKEN') {
-      delete P.A.__tg_conflict; delete P.A.__tg_choice;
+      delete P.A.__tg_conflict; delete P.A.__tg_choice; delete P.notes.bot;
       if (v) {
         const t = await bridge(['tg-check'], { env: { TELEGRAM_BOT_TOKEN: v }, timeoutMs: 30000 });
         if (t && t.ok) {
-          if (t.bot) check = `Gefunden: dein Bot @${t.bot}`;
+          if (/^[A-Za-z0-9_]{1,64}$/.test(t.bot || '')) { check = `Gefunden: dein Bot @${t.bot}`; P.notes.bot = t.bot; }
           if (t.webhook_host) P.A.__tg_conflict = String(t.webhook_host).slice(0, 253);
           else if (t.polling_conflict) P.A.__tg_conflict = 'polling';
         }
@@ -420,7 +420,7 @@ async function answer(id, raw, skip) {
     case 'tg_busy':
       if (!['new', 'take'].includes(raw)) return { error: MSG.choose };
       if (raw === 'new') {
-        delete P.A.__tg_conflict; delete P.A.__tg_choice;
+        delete P.A.__tg_conflict; delete P.A.__tg_choice; delete P.notes.bot;
         delete P.A.TELEGRAM_BOT_TOKEN; delete P.S.TELEGRAM_BOT_TOKEN; delete SECRETS.TELEGRAM_BOT_TOKEN;
         P.cursor = 'h:TELEGRAM_BOT_TOKEN';
         save();
@@ -504,7 +504,7 @@ function startInstall() {
   P.phase = 'installing';
   P.install = { stage: '', status: 'running', started: new Date().toISOString() };
   save();
-  child = spawn('bash', [PROVISION, '--profile', 'release', '--unattended', ANSWERS],
+  child = spawn('bash', [PROVISION, '--profile', 'release', '--unattended', ANSWERS, '--packages', flow.packagesArg(Q, P.A)],
     { env: Object.assign({}, process.env, { LIFEAGENTS_RESULT_FILE: RESULT }), stdio: ['ignore', log, log] });
   fs.closeSync(log);
   const tick = setInterval(() => {
@@ -743,7 +743,8 @@ function startCtl() {
       if (!buf.includes('\n')) return;
       const cmd = buf.split('\n')[0].trim();
       if (cmd === 'issue') s.end(JSON.stringify({ url: issueToken() }) + '\n');
-      else if (cmd === 'status') s.end(JSON.stringify({ phase: P.phase, step: Q ? cursor() : '' }) + '\n');
+      // bot = Benutzername aus getMe (öffentlich, kein Geheimnis): die App braucht ihn für „Telegram öffnen“.
+      else if (cmd === 'status') s.end(JSON.stringify(Object.assign({ phase: P.phase, step: Q ? cursor() : '' }, P.notes.bot ? { bot: P.notes.bot } : {})) + '\n');
       else if (cmd === 'finish') { s.end(JSON.stringify({ ok: true }) + '\n', finishAll); }
       else s.end(JSON.stringify({ error: 'unknown' }) + '\n');
     });

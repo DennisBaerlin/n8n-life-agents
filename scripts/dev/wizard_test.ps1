@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # wizard_test.ps1 -- GRATIS-Tests des Einrichtungs-Wizards (provisioning/wizard): Sicherheit des Servers, Antwort-Datei,
 # Durchlauf gegen Attrappen von provision.sh/lifeagents, Bruecke zur CLI-Quelle (bridge.sh), QR-Code. Kein Netz, kein LLM,
-# kein Substrat: ein Wegwerf-Container mit Node 24 + bash + jq + curl (das lokale Substrat-Basis-Image, sonst -Image), der
+# kein Substrat, kein n8n-Testplatz: ein Wegwerf-Container (--rm) aus dem schlanken Test-Bild tests/wizard/Dockerfile (Node 24 +
+# bash + jq + curl, einmalig lokal gebaut; -Image ueberschreibt), der
 # Repo-Baum schreibgeschuetzt eingehaengt. In CI laeuft dasselbe direkt (Job `wizard` in ci.yml).
 #   .\scripts\dev\wizard_test.ps1                      alle Faelle
 #   .\scripts\dev\wizard_test.ps1 -Filter durchlauf    nur Tests, deren Name passt (node --test-name-pattern)
@@ -12,10 +13,8 @@ param([string]$Filter = '', [string]$Image = '', [string]$Container = '', [switc
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $Container) { $Container = if ($env:WIZARDTEST_CONTAINER) { $env:WIZARDTEST_CONTAINER } else { "wizardtest-$PID" } }
-if (-not $Image) {
-    $Image = @(docker images --format '{{.Repository}}:{{.Tag}}' | Where-Object { $_ -like 'lifeagents-substrate-base:*' } | Select-Object -First 1)[0]
-    if (-not $Image) { throw 'Kein Test-Image: erst .\scripts\dev\bootstrap_test_n8n.ps1 -Reset (baut das Basis-Image) oder -Image <bild mit node 24, bash, jq, curl>.' }
-}
+. (Join-Path $PSScriptRoot 'lib\wizard_preview.ps1')
+if (-not $Image) { $Image = Get-WizardTestImage $RepoRoot }
 $cmd = 'cd /repo && node --test --test-concurrency=1'
 if ($Filter) { $cmd += " --test-name-pattern='$Filter'" }
 $cmd += ' tests/wizard/*.test.js'

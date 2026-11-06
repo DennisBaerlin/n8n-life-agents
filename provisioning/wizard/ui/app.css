@@ -62,19 +62,11 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.6 v
 a { color: var(--accent); text-decoration: underline; }
 a:hover { color: var(--accent-hover); }
 .top { border-bottom: 1px solid var(--hairline); }
-.top div { max-width: 1120px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
+.top div { max-width: 46rem; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
 .wordmark { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 .wordmark .m1 { fill: var(--accent-pale); } .wordmark .m2 { fill: var(--accent); } .wordmark .m3 { fill: var(--ink); }
-.top .hint { font-size: 15px; font-weight: 500; color: var(--gray); }
-.layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); max-width: 1120px; margin: 0 auto; gap: 56px; padding: 48px 24px 96px; align-items: start; }
-nav ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-nav li { padding: 7px 12px 7px 36px; border-radius: var(--radius-sm); font-size: 14.5px; position: relative; color: var(--gray); }
-nav li::before { content: ""; position: absolute; left: 12px; top: 11px; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--hairline); font-size: 11px; line-height: 13px; text-align: center; }
-nav li.done { color: var(--ink); }
-nav li.done::before { content: "✓"; background: var(--accent-pale); border-color: var(--accent-pale); color: var(--ink); }
-nav li.now { background: var(--accent-pale); color: var(--ink); font-weight: 600; }
-nav li.now::before { border-color: var(--accent); background: var(--accent); }
-main { max-width: 46rem; min-width: 0; min-height: 470px; display: flex; flex-direction: column; }
+.layout { max-width: 46rem; margin: 0 auto; padding: 32px 24px 40px; }
+main { max-width: 46rem; min-width: 0; min-height: calc(100vh - 136px); display: flex; flex-direction: column; }   /* Knöpfe unten wie in der App */
 main.solo { margin: 64px auto; padding: 0 24px; }
 h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 22px; font-weight: 700; overflow-wrap: anywhere; }
 p { margin: 0 0 14px; }
@@ -82,7 +74,6 @@ ol, ul { margin: 0 0 14px 22px; padding: 0; }
 main li { margin-bottom: 6px; }
 main li::marker { color: var(--accent); }
 .lead { color: var(--gray); }
-.progress { display: none; font-size: 13.5px; font-weight: 500; color: var(--gray); margin-bottom: 8px; }
 input[type=text], input[type=password], input[type=date] { width: 100%; font: inherit; padding: 11px 14px; border: 1px solid var(--gray); border-radius: var(--radius-sm); background: transparent; color: inherit; }
 input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sr { position: absolute; left: -9999px; }
@@ -133,11 +124,7 @@ dl { margin: 0; }
 .qr .qr-fg { fill: var(--ink); }
 .report { font: 13px/1.5 ui-monospace, Consolas, monospace; background: var(--bg-soft); border-radius: var(--radius-sm); padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .small { font-size: 14px; color: var(--gray); }
-@media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; gap: 12px; padding: 28px 20px 56px; }
-  nav { display: none; }
-  .progress { display: block; }
-}
+@media (max-width: 520px) { .layout { padding: 24px 20px 32px; } }
 /* Mehrfachauswahl: Kästchen zeigt, dass mehrere Antworten gehen */
 .choices.multi .choice b::before { content: ""; display: inline-block; width: 18px; height: 18px; border: 1.5px solid var(--gray); border-radius: 5px; margin-right: 10px; vertical-align: -3px; text-align: center; font-size: 13px; line-height: 15px; }
 .choices.multi .choice.sel b::before { content: "✓"; border-color: var(--accent); background: var(--bg); color: var(--ink); }

@@ -522,9 +522,9 @@ ${scenes}
   // device“, danach die Geräteliste der Verwaltung; Freigabe-Seite /f/funnel mit HTTPS-Zertifikaten (Warnung „public
   // ledger“) und Funnel, Knopf „Enable HTTPS and Funnel“. Tailscale ist nur englisch, darum bleibt der Wortlaut der Seiten
   // englisch; die Schritt-Beschriftungen kommen aus dem Katalog (core.wizard.art.ts_*). Kein Logo (nur der Name als Text),
-  // Anbieter-Zeichen als neutrale Platzhalter. Echte Werte dieser Installation (page.ts: host, tailnet, account; Server prüft
-  // sie) setzt tsFill nur per textContent in die Felder v-<feld>; k-<feld> zeigt sich nur mit Wert, u-<feld> (grauer Balken) nur
-  // ohne. Was vor der Anmeldung unbekannt ist (Konto, Tailnet), bleibt so neutral.
+  // Anbieter-Zeichen als neutrale Platzhalter. Rechnername = gewürfelter Tailscale-Name dieser Installation (page.ts.host
+  // vom Server, LA_TS_HOSTNAME), nie der Name des Computers; tsGuided setzt ihn nur per textContent in die Felder v-host. Konto
+  // und Tailnet werden bewusst nicht ausgelesen und bleiben graue Balken.
   const TS_CHROME = (addrs) => `
   <rect class="chrome" x="0" y="0" width="780" height="44"/>
   <circle class="tl" cx="20" cy="22" r="5"/><circle class="tl" cx="36" cy="22" r="5"/><circle class="tl" cx="52" cy="22" r="5"/>
@@ -554,8 +554,8 @@ ${scenes}
    <circle class="ico" cx="390" cy="118" r="13"/>
    <rect class="ph" x="320" y="146" width="140" height="11" rx="5"/><rect class="ph" x="300" y="166" width="180" height="7" rx="3"/>
    <rect class="row" x="270" y="192" width="240" height="52" rx="6"/>
-   <circle class="av" cx="296" cy="218" r="14"/><text class="t-av k-account v-initial" x="296" y="223"></text>
-   <rect class="ph" x="320" y="206" width="90" height="8" rx="4"/><text class="t-s k-account v-account" x="320" y="233"></text><rect class="ph u-account" x="320" y="226" width="130" height="8" rx="4"/>
+   <circle class="av" cx="296" cy="218" r="14"/>
+   <rect class="ph" x="320" y="206" width="90" height="8" rx="4"/><rect class="ph" x="320" y="226" width="130" height="8" rx="4"/>
    <rect class="row" x="270" y="252" width="240" height="40" rx="6"/><rect class="ph" x="286" y="268" width="120" height="8" rx="4"/>
    <rect class="ph" x="270" y="318" width="220" height="7" rx="3"/><rect class="ph" x="270" y="332" width="160" height="7" rx="3"/>
   </g>
@@ -566,7 +566,7 @@ ${scenes}
    <text class="t-h c" x="390" y="152">Connect device</text>
    <rect class="dev" x="306" y="170" width="34" height="24" rx="3"/><path class="ln" d="M316 199 h14"/>
    <text class="t-m t-strong v-host" x="352" y="182"></text><text class="t-sm" x="352" y="198">Linux</text>
-   <text class="t-sm c k-tailnet" x="390" y="228">Tailnet: <tspan class="v-tailnet"></tspan></text><rect class="ph u-tailnet" x="320" y="222" width="140" height="8" rx="4"/>
+   <rect class="ph" x="320" y="222" width="140" height="8" rx="4"/>
    <rect class="b-dark" x="270" y="246" width="240" height="36" rx="4"/><text class="t-b-dark" x="390" y="269">Connect</text>
   </g>
 
@@ -582,7 +582,7 @@ ${scenes}
    <rect class="b-dark" x="636" y="120" width="110" height="30" rx="4"/><text class="t-b-dark" x="691" y="140">Add device</text>
    <text class="t-th" x="40" y="198">MACHINE</text><text class="t-th" x="210" y="198">ADDRESSES</text><text class="t-th" x="340" y="198">VERSION</text><text class="t-th" x="440" y="198">LAST SEEN</text>
    <line class="ln" x1="30" y1="208" x2="750" y2="208"/>
-   <text class="t-m t-strong v-host" x="40" y="232"></text><text class="t-sm k-account v-account" x="40" y="249"></text><rect class="ph u-account" x="40" y="242" width="110" height="7" rx="3"/>
+   <text class="t-m t-strong v-host" x="40" y="232"></text><rect class="ph" x="40" y="242" width="110" height="7" rx="3"/>
    <rect class="ph" x="210" y="230" width="90" height="8" rx="4"/><rect class="ph" x="340" y="230" width="44" height="8" rx="4"/>
    <circle class="okdot" cx="446" cy="235" r="4.5"/><text class="t-s" x="456" y="240">Connected</text>
    <line class="ln" x1="30" y1="262" x2="750" y2="262"/>
@@ -640,32 +640,20 @@ ${scenes}
     { key: 'ts_funnel_4', acts: [{ to: [500, 466], ring: [196, 440, 388, 48], cam: { x: 390, y: 440, s: 1 }, wait: 1300 }, { to: [500, 466], click: true, set: { done: '1' }, cam: { x: 390, y: 440, s: 1 } }] },
   ];
 
-  // Werte dieser Installation (page.ts vom Server). Nur erwartete Zeichen; alles andere gilt als unbekannt. Ohne Rechnernamen
-  // gilt der Standard von LA_TS_HOSTNAME (compose.yml), den der Tailscale-Container dann trägt.
-  const TS_VALUE = /^[A-Za-z0-9._@+-]{1,100}$/;
-  function tsValues(page) {
-    const ts = (page && page.ts) || {};
-    const v = {};
-    for (const k of ['host', 'tailnet', 'account']) if (typeof ts[k] === 'string' && TS_VALUE.test(ts[k])) v[k] = ts[k];
-    if (!v.host) v.host = 'bot';
-    return v;
-  }
-  function tsFill(el, v) {
-    const svg = el.querySelector('svg.ts');
-    const short = (x) => (x.length > 30 ? x.slice(0, 29) + '…' : x);
-    for (const k of ['host', 'tailnet', 'account']) {
-      svg.setAttribute('data-has-' + k, v[k] ? '1' : '0');
-      if (v[k]) svg.querySelectorAll('.v-' + k).forEach((t) => { t.textContent = short(v[k]); });
-    }
-    if (v.account) svg.querySelectorAll('.v-initial').forEach((t) => { t.textContent = v.account.charAt(0).toUpperCase(); });
+  // Rechnername (page.ts.host vom Server); nur erwartete Zeichen, sonst der Standard von LA_TS_HOSTNAME (compose.yml).
+  const TS_HOST = /^[A-Za-z0-9._-]{1,63}$/;
+  function tsHost(page) {
+    const v = page && page.ts && page.ts.host;
+    return typeof v === 'string' && TS_HOST.test(v) ? v : 'bot';
   }
   // Hülle wie fbGuided: Beschriftungen und Name aus dem Katalog (ts_<bild>_<n> mit {name} = Rechnername, ts_<bild>_label).
   function tsGuided(page, o) {
     const tx = texts(page);
-    const v = tsValues(page);
+    const host = tsHost(page);
     const r = guided(Object.assign({ width: 780, height: 560, cursor: [600, 120], light: true, tx, label: tx(o.name.replace('-', '_') + '_label') }, o,
-      { steps: o.steps.map((s) => Object.assign({ cap: tx(s.key, { name: v.host }) }, s)) }));
-    tsFill(r.el, v);
+      { steps: o.steps.map((s) => Object.assign({ cap: tx(s.key, { name: host }) }, s)) }));
+    const short = host.length > 30 ? host.slice(0, 29) + '…' : host;
+    r.el.querySelectorAll('svg.ts .v-host').forEach((t) => { t.textContent = short; });
     return r;
   }
   // page.art (Server, Seite connect): needs_login/key_expired → ts_login, needs_funnel → ts_funnel. ts_machine (Gerät in der

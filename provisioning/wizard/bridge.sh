@@ -39,16 +39,7 @@ PROFILE=release
 . "$_BR_PROV/lib/release_inputs.sh"
 # shellcheck source=/dev/null
 . "$_BR_PROV/lib/bootstrap_owner.sh"
-# Docker-Betrieb (Paket 1): die eine Datei mit den Docker-Wrappern, falls vorhanden (reach-ports).
-if [ -f "$_BR_PROV/lib/runtime.sh" ]; then
-  # shellcheck source=/dev/null
-  . "$_BR_PROV/lib/runtime.sh"
-fi
-# Erreichbarkeit (Paket 3): reach_status_json, falls vorhanden.
-if [ -f "$_BR_PROV/lib/reach.sh" ]; then
-  # shellcheck source=/dev/null
-  . "$_BR_PROV/lib/reach.sh"
-fi
+# runtime.sh (Docker-Wrapper) und reach.sh (Weg nach außen) lädt common.sh mit.
 
 # Host-Fragen, die der Wizard stellt (Reihenfolge = _INSTALL_ENV_KEYS). Nicht dabei: die n8n-Anmeldung (die Installation
 # erzeugt sie) und der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3). DOMAIN fragt der Wizard nur
@@ -218,58 +209,33 @@ br_paperless_check() {
 #   selbst und schreibt die Übernahme nur nach ausdrücklicher Wahl.
 #   {"ok":true,"bot":"…","webhook_host":"…"|"","polling_conflict":bool} bzw. {"ok":false,"reason":"unauthorized|unreachable"}.
 br_tg_check() {
-  local me info upd bot host conflict=false code
+  local me info bot
   [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || { jq -nc '{ok:false, reason:"unauthorized"}'; return 0; }
   me="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" getMe -sS --max-time 10 2>/dev/null || true)"
   if [ -z "$me" ]; then jq -nc '{ok:false, reason:"unreachable"}'; return 0; fi
   [ "$(jq -r '.ok // false' <<<"$me" 2>/dev/null || echo false)" = true ] || { jq -nc '{ok:false, reason:"unauthorized"}'; return 0; }
   bot="$(jq -r '.result.username // ""' <<<"$me")"
-  # Die Prüfung des Installers (telegram_webhook_json, release_inputs.sh, Paket 1) gilt, sobald es sie im Baum gibt:
-  # dieselbe Regel für Wizard und Installer-Sperre. „ours“ (zeigt schon auf diesen Rechner) ist kein Konflikt.
-  if declare -F telegram_webhook_json >/dev/null; then
-    info="$(telegram_webhook_json 2>/dev/null || true)"
-    if [ "$(jq -r '.ok // false' <<<"$info" 2>/dev/null || echo false)" != true ]; then
-      jq -nc --arg r "$(jq -r '.reason // "unreachable"' <<<"$info" 2>/dev/null || echo unreachable)" \
-        '{ok:false, reason:(if $r == "unreachable" then "unreachable" else "unauthorized" end)}'
-      return 0
-    fi
-    jq -c --arg bot "$bot" '{ok:true, bot:$bot, webhook_host:(if .state == "foreign" then (.webhook_host // "") else "" end),
-      polling_conflict:(.polling_conflict // false)}' <<<"$info"
+  # Dieselbe Regel wie die Installer-Sperre (telegram_webhook_json, release_inputs.sh). „ours“ (zeigt schon auf diesen
+  # Rechner) ist kein Konflikt.
+  info="$(telegram_webhook_json 2>/dev/null || true)"
+  if [ "$(jq -r '.ok // false' <<<"$info" 2>/dev/null || echo false)" != true ]; then
+    jq -nc --arg r "$(jq -r '.reason // "unreachable"' <<<"$info" 2>/dev/null || echo unreachable)" \
+      '{ok:false, reason:(if $r == "unreachable" then "unreachable" else "unauthorized" end)}'
     return 0
   fi
-  info="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" getWebhookInfo -sS --max-time 10 2>/dev/null || true)"
-  [ "$(jq -r '.ok // false' <<<"$info" 2>/dev/null || echo false)" = true ] || { jq -nc '{ok:false, reason:"unreachable"}'; return 0; }
-  host="$(jq -r '.result.url // ""' <<<"$info" | sed -E 's#^[a-z]+://##; s#[/:?].*$##')"
-  if [ -z "$host" ]; then
-    # Ohne Webhook: holt ein anderes Programm gerade per getUpdates ab? Telegram antwortet dann 409. timeout=0, kein
-    # offset -> nichts wird als gelesen markiert.
-    upd="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" 'getUpdates?timeout=0&limit=1' -sS --max-time 10 2>/dev/null || true)"
-    code="$(jq -r '.error_code // 0' <<<"$upd" 2>/dev/null || echo 0)"
-    [ "$code" = 409 ] && conflict=true
-  fi
-  jq -nc --arg bot "$bot" --arg host "$host" --argjson c "$conflict" '{ok:true, bot:$bot, webhook_host:$host, polling_conflict:$c}'
+  jq -c --arg bot "$bot" '{ok:true, bot:$bot, webhook_host:(if .state == "foreign" then (.webhook_host // "") else "" end),
+    polling_conflict:(.polling_conflict // false)}' <<<"$info"
 }
 
-# reach-status — Zustand des Tunnels für die Anzeige im Wizard (Schnittstelle zu Paket 3). Ist dort reach_status_json
-#   definiert, gilt es (Format von Paket 3, lib/reach.sh): {"mode":…,"state":"unavailable|starting|needs_login|needs_machine_auth|
-#   needs_funnel|key_expired|ports_busy|pending_activation|ready","url":"https://login.tailscale.com/…","key_days_left":…,
-#   "dns_name":"…"}. Bis dahin: unbekannt.
-br_reach_status() {
-  if declare -F reach_status_json >/dev/null; then reach_status_json; return 0; fi
-  jq -nc '{state:"unavailable"}'
-}
+# reach-status — Zustand des Weges nach außen für die Anzeige im Wizard, Format von reach_status_json (lib/reach.sh).
+br_reach_status() { reach_status_json; }
 
-# reach-ports — Prüfliste Nr. 13 (FritzBox-Weg): sind Port 80 und 443 auf diesem Rechner frei? Die Messung gehört dem
-#   Installer/Rand (Paket 1/3, reach_ports_json): {"state":"free|busy|unknown"}. Bis dahin unbekannt — der Wizard
-#   empfiehlt bei „busy“ den Tunnel und löscht nie etwas.
+# reach-ports — Prüfliste Nr. 13 (FritzBox-Weg): sind Port 80 und 443 auf diesem Rechner frei? {"state":"free|busy|unknown"};
+#   der Wizard empfiehlt bei „busy“ den Tunnel und löscht nie etwas. rt_host_port_free (lib/runtime.sh) misst per
+#   Docker-Kurzlauf und scheitert auch ohne Docker oder Probe-Image: das ist „unknown“, nicht „busy“.
 br_reach_ports() {
-  if declare -F reach_ports_json >/dev/null; then reach_ports_json; return 0; fi
-  # Wrapper des Docker-Betriebs (lib/runtime.sh, Paket 1): rt_host_port_free <port> misst den Port auf dem Rechner.
-  if declare -F rt_host_port_free >/dev/null; then
-    if rt_host_port_free 80 && rt_host_port_free 443; then jq -nc '{state:"free"}'; else jq -nc '{state:"busy"}'; fi
-    return 0
-  fi
-  jq -nc '{state:"unknown"}'
+  if ! rt_docker_ok || [ -z "${LA_PROBE_IMAGE:-}" ]; then jq -nc '{state:"unknown"}'; return 0; fi
+  if rt_host_port_free 80 && rt_host_port_free 443; then jq -nc '{state:"free"}'; else jq -nc '{state:"busy"}'; fi
 }
 
 # paperless-ports — veröffentlichte Ports der Paperless-Container auf DIESEM Rechner (Vorausfüllung der Adresse, Owner-Runde
@@ -283,11 +249,11 @@ br_paperless_ports() {
 }
 
 # public-ip — öffentliche IPv4 dieses Anschlusses (MyFRITZ-Prüfung: eine Adresse wird nur vorgeschlagen, wenn sie hierauf
-#   zeigt). Die Messung gehört Paket 3 (reach_public_ipv4, dieselbe wie für die DS-Lite-Prüfung, nicht doppelt gebaut).
+#   zeigt). Die Messung ist reach_public_ipv4 (lib/reach.sh), dieselbe wie für die DS-Lite-Prüfung.
 #   Ausgabe {"ip":"203.0.113.7"} oder {"ip":""} (unbekannt -> der Wizard schlägt nichts vor).
 br_public_ip() {
-  local ip=''
-  if declare -F reach_public_ipv4 >/dev/null; then ip="$(reach_public_ipv4 2>/dev/null || true)"; fi
+  local ip
+  ip="$(reach_public_ipv4 2>/dev/null || true)"
   [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || ip=''
   jq -nc --arg ip "$ip" '{ip:$ip}'
 }

@@ -682,7 +682,7 @@ async function answer(id, raw, skip) {
       P.A.__reach = raw;
       delete P.A.__ports;   // bei jeder Wahl neu messen: ein inzwischen beendetes Programm gibt den Weg wieder frei
       if (raw === 'fritzbox') {
-        // Prüfliste Nr. 13: Ports 80/443 belegt? Die Messung gehört Paket 1/3 (reach_ports_json); unbekannt = weiter.
+        // Prüfliste Nr. 13: Ports 80/443 belegt? Gemessen über die Brücke (rt_host_port_free); unbekannt = weiter.
         const r = await bridge(['reach-ports'], { timeoutMs: 20000 });
         if (r && r.state === 'busy') P.A.__ports = 'busy';
       }

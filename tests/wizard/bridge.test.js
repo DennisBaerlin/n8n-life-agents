@@ -85,9 +85,13 @@ test('Paperless-Prüfung: Version, Zugang, localhost, nicht erreichbar', async (
   } finally { srv.close(); }
 });
 
-test('Schnittstellen zu Paket 1/3 ohne deren Code: unbekannt statt Fehler', () => {
-  assert.deepEqual(run(['reach-status']), { state: 'unavailable' });
-  assert.deepEqual(run(['reach-ports']), { state: 'unknown' });
-  assert.deepEqual(run(['paperless-ports']), { ports: [] }, 'ohne runtime.sh keine Suche');
+// Der Test-Container hat weder Docker noch einen gewählten Weg: so sieht es auf einem frischen Rechner vor der Wahl aus.
+test('Schnittstellen zu Paket 1/3: frischer Rechner ohne Weg = nicht verfügbar, ohne Docker unbekannt statt belegt', () => {
+  const r = run(['reach-status']);
+  assert.equal(r.state, 'unavailable');
+  assert.equal(r.reason, 'no_mode');
+  assert.deepEqual(run(['reach-ports']), { state: 'unknown' }, 'nicht messbar ist nicht belegt');
+  assert.deepEqual(run(['reach-ports'], '', { LA_PROBE_IMAGE: '' }), { state: 'unknown' }, 'ohne Probe-Image nicht messbar');
+  assert.deepEqual(run(['paperless-ports']), { ports: [] }, 'rt_published_ports_json fehlt in runtime.sh: keine Suche');
   assert.deepEqual(run(['tg-check'], '', { TELEGRAM_BOT_TOKEN: '' }), { ok: false, reason: 'unauthorized' });
 });

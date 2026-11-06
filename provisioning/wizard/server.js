@@ -24,6 +24,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const flow = require('./flow');
 const qr = require('./qr');
+const scan = require('./scan');
 
 const VERSION = '1';
 const PORT = parseInt(process.env.WIZARD_PORT || '8091', 10);
@@ -237,15 +238,11 @@ function pageFor(id) {
       page.optional = false;
     }
     if (key === 'OWNER_LANGUAGE' && !v) page.value = 'de';
-    if (q.setting === 'general.paperless_url' && v === undefined && P.notes.paperless_guess) {
-      page.value = P.notes.paperless_guess;
-      page.note = { kind: '', text: 'Auf diesem Rechner läuft Paperless. Die Adresse ist schon eingetragen, prüf sie kurz.' };
-    }
+    if (q.setting === 'general.paperless_url' && v === undefined) Object.assign(page, paperlessSearchView());
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
     if (NO_SKIP.includes(key)) page.optional = false;
     if (q.kind === 'date') page.placeholder = 'JJJJ-MM-TT';
-    if (key === 'TELEGRAM_BOT_TOKEN') page.figure = 'botfather';   // Bild: so sieht der Chat mit BotFather aus (figures.js)
     return page;
   }
   switch (id) {
@@ -272,7 +269,7 @@ function pageFor(id) {
     case 'fb_guide': return Object.assign(base, { kind: 'info', title: 'Richte die FritzBox ein',
       help: [{ p: 'In der FritzBox stellst du ein, dass Nachrichten aus dem Internet bei diesem Rechner ankommen. Das sind einige Schritte, die Anleitung zeigt jeden mit Bild.' }],
       note: { kind: 'warn', text: 'Meldet die FritzBox „Freigabe existiert bereits“, nutzt schon etwas anderes diesen Weg. Lösche nichts, sonst fällt es aus. Geh dann zurück und nimm den Tunnel.' },
-      link: { href: GUIDE_URL, label: 'Anleitung für die FritzBox öffnen' }, figure: 'fritzbox', next: 'Ich habe die Freigaben angelegt' });
+      link: { href: GUIDE_URL, label: 'Anleitung für die FritzBox öffnen' }, next: 'Ich habe die Freigaben angelegt' });
     case 'review': return Object.assign(base, { kind: 'review', title: 'Stimmt alles so?', rows: reviewRows(), next: 'Alles richtig, weiter' });
     case 'confirm': return Object.assign(base, { kind: 'confirm', title: 'Das wird auf deinem Rechner geändert',
       help: [{ p: 'Bis hierher hat die Einrichtung nichts verändert. Du kannst jetzt noch abbrechen.' }],
@@ -285,6 +282,37 @@ function pageFor(id) {
       next: P.phase === 'handoff' ? null : 'Weiter', action: 'handoff', done: P.phase === 'handoff' });
     default: return Object.assign(base, { kind: 'info', title: '…' });
   }
+}
+
+// Paperless-Adresse finden (Owner-Runden 2026-11-06), nur auf deren Seite und nur, wenn das Modul Dokumente gewählt ist:
+//   1) dieser Rechner: Paperless-Container mit veröffentlichtem Port (bridge.sh paperless-ports) + LA_HOST_IP der App;
+//   2) sonst das eigene Heimnetz (scan.js: /24, typische Ports, Anmeldeseite als Erkennung).
+//   Ein Treffer = vorausgefüllt, mehrere = Auswahl, keiner = leeres Feld. Die Live-Prüfung beim Weiter bleibt wie bisher.
+let paperlessSearching = null;
+function startPaperlessSearch() {
+  if (paperlessSearching || (P.notes.paperless_search && P.notes.paperless_search.state === 'done')) return;
+  P.notes.paperless_search = { state: 'running', found: [] };
+  paperlessSearching = (async () => {
+    const hostIp = process.env.LA_HOST_IP;
+    let found = [];
+    const r = await bridge(['paperless-ports'], { timeoutMs: 20000 });
+    const local = flow.paperlessGuess(r && r.ports, hostIp);
+    if (local) found = [local];
+    else found = await scan.scanPaperless({ hostIp, timeoutMs: parseInt(process.env.WIZARD_SCAN_TIMEOUT_MS || '400', 10) });
+    P.notes.paperless_search = { state: 'done', found: found.slice(0, 8), local: !!local };
+    save();
+  })().catch(() => { P.notes.paperless_search = { state: 'done', found: [] }; }).finally(() => { paperlessSearching = null; });
+}
+function paperlessSearchView() {
+  startPaperlessSearch();
+  const s = P.notes.paperless_search || { state: 'running', found: [] };
+  if (s.state === 'running') return { poll: true, note: { kind: '', text: 'Suche im Heimnetz nach Paperless …', busy: true } };
+  if (s.found.length === 1) {
+    return { value: s.found[0], note: { kind: '', text: s.local ? 'Auf diesem Rechner läuft Paperless. Die Adresse ist schon eingetragen, prüf sie kurz.'
+      : 'Im Heimnetz gefunden. Die Adresse ist schon eingetragen, prüf sie kurz.' } };
+  }
+  if (s.found.length > 1) return { suggestions: s.found, note: { kind: '', text: 'Im Heimnetz läuft Paperless mehrmals. Tipp die richtige Adresse an.' } };
+  return { note: { kind: '', text: 'Im Heimnetz wurde kein Paperless gefunden. Trag die Adresse selbst ein.' } };
 }
 
 function labelOf(id, value) {
@@ -451,11 +479,6 @@ async function answer(id, raw, skip) {
     case 'packages': {
       if (!Array.isArray(raw) || raw.some((p) => typeof p !== 'string' || !flow.pkgDef(Q, p))) return { error: MSG.choose };
       P.A.__packages = Q.packages.map((p) => p.id).filter((p) => raw.includes(p));
-      if (P.A.__packages.includes('paperless') && P.notes.paperless_guess === undefined) {
-        // Paperless auf DIESEM Rechner suchen (Owner-Runde 2026-11-06); ein Treffer füllt die Adresse vor, sonst bleibt sie leer.
-        const r = await bridge(['paperless-ports'], { timeoutMs: 20000 });
-        P.notes.paperless_guess = flow.paperlessGuess(r && r.ports, process.env.LA_HOST_LAN_IP);
-      }
       break;
     }
     case 'reach':
@@ -657,7 +680,8 @@ function cookieSid(req) {
 }
 function hasSession(req) { const s = cookieSid(req); return !!(session && s && safeEq(s, session.sid)); }
 
-const STATIC = { '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/figures.js': ['figures.js', 'text/javascript; charset=utf-8'],
+// Bilder und Animationen liefert di9 als ui/art/art.css + ui/art/art.js (Zuordnung Seite -> Bild nur dort, nach page.id).
+const STATIC = { '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/art.js': ['art/art.js', 'text/javascript; charset=utf-8'], '/art.css': ['art/art.css', 'text/css; charset=utf-8'],
   '/app.css': ['app.css', 'text/css; charset=utf-8'] };
 // Startseite mit dem Projekt-Zeichen (ui/mark.html, eine Datei, gegen die Quelle der Site prüfbar) an jeder Stelle <!--mark-->.
 function indexHtml() {
@@ -694,7 +718,9 @@ async function handle(req, res) {
   }
   if (req.method === 'GET' && STATIC[url.pathname]) {
     const [f, type] = STATIC[url.pathname];
-    return send(res, 200, fs.readFileSync(path.join(UI_DIR, f)), type);
+    let body;
+    try { body = fs.readFileSync(path.join(UI_DIR, f)); } catch (_) { return deny(res, 404); }   // z. B. noch keine Bilder (art/)
+    return send(res, 200, body, type);
   }
   if (req.method === 'GET' && url.pathname === '/') {
     if (!hasSession(req)) return send(res, 403, page403(), 'text/html; charset=utf-8');

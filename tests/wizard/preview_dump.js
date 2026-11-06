@@ -26,7 +26,7 @@ async function step(w, id, value, opt) {
   });
   await new Promise((r) => pl.listen(0, '0.0.0.0', r));
   const plUrl = `http://${lanIp()}:${pl.address().port}`;
-  const w = await startWizard({ env: { LA_HOST_LAN_IP: '192.0.2.10' } });
+  const w = await startWizard({ env: { LA_HOST_IP: '192.0.2.10' } });
   try {
     await login(w);
     await step(w, 'h:OWNER_LANGUAGE', 'de');
@@ -48,6 +48,7 @@ async function step(w, id, value, opt) {
     await step(w, 'c:career:ADZUNA_APP_KEY', 'beispiel-key');
     await step(w, 'c:career:JSEARCH_API_KEY', '', { skip: true });
     await step(w, 's:estate:general.bundesland', 'bayern');
+    await waitFor(async () => !(await state(w)).json.page.poll);   // Paperless-Suche fertig (hier: Container auf diesem Rechner)
     await step(w, 's:paperless:general.paperless_url', plUrl);
     await step(w, 'c:paperless:PAPERLESS_API_TOKEN', 'beispieltoken0123');
     await step(w, 'reach', 'fritzbox');
@@ -99,5 +100,27 @@ async function step(w, id, value, opt) {
     const p = await waitFor(async () => { const x = (await state(t)).json.page; return x.link ? x : null; });
     out.push({ name: 'connect-tailscale', page: p });
   } finally { await t.stop(); }
+  // Paperless im Heimnetz: Suche läuft, mehrere gefunden (Auswahl), keiner gefunden. Attrappen auf den echten Suchports.
+  const LOGIN = '<html><head><meta name="author" content="Paperless-ngx project and contributors"></head></html>';
+  const mock = (port) => new Promise((r) => { const s = http.createServer((q, res) => { res.writeHead(200); res.end(LOGIN); }); s.listen(port, '0.0.0.0', () => r(s)); });
+  const toPaperless = async (x) => {
+    await login(x);
+    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
+      ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', ['paperless']]]) await answer(x, id, v);
+  };
+  const m1 = await mock(8000); const m2 = await mock(8010);
+  const s1 = await startWizard({ env: { LA_HOST_IP: lanIp(), WIZARD_SCAN_TIMEOUT_MS: '200' } });
+  try {
+    await toPaperless(s1);
+    await waitFor(async () => !(await state(s1)).json.page.poll, 60000);
+    await shot(s1, 'paperless-auswahl');
+  } finally { await s1.stop(); m1.close(); m2.close(); }
+  const s2 = await startWizard({ env: { LA_HOST_IP: lanIp() } });
+  try {
+    await toPaperless(s2);
+    await shot(s2, 'paperless-suche');
+    await waitFor(async () => !(await state(s2)).json.page.poll, 120000);
+    await shot(s2, 'paperless-keiner');
+  } finally { await s2.stop(); }
   process.stdout.write(JSON.stringify({ pages: out }) + '\n');
 })().catch((e) => { process.stderr.write(String(e && e.stack) + '\n'); process.exit(1); });

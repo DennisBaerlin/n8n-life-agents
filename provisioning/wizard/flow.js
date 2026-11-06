@@ -243,7 +243,7 @@ function parseAnswers(text) {
 
 // paperlessGuess(ports, lanIp) -> vorausgefüllte Paperless-Adresse oder '' (Owner-Runde 2026-11-06: „wenn was gefunden
 //   wird, sonst leer lassen“). Nur DIESER Rechner: ports = veröffentlichte Ports von Containern mit Paperless-Image
-//   ([{ip, port}], aus runtime.sh), lanIp = Heimnetz-Adresse des Rechners (die App setzt LA_HOST_LAN_IP). Ein Port nur an
+//   ([{ip, port}], aus runtime.sh), lanIp = Heimnetz-Adresse des Rechners (die App setzt LA_HOST_IP). Ein Port nur an
 //   127.0.0.1/::1 ist aus dem Verbund nicht erreichbar und zählt nicht. Genau ein Treffer -> http://<lanIp>:<port>; keiner
 //   oder mehrere (mehrdeutig) -> ''. Bestätigt wird wie bei einer Eingabe per Live-Check.
 const IPV4_RE = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;

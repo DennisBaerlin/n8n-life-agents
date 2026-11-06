@@ -62,7 +62,7 @@ test('Startseite: Projekt-Zeichen eingesetzt, Bild-Bausteine nur als eigene Date
   assert.ok(!r.body.includes('<!--mark-->'));
   assert.ok(!r.body.includes('-->'), 'kein Rest des Datei-Kommentars in der Seite');
   assert.ok(!/<script>/.test(r.body), 'kein Inline-Skript');
-  assert.equal((await req(w, 'GET', '/figures.js')).status, 200);
+  assert.ok([200, 404].includes((await req(w, 'GET', '/art.js')).status), 'Bilder (art/) kommen von di9; fehlen sie, 404 statt Absturz');
 });
 
 test('neue Anmeldung beendet die alte Sitzung', async () => {

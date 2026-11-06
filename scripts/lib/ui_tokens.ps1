@@ -43,7 +43,7 @@ function Get-UiSurfaces {
                 [pscustomobject]@{ Selector = ':root'; Group = 'light' }
                 [pscustomobject]@{ Media = '@media (prefers-color-scheme: dark)'; Selector = ':root'; Group = 'dark' }
                 [pscustomobject]@{ Selector = '.qr'; Group = 'light' }
-                # Handy-Bild (figures.js): Rahmen immer dunkel, Bildschirm immer hell wie ein Telegram-Chat am Tag.
+                # Handy-Bilder (ui/art/, di9): Rahmen immer dunkel, Bildschirm immer hell wie ein Telegram-Chat am Tag.
                 [pscustomobject]@{ Selector = '.phone'; Group = 'dark' }
                 [pscustomobject]@{ Selector = '.phone .screen'; Group = 'light' }
             )

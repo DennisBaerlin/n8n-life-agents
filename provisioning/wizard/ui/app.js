@@ -10,6 +10,7 @@
   let page = null;
   let pollT = null;
   let busy = false;
+  let renderedId = null;
 
   function h(tag, attrs) {
     const e = document.createElement(tag);
@@ -113,12 +114,18 @@
   function render() {
     clearTimeout(pollT);
     const p = page;
+    // Neu zeichnen derselben Seite (Abfrage während einer Suche): schon Getipptes bleibt stehen.
+    const prevIn = document.getElementById('in');
+    const keep = prevIn && renderedId === p.id && prevIn.value ? prevIn.value : null;
+    renderedId = p.id;
+    let art = null;   // Bild dieser Seite (di9, ui/art/art.js), s. u.
     const kids = [
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
     kids.push(...help);
-    if (p.note) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));
+    if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
+    else if (p.note) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));
 
     if (['text', 'date', 'secret'].includes(p.kind)) {
       const type = p.kind === 'secret' ? 'password' : p.kind === 'date' ? 'date' : 'text';
@@ -126,6 +133,14 @@
         h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? 'Schon eingetragen. Leer lassen, um es zu behalten.' : (p.placeholder || null),
           autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'er',
           on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } } } }));
+      // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
+      if ((p.suggestions || []).length) {
+        kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': 'Gefundene Adressen' }, p.suggestions.map((s) => h('button', {
+          type: 'button', class: 'choice', on: { click: (e) => {
+            const i = document.getElementById('in'); i.value = s; i.focus();
+            main.querySelectorAll('.suggest .choice').forEach((b) => b.classList.toggle('sel', b === e.currentTarget));
+          } } }, h('b', { text: s })))));
+      }
     }
     if (p.kind === 'choice' || p.kind === 'multi') {
       const multi = p.kind === 'multi';
@@ -139,6 +154,7 @@
           if (multi) { b.classList.toggle('sel'); b.setAttribute('aria-pressed', String(b.classList.contains('sel'))); return; }
           wrap.querySelectorAll('[data-c]').forEach((x) => { x.classList.toggle('sel', x === b); x.setAttribute('aria-checked', String(x === b)); });
           setErr('');
+          if (art && art.select) art.select(o.value);   // Bild folgt der Auswahl (z. B. Charakter des Bots)
         });
         wrap.appendChild(b);
       }
@@ -168,11 +184,11 @@
     // Nach „Weiter“ holt die App (gleiches Fenster) ihre eigenen Seiten zurück, sobald sie phase=handoff sieht (alle 3 s).
     if (p.kind === 'handoff' && p.done) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), 'Einen Moment …')));
 
-    // Bild „im leeren Platz“ (figures.js): Inhalt links, Bild rechts; im schmalen Fenster untereinander.
-    const fig = p.figure && window.WIZARD_FIGURES && window.WIZARD_FIGURES[p.figure] ? window.WIZARD_FIGURES[p.figure]() : null;
-    if (fig && fig.classList.contains('fig-wide')) kids.push(fig);   // breite Schemata unter dem Text
-    else if (fig) kids.splice(1, kids.length - 1, h('div', { class: 'split' }, h('div', { class: 'split-main' }, kids.slice(1)), fig));
     kids.push(h('div', { class: 'err', id: 'er', role: 'alert' }), h('div', { id: 'ck' }));
+    // Einbaustelle für Bilder und Animationen (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild.
+    // Platz und Verhalten im schmalen Fenster regelt art.css; die CSP gilt auch dort (kein style=, kein Inline-Skript).
+    art = window.WizardArt && typeof window.WizardArt.mount === 'function' ? window.WizardArt.mount(p) : null;
+    if (art && art.el) kids.push(art.el);
     if (p.kind === 'install' && p.failed) {
       kids.push(h('p', null, h('button', { type: 'button', id: 'rp', on: { click: showReport } }, 'Bericht für die Hilfe anzeigen')), h('div', { id: 'rpt' }));
     }
@@ -187,6 +203,7 @@
     kids.push(actions);
     main.replaceChildren(...kids);
     const f = document.getElementById('in');
+    if (f && keep !== null) f.value = keep;
     if (f) f.focus();
     if (p.poll && !PREVIEW) pollT = setTimeout(load, 1500);
   }

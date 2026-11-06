@@ -27,8 +27,14 @@ const qr = require('./qr');
 
 const VERSION = '1';
 const PORT = parseInt(process.env.WIZARD_PORT || '8091', 10);
-const BIND = process.env.WIZARD_BIND || '127.0.0.1';
-const ORIGINS = (process.env.WIZARD_PUBLIC_ORIGIN || `http://127.0.0.1:${PORT},http://localhost:${PORT}`)
+// Docker-Betrieb (LIFEAGENTS_RUNTIME=compose): der Rand `edge` veröffentlicht nur 127.0.0.1:${LA_WIZARD_PORT} des Rechners
+// und reicht an anchor:8091 weiter — darum im Pod auf 0.0.0.0 lauschen, Host/Origin = die veröffentlichte Adresse (Caddy
+// reicht Host unverändert durch). Schutz bleibt Einmal-Wert + Host/Origin + CSRF (n8n im selben Namensraum sieht den Port).
+const COMPOSE = process.env.LIFEAGENTS_RUNTIME === 'compose';
+const BIND = process.env.WIZARD_BIND || (COMPOSE ? '0.0.0.0' : '127.0.0.1');
+const DEFAULT_ORIGIN = /^\d{1,5}$/.test(process.env.LA_WIZARD_PORT || '') ? `http://127.0.0.1:${process.env.LA_WIZARD_PORT}`
+  : `http://127.0.0.1:${PORT},http://localhost:${PORT}`;
+const ORIGINS = (process.env.WIZARD_PUBLIC_ORIGIN || DEFAULT_ORIGIN)
   .split(',').map((s) => s.trim().replace(/\/+$/, '').toLowerCase()).filter(Boolean);
 const HOSTS = new Set(ORIGINS.map((o) => new URL(o).host));
 const STATE_DIR = process.env.WIZARD_STATE_DIR || '/var/lib/lifeagents-wizard';

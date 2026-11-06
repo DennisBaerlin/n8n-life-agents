@@ -204,6 +204,53 @@ household_cmd_blocked() {
   done
 }
 
+# owner_connect_machine reach|arm|status|finalize — derselbe Ablauf wie owner_connect_guided (owner_connect.sh), maschinenlesbar für den
+#   Wizard im Docker-Betrieb (`lifeagents household pair-owner --machine <verb>`, Plan „Docker-Installer für Freunde“,
+#   Paket 4): je Aufruf genau eine JSON-Zeile auf stdout, kein Terminal, keine Rückfrage; der Wizard zeigt den Link als
+#   QR-Code und fragt den Stand selbst ab. Bausteine sind die Funktionen oben (_oc_reachable, _arm_owner_challenge,
+#   _oc_finalize, _oc_send_welcome) — kein zweiter Pfad. Der Code steht nur in dieser Ausgabe (wie im Terminal nur im
+#   Kasten), nie im Log und nie über Telegram.
+#     reach    -> {"ok":true} | {"ok":false,"problem":"<Klartext>"}       (Erreichbarkeit + Webhook, setzt ihn ggf. neu)
+#     arm      -> {"ok":true,"connected":false,"bot":"…","link":"https://t.me/<bot>?start=<code>","expires_at":"…"}
+#                 | {"ok":true,"connected":true} | {"ok":false,"reason":"<code>"}
+#     status   -> {"ok":true,"connected":bool}
+#     finalize -> {"ok":true,"welcome_sent":bool} | {"ok":false,"reason":"not_connected|finalize_failed"}
+owner_connect_machine() {
+  local verb="${1:-}" chat code result bot exp
+  need_cmd jq || { printf '{"ok":false,"reason":"jq_missing"}\n'; return 0; }
+  chat="$(_owner_chat_id_db)"
+  # if-Kette statt case: contract_lint liest case-Arme in dieser Datei als CLI-Verben der Hilfe.
+  if [ "$verb" = reach ]; then
+    [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${DOMAIN:-}" ] && [ -n "${N8N_API_KEY:-}" ] \
+      || { jq -nc '{ok:false, problem:"Für die Verbindung fehlt noch eine Angabe (Bot, Adresse oder n8n-Zugang)."}'; return 0; }
+    if _oc_reachable; then jq -nc '{ok:true}'; else jq -nc --arg p "$_OC_PROBLEM" '{ok:false, problem:$p}'; fi
+  elif [ "$verb" = arm ]; then
+    if _oc_is_chat_id "$chat"; then jq -nc '{ok:true, connected:true}'; return 0; fi
+    [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || { jq -nc '{ok:false, reason:"no_token"}'; return 0; }
+    _oc_owner_person_exists || { jq -nc '{ok:false, reason:"no_owner"}'; return 0; }
+    bot="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" getMe -fsS --max-time 10 2>/dev/null | jq -r '.result.username // empty' 2>/dev/null || true)"
+    [ -n "$bot" ] || { jq -nc '{ok:false, reason:"telegram_unreachable"}'; return 0; }
+    code="$(rand_hex 8)"
+    result="$(_arm_owner_challenge "$code")"
+    if [ "$(printf '%s' "$result" | jq -r '.ok // false' 2>/dev/null || echo false)" != "true" ]; then
+      jq -nc --arg r "$(printf '%s' "$result" | jq -r '.reason // "arm_failed"' 2>/dev/null || echo arm_failed)" '{ok:false, reason:$r}'
+      return 0
+    fi
+    exp="$(printf '%s' "$result" | jq -r '.expires_at // ""' 2>/dev/null || true)"
+    jq -nc --arg bot "$bot" --arg link "https://t.me/${bot}?start=${code}" --arg exp "$exp" \
+      '{ok:true, connected:false, bot:$bot, link:$link, expires_at:$exp}'
+  elif [ "$verb" = status ]; then
+    if _oc_is_chat_id "$chat"; then jq -nc '{ok:true, connected:true}'; else jq -nc '{ok:true, connected:false}'; fi
+  elif [ "$verb" = finalize ]; then
+    _oc_is_chat_id "$chat" || { jq -nc '{ok:false, reason:"not_connected"}'; return 0; }
+    if ! ( _oc_finalize ) >/dev/null 2>&1; then jq -nc '{ok:false, reason:"finalize_failed"}'; return 0; fi
+    if _oc_send_welcome; then jq -nc '{ok:true, welcome_sent:true}'; else jq -nc '{ok:true, welcome_sent:false}'; fi
+  else
+    jq -nc '{ok:false, reason:"usage"}'
+  fi
+  return 0
+}
+
 # --- pair-owner: den Owner mit Telegram verbinden (Erstverbindung ODER Re-Link nach `unlink <owner>`) ---
 # Install-UX-Phase 3: derselbe gefuehrte Ablauf wie am Ende der Installation (owner_connect_guided —
 # ein Code-Pfad, zwei Aufrufer): Erreichbarkeit pruefen (ggf. Caddyfile + "Erneut pruefen/Spaeter"),
@@ -212,7 +259,7 @@ household_cmd_blocked() {
 # `unlink`. Der Code laeuft ueber den 600-Treiber (bootstrap_owner._arm_owner_challenge), nie im argv.
 household_cmd_pair_owner() {
   local chat
-  # Wizard im Docker-Betrieb: maschinenlesbarer Einstieg ohne Terminal (owner_connect_machine, eine JSON-Zeile je Aufruf).
+  # Wizard im Docker-Betrieb: maschinenlesbarer Einstieg ohne Terminal (owner_connect_machine oben, eine JSON-Zeile je Aufruf).
   if [ "${1:-}" = "--machine" ]; then
     _pkg_resolve_env
     load_install_env

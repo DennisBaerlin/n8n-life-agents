@@ -72,6 +72,16 @@ test('ctl.js (Aufruf der App per docker exec): url, status, unbekannter Befehl',
   for (const bad of ['constructor', 'prune', '']) assert.equal(spawnSync(process.execPath, [ctlJs, bad], { env }).status, 64, bad);
 });
 
+test('Docker-Betrieb: Adresse aus LA_WIZARD_PORT (veröffentlicht am Rand), eigener Port gilt dann nicht als Host', async () => {
+  const c = await startWizard({ env: { LIFEAGENTS_RUNTIME: 'compose', LA_WIZARD_PORT: '5999', WIZARD_PUBLIC_ORIGIN: '', WIZARD_BIND: '' } });
+  try {
+    const { url } = await ctl(c, 'issue');
+    assert.match(url, /^http:\/\/127\.0\.0\.1:5999\/start\?t=/);
+    assert.equal((await req(c, 'GET', '/app.js')).status, 421, 'interner Port ist nicht die veröffentlichte Adresse');
+    assert.equal((await req(c, 'GET', '/app.js', { headers: { Host: '127.0.0.1:5999' } })).status, 200);
+  } finally { await c.stop(); }
+});
+
 test('POST: Origin, CSRF, Content-Type und Sec-Fetch-Site sind Pflicht', async () => {
   await login(w);
   const body = { id: 'x', value: 'y' };

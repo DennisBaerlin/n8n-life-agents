@@ -12,7 +12,9 @@ function Get-WizardPreviewCacheFile([string]$RepoRoot) { Join-Path $RepoRoot '.l
 function Get-WizardTestImage([string]$RepoRoot) {
     $df = Join-Path $RepoRoot 'tests\wizard\Dockerfile'
     $hash = (Get-FileHash -Algorithm SHA256 $df).Hash.Substring(0, 12).ToLower()
-    $name = "lifeagents-wizardtest:$hash"
+    # Name je Session (WIZARDTEST_CONTAINER, z. B. di4-wizardtest), damit Aufraeumen nie ein fremdes Bild trifft.
+    $repo = if ($env:WIZARDTEST_CONTAINER -match '^[a-z0-9][a-z0-9_.-]*$') { $env:WIZARDTEST_CONTAINER } else { 'lifeagents-wizardtest' }
+    $name = "${repo}:$hash"
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     docker image inspect $name *> $null
     $have = $LASTEXITCODE -eq 0

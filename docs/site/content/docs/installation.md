@@ -2,7 +2,14 @@
 title: "Installation, Update & Betrieb"
 ---
 
-Der Bot läuft auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM) — es gibt genau **einen** Installationsweg, keine Variantenauswahl. Ein einziger Befehl richtet PostgreSQL, n8n und das **Grundsystem** ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach **einzeln** dazu (siehe [„Funktionen hinzufügen"](#funktionen-hinzufügen)). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen **Reverse Proxy** bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine **fertige, direkt eintragbare Konfiguration** dafür aus.
+## Welcher Weg passt zu dir? {#weg}
+
+Es gibt zwei gleichwertige Wege. Der Bot kann danach in beiden dasselbe. Die Frage ist: **Hast du einen eigenen Server?**
+
+- **Ja, ich habe einen eigenen Server** (auch als Container/LXC oder virtuelle Maschine) und etwas Technik-Wissen: **Installation per Befehl.** Ein Befehl im Terminal, die Fragen kommen im Terminal. Den Weg ins Internet stellst du mit deinem eigenen Reverse Proxy und einer Port-Weiterleitung her. Anleitung: diese Seite, ab [Bevor du startest](#bevor-du-startest).
+- **Nein, ich habe einen Mac oder Windows-PC**, der durchlaufen kann, und kein Technik-Wissen: **Start-App.** Datei laden, App öffnen, die Fragen kommen im Fenster. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: [Installation mit der Start-App](start-app.html).
+
+Der Rest dieser Seite beschreibt die **Installation per Befehl**. Der Bot läuft dabei auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM). Ein einziger Befehl richtet PostgreSQL, n8n und das **Grundsystem** ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach **einzeln** dazu (siehe [„Funktionen hinzufügen"](#funktionen-hinzufügen)). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen **Reverse Proxy** bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine **fertige, direkt eintragbare Konfiguration** dafür aus.
 
 ## Bevor du startest
 
@@ -81,7 +88,7 @@ Konkret sind das drei Bausteine:
 
 - **Eine öffentliche Domain**, die auf deinen Internet-Anschluss zeigt. Zuhause ändert sich die IP-Adresse oft — dafür gibt es DynDNS-Dienste (die FritzBox bringt mit **MyFRITZ!** einen eigenen mit, siehe [FritzBox einrichten](fritzbox.html)).
 - **Eine Port-Weiterleitung** am Router: eingehende Verbindungen auf **Port 443** an deinen Server. (Telegram akzeptiert nur die Ports 443, 80, 88 oder 8443 — wir nutzen 443.)
-- **Ein Reverse Proxy** — auf diesem Server oder auf einem anderen Rechner in deinem Heimnetz —, der HTTPS verschlüsselt und nur die Telegram-Adressen (`/webhook*`) an n8n weiterreicht. **Das ist Pflicht:** n8n selbst spricht kein HTTPS — eine reine Port-Weiterleitung ohne Reverse Proxy genügt nicht.
+- **Ein Reverse Proxy** — auf diesem Server oder auf einem anderen Rechner in deinem Heimnetz —, der HTTPS verschlüsselt und nur die Telegram-Adressen an n8n weiterreicht (welche, steht unter [Reverse Proxy](#reverse-proxy)). **Das ist Pflicht:** n8n selbst spricht kein HTTPS — eine reine Port-Weiterleitung ohne Reverse Proxy genügt nicht.
 
 Antwortet der Bot nach der Installation nicht, fehlt fast immer einer dieser drei Punkte. Richte sie ein und führe dann — **warst du noch nie mit dem Bot verbunden** — `lifeagents household pair-owner` aus: der Befehl prüft die Erreichbarkeit (und zeigt dir dabei Telegrams eigene Fehlermeldung), meldet den Bot neu bei Telegram an und verbindet dich danach. **Warst du schon verbunden**, nimm stattdessen `lifeagents reconfigure` → Grundsystem → „Unverändert neu anwenden" — das richtet alles neu ein und meldet den Bot wieder bei Telegram an.
 
@@ -102,11 +109,11 @@ Der Reverse Proxy ist der „Türsteher" zwischen Internet und deinem Server: Er
 Typisch bei Proxmox & Co.: Ein zentraler Caddy, Nginx Proxy Manager oder Traefik in einem eigenen Container bedient schon andere Dienste (etwa Home Assistant) unter **einer** Domain. Dann gibst du bei der Installation die IP-Adresse dieses Proxy-Rechners an. Was passiert:
 
 - n8n nimmt Verbindungen aus dem Heimnetz an — aber eine **Firewall-Regel lässt nur deinen Proxy-Rechner** durch; alle anderen Geräte im Heimnetz werden abgewiesen. Lässt sich die Regel nicht einrichten, bleibt n8n aus Sicherheitsgründen nur lokal erreichbar, und der Installer sagt dir das deutlich.
-- Du bekommst einen **Baustein zum Einfügen** in deine bestehende Proxy-Konfiguration (gespeichert auch in `/etc/lifeagents/reverse-proxy.caddyfile`). Beispiel für einen zentralen Caddy, der nach Pfad verteilt (Home Assistant bekommt alles andere):
+- Du bekommst einen **Baustein zum Einfügen** in deine bestehende Proxy-Konfiguration (gespeichert auch in `/etc/lifeagents/reverse-proxy.caddyfile`). Beispiel für einen zentralen Caddy, der nach Pfad verteilt (Home Assistant bekommt alles andere). Hinter `path` setzt der Installer genau die Pfade aus der Liste [oben](#reverse-proxy) ein:
 
 ```caddyfile
 deine-domain.myfritz.net {
-    @lifeagents path /webhook/* /webhook-test/* /webhook-waiting/* /webhook-waiting-telegram
+    @lifeagents path <Pfade aus der Liste oben>
     handle @lifeagents {
         reverse_proxy 192.168.178.20:5678    # IP des lifeagents-Rechners
     }

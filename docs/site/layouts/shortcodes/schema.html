@@ -1,0 +1,8 @@
+{{/* Schema-Zeichnung: eigene Zeichnung statt Fremd-Screenshot (keine AVM- oder Tailscale-Bilder, keine Logos, keine echten Werte).
+     Bindet layouts/partials/schema/<name>.html inline ein, damit die Farben als var(--token) aus site.css greifen.
+     Aufruf im Markdown als Shortcode "schema" mit den Parametern name (Datei ohne .html) und caption (Bildunterschrift).
+     Die Bildunterschrift traegt die Aussage auch fuer Screenreader, die Zeichnung selbst ist aria-hidden. */}}
+<figure class="schema">
+{{ partial (printf "schema/%s.html" (.Get "name")) . }}
+<figcaption>{{ .Get "caption" }}</figcaption>
+</figure>

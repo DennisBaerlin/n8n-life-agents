@@ -100,6 +100,10 @@
       
         <li><a href="../docs/installation.html" class="active">Installation &amp; Betrieb</a></li>
       
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
         <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
       
         <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
@@ -190,6 +194,10 @@
       
         <li><a href="../docs/installation.html" class="active">Installation &amp; Betrieb</a></li>
       
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
         <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
       
         <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
@@ -212,7 +220,13 @@
   </details>
   <article class="docs-content">
     <h1>Installation, Update &amp; Betrieb</h1>
-    <p>Der Bot läuft auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM) — es gibt genau <strong>einen</strong> Installationsweg, keine Variantenauswahl. Ein einziger Befehl richtet PostgreSQL, n8n und das <strong>Grundsystem</strong> ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach <strong>einzeln</strong> dazu (siehe <a href="#funktionen-hinzuf%C3%BCgen">„Funktionen hinzufügen&quot;</a>). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen <strong>Reverse Proxy</strong> bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine <strong>fertige, direkt eintragbare Konfiguration</strong> dafür aus.</p>
+    <h2 id="weg">Welcher Weg passt zu dir?</h2>
+<p>Es gibt zwei gleichwertige Wege. Der Bot kann danach in beiden dasselbe. Die Frage ist: <strong>Hast du einen eigenen Server?</strong></p>
+<ul>
+<li><strong>Ja, ich habe einen eigenen Server</strong> (auch als Container/LXC oder virtuelle Maschine) und etwas Technik-Wissen: <strong>Installation per Befehl.</strong> Ein Befehl im Terminal, die Fragen kommen im Terminal. Den Weg ins Internet stellst du mit deinem eigenen Reverse Proxy und einer Port-Weiterleitung her. Anleitung: diese Seite, ab <a href="#bevor-du-startest">Bevor du startest</a>.</li>
+<li><strong>Nein, ich habe einen Mac oder Windows-PC</strong>, der durchlaufen kann, und kein Technik-Wissen: <strong>Start-App.</strong> Datei laden, App öffnen, die Fragen kommen im Fenster. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: <a href="start-app.html">Installation mit der Start-App</a>.</li>
+</ul>
+<p>Der Rest dieser Seite beschreibt die <strong>Installation per Befehl</strong>. Der Bot läuft dabei auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM). Ein einziger Befehl richtet PostgreSQL, n8n und das <strong>Grundsystem</strong> ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach <strong>einzeln</strong> dazu (siehe <a href="#funktionen-hinzuf%C3%BCgen">„Funktionen hinzufügen&quot;</a>). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen <strong>Reverse Proxy</strong> bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine <strong>fertige, direkt eintragbare Konfiguration</strong> dafür aus.</p>
 <h2 id="bevor-du-startest">Bevor du startest</h2>
 <p>Diese Dinge brauchst du vorher:</p>
 <ul>
@@ -263,7 +277,7 @@
 <ul>
 <li><strong>Eine öffentliche Domain</strong>, die auf deinen Internet-Anschluss zeigt. Zuhause ändert sich die IP-Adresse oft — dafür gibt es DynDNS-Dienste (die FritzBox bringt mit <strong>MyFRITZ!</strong> einen eigenen mit, siehe <a href="fritzbox.html">FritzBox einrichten</a>).</li>
 <li><strong>Eine Port-Weiterleitung</strong> am Router: eingehende Verbindungen auf <strong>Port 443</strong> an deinen Server. (Telegram akzeptiert nur die Ports 443, 80, 88 oder 8443 — wir nutzen 443.)</li>
-<li><strong>Ein Reverse Proxy</strong> — auf diesem Server oder auf einem anderen Rechner in deinem Heimnetz —, der HTTPS verschlüsselt und nur die Telegram-Adressen (<code>/webhook*</code>) an n8n weiterreicht. <strong>Das ist Pflicht:</strong> n8n selbst spricht kein HTTPS — eine reine Port-Weiterleitung ohne Reverse Proxy genügt nicht.</li>
+<li><strong>Ein Reverse Proxy</strong> — auf diesem Server oder auf einem anderen Rechner in deinem Heimnetz —, der HTTPS verschlüsselt und nur die Telegram-Adressen an n8n weiterreicht (welche, steht unter <a href="#reverse-proxy">Reverse Proxy</a>). <strong>Das ist Pflicht:</strong> n8n selbst spricht kein HTTPS — eine reine Port-Weiterleitung ohne Reverse Proxy genügt nicht.</li>
 </ul>
 <p>Antwortet der Bot nach der Installation nicht, fehlt fast immer einer dieser drei Punkte. Richte sie ein und führe dann — <strong>warst du noch nie mit dem Bot verbunden</strong> — <code>lifeagents household pair-owner</code> aus: der Befehl prüft die Erreichbarkeit (und zeigt dir dabei Telegrams eigene Fehlermeldung), meldet den Bot neu bei Telegram an und verbindet dich danach. <strong>Warst du schon verbunden</strong>, nimm stattdessen <code>lifeagents reconfigure</code> → Grundsystem → „Unverändert neu anwenden&quot; — das richtet alles neu ein und meldet den Bot wieder bei Telegram an.</p>
 <h2 id="reverse-proxy">Reverse Proxy</h2>
@@ -283,10 +297,10 @@
 <p>Typisch bei Proxmox &amp; Co.: Ein zentraler Caddy, Nginx Proxy Manager oder Traefik in einem eigenen Container bedient schon andere Dienste (etwa Home Assistant) unter <strong>einer</strong> Domain. Dann gibst du bei der Installation die IP-Adresse dieses Proxy-Rechners an. Was passiert:</p>
 <ul>
 <li>n8n nimmt Verbindungen aus dem Heimnetz an — aber eine <strong>Firewall-Regel lässt nur deinen Proxy-Rechner</strong> durch; alle anderen Geräte im Heimnetz werden abgewiesen. Lässt sich die Regel nicht einrichten, bleibt n8n aus Sicherheitsgründen nur lokal erreichbar, und der Installer sagt dir das deutlich.</li>
-<li>Du bekommst einen <strong>Baustein zum Einfügen</strong> in deine bestehende Proxy-Konfiguration (gespeichert auch in <code>/etc/lifeagents/reverse-proxy.caddyfile</code>). Beispiel für einen zentralen Caddy, der nach Pfad verteilt (Home Assistant bekommt alles andere):</li>
+<li>Du bekommst einen <strong>Baustein zum Einfügen</strong> in deine bestehende Proxy-Konfiguration (gespeichert auch in <code>/etc/lifeagents/reverse-proxy.caddyfile</code>). Beispiel für einen zentralen Caddy, der nach Pfad verteilt (Home Assistant bekommt alles andere). Hinter <code>path</code> setzt der Installer genau die Pfade aus der Liste <a href="#reverse-proxy">oben</a> ein:</li>
 </ul>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-caddyfile" data-lang="caddyfile"><span style="display:flex;"><span>deine-domain.myfritz.net {
-</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">@lifeagents</span> <span style="color:#66d9ef">path</span> <span style="color:#e6db74">/webhook/*</span> <span style="color:#e6db74">/webhook-test/*</span> <span style="color:#e6db74">/webhook-waiting/*</span> <span style="color:#e6db74">/webhook-waiting-telegram</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">@lifeagents</span> <span style="color:#66d9ef">path</span> <span style="color:#e6db74">&lt;Pfade</span> <span style="color:#e6db74">aus</span> <span style="color:#e6db74">der</span> <span style="color:#e6db74">Liste</span> <span style="color:#e6db74">oben&gt;</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">handle</span> <span style="color:#a6e22e">@lifeagents</span> {
 </span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">reverse_proxy</span> 192.168.178.20:<span style="color:#ae81ff">5678</span><span style="color:#75715e">    # IP des lifeagents-Rechners
 </span></span></span><span style="display:flex;"><span>    }

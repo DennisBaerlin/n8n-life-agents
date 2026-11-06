@@ -70,6 +70,8 @@ At the end the installer checks whether Telegram can reach your server — if no
 
 Step-by-step guide including reverse proxy, router and Telegram bot setup: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German); FritzBox users: **[FritzBox setup](https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)** (German, a MyFRITZ! share for the proxy machine, not a plain port forward).
 
+**No server of your own?** A second, equivalent way is in the works: a desktop start app for a Mac (Windows to follow) that installs Docker if needed and walks you through every question in a window, no terminal. Telegram reaches the computer through a Tailscale Funnel tunnel (recommended) or a FritzBox share. Guide: **[Start app](https://dennisbaerlin.github.io/n8n-life-agents/docs/start-app.html)** (German).
+
 <details>
 <summary><strong>What the run does in detail</strong></summary>
 

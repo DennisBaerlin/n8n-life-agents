@@ -245,7 +245,7 @@ _pkg_secret_ask() {
 }
 
 # Die EINE Auswahl der erfragbaren Paket-Angaben (jq-Filter ueber manifest.json), gelesen von _pkg_secrets_wizard /
-#   _pkg_settings_wizard (CLI) UND provisioning/wizard/bridge.sh (Wizard im Docker-Betrieb) — beide Wege fragen dieselben
+#   _pkg_settings_wizard (CLI, ohne Terminal auch _pkg_settings_from_env) UND provisioning/wizard/bridge.sh (Wizard im Docker-Betrieb) — beide Wege fragen dieselben
 #   Angaben in derselben Reihenfolge. Je Zeile ein JSON-Objekt; der Zugangs-Filter braucht --arg only ("" = alle Zugaenge).
 # shellcheck disable=SC2016  # $-Ausdrücke sind jq-Variablen, keine Shell-Variablen
 _PKG_CRED_ROWS_JQ='(.credentials // {}) | to_entries[] | select(.key != "_comment") | select($only == "" or .key == $only)
@@ -281,7 +281,7 @@ _pkg_secrets_wizard() {
       [ -n "$_v" ] || continue
       [ "$(read_env_value "$envf" "$_k" 2>/dev/null || true)" = "$_v" ] && continue
       ( umask 077; env_upsert "$envf" "$_k" "$_v" ); _n=$((_n + 1))   # wie _store_answer: nie kurz lesbar fuer andere
-    done <<<"$(jq -r '(.credentials // {}) | to_entries[] | select(.key != "_comment") | .value.env | keys[]' "$mf")"
+    done <<<"$(jq -r --arg only '' "$_PKG_CRED_ROWS_JQ | .k" "$mf")"
     if [ "$_n" -gt 0 ]; then
       chmod 0640 "$envf" 2>/dev/null || true; chown "root:${N8N_USER:-n8n}" "$envf" 2>/dev/null || true
       log "Paket-Secrets ($pkg): ${_n} Wert(e) aus der Antwort-Datei/Umgebung gespeichert."
@@ -571,7 +571,7 @@ _pkg_settings_from_env() {
     fi
     _pkg_setting_unbuffer "$pkg" "$cat" "$key"
     PKG_SETTINGS_ANSWERS="${PKG_SETTINGS_ANSWERS}${pkg}"$'\t'"${cat}"$'\t'"${key}"$'\t'"${val}"$'\n'
-  done <<<"$(jq -c '(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[] | select(.value | type == "object" and has("prompt")) | {cat:$c, key:.key, validator:.value.validator, choices:.value.choices}' "$mf" 2>/dev/null)"
+  done <<<"$(jq -c "$_PKG_SETTING_ROWS_JQ" "$mf" 2>/dev/null)"
   return 0
 }
 

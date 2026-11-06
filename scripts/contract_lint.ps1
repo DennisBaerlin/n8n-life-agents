@@ -2081,8 +2081,9 @@ $rtRel = 'provisioning/lib/runtime.sh'
 $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
 # Deinstaller (Pruefliste Nr. 17, Paket 2): `volume rm` nur mit EINEM Namen aus "$1" (rt_volume_rm_own prueft davor unser
 # Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
-# damit kein zweiter, breiterer Aufruf durchrutscht.
-$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(>|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
+# damit kein zweiter, breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt als Format (rt_published_ports_json,
+# Paperless-Vorschlag im Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
+$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(>|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
 $composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
@@ -2120,6 +2121,8 @@ foreach ($sa in @(
     @{ n = 'runtime: exec ok';       r = $rtRel; t = "  docker exec -u postgres `"`$c`" psql`n";                  want = 0 },
     @{ n = 'runtime: prune';         r = $rtRel; t = "  docker system prune -f`n";                                 want = 2 },
     @{ n = 'runtime: ps -q';         r = $rtRel; t = "  docker ps -q`n";                                           want = 2 },
+    @{ n = 'runtime: ps json ok';    r = $rtRel; t = "  r=`"`$(docker ps --format '{`"image`":{{json .Image}}}')`"`n"; want = 0 },
+    @{ n = 'runtime: ps Kennungen';  r = $rtRel; t = "  docker ps --format '{{.ID}}'`n";                         want = 1 },
     @{ n = 'runtime: compose frei';  r = $rtRel; t = "  docker compose down -v`n";                                 want = 2 },
     @{ n = 'runtime: compose down';  r = $rtRel; t = "  _rt_compose down`n";                                       want = 1 },
     @{ n = 'runtime: down fest ok';  r = $rtRel; t = "rt_stack_down() { _rt_compose down --remove-orphans; }`n";   want = 0 },

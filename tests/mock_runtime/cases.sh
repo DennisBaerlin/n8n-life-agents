@@ -39,6 +39,7 @@ if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) 
 case "$me $1 ${2:-}" in
   "docker volume inspect") [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
   "docker image inspect")  [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
+  "docker ps --format")    printf '%s' "${STUB_PS:-}"; exit 0 ;;   # STUB_PS = Zeilen wie aus dem festen JSON-Format
   "docker inspect -f")
     # STUB_RUNNING = laufende Container (Leerzeichen-Liste); STUB_IMG_<name mit _> = Image eines Containers.
     n="${*: -1}"
@@ -368,5 +369,20 @@ case "$(read_env_value "$UPDATE_TICK_STATE" LAST_TICK)" in ''|*[!0-9]*) fail K.l
 rm -f "$UPDATE_TICK_STATE"; : > "$W/tick.log"; ( UPDATE_CHECK_AT=2400 BACKUP_AUTO_AT=2400 update_tick )
 eq K.vor-der-uhrzeit-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 unset LIFEAGENTS_RUNTIME
+
+# ---------------------------------------------------------------------------- O: veroeffentlichte Ports (Wizard, Paperless)
+_ps_rows='{"image":"ghcr.io/paperless-ngx/paperless-ngx:2","ports":"0.0.0.0:8010->8000/tcp, [::]:8010->8000/tcp"}
+{"image":"postgres:17","ports":"0.0.0.0:8000->8000/tcp"}
+{"image":"paperless-ngx/paperless-ngx","ports":"127.0.0.1:9000->8000/tcp, :::8011->8000/tcp, 8000/tcp, 0.0.0.0:7000->7000/tcp"}
+{"image":"paperless-ngx/paperless-ngx","ports":"0.0.0.0:8020-8021->8000-8001/tcp"}'
+: > "$STUB_LOG"
+eq O.treffer-nur-image-und-port '[{"ip":"0.0.0.0","port":8010},{"ip":"127.0.0.1","port":9000},{"ip":"::","port":8010},{"ip":"::","port":8011}]' \
+  "$(STUB_PS="$_ps_rows" rt_published_ports_json paperless-ngx 8000)"
+eq O.nur-festes-format 'docker|ps|--format|{"image":{{json .Image}},"ports":{{json .Ports}}}|stdin=' "$(cat "$STUB_LOG")"
+eq O.keine-container '[]' "$(STUB_PS='' rt_published_ports_json paperless-ngx 8000)"
+out="$(STUB_FAIL='|ps|' rt_published_ports_json paperless-ngx 8000)"; rc=$?
+eq O.ohne-docker " rc=1" "$out rc=$rc"
+out="$(STUB_PS='kein json' rt_published_ports_json paperless-ngx 8000)"; rc=$?
+eq O.kaputte-ausgabe " rc=1" "$out rc=$rc"
 
 exit "$fails"

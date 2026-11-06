@@ -9,7 +9,8 @@
 #
 # DOCKER-POSITIVLISTE (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
 #   docker exec · docker inspect · docker image inspect · docker version · docker volume inspect · docker volume create ·
-#   docker run --rm · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
+#   docker run --rm · docker ps --format '{"image":…}' (nur in rt_published_ports_json: festes JSON-Objekt, keine
+#   Kennungen) · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
 # Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` NUR in
 # rt_volume_rm_own (prueft vorher unser Label an genau diesem einen Namen) und `compose down` NUR in rt_stack_down (ohne
 # -v/--rmi: externe Volumes und Images bleiben; entfernt nur Container + Netze DIESES Projekts).
@@ -240,6 +241,20 @@ rt_stack_dry_run() { _rt_compose up --dry-run -d --no-deps "$@" 2>&1; }
 rt_host_port_free() {
   docker run --rm --name "${LA_PROJECT}-portprobe-$1" --label "${LA_LABEL}=${LA_PROJECT}" -p "$1:9" \
     "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" true >/dev/null 2>&1
+}
+# rt_published_ports_json <image-teil> <container-port> -> eine JSON-Zeile [{"ip":"0.0.0.0","port":8010}, …]: veroeffentlichte
+# Host-Ports laufender Container DIESES Rechners (auch fremder, z. B. Paperless fuer den Adress-Vorschlag im Wizard), deren
+# Image <image-teil> enthaelt, fuer <container-port>/tcp. ip wie Docker sie meldet ("::" ohne Klammern), Paare einmalig;
+# Port-Bereiche (8010-8011->…) zaehlen nicht. Ohne Docker oder bei einem Fehler: keine Ausgabe und rc 1 (der Aufrufer setzt
+# dann [] ein, wizard/bridge.sh; ein eigenes [] ergaebe dort zwei JSON-Werte). Nur lesend; `ps --format` mit festem
+# JSON-Objekt liefert keine Kennungen, die ein zweiter Befehl weiterverarbeiten koennte (Positivliste).
+rt_published_ports_json() {
+  local rows
+  rows="$(docker ps --format '{"image":{{json .Image}},"ports":{{json .Ports}}}' 2>/dev/null)" || return 1
+  # shellcheck disable=SC2016  # $img/$cp sind jq-Variablen
+  jq -sc --arg img "$1" --arg cp "$2" '[ .[] | select((.image // "") | contains($img)) | (.ports // "") | split(", ")[]
+      | capture("^(?<ip>.*):(?<port>[0-9]+)->(?<cp>[0-9]+)/tcp$") | select(.cp == $cp)
+      | {ip: (.ip | ltrimstr("[") | rtrimstr("]")), port: (.port | tonumber)} ] | unique' <<<"$rows" 2>/dev/null || return 1
 }
 # rt_stack_up <dienste…> — Dienste des Verbunds starten (Abhaengigkeiten laut compose.yml, z. B. master -> gesunde DB).
 rt_stack_up() { _rt_compose up -d "$@"; }

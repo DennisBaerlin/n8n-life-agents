@@ -9,6 +9,7 @@
 #      startet wan nur bei freien Ports und ueberschreibt nichts, ungueltige Adresse = Abbruch.
 #   C  Rand-Konfiguration: die oeffentlichen Pfade in compose.yml = die der CLI (templates/Caddyfile.tpl), Editor/Wizard
 #      aus dem eigenen Namensraum gesperrt, wan reicht nur an edge:8088.
+#   D  DS-Lite automatisch (reach_dslite): UPnP der FritzBox zuerst, dann MyFRITZ!; kein Wert in der Ausgabe.
 # Die Attrappen ersetzen nur die Docker-/Telegram-Wrapper (rt_edge_*, rt_stack_up, rt_host_port_free, tg_api_curl);
 # alles andere ist der echte Lib-Code des Checkouts.
 #
@@ -77,6 +78,19 @@ reach_funnel_configured bot.tail-fantasy.ts.net '' && fail F_empty "leer" || pas
 # --- Attrappen fuer S/P ----------------------------------------------------------------------------------------------
 LOG="$W/calls.log"; : > "$LOG"
 A_TS_UP=1; A_WAN_UP=0; A_TS_JSON=''; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=0; A_PORTS_FREE=1; A_TG=''
+# Attrappe der beiden SOAP-Aufrufe an die FritzBox (Gruppe D): A_UP_STATUS = NewConnectionStatus, A_UP_IP =
+# NewExternalIPAddress (Wert '-' = Tag fehlt), A_UP_DOWN=1 = keine Antwort (kein fritz.box, UPnP-Status aus).
+A_UP_DOWN=1; A_UP_STATUS=Connected; A_UP_IP=''
+upx() { printf '<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:%sResponse xmlns:u="urn:schemas-upnp-org:service:WANIPConnection:1">%s</u:%sResponse></s:Body></s:Envelope>' "$1" "$2" "$1"; }
+_reach_upnp() {
+  printf 'upnp %s\n' "$1" >> "$LOG"
+  [ "$A_UP_DOWN" = 1 ] && return 0
+  case "$1" in
+    GetStatusInfo) upx GetStatusInfo "<NewConnectionStatus>$A_UP_STATUS</NewConnectionStatus><NewUptime>42</NewUptime>" ;;
+    GetExternalIPAddress) if [ "$A_UP_IP" = - ]; then upx GetExternalIPAddress ''
+      else upx GetExternalIPAddress "<NewExternalIPAddress>$A_UP_IP</NewExternalIPAddress>"; fi ;;
+  esac
+}
 rt_edge_active() { case "$1" in tailscale) [ "$A_TS_UP" = 1 ] ;; wan) [ "$A_WAN_UP" = 1 ] ;; *) return 2 ;; esac; }
 rt_edge_restart() { printf 'restart %s\n' "$1" >> "$LOG"; }
 rt_edge_logs_hint() { printf 'logs %s' "$1"; }
@@ -292,6 +306,37 @@ grep -q '^echo$' "$LOG" && fail I_status_cached "Echo bei jeder Abfrage" || pass
 cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; A_TS_UP=0; out="$(js)"
 eq I_tunnel_not_checked "unknown|not_checked" "$(field "$out" ipv4)|$(field "$out" ipv4_reason)"
 hint ''
+# --- D: DS-Lite automatisch (UPnP der FritzBox, ohne Anmeldung; danach MyFRITZ!) -------------------------------------
+ds() { rm -f "$REACH_RUN_DIR/public-ipv4" "$REACH_RUN_DIR/ipv4"; reach_dslite_json; }
+dsf() { local j; j="$(ds)"; printf '%s|%s' "$(field "$j" dslite)" "$(field "$j" source)"; }
+hint ''; A_DNS4=''; A_DNS6=''; A_ECHO=''
+A_UP_DOWN=1;                                 eq D_nothing          "unknown|none"   "$(dsf)"
+A_UP_DOWN=0; A_UP_IP='';                     eq D_upnp_empty       "yes|upnp"       "$(dsf)"
+A_UP_IP='0.0.0.0';                           eq D_upnp_zero        "yes|upnp"       "$(dsf)"
+A_UP_IP='192.0.0.2';                         eq D_upnp_b4_address  "yes|upnp"       "$(dsf)"
+A_UP_IP='100.72.1.2';                        eq D_upnp_cgnat       "yes|upnp"       "$(dsf)"
+A_UP_IP='203.0.113.7'; A_ECHO='203.0.113.7'; eq D_upnp_own         "no|upnp"        "$(dsf)"
+A_UP_IP='203.0.113.7'; A_ECHO='';            eq D_upnp_own_no_echo "no|upnp"        "$(dsf)"
+A_UP_IP='203.0.113.7'; A_ECHO='198.51.100.9'; eq D_upnp_differs    "unknown|upnp"   "$(dsf)"
+# Leere Adresse zaehlt nur bei bestehender Verbindung (sonst: Box gerade offline, kein Beleg fuer DS-Lite).
+A_UP_IP=''; A_UP_STATUS=Disconnected;        eq D_upnp_offline     "unknown|none"   "$(dsf)"
+A_UP_STATUS=Connected; A_UP_IP='-';          eq D_upnp_no_tag      "unknown|none"   "$(dsf)"
+A_UP_IP='999.1.1.1';                         eq D_upnp_garbage     "unknown|none"   "$(dsf)"
+A_UP_IP='1.2.3.4<x>';                        eq D_upnp_markup      "unknown|none"   "$(dsf)"
+# Kaskade (FritzBox hinter einem anderen Router): private WAN-Adresse entscheidet nichts, MyFRITZ! darf weiter.
+A_UP_IP='192.168.1.50'; hint 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net'; A_DNS4=''; A_DNS6='2001:db8::1'
+eq D_cascade_myfritz "yes|myfritz" "$(dsf)"
+A_UP_DOWN=1; A_DNS4='203.0.113.7'; A_ECHO='203.0.113.7'; eq D_myfritz_own "no|myfritz" "$(dsf)"
+# Kein Wert in der Ausgabe, genau ein Wort aus reach_dslite.
+A_UP_DOWN=0; A_UP_IP='203.0.113.7'; A_ECHO='203.0.113.7'; out="$(ds)"
+case "$out" in *203.0.113*|*myfritz.net*) fail D_no_value "Wert in der Ausgabe" ;; *) pass D_no_value ;; esac
+rm -f "$REACH_RUN_DIR/ipv4"; eq D_word "no" "$(reach_dslite)"
+# Zwischenspeicher: zweiter Aufruf fragt weder Box noch Echo; das Statusfeld ipv4 nutzt dieselbe Pruefung.
+: > "$LOG"; reach_dslite >/dev/null
+grep -qE '^(upnp|echo)' "$LOG" && fail D_cached "Box/Echo trotz Zwischenspeicher" || pass D_cached
+cfg TELEGRAM_BOT_TOKEN=123:fantasy; rm -f "$REACH_RUN_DIR/ipv4"; A_UP_IP=''; out="$(js)"
+eq D_status_field "none|upnp_no_ipv4" "$(field "$out" ipv4)|$(field "$out" ipv4_reason)"
+A_UP_DOWN=1; hint ''; A_DNS4=''; A_DNS6=''; A_ECHO=''; rm -f "$REACH_RUN_DIR/ipv4"
 # --- W: Webhook-Angaben fuer den Selbsttest nach „Verbinden" ----------------------------------------------------------
 cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy DOMAIN=meinproxy.deine-domain.myfritz.net; A_WAN_UP=1
 A_TG="$(jq -nc '{ok:true, result:{url:"https://meinproxy.deine-domain.myfritz.net/webhook/a/webhook", pending_update_count:3,

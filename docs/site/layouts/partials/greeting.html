@@ -1,8 +1,8 @@
-{{/* Begruessungs-Animation auf der Startseite. Quelle: config/ui.greeting.svg (eine Datei fuer Site und README, Mount in
-     hugo.toml). Als <img> eingebunden: Die Animation steckt als CSS in der SVG, Farben stehen dort fest. Fehlt die Datei,
-     bleibt der Platz leer. */}}
-{{ with resources.Get "img/greeting.svg" }}
+{{/* Begruessungs-Animation auf der Startseite. Quelle: config/ui.art.greeting.svg, daraus erzeugt scripts/build_ui_tokens.ps1
+     docs/art/greeting.<sprache>.<thema>.svg (Mount in hugo.toml; die README zeigt dieselben Dateien). Als <img> eingebunden:
+     Animation als CSS in der SVG, feste Farben, immer hell. Fehlt die Datei, bleibt der Platz leer. */}}
+{{ with resources.Get "art/greeting.de.light.svg" }}
 <figure class="greeting">
-  <img src="{{ .RelPermalink }}" alt="Begrüßung: dein Assistent stellt sich vor.">
+  <img src="{{ .RelPermalink }}" width="720" height="300" alt="Du schreibst deinem Assistenten auf dem Handy, er läuft auf deinem eigenen Rechner zu Hause, deine Daten bleiben bei dir, und er hilft der ganzen Familie bei Finanzen, Karriere, Nachlass und Dokumenten.">
 </figure>
 {{ end }}

@@ -19,12 +19,13 @@ disableKinds = ["taxonomy", "term", "RSS", "sitemap", "robotsTXT", "404"]
 [markup.goldmark.renderer]
   unsafe = false
 
-# Begruessungs-Animation: eine Quelle fuer Site und README (config/ui.greeting.svg). Ein eigener Mount ersetzt den
-# Standard-Mount von assets/, darum steht er hier mit. Fehlt die Datei, uebergeht Hugo den Mount und die Startseite
-# laesst den Platz leer (partials/greeting.html).
+# Begruessungs-Animation: erzeugt von scripts/build_ui_tokens.ps1 nach docs/art/greeting.<sprache>.<thema>.svg (dieselben
+# Dateien zeigt die README). Die Site nimmt die deutsche, helle Fassung. Ein eigener Mount ersetzt den Standard-Mount von
+# assets/, darum steht er hier mit. Fehlt die Datei, uebergeht Hugo den Mount und die Startseite laesst den Platz leer
+# (partials/greeting.html).
 [[module.mounts]]
   source = "assets"
   target = "assets"
 [[module.mounts]]
-  source = "../../config/ui.greeting.svg"
-  target = "assets/img/greeting.svg"
+  source = "../art/greeting.de.light.svg"
+  target = "assets/art/greeting.de.light.svg"

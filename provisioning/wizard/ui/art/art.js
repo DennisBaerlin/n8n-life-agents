@@ -1,16 +1,19 @@
 // Wizard-Bilder: Illustrationen und geführte Animationen neben den Fragen (Schnittstelle zu app.js: WizardArt.mount(page)).
 // - Welche Seite welches Bild bekommt, steht nur hier (ART unten); app.js hängt das Ergebnis vor den Abstand über den Knöpfen.
-// - Fremde Oberflächen (FritzBox, Telegram, …) nur als eigene, vereinfachte Schema-Zeichnung: keine Screenshots, keine Logos,
-//   keine Markenfarben. Menü- und Knopfnamen stehen wörtlich (Quelle FritzBox: docs/site/content/docs/fritzbox.md).
+// - Platz: Das Bild bekommt nur den Raum zwischen Inhalt und angehefteter Knopfleiste (App-Fenster 760 × 640) und passt sich
+//   ihm an (art.css: Container-Abfragen auf die eigene Höhe); fehlt er, entfällt es.
+// - Fremde Oberflächen (FritzBox, später Anthropic, Google …): wirklichkeitsgetreu nach recherchierten Vorlagen nachgezeichnet
+//   (Anordnung, Reihenfolge, Wortlaut der Menüs, Reiter, Knöpfe und Felder), aber eigene Vektor-Zeichnung: kein Logo, kein
+//   Schriftzug als Grafik, keine Pixel-Kopie. Farben angenähert über die Tokens, immer hell (Klasse art-light, wie der QR-Code).
+//   Wortlaut FritzBox: FRITZ!OS 8 (Wissensdatenbank des Herstellers + Bildschirmfotos, Quellen im Bericht der Bild-Session);
+//   Schritte wie docs/site/content/docs/fritzbox.md.
 // - Sicherheit/CSP: SVG nur aus festen Texten dieser Datei (nie Server- oder Nutzertext in innerHTML), kein style-Attribut im
 //   Markup; Lage und Zoom setzt der Takt über element.style (CSSOM, von style-src 'self' nicht betroffen).
-// - Farben nur über Klassen in art.css (var(--token)); hell/dunkel kommt allein aus den Tokens.
 // - Bewegung: Takt stoppt, sobald das Bild nicht mehr im Dokument hängt. prefers-reduced-motion → stehendes Bild des
-//   wichtigsten Schritts. Vorschau-Aufnahmen: window.WIZARD_PREVIEW.artStep = n hält Schritt n fest.
-// Nur erfundene Werte (Rechnername, Bot-Name).
+//   wichtigsten Schritts. Vorschau-Aufnahmen: WIZARD_PREVIEW.artStep bzw. window.WIZARD_ART_STEP = n hält Schritt n fest.
+// Nur erfundene Werte (Rechner- und Gerätenamen, Bot-Name); Adressen nur als graue Balken.
 'use strict';
 (function () {
-  const PREVIEW = window.WIZARD_PREVIEW || null;
   const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   function h(tag, attrs) {
@@ -33,69 +36,93 @@
     t.innerHTML = markup.trim();
     return t.content.firstElementChild;
   }
+  // Projekt-Zeichen: die eine Quelle setzt der Server als <template id="mark-tpl"> in die Seite (ui/mark.html); Farben über
+  // --mark/--mark-check (art.css). Fehlt es, bleibt der Platz leer.
+  function mark() {
+    const t = document.getElementById('mark-tpl');
+    const s = t && t.content && t.content.querySelector('svg');
+    return s ? s.cloneNode(true) : null;
+  }
 
-  // Zeichen des Projekts (Haus mit Sprechblase und Häkchen). Geometrie wie docs/site/layouts/partials/mark.html.
-  const MARK = '<svg viewBox="0 0 26 26" aria-hidden="true" class="mark"><path class="mark-body" d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z"/>'
-    + '<path class="mark-check" d="M8.6 12.8 L11.7 15.8 L17.4 10"/></svg>';
-
-  // ---------- Geführte Animation (Mauszeiger, Klick, Zoom, Leuchtrahmen), Schritte als Schleife ----------
-  // steps[i] = { cap, start: Zustand beim Beginn, acts: [{ to:[x,y], click, set, ring, cam }], hold }
-  // Zustand: set = data-*-Attribute am <svg> (art.css entscheidet, was sichtbar ist), cam = {x,y,s} (Zoom auf Punkt x,y),
-  // ring = [x,y,b,h] Leuchtrahmen oder null. Koordinaten im viewBox-Raum der Zeichnung.
+  // ---------- Geführte Animation: Mauszeiger, Klick, Lupe mit Zoom, Leuchtrahmen; Schritte als Schleife ----------
+  // o = { name, svg, width, height, steps, keyStep, cursor, initial, label }
+  // steps[i] = { cap, start: {set, cam, ring}, acts: [{ to:[x,y], click, set, ring, cam, wait }], hold }
+  // set = data-*-Attribute am <svg> (art.css entscheidet, was sichtbar ist); ring = [x,y,b,h] Leuchtrahmen oder null;
+  // cam = {x,y,s} Lupe auf Punkt x,y mit Zoom s, null = Zoom 1. Ohne cam folgt die Lupe dem Ziel des Zeigers (to).
+  // Die Lupe zeigt so viel der Zeichnung, wie Platz ist: volle Breite, Höhe nach dem freien Raum.
   function guided(o) {
+    const W = o.width, H = o.height;
     const fig = h('figure', { class: 'art art-guide', 'data-art': o.name });
-    const stage = fromMarkup(o.svg);
-    const cam = stage.querySelector('.cam');
-    const ring = stage.querySelector('.ring');
-    const cursor = stage.querySelector('.cursor');
-    const ripple = stage.querySelector('.ripple');
-    const [, , W, H] = stage.getAttribute('viewBox').split(' ').map(Number);
+    const svg = fromMarkup(o.svg);
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const cam = svg.querySelector('.cam');
+    const ring = svg.querySelector('.ring');
+    const cursor = svg.querySelector('.cursor');
+    const ripple = svg.querySelector('.ripple');
     const num = h('span', { class: 'art-num' });
     const txt = h('span', { class: 'art-txt' });
-    const dots = o.steps.map((s, i) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${i + 1}: ${s.cap}`,
-      on: { click: () => { pause(true); jump(i, true); } } }));
+    const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${k + 1}: ${s.cap}`,
+      on: { click: () => { pause(true); jump(k, true); } } }));
     const toggle = h('button', { type: 'button', class: 'art-play', on: { click: () => pause(!paused) } });
-    fig.append(h('div', { class: 'art-stage' }, stage),
-      h('figcaption', { class: 'art-cap' }, h('p', { class: 'art-line' }, num, txt), h('div', { class: 'art-ctl' }, dots, toggle)),
-      h('ol', { class: 'sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
+    const cap = h('figcaption', { class: 'art-cap' }, h('p', { class: 'art-line' }, num, txt), h('div', { class: 'art-ctl' }, dots, toggle));
+    const stage = h('div', { class: 'art-stage' + (o.light ? ' art-light' : ''), role: 'img', 'aria-label': o.label }, svg);
+    fig.append(stage, cap, h('ol', { class: 'sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
 
-    let i = 0, paused = false, timers = [], seen = false, born = Date.now();
+    let i = 0, paused = false, timers = [], seen = false, measured = false, born = Date.now(), view = { w: W, h: H, free: H }, focus = { x: o.cursor[0], y: o.cursor[1], s: 1 };
     const clear = () => { timers.forEach(clearTimeout); timers = []; };
     function later(ms, fn) {
       timers.push(setTimeout(() => {
-        if (fig.isConnected) seen = true;
+        if (fig.isConnected) { seen = true; if (!measured) measured = measure(); }
         else if (seen || Date.now() - born > 5000) { clear(); return; }   // Seite gewechselt: Takt beenden
         fn();
       }, ms));
     }
-    function setCam(c) {
-      const s = c ? c.s : 1;
-      const tx = c ? W / 2 - c.x * s : 0, ty = c ? H / 2 - c.y * s : 0;
-      cam.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+    // Sichtfenster in Zeichnungs-Einheiten: volle Breite, Höhe nach dem Platz der Bühne
+    function measure() {
+      const r = stage.getBoundingClientRect();
+      if (r.width < 10 || r.height < 10) return false;
+      const k = r.width / W;
+      const vh = Math.min(H, r.height / k);   // Beschriftung liegt unten auf der Bühne: Lupe zentriert darüber
+      view = { w: W, h: vh, free: Math.max(40, vh - cap.getBoundingClientRect().height / k) };
+      svg.setAttribute('viewBox', `0 0 ${W} ${view.h.toFixed(1)}`);
+      return true;
+    }
+    function setCam(f) {
+      focus = f;
+      const s = f.s || 1, clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      const tx = W * s <= view.w ? (view.w - W * s) / 2 : clamp(view.w / 2 - f.x * s, view.w - W * s, 0);
+      const ty = H * s <= view.free ? 0 : clamp(view.free / 2 - f.y * s, view.free - H * s, 0);
+      cam.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${s})`;
     }
     function setRing(r) {
       ring.classList.toggle('on', !!r);
       if (r) { ring.setAttribute('x', r[0]); ring.setAttribute('y', r[1]); ring.setAttribute('width', r[2]); ring.setAttribute('height', r[3]); }
     }
     function setCursor(p) { cursor.style.transform = `translate(${p[0]}px, ${p[1]}px)`; }
-    function applyState(st) {
-      for (const [k, v] of Object.entries(st.set || {})) stage.setAttribute('data-' + k, v);
-      if ('cam' in st) setCam(st.cam);
-      if ('ring' in st) setRing(st.ring);
+    // Lupe nach einem Schritt-Teil: eigenes cam gewinnt, sonst folgt sie dem Zeiger bei gleichem Zoom
+    function nextFocus(f, a) {
+      if ('cam' in a) return a.cam ? { x: a.cam.x, y: a.cam.y, s: a.cam.s } : { x: a.to ? a.to[0] : f.x, y: a.to ? a.to[1] : f.y, s: 1 };
+      return a.to ? { x: a.to[0], y: a.to[1], s: f.s } : f;
+    }
+    function applyPart(a) {
+      for (const [k, v] of Object.entries(a.set || {})) svg.setAttribute('data-' + k, v);
+      if ('ring' in a) setRing(a.ring);
+      setCam(nextFocus(focus, a));
     }
     // Zustand zu Beginn von Schritt n (alles davor aufaddiert), damit Springen und Festhalten stimmen
     function stateAt(n) {
-      const st = { set: Object.assign({}, o.initial), cam: null, ring: null, cursor: o.cursor };
+      const st = { set: Object.assign({}, o.initial), ring: null, cursor: o.cursor, focus: { x: o.cursor[0], y: o.cursor[1], s: 1 } };
       const add = (x) => {
         Object.assign(st.set, x.set || {});
-        if ('cam' in x) st.cam = x.cam;
         if ('ring' in x) st.ring = x.ring;
+        st.focus = nextFocus(st.focus, x);
+        if (x.to) st.cursor = x.to;
       };
       for (let k = 0; k <= n && k < o.steps.length; k++) {
         const s = o.steps[k];
         st.ring = null;
         add(s.start || {});
-        if (k < n) for (const a of s.acts || []) { add(a); if (a.to) st.cursor = a.to; }
+        if (k < n) for (const a of s.acts || []) add(a);
       }
       return st;
     }
@@ -107,7 +134,7 @@
     function instant(fn) {   // ohne Übergänge springen
       fig.classList.add('instant');
       fn();
-      void stage.getBoundingClientRect();
+      void svg.getBoundingClientRect();
       fig.classList.remove('instant');
     }
     function jump(n, still) {   // Schritt n zeigen; still = Endbild des Schritts ohne Bewegung
@@ -116,11 +143,11 @@
       caption(n);
       instant(() => {
         const st = stateAt(n);
-        applyState(st);
+        for (const [k, v] of Object.entries(st.set)) svg.setAttribute('data-' + k, v);
+        setRing(st.ring);
+        setCam(st.focus);
         setCursor(st.cursor);
-        if (still) {
-          for (const a of o.steps[n].acts || []) { applyState(a); if (a.to) setCursor(a.to); }
-        }
+        if (still) for (const a of o.steps[n].acts || []) { applyPart(a); if (a.to) setCursor(a.to); }
       });
       if (!still) run(n);
     }
@@ -128,12 +155,12 @@
       const s = o.steps[n];
       let t = 500;
       for (const a of s.acts || []) {
-        if (a.to) { later(t, () => setCursor(a.to)); t += 950; }
+        if (a.to) { later(t, () => { setCursor(a.to); setCam(nextFocus(focus, { to: a.to })); }); t += 950; }
         if (a.click) {
           later(t, () => { ripple.setAttribute('cx', a.to[0]); ripple.setAttribute('cy', a.to[1]); ripple.classList.remove('go'); void ripple.getBoundingClientRect(); ripple.classList.add('go'); });
           t += 180;
         }
-        later(t, () => applyState(a));
+        later(t, () => applyPart(a));
         t += a.wait || 750;
       }
       t += s.hold || 1400;
@@ -145,8 +172,12 @@
       toggle.setAttribute('aria-pressed', String(p));
       if (!p) jump(i, false);
     }
+    // Platz ändert sich (Fenster, Inhalt darüber): Sichtfenster neu, Lupe ohne Übergang nachführen
+    if (window.ResizeObserver) new ResizeObserver(() => { if (measure()) { measured = true; instant(() => setCam(focus)); } }).observe(stage);
 
-    const frozen = PREVIEW && Number.isInteger(PREVIEW.artStep) ? PREVIEW.artStep : null;
+    const pv = window.WIZARD_PREVIEW;   // nur in Vorschau-Aufnahmen gesetzt (erst beim Einbau lesen: art.js lädt vor der Attrappe)
+    const want = pv ? (Number.isInteger(pv.artStep) ? pv.artStep : window.WIZARD_ART_STEP) : undefined;
+    const frozen = Number.isInteger(want) ? want : null;
     if (frozen !== null || reduced()) {
       paused = true;
       toggle.textContent = 'Abspielen';
@@ -160,118 +191,178 @@
   }
 
   // ---------- A1: FritzBox-Freigabe (Seite fb_guide) ----------
-  // Eigene Schema-Zeichnung eines Router-Menüs (keine AVM-Optik). Rechnername erfunden.
+  // Nachzeichnung der FRITZ!OS-8-Oberfläche: Kopfleiste, Menü links, Inhalt rechts; Seiten „Internet › Freigaben“ (Reiter
+  // „Portfreigaben“), Geräteseite „Freigabe“ mit „‹ Zurück“, Dialog „Freigabe anlegen“. Kein Logo (Fläche bleibt leer).
+  const CHK = (x, y) => `<rect class="box" x="${x}" y="${y}" width="13" height="13" rx="2"/>`;
+  const ICON = (y) => `<rect class="ico" x="18" y="${y - 12}" width="14" height="14" rx="4"/>`;   // Platzhalter für die Menü-Symbole
   const FB_SVG = `
-<svg class="fb" viewBox="0 0 640 330" aria-hidden="true" data-sub="0" data-act="none" data-scene="home" data-radio="0" data-chk="0" data-rows="0" data-app="http">
+<svg class="fb" aria-hidden="true" preserveAspectRatio="xMidYMin meet" data-sub="0" data-act="none" data-scene="home" data-radio="0" data-chk="0" data-rows="0" data-app="http">
  <g class="cam">
-  <rect class="win" x="1" y="1" width="638" height="328" rx="14"/>
-  <path class="bar" d="M1 36 V15 A14 14 0 0 1 15 1 H625 A14 14 0 0 1 639 15 V36 Z"/>
-  <circle class="dot" cx="20" cy="18" r="5"/><circle class="dot" cx="38" cy="18" r="5"/><circle class="dot" cx="56" cy="18" r="5"/>
-  <rect class="addr" x="84" y="8" width="220" height="20" rx="10"/><text class="t-s t-gray" x="100" y="22">fritz.box</text>
-  <path class="side" d="M1 36 H150 V329 H15 A14 14 0 0 1 1 315 Z"/>
-  <line class="ln" x1="1" y1="36" x2="639" y2="36"/><line class="ln" x1="150" y1="36" x2="150" y2="329"/>
-  <rect class="act act-internet" x="8" y="80" width="134" height="26" rx="8"/>
-  <rect class="act act-freigaben" x="8" y="148" width="134" height="24" rx="8"/>
-  <text class="t-m" x="20" y="66">Übersicht</text>
-  <text class="t-m" x="20" y="98">Internet</text>
+  <rect class="pg" x="0" y="0" width="780" height="680"/>
+  <rect class="hdr" x="0" y="0" width="780" height="58"/>
+  <text class="t-hdr" x="214" y="37">FRITZ!Box</text>
+  <rect class="hbtn" x="566" y="16" width="80" height="26" rx="3"/><text class="t-hbtn" x="606" y="33">MyFRITZ!</text>
+  <rect class="hbtn" x="654" y="16" width="84" height="26" rx="3"/><text class="t-hbtn" x="696" y="33">FRITZ!NAS</text>
+  <circle class="hdot" cx="760" cy="22" r="2"/><circle class="hdot" cx="760" cy="29" r="2"/><circle class="hdot" cx="760" cy="36" r="2"/>
+  <rect class="nav" x="0" y="58" width="200" height="622"/><line class="ln" x1="200" y1="58" x2="200" y2="680"/>
+
+  <rect class="act act-freigaben" x="8" y="210" width="184" height="26" rx="4"/>
+  ${ICON(88)}<text class="t-n" x="42" y="88">Übersicht</text>
+  ${ICON(120)}<text class="t-n t-int" x="42" y="120">Internet</text><path class="chev" d="M176 112 l5 5 l5 -5"/><path class="chev-up" d="M176 117 l5 -5 l5 5"/>
   <g class="sub">
-   <text class="t-s" x="32" y="122">Online-Monitor</text>
-   <text class="t-s" x="32" y="143">MyFRITZ!-Konto</text>
-   <text class="t-s" x="32" y="164">Freigaben</text>
+   <text class="t-sub" x="42" y="146">Online-Monitor</text>
+   <text class="t-sub" x="42" y="172">Zugangsdaten</text>
+   <text class="t-sub" x="42" y="198">Filter</text>
+   <text class="t-sub t-fg" x="42" y="228">Freigaben</text>
+   <text class="t-sub" x="42" y="256">MyFRITZ!-Konto</text>
   </g>
   <g class="rest">
-   <text class="t-m" x="20" y="126">Heimnetz</text>
-   <text class="t-m" x="20" y="154">WLAN</text>
-   <text class="t-m" x="20" y="182">System</text>
+   ${ICON(152)}<text class="t-n" x="42" y="152">Telefonie</text>
+   ${ICON(182)}<text class="t-n" x="42" y="182">Heimnetz</text>
+   ${ICON(212)}<text class="t-n" x="42" y="212">WLAN</text>
+   ${ICON(242)}<text class="t-n" x="42" y="242">Smart Home</text>
+   ${ICON(272)}<text class="t-n" x="42" y="272">Diagnose</text>
+   ${ICON(302)}<text class="t-n" x="42" y="302">System</text>
+   <line class="ln" x1="12" y1="320" x2="188" y2="320"/>
+   ${ICON(346)}<text class="t-n" x="42" y="346">Assistenten</text>
+   ${ICON(376)}<text class="t-n" x="42" y="376">Hilfe und Info</text>
   </g>
 
   <g class="s s-home">
-   <text class="t-h" x="174" y="72">Übersicht</text>
-   <rect class="ph" x="174" y="92" width="300" height="10" rx="5"/><rect class="ph" x="174" y="112" width="220" height="10" rx="5"/>
-   <rect class="ph" x="174" y="148" width="420" height="70" rx="10"/><rect class="ph" x="174" y="232" width="420" height="70" rx="10"/>
+   <text class="t-h" x="222" y="96">Übersicht</text>
+   <rect class="ph" x="222" y="114" width="300" height="9" rx="4"/><rect class="ph" x="222" y="132" width="220" height="9" rx="4"/>
+   <rect class="card" x="222" y="160" width="536" height="120" rx="4"/><rect class="card" x="222" y="296" width="536" height="120" rx="4"/>
   </g>
 
   <g class="s s-list">
-   <text class="t-h" x="174" y="72">Freigaben</text>
-   <text class="t-m t-strong" x="174" y="102">Portfreigaben</text>
-   <rect class="tab" x="174" y="109" width="94" height="3" rx="1.5"/>
-   <rect class="ph" x="290" y="93" width="70" height="10" rx="5"/><rect class="ph" x="380" y="93" width="50" height="10" rx="5"/>
-   <line class="ln" x1="174" y1="114" x2="620" y2="114"/>
-   <rect class="ph" x="174" y="134" width="140" height="10" rx="5"/><rect class="ph" x="360" y="134" width="120" height="10" rx="5"/>
-   <line class="ln" x1="174" y1="156" x2="620" y2="156"/>
-   <rect class="ph" x="174" y="174" width="110" height="10" rx="5"/><rect class="ph" x="360" y="174" width="140" height="10" rx="5"/>
-   <line class="ln" x1="174" y1="196" x2="620" y2="196"/>
-   <rect class="btn" x="400" y="276" width="220" height="30" rx="15"/>
-   <text class="t-s t-mid" x="510" y="295">Gerät für Freigaben hinzufügen</text>
+   <circle class="ico-c" cx="230" cy="90" r="8"/><text class="t-m" x="246" y="95">Internet</text><text class="t-m t-gray" x="308" y="95">›</text><text class="t-m" x="322" y="95">Freigaben</text>
+   <circle class="help" cx="748" cy="90" r="11"/><text class="t-help" x="748" y="95">?</text>
+   <rect class="tab-on" x="222" y="108" width="104" height="30"/><rect class="tab-line" x="222" y="135" width="104" height="3"/>
+   <text class="t-tab t-strong" x="274" y="128">Portfreigaben</text>
+   <rect class="tab-off" x="330" y="108" width="124" height="30"/><text class="t-tab" x="392" y="128">FRITZ!Box-Dienste</text>
+   <rect class="tab-off" x="458" y="108" width="68" height="30"/><text class="t-tab" x="492" y="128">DynDNS</text>
+   <rect class="tab-off" x="530" y="108" width="94" height="30"/><text class="t-tab" x="577" y="128">VPN (IPSec)</text>
+   <rect class="tab-off" x="628" y="108" width="130" height="30"/><text class="t-tab" x="693" y="128">VPN (WireGuard)</text>
+   <line class="ln" x1="222" y1="138" x2="758" y2="138"/>
+   <rect class="ph" x="222" y="152" width="520" height="8" rx="4"/><rect class="ph" x="222" y="168" width="360" height="8" rx="4"/>
+   <rect class="tbl" x="222" y="186" width="536" height="64"/>
+   <text class="t-th" x="230" y="204">Gerät / Name</text><text class="t-th" x="340" y="204">IP-Adresse</text><text class="t-th" x="440" y="204">Freigaben</text>
+   <text class="t-th" x="530" y="200">Port extern</text><text class="t-th" x="530" y="213">vergeben IPv4</text>
+   <text class="t-th" x="618" y="200">Port extern</text><text class="t-th" x="618" y="213">vergeben IPv6</text>
+   <line class="ln" x1="222" y1="220" x2="758" y2="220"/>
+   <text class="t-s" x="230" y="240">drucker</text><rect class="ph" x="340" y="232" width="70" height="8" rx="4"/>
+   <circle class="ibtn" cx="716" cy="235" r="11"/><path class="pen" d="M711 240 l8 -8 l2 2 l-8 8 h-2 z"/>
+   <circle class="ibtn" cx="744" cy="235" r="11"/><path class="bin" d="M739 230 h10 M741 230 v10 h6 v-10"/>
+   <rect class="btn2" x="474" y="262" width="194" height="26" rx="3"/><text class="t-btn2" x="571" y="279">Gerät für Freigaben hinzufügen</text>
+   <rect class="btn2" x="674" y="262" width="84" height="26" rx="3"/><text class="t-btn2" x="716" y="279">Aktualisieren</text>
+   <line class="ln" x1="222" y1="304" x2="758" y2="304"/>
+   <rect class="ph" x="222" y="318" width="430" height="8" rx="4"/>
+   <rect class="btn2" x="674" y="334" width="84" height="26" rx="3"/><text class="t-btn2" x="716" y="351">Deaktivieren</text>
+   <line class="ln" x1="200" y1="378" x2="780" y2="378"/>
+   <rect class="btn-off" x="580" y="392" width="88" height="28" rx="3"/><text class="t-off" x="624" y="410">Übernehmen</text>
+   <rect class="btn-off" x="674" y="392" width="84" height="28" rx="3"/><text class="t-off" x="716" y="410">Verwerfen</text>
   </g>
 
   <g class="s s-dev">
-   <text class="t-h" x="174" y="72">Gerät für Freigaben hinzufügen</text>
-   <text class="t-s t-gray" x="174" y="112">Gerät</text>
-   <rect class="field" x="226" y="96" width="190" height="26" rx="7"/>
-   <text class="t-m" x="238" y="114">mein-rechner</text><path class="caret" d="M398 106 l5 5 l5 -5"/>
-   <text class="t-m t-strong" x="174" y="160">Freigaben</text>
-   <line class="ln" x1="174" y1="170" x2="620" y2="170"/>
-   <g class="rows0"><text class="t-s t-gray" x="174" y="194">Noch keine Freigaben</text></g>
+   <rect class="btn1" x="222" y="76" width="78" height="26" rx="3"/><text class="t-btn1" x="261" y="93">‹ Zurück</text>
+   <text class="t-m" x="312" y="94">Freigabe</text>
+   <circle class="help" cx="748" cy="89" r="11"/><text class="t-help" x="748" y="94">?</text>
+   <text class="t-lbl" x="240" y="128">Gerät</text>
+   <rect class="field" x="360" y="110" width="200" height="26" rx="3"/><text class="t-s" x="370" y="128">mein-rechner</text><path class="caret" d="M540 120 l5 5 l5 -5"/>
+   <text class="t-lbl" x="240" y="162">IPv4-Adresse</text><rect class="field-off" x="360" y="146" width="200" height="24" rx="3"/><rect class="ph" x="370" y="154" width="90" height="8" rx="4"/>
+   <text class="t-lbl" x="240" y="194">MAC-Adresse</text><rect class="field-off" x="360" y="178" width="200" height="24" rx="3"/><rect class="ph" x="370" y="186" width="110" height="8" rx="4"/>
+   <text class="t-lbl" x="252" y="226">IPv6 Interface-ID</text><text class="t-s" x="360" y="226">: :</text>
+   <rect class="field" x="378" y="210" width="40" height="24" rx="3"/><rect class="field" x="428" y="210" width="40" height="24" rx="3"/>
+   <rect class="field" x="478" y="210" width="40" height="24" rx="3"/><rect class="field" x="528" y="210" width="40" height="24" rx="3"/>
+   ${CHK(240, 243)}<text class="t-s" x="262" y="254">Selbstständige Portfreigaben für dieses Gerät erlauben.</text>
+   <line class="ln" x1="222" y1="270" x2="758" y2="270"/>
+   <text class="t-m t-strong" x="222" y="294">IPv4-Einstellungen</text>
+   ${CHK(240, 305)}<text class="t-s" x="262" y="316">Dieses Gerät komplett für den Internetzugriff über IPv4 freigeben (Exposed Host).</text>
+   <text class="t-s" x="240" y="334">Diese Einstellung kann nur für ein Gerät aktiviert werden.</text>
+   <line class="ln" x1="222" y1="348" x2="758" y2="348"/>
+   <text class="t-m t-strong" x="222" y="372">IPv6-Einstellungen</text>
+   ${CHK(240, 383)}<text class="t-s" x="262" y="394">PING6 freigeben.</text>
+   ${CHK(240, 405)}<text class="t-s" x="262" y="416">Firewall für delegierte IPv6-Präfixe dieses Gerätes öffnen.</text>
+   ${CHK(240, 427)}<text class="t-s" x="262" y="438">Dieses Gerät komplett für den Internetzugriff über IPv6 freigeben (Exposed Host).</text>
+   <line class="ln" x1="222" y1="454" x2="758" y2="454"/>
+   <text class="t-m t-strong" x="222" y="478">Freigaben</text>
+   <rect class="tbl" x="222" y="490" width="536" height="80"/><rect class="th" x="222" y="490" width="536" height="22"/>
+   <text class="t-th" x="230" y="505">Status</text><text class="t-th" x="290" y="505">Bezeichnung</text><text class="t-th" x="420" y="505">Protokoll</text>
+   <text class="t-th" x="490" y="505">IP-Adresse im Internet</text><text class="t-th" x="640" y="505">Port extern vergeben</text>
    <g class="row-http">
-    <text class="t-s" x="174" y="192">MyFRITZ!-Freigabe</text><text class="t-s" x="340" y="192">HTTP-Server</text>
-    <line class="ln" x1="174" y1="202" x2="620" y2="202"/>
+    <circle class="okdot" cx="238" cy="525" r="5"/><text class="t-s" x="290" y="530">HTTP-Server</text><text class="t-s" x="420" y="530">TCP</text>
+    <rect class="ph" x="490" y="522" width="80" height="8" rx="4"/><text class="t-s" x="640" y="530">80</text>
+    <circle class="ibtn" cx="716" cy="526" r="10"/><path class="pen" d="M711 531 l8 -8 l2 2 l-8 8 h-2 z"/>
+    <circle class="ibtn" cx="744" cy="526" r="10"/><path class="bin" d="M739 521 h10 M741 521 v10 h6 v-10"/>
    </g>
-   <g class="row-https"><text class="t-s" x="174" y="222">MyFRITZ!-Freigabe</text><text class="t-s" x="340" y="222">HTTPS-Server</text></g>
-   <rect class="btn" x="174" y="246" width="130" height="28" rx="14"/><text class="t-s t-mid" x="239" y="264">Neue Freigabe</text>
-   <rect class="btn btn-main" x="510" y="288" width="110" height="28" rx="14"/><text class="t-s t-mid t-on-main" x="565" y="306">Übernehmen</text>
+   <g class="row-https">
+    <rect class="zebra" x="223" y="540" width="534" height="28"/>
+    <circle class="okdot" cx="238" cy="554" r="5"/><text class="t-s" x="290" y="559">HTTPS-Server</text><text class="t-s" x="420" y="559">TCP</text>
+    <rect class="ph" x="490" y="551" width="80" height="8" rx="4"/><text class="t-s" x="640" y="559">443</text>
+    <circle class="ibtn" cx="716" cy="555" r="10"/><path class="pen" d="M711 560 l8 -8 l2 2 l-8 8 h-2 z"/>
+    <circle class="ibtn" cx="744" cy="555" r="10"/><path class="bin" d="M739 550 h10 M741 550 v10 h6 v-10"/>
+   </g>
+   <rect class="btn2" x="662" y="582" width="96" height="26" rx="3"/><text class="t-btn2" x="710" y="599">Neue Freigabe</text>
+   <line class="ln" x1="200" y1="622" x2="780" y2="622"/>
+   <rect class="btn1" x="668" y="634" width="90" height="28" rx="3"/><text class="t-btn1" x="713" y="652">Übernehmen</text>
   </g>
 
   <g class="s s-dlg">
-   <rect class="veil" x="1" y="1" width="638" height="328" rx="14"/>
-   <rect class="dlg" x="250" y="70" width="330" height="220" rx="12"/>
-   <text class="t-m t-strong" x="268" y="98">Neue Freigabe</text>
-   <circle class="radio" cx="275" cy="122" r="6.5"/><circle class="radio-on r1" cx="275" cy="122" r="3.5"/>
-   <text class="t-m" x="290" y="127">MyFRITZ!-Freigabe</text>
-   <circle class="radio" cx="275" cy="147" r="6.5"/><circle class="radio-on r2" cx="275" cy="147" r="3.5"/>
-   <text class="t-m" x="290" y="152">Portfreigabe</text>
-   <text class="t-s t-gray" x="268" y="187">Anwendung</text>
-   <rect class="field" x="352" y="171" width="180" height="24" rx="7"/>
-   <text class="t-s app-http" x="363" y="187">HTTP-Server</text><text class="t-s app-https" x="363" y="187">HTTPS-Server</text><path class="caret" d="M514 180 l5 5 l5 -5"/>
-   <rect class="box" x="268" y="206" width="14" height="14" rx="3"/><path class="tick" d="M271 213 l3 3 l5 -6"/>
-   <text class="t-m" x="290" y="218">Freigabe aktivieren</text>
-   <rect class="btn btn-main" x="500" y="252" width="64" height="26" rx="13"/><text class="t-s t-mid t-on-main" x="532" y="269">OK</text>
+   <rect class="veil" x="0" y="0" width="780" height="680"/>
+   <rect class="dlg" x="250" y="170" width="430" height="370" rx="4"/>
+   <rect class="dlg-hd" x="250" y="170" width="430" height="36" rx="4"/>
+   <text class="t-m t-strong" x="268" y="193">Freigabe anlegen</text>
+   <circle class="radio" cx="276" cy="232" r="7"/><circle class="radio-on r1" cx="276" cy="232" r="4"/>
+   <text class="t-m" x="292" y="237">MyFRITZ!-Freigabe</text>
+   <text class="t-lbl" x="300" y="273">Anwendung</text>
+   <rect class="field sel" x="430" y="256" width="228" height="28" rx="3"/>
+   <text class="t-s app-http" x="440" y="275">HTTP-Server</text><text class="t-s app-https" x="440" y="275">HTTPS-Server</text><path class="caret" d="M638 267 l5 5 l5 -5"/>
+   <text class="t-lbl" x="300" y="311">Verzeichnis (optional)</text><rect class="field" x="430" y="294" width="228" height="28" rx="3"/>
+   <text class="t-lbl" x="300" y="349">MyFRITZ!-Adresse</text><rect class="field-off" x="430" y="332" width="228" height="28" rx="3"/>
+   <circle class="radio" cx="276" cy="382" r="7"/><circle class="radio-on r2" cx="276" cy="382" r="4"/>
+   <text class="t-m" x="292" y="387">Portfreigabe</text>
+   <line class="ln" x1="266" y1="406" x2="664" y2="406"/>
+   <rect class="box" x="269" y="421" width="14" height="14" rx="2"/><path class="tick" d="M272 428 l3 3 l6 -7"/>
+   <text class="t-m" x="292" y="433">Freigabe aktivieren</text>
+   <rect class="btn2" x="476" y="492" width="94" height="30" rx="3"/><text class="t-btn2" x="523" y="512">OK</text>
+   <rect class="btn-off" x="576" y="492" width="94" height="30" rx="3"/><text class="t-off" x="623" y="512">Abbrechen</text>
   </g>
 
-  <rect class="ring" x="0" y="0" width="0" height="0" rx="10"/>
+  <rect class="ring" x="0" y="0" width="0" height="0" rx="6"/>
   <circle class="ripple" cx="0" cy="0" r="14"/>
   <g class="cursor"><path d="M0 0 V17 L4.5 13 L7.6 20 L10.4 18.8 L7.4 12 H13 Z"/></g>
  </g>
 </svg>`;
 
-  // Zeiger-Spitze rechts neben die Knopfschrift, damit sie lesbar bleibt. Jeder Schritt endet auf dem Bild, das seine
-  // Beschriftung zeigt (Standbild bei reduzierter Bewegung und für die Punkte).
-  const ZOOM = { x: 415, y: 180, s: 1.45 };
+  // Zeiger-Spitze neben die Schrift, damit sie lesbar bleibt. Jeder Schritt endet auf dem Bild, das seine Beschriftung zeigt
+  // (Standbild bei reduzierter Bewegung und für die Punkte).
+  const DLG = { x: 465, y: 300, s: 1.2 };
   const FB_STEPS = [
-    { cap: 'fritz.box im Browser öffnen, links „Internet“', start: { cam: null },
-      acts: [{ to: [86, 88], click: true, set: { sub: '1', act: 'internet' } }], hold: 900 },
-    { cap: '„Freigaben“ öffnen, Reiter „Portfreigaben“',
-      acts: [{ to: [112, 162], click: true, set: { act: 'freigaben', scene: 'list' }, ring: [168, 86, 108, 30] }] },
+    { cap: 'fritz.box im Browser öffnen, links „Internet“',
+      acts: [{ to: [96, 122], click: true, set: { sub: '1' } }], hold: 900 },
+    { cap: '„Freigaben“, Reiter „Portfreigaben“',
+      acts: [{ to: [116, 230], click: true, set: { act: 'freigaben', scene: 'list' } }, { to: [330, 132], ring: [220, 106, 108, 34], wait: 700 }] },
     { cap: '„Gerät für Freigaben hinzufügen“, Rechner wählen',
-      acts: [{ to: [612, 298], click: true, set: { scene: 'dev' } }, { to: [428, 116], ring: [220, 90, 202, 38], wait: 600 }] },
-    { cap: '„Neue Freigabe“, oben „MyFRITZ!-Freigabe“ wählen',
-      acts: [{ to: [290, 262], click: true, set: { scene: 'dlg', app: 'http' }, cam: ZOOM },
-        { to: [414, 129], click: true, set: { radio: '1' }, ring: [262, 110, 160, 26] }] },
-    { cap: '„HTTP-Server“, Haken bei „Freigabe aktivieren“', start: { cam: ZOOM },
-      acts: [{ to: [512, 187], ring: [347, 166, 190, 34], wait: 900 },
-        { to: [424, 220], click: true, set: { chk: '1' }, ring: [262, 200, 168, 26] }] },
-    { cap: '„OK“, die Freigabe steht jetzt in der Liste', start: { cam: ZOOM, ring: [262, 200, 168, 26] },
-      acts: [{ to: [553, 269], click: true, ring: [494, 246, 76, 38], wait: 500 },
-        { set: { scene: 'dev', rows: '1', radio: '0', chk: '0' }, cam: null, ring: [168, 176, 456, 30] }] },
+      acts: [{ to: [664, 282], click: true, set: { scene: 'dev' } }, { to: [566, 132], ring: [356, 106, 208, 34], wait: 700 }] },
+    { cap: '„Neue Freigabe“, oben „MyFRITZ!-Freigabe“',
+      acts: [{ to: [752, 602], click: true, set: { scene: 'dlg', app: 'http' }, cam: DLG },
+        { to: [418, 240], click: true, set: { radio: '1' }, ring: [264, 220, 160, 26] }] },
+    { cap: '„HTTP-Server“, Haken bei „Freigabe aktivieren“',
+      acts: [{ to: [652, 280], ring: [426, 252, 236, 36], wait: 900 },
+        { to: [424, 436], click: true, set: { chk: '1' }, ring: [264, 416, 160, 26] }] },
+    { cap: '„OK“, die Freigabe steht jetzt in der Liste',
+      acts: [{ to: [552, 516], click: true, ring: [472, 488, 102, 38], wait: 500 },
+        { set: { scene: 'dev', rows: '1', radio: '0', chk: '0' }, cam: { x: 490, y: 520, s: 1 }, ring: [224, 513, 532, 26] }] },
     { cap: 'Dasselbe noch einmal mit „HTTPS-Server“',
-      acts: [{ to: [290, 262], click: true, set: { scene: 'dlg', app: 'https', radio: '1', chk: '1' }, cam: ZOOM, ring: [347, 166, 190, 34], wait: 1300 },
-        { to: [553, 269], click: true, set: { scene: 'dev', rows: '2', radio: '0', chk: '0' }, cam: null, ring: [168, 206, 456, 26] }], hold: 1800 },
+      acts: [{ to: [752, 602], click: true, set: { scene: 'dlg', app: 'https', radio: '1', chk: '1' }, cam: DLG, ring: [426, 252, 236, 36], wait: 1300 },
+        { to: [552, 516], click: true, set: { scene: 'dev', rows: '2', radio: '0', chk: '0' }, cam: { x: 490, y: 550, s: 1 }, ring: [224, 541, 532, 26] }], hold: 1800 },
     { cap: 'Unten „Übernehmen“ klicken',
-      acts: [{ to: [613, 311], click: true, ring: [504, 282, 122, 40] }], hold: 2400 },
+      acts: [{ to: [754, 656], click: true, ring: [664, 630, 98, 36] }], hold: 2400 },
   ];
 
   function fbShare() {
-    return guided({ name: 'fb-share', svg: FB_SVG, steps: FB_STEPS, keyStep: 3, cursor: [330, 250],
+    return guided({ name: 'fb-share', svg: FB_SVG, width: 780, height: 680, steps: FB_STEPS, keyStep: 3, cursor: [420, 160], light: true,
+      label: 'Nachgezeichnete FritzBox-Oberfläche: der Weg zu den Freigaben, Schritt für Schritt',
       initial: { sub: '0', act: 'none', scene: 'home', radio: '0', chk: '0', rows: '0', app: 'http' } });
   }
 
@@ -286,14 +377,14 @@
     sage: 'Willkommen, mein Freund. Ich begleite dich durch den Haushalt. Wer fragt, findet den Weg.',
   };
 
-  function phone(name, label, chat) {
-    return h('div', { class: 'phone', role: 'img', 'aria-label': label },
-      h('div', { class: 'screen' },
+  function phone(label, chat) {
+    return h('div', { class: 'ph-frame', role: 'img', 'aria-label': label },
+      h('div', { class: 'ph-screen' },
         h('div', { class: 'island' }),
         h('div', { class: 'statusbar' }, h('span', { text: '9:41' }), fromMarkup('<svg class="icons" viewBox="0 0 46 11" aria-hidden="true">'
           + '<rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/>'
           + '<rect x="13.5" y="0" width="3" height="11" rx="1"/><rect class="batt" x="22.5" y="0.5" width="21" height="10" rx="3"/><rect x="24.5" y="2.5" width="15" height="6" rx="1.5"/></svg>')),
-        h('div', { class: 'tg-header' }, h('span', { class: 'tg-avatar' }, fromMarkup(MARK)), h('span', { class: 'tg-title', text: 'Dein Bot' })),
+        h('div', { class: 'tg-header' }, h('span', { class: 'tg-avatar' }, mark()), h('span', { class: 'tg-title', text: 'Dein Bot' })),
         h('div', { class: 'tg-chat' }, chat)));
   }
 
@@ -301,8 +392,9 @@
     const reply = h('div', { class: 'msg msg-in' });
     const typing = h('div', { class: 'msg msg-in typing', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
     const fig = h('figure', { class: 'art art-phone', 'data-art': 'persona' },
-      phone('persona', 'Beispiel-Chat mit deinem Bot', [h('div', { class: 'msg msg-out', text: PERSONA_Q }), reply, typing]),
-      h('figcaption', { class: 'art-cap art-note', text: 'So begrüßt dich dein Bot (Beispiel). Nur der Ton ändert sich, nicht die Inhalte.' }));
+      h('div', { class: 'art-box' },
+        phone('Beispiel-Chat mit deinem Bot', [h('div', { class: 'msg msg-out', text: PERSONA_Q }), reply, typing]),
+        h('figcaption', { class: 'art-cap art-note', text: 'So begrüßt dich dein Bot (Beispiel). Nur der Ton ändert sich, nicht die Inhalte.' })));
     let t = null;
     const show = (code) => { reply.textContent = PERSONA_A[code] || PERSONA_A.neutral; };
     show(page.value);
@@ -312,7 +404,7 @@
       fig.classList.add('busy');
       t = setTimeout(() => { if (!fig.isConnected) return; show(code); fig.classList.remove('busy'); }, 650);
     }
-    return { el: fig, select };
+    return { el: fig, select, side: true };   // neben die Auswahl (app.js .with-art), unter der Auswahl wäre bei 640 px kein Platz
   }
 
   // ---------- Zuordnung Seite → Bild (die eine Adresse) ----------

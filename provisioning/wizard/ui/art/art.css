@@ -1,85 +1,126 @@
 /* Wizard-Bilder (art.js). Farben und Formen nur als var(--token) aus dem Wizard-Block in app.css (config/ui.tokens.json);
-   keine eigene Hell/Dunkel-Regel, die Tokens schalten mit. Regeln: docs/reference/ui.md. Bewegung ruhig, kein Schatten. */
+   keine eigene Hell/Dunkel-Regel, die Tokens schalten mit. Nachzeichnungen fremder Oberflächen tragen .art-light und bekommen
+   dort (Regel im Token-Block, wie .qr) immer die hellen Tokens. Regeln: docs/reference/ui.md. Bewegung ruhig, kein Schatten.
 
-.art { margin: 18px 0 0; min-width: 0; }
-.art-cap { font-size: 15px; color: var(--gray); }
+   Platz: Das Bild füllt nur den freien Raum zwischen Inhalt und angehefteter Knopfleiste (flex in main, app.css) und misst sich
+   selbst (Container „art“). Zu wenig Höhe oder Breite → weniger zeigen, zuletzt gar nichts. */
+
+.art { margin: 12px 0 0; min-width: 0; min-height: 0; flex: 1000 1 0; max-height: 470px; container: art / size; display: flex; flex-direction: column; }
+.art-cap { font-size: 14px; color: var(--gray); }
 
 /* ---------- Geführte Animation ---------- */
-.art-stage svg { display: block; width: 100%; height: auto; max-height: 420px; overflow: hidden; border-radius: 14px; }
+.art-guide { position: relative; }
+.art-guide .art-stage { flex: 1 1 auto; min-height: 0; }
+/* Mit Bild wird der freie Raum ganz zum Bild (sonst hält der Abstand über der Knopfleiste 18 px fest) */
+.art ~ .spacer { min-height: 0; }
+.art-stage svg { display: block; width: 100%; height: 100%; border: 1px solid var(--hairline); border-radius: var(--radius-sm); overflow: hidden; }
 .art-guide text { font-family: var(--font); }
-.art-guide .art-cap { display: flex; gap: 10px 16px; align-items: flex-start; min-height: 52px; justify-content: space-between; flex-wrap: wrap; margin-top: 10px; }
-.art-line { margin: 0; color: var(--ink); min-width: 0; flex: 1 1 260px; }
+.art-guide .art-cap { position: absolute; left: 1px; right: 1px; bottom: 1px; display: flex; gap: 6px 12px; align-items: center; justify-content: space-between;
+  padding: 4px 8px; background: var(--bg); border-top: 1px solid var(--hairline); border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+.art-line { margin: 0; color: var(--ink); min-width: 0; flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .art-num { display: inline-block; min-width: 2.6em; margin-right: 8px; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--accent-pale);
-  color: var(--ink); font-size: 13px; font-weight: 600; text-align: center; }
-.art-ctl { display: flex; gap: 2px; align-items: center; }
-.art button.art-dot { width: 24px; height: 24px; padding: 0; margin: 0; background: none; border-radius: 50%; position: relative; transform: none; box-shadow: none; }
-.art button.art-dot::after { content: ""; position: absolute; left: 9px; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--gray); transition: background .18s ease, width .18s ease, left .18s ease; }
-.art button.art-dot.on::after { left: 4px; width: 16px; border-radius: var(--radius-pill); background: var(--accent); }
+  color: var(--ink); font-size: 12.5px; font-weight: 600; text-align: center; }
+.art-ctl { display: flex; gap: 0; align-items: center; flex: none; }
+.art button.art-dot { width: 18px; height: 22px; padding: 0; margin: 0; background: none; border-radius: var(--radius-pill); position: relative; transform: none; box-shadow: none; }
+.art button.art-dot::after { content: ""; position: absolute; left: 6px; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--gray); transition: background .18s ease, width .18s ease, left .18s ease; }
+.art button.art-dot.on::after { left: 2px; width: 14px; border-radius: var(--radius-pill); background: var(--accent); }
 .art button.art-dot:hover { background: none; transform: none; }
 .art button.art-dot:hover::after { background: var(--accent-mid); }
 .art button.art-dot.on:hover::after { background: var(--accent); }
-.art button.art-play { background: none; padding: 6px 4px 6px 10px; color: var(--gray); text-decoration: underline; font-weight: 500; font-size: 14px; }
+.art button.art-play { background: none; padding: 4px 2px 4px 10px; color: var(--gray); text-decoration: underline; font-weight: 500; font-size: 13px; }
 .art button.art-play:hover { background: none; transform: none; color: var(--ink); box-shadow: none; }
 
-/* Zeichnung: Linien und Flächen */
-.art-guide .cam { transition: transform .7s cubic-bezier(.3,.7,.3,1); }
+/* Takt: Lupe, Zeiger, Klick, Leuchtrahmen */
+.art-guide .cam { transition: transform .8s cubic-bezier(.3,.7,.3,1); }
 .art-guide .cursor { transition: transform .85s cubic-bezier(.45,.05,.25,1); }
 .art-guide .cursor path { fill: var(--ink); stroke: var(--bg); stroke-width: 1.4; stroke-linejoin: round; }
 .art-guide .ripple { fill: none; stroke: var(--accent); stroke-width: 2.5; opacity: 0; }
 .art-guide .ripple.go { animation: art-ripple .55s ease-out; transform-box: fill-box; transform-origin: center; }
 @keyframes art-ripple { from { opacity: .9; transform: scale(.3); } to { opacity: 0; transform: scale(1.5); } }
-.art-guide .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; opacity: 0; transition: opacity .25s ease; }
+.art-guide .ring { fill: none; stroke: var(--accent); stroke-width: 3; opacity: 0; transition: opacity .25s ease; }
 .art-guide .ring.on { opacity: 1; animation: art-glow 1.4s ease-in-out infinite; }
-@keyframes art-glow { 50% { stroke-width: 4.5; } }
+@keyframes art-glow { 50% { stroke-width: 5; } }
 .art-guide.instant .cam, .art-guide.instant .cursor, .art-guide.instant .ring, .art-guide.instant .s,
-.art-guide.instant .rest, .art-guide.instant .sub, .art-guide.instant .act { transition: none; }
+.art-guide.instant .rest, .art-guide.instant .sub, .art-guide.instant .act, .art-guide.instant .radio-on { transition: none; }
 
-.art-guide .win { fill: var(--bg); stroke: var(--gray); stroke-width: 1.2; }
-.art-guide .bar, .art-guide .side { fill: var(--bg-soft); }
-.art-guide .ln { stroke: var(--hairline); stroke-width: 1.5; }
-.art-guide .dot { fill: var(--hairline); }
-.art-guide .addr, .art-guide .field { fill: var(--bg); stroke: var(--hairline); stroke-width: 1.5; }
-.art-guide .ph { fill: var(--hairline); }
-.art-guide .tab { fill: var(--accent); }
-.art-guide .btn { fill: var(--bg); stroke: var(--gray); stroke-width: 1.2; }
-.art-guide .btn-main { fill: var(--ink); stroke: none; }
-.art-guide .caret, .art-guide .tick { fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.art-guide .box { fill: var(--bg); stroke: var(--gray); stroke-width: 1.4; }
-.art-guide .radio { fill: var(--bg); stroke: var(--gray); stroke-width: 1.4; }
-.art-guide .radio-on { fill: var(--accent); opacity: 0; transition: opacity .2s ease; }
-.art-guide .veil { fill: var(--bg-soft); }
-.art-guide .dlg { fill: var(--bg); stroke: var(--gray); stroke-width: 1.2; }
-.art-guide .act { fill: var(--accent-pale); opacity: 0; transition: opacity .25s ease; }
-.art-guide text { fill: var(--ink); }
-.art-guide .t-s { font-size: 13px; }
-.art-guide .t-m { font-size: 14px; }
-.art-guide .t-h { font-size: 18px; font-weight: 700; }
-.art-guide .t-strong { font-weight: 600; }
-.art-guide .t-gray { fill: var(--gray); }
-.art-guide .t-mid { text-anchor: middle; font-weight: 600; }
-.art-guide .t-on-main { fill: var(--bg); }
-
-/* FritzBox-Schema (data-art="fb-share"): Szenen und Menü-Zustand über data-* am <svg> */
-.fb .s { opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
-.fb[data-scene="home"] .s-home, .fb[data-scene="list"] .s-list, .fb[data-scene="dev"] .s-dev,
-.fb[data-scene="dlg"] .s-dev, .fb[data-scene="dlg"] .s-dlg { opacity: 1; visibility: visible; }
+/* ---------- FritzBox-Nachzeichnung (data-art="fb-share"), FRITZ!OS 8 ---------- */
+.fb text { fill: var(--ink); font-size: 13px; }
+.fb .pg, .fb .nav, .fb .tab-on, .fb .tbl, .fb .dlg { fill: var(--bg); }
+.fb .tbl, .fb .dlg { stroke: var(--hairline); stroke-width: 1.2; }
+.fb .hdr { fill: var(--accent); }
+.fb .t-hdr { fill: var(--bg); font-size: 22px; font-weight: 700; }
+.fb .hbtn { fill: none; stroke: var(--bg); stroke-width: 1.2; }
+.fb .t-hbtn { fill: var(--bg); font-size: 11.5px; font-weight: 600; text-anchor: middle; }
+.fb .hdot { fill: var(--bg); }
+.fb .ln { stroke: var(--hairline); stroke-width: 1.2; }
+.fb .ico { fill: var(--gray); opacity: .45; }
+.fb .ico-c { fill: none; stroke: var(--gray); stroke-width: 1.3; }
+.fb .t-n { font-size: 14px; }
+.fb .t-sub { font-size: 13px; }
+.fb .chev, .fb .chev-up { fill: none; stroke: var(--gray); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.fb .chev-up, .fb[data-sub="1"] .chev { display: none; }
+.fb[data-sub="1"] .chev-up { display: inline; }
+.fb[data-sub="1"] .t-int { font-weight: 700; }
+.fb .act { fill: var(--accent); opacity: 0; transition: opacity .25s ease; }
+.fb[data-act="freigaben"] .act-freigaben { opacity: 1; }
+.fb[data-act="freigaben"] .t-fg { fill: var(--bg); }
 .fb .sub { opacity: 0; transition: opacity .3s ease; }
 .fb[data-sub="1"] .sub { opacity: 1; }
 .fb .rest { transition: transform .35s ease; }
-.fb[data-sub="1"] .rest { transform: translateY(66px); }
-.fb[data-act="internet"] .act-internet, .fb[data-act="freigaben"] .act-freigaben { opacity: 1; }
-.fb[data-radio="1"] .r1 { opacity: 1; }
-.fb .tick { opacity: 0; }
+.fb[data-sub="1"] .rest { transform: translateY(136px); }
+.fb .t-h { font-size: 20px; font-weight: 700; }
+.fb .t-m { font-size: 14px; }
+.fb .t-strong { font-weight: 700; }
+.fb .t-gray, .fb .t-lbl, .fb .t-th { fill: var(--gray); }
+.fb .t-th { font-size: 11.5px; }
+.fb .t-s { font-size: 12.5px; }
+.fb .ph { fill: var(--hairline); }
+.fb .card, .fb .tab-off, .fb .field-off { fill: var(--bg-soft); stroke: var(--hairline); stroke-width: 1.2; }
+.fb .help { fill: var(--accent-pale); }
+.fb .t-help { fill: var(--accent); font-weight: 700; text-anchor: middle; }
+.fb .tab-line { fill: var(--accent); }
+.fb .t-tab { font-size: 12.5px; text-anchor: middle; }
+.fb .th, .fb .zebra, .fb .dlg-hd { fill: var(--bg-soft); }
+.fb .ibtn, .fb .btn2 { fill: var(--accent-pale); }
+.fb .pen, .fb .bin { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.fb .t-btn2 { fill: var(--accent); font-size: 12.5px; font-weight: 600; text-anchor: middle; }
+.fb .btn1 { fill: var(--accent); }
+.fb .t-btn1 { fill: var(--bg); font-size: 12.5px; font-weight: 600; text-anchor: middle; }
+.fb .btn-off { fill: var(--bg-soft); stroke: var(--hairline); stroke-width: 1.2; }
+.fb .t-off { fill: var(--gray); font-size: 12.5px; text-anchor: middle; }
+.fb .field { fill: var(--bg); stroke: var(--gray); stroke-opacity: .55; stroke-width: 1.2; }
+.fb .field.sel { stroke: var(--accent); stroke-opacity: 1; }
+.fb .caret { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.fb .box { fill: var(--bg); stroke: var(--gray); stroke-width: 1.2; }
+.fb .tick { fill: none; stroke: var(--bg); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.fb[data-chk="1"] .s-dlg .box { fill: var(--accent); stroke: var(--accent); }
 .fb[data-chk="1"] .tick { opacity: 1; }
-.fb .row-http, .fb .row-https, .fb[data-rows="1"] .rows0, .fb[data-rows="2"] .rows0, .fb .app-https, .fb[data-app="https"] .app-http { display: none; }
+.fb .radio { fill: var(--bg); stroke: var(--gray); stroke-width: 1.3; }
+.fb .radio-on { fill: var(--accent); opacity: 0; transition: opacity .2s ease; }
+.fb[data-radio="1"] .r1 { opacity: 1; }
+.fb .okdot { fill: var(--ok); }
+.fb .veil { fill: var(--ink); opacity: .28; }
+.fb .s { opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
+.fb[data-scene="home"] .s-home, .fb[data-scene="list"] .s-list, .fb[data-scene="dev"] .s-dev,
+.fb[data-scene="dlg"] .s-dev, .fb[data-scene="dlg"] .s-dlg { opacity: 1; visibility: visible; }
+.fb .row-http, .fb .row-https, .fb .app-https, .fb[data-app="https"] .app-http { display: none; }
 .fb[data-rows="1"] .row-http, .fb[data-rows="2"] .row-http, .fb[data-rows="2"] .row-https, .fb[data-app="https"] .app-https { display: inline; }
 
+/* Lupe braucht Breite (Start-App 760 px) und etwas Höhe; sonst entfällt die Animation */
+@container art (max-width: 460px) { .art-guide .art-stage, .art-guide .art-cap { display: none; } }
+@container art (max-height: 100px) { .art-guide .art-stage, .art-guide .art-cap { display: none; } }
+
 /* ---------- Handy-Ausschnitt (Analog: docs/site/layouts/partials/phone-frame-*.html) ---------- */
-.art-phone { display: flex; flex-direction: column; align-items: center; }
-.art-phone .phone { width: 300px; max-width: 100%; height: 300px; overflow: hidden; border-radius: 46px 46px 0 0;
+/* Neben der Auswahl (side: true → app.js .with-art): so hoch wie die Auswahl, schmal; im schmalen Fenster darunter */
+.with-art { display: flex; gap: 24px; align-items: flex-start; }
+.with-art > .choices { flex: 1 1 auto; min-width: 0; }
+.with-art > .art { flex: 0 0 264px; height: 340px; margin: 0; max-height: none; }
+@media (max-width: 600px) { .with-art { display: block; } .with-art > .art { height: 330px; margin: 14px 0 0; } }
+.art-phone .art-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; }
+.art-phone .ph-frame { width: 300px; max-width: 100%; flex: 0 1 300px; min-height: 0; overflow: hidden; border-radius: 46px 46px 0 0;
   padding: 9px 9px 0; background: var(--bg-soft); border: 1.5px solid var(--gray); border-bottom: 0;
-  -webkit-mask-image: linear-gradient(to bottom, var(--ink) 78%, transparent); mask-image: linear-gradient(to bottom, var(--ink) 78%, transparent); }
-.art-phone .screen { position: relative; height: 100%; border-radius: 38px 38px 0 0; overflow: hidden; background: var(--bg);
+  -webkit-mask-image: linear-gradient(to bottom, var(--ink) 80%, transparent); mask-image: linear-gradient(to bottom, var(--ink) 80%, transparent); }
+.art-phone .ph-screen { position: relative; height: 100%; border-radius: 38px 38px 0 0; overflow: hidden; background: var(--bg);
   border: 1px solid var(--hairline); border-bottom: 0; display: flex; flex-direction: column; }
 .art-phone .island { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 92px; height: 26px; border-radius: var(--radius-pill); background: var(--bg-soft); border: 1.5px solid var(--gray); }
 .art-phone .statusbar { height: 44px; flex: none; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 24px 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -87,12 +128,10 @@
 .art-phone .icons rect { fill: var(--ink); }
 .art-phone .icons .batt { fill: none; stroke: var(--gray); }
 .art-phone .tg-header { flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 14px 9px; border-bottom: 1px solid var(--hairline); }
-.art-phone .tg-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; flex: none; }
+.art-phone .tg-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); --mark: var(--bg); --mark-check: var(--accent);
+  display: flex; align-items: center; justify-content: center; flex: none; }
 .art-phone .tg-avatar svg { width: 21px; height: 21px; }
-.art-phone .mark-body { fill: var(--bg); stroke: var(--bg); stroke-width: 2; stroke-linejoin: round; }
-.art-phone .mark-check { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .art-phone .tg-title { font-size: 14px; font-weight: 600; line-height: 1.2; color: var(--ink); }
-.art-phone .tg-title small { display: block; font-weight: 400; font-size: 12px; color: var(--gray); }
 .art-phone .tg-chat { flex: 1; background: var(--bg-soft); padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
 .art-phone .msg { max-width: 86%; padding: 7px 11px; border-radius: 16px; }
 .art-phone .msg-out { align-self: flex-end; background: var(--accent-pale); border-bottom-right-radius: 6px; }
@@ -104,12 +143,13 @@
 @keyframes art-typing { 50% { opacity: .3; transform: translateY(-2px); } }
 .art-phone.busy .msg-in:not(.typing) { display: none; }
 .art-phone.busy .typing { display: flex; }
-.art-note { margin-top: 10px; text-align: center; max-width: 34rem; }
+.art-note { margin: 8px 0 0; text-align: center; max-width: 34rem; flex: none; }
 
-/* Schemata brauchen Fensterbreite (Start-App 760 px); schmaler wäre die Schrift darin unlesbar. Gemessen an der eigenen
-   Breite (Container), nicht am Fenster. */
-.art-guide { container-type: inline-size; }
-@container (max-width: 460px) { .art-guide .art-stage, .art-guide .art-cap { display: none; } }
+/* Weniger Höhe: erst Statusleiste, dann Frage und Satz weglassen, zuletzt ganz */
+@container art (max-height: 300px) { .art-phone .statusbar, .art-phone .island { display: none; } .art-phone .ph-screen { padding-top: 6px; } }
+@container art (max-height: 230px) { .art-phone .msg-out { display: none; } }
+@container art (max-height: 185px) { .art-phone .art-note { display: none; } }
+@container art (max-height: 110px) { .art-phone .art-box { display: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   .art-guide .cam, .art-guide .cursor, .art-guide .ring, .art .s, .art .sub, .art .rest, .art .act, .art .radio-on, .art .msg-in { transition: none; }

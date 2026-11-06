@@ -366,7 +366,7 @@ ${scenes}
    <text class="t-lbl" x="300" y="311">Verzeichnis (optional)</text><rect class="field" x="430" y="294" width="228" height="28" rx="3"/>
    <text class="t-lbl" x="300" y="349">MyFRITZ!-Adresse</text><rect class="field-off" x="430" y="332" width="228" height="28" rx="3"/>
    <clipPath id="fb-addr-clip"><rect x="432" y="334" width="224" height="24"/></clipPath>
-   <g class="addr" clip-path="url(#fb-addr-clip)"><text class="t-s" x="440" y="351"><tspan class="t-strong pc-host addr-host">mein-rechner</tspan><tspan class="addr-zone">.deine-domain.myfritz.net</tspan></text></g>
+   <g class="addr" clip-path="url(#fb-addr-clip)"><text class="t-s" x="440" y="351"><tspan class="t-strong addr-host">mein-rechner</tspan><tspan class="addr-zone">.deine-domain.myfritz.net</tspan></text></g>
    <circle class="radio" cx="276" cy="382" r="7"/><circle class="radio-on r2" cx="276" cy="382" r="4"/>
    <text class="t-m" x="292" y="387">Portfreigabe</text>
    <line class="ln" x1="266" y1="406" x2="664" y2="406"/>
@@ -418,6 +418,8 @@ ${scenes}
   // Dieselben Bilder wie fb_guide, Schritte 1–2 sind dieselben Objekte. Der Rechner hat schon beide Freigaben; die
   // MyFRITZ!-Adresse zeigt der Dialog „Freigabe anlegen“ (belegter Wortlaut), deshalb „Neue Freigabe“ nur zum Nachschauen.
   // Vorderer Teil = Name; die Endung ist die echte Zone der Seite (page.suffix), zu lang wird sie am Feldrand abgeschnitten.
+  // page.fbHost (Name in der Geräteliste der FritzBox) nur in Liste und Geräteseite, nie im Adressfeld: dieser Zustand
+  // entsteht gerade, weil <fbHost>.<Zone> die Prüfung nicht bestanden hat; dort bleibt das Beispiel „mein-rechner“.
   const FB_NAME_STEPS = [
     FB_OPEN,
     FB_SHARE_STEPS[1],

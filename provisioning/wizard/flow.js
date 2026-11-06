@@ -10,17 +10,12 @@
 //   - DOMAIN nur beim FritzBox-Weg, mit eigener Erklärung: der CLI-Hilfetext beschreibt den eigenen Reverse Proxy.
 'use strict';
 
-// Phasen der Seitenleiste. Start, Vorbereiten, Dauerbetrieb und Fertig zeigt die App selbst (Paket 6/7); der Wizard
-// zeigt sie mit, damit die Leiste über beide Fenster gleich bleibt.
-const PHASES = ['Start', 'Vorbereiten', 'Über dich', 'Telegram', 'KI-Schlüssel', 'Funktionen', 'Erreichbarkeit',
-  'Prüfen', 'Installieren', 'Verbinden', 'Dauerbetrieb', 'Fertig'];
-const PH = Object.fromEntries(PHASES.map((p, i) => [p, i]));
-
-// Host-Fragen in der Reihenfolge der CLI (_INSTALL_ENV_KEYS) mit ihrer Phase. TELEGRAM vor ANTHROPIC wie dort.
-const HOST_PHASE = {
-  OWNER_LANGUAGE: PH['Über dich'], OWNER_FIRST_NAME: PH['Über dich'], OWNER_LAST_NAME: PH['Über dich'],
-  OWNER_BIRTH_DATE: PH['Über dich'], OWNER_PERSONA: PH['Über dich'], TELEGRAM_BOT_TOKEN: PH.Telegram,
-  ANTHROPIC_API_KEY: PH['KI-Schlüssel'], GOOGLE_API_KEY: PH['KI-Schlüssel'],
+// Schritt-Leiste über App und Wizard (Owner-Wunsch, mit Paket 6/7 vereinbart): Reihenfolge und ids nur im gemeinsamen
+// Block ui.steps.js (Kopie aus config/, scripts/build_ui_tokens.ps1), Beschriftungen im Katalog core.wizard.step.<id>.
+// Der Wizard zeichnet „questions“ mit Unterschritten, „install“ und „connect“; die App den Rest.
+const HOST_SUB = {
+  OWNER_LANGUAGE: 'about', OWNER_FIRST_NAME: 'about', OWNER_LAST_NAME: 'about', OWNER_BIRTH_DATE: 'about', OWNER_PERSONA: 'about',
+  TELEGRAM_BOT_TOKEN: 'access', ANTHROPIC_API_KEY: 'access', GOOGLE_API_KEY: 'access', DOMAIN: 'reach',
 };
 // Eigene Reihenfolge in „Über dich“: Sprache zuerst (Entwurf), Charakter zuletzt.
 const ABOUT_ORDER = ['OWNER_LANGUAGE', 'OWNER_FIRST_NAME', 'OWNER_LAST_NAME', 'OWNER_BIRTH_DATE', 'OWNER_PERSONA'];
@@ -122,13 +117,16 @@ function question(Q, id) {
   return null;
 }
 
-// phaseOf(id) -> Index in PHASES.
-function phaseOf(id) {
-  if (id.startsWith('h:')) { const k = id.slice(2); return k === 'DOMAIN' ? PH.Erreichbarkeit : HOST_PHASE[k]; }
-  if (id.startsWith('s:') || id.startsWith('c:') || id === 'packages') return PH.Funktionen;
-  return ({ tg_busy: PH.Telegram, voice: PH['KI-Schlüssel'], reach: PH.Erreichbarkeit, fb_dslite: PH.Erreichbarkeit,
-    fb_ports_busy: PH.Erreichbarkeit, fb_guide: PH.Erreichbarkeit, review: PH['Prüfen'], confirm: PH['Prüfen'],
-    install: PH.Installieren, connect: PH.Verbinden, handoff: PH.Dauerbetrieb })[id] ?? PH['Über dich'];
+// stepOf(id) -> {current, sub}: Platz einer Seite in der Schritt-Leiste.
+function stepOf(id) {
+  if (id === 'install' || id === 'connect') return { current: id, sub: null };
+  if (id === 'handoff') return { current: 'connect', sub: null };   // letzte Seite des Wizards, danach übernimmt die App
+  let sub = 'about';
+  if (id.startsWith('h:')) sub = HOST_SUB[id.slice(2)] || 'about';
+  else if (id.startsWith('s:') || id.startsWith('c:') || id === 'packages') sub = 'modules';
+  else sub = ({ tg_busy: 'access', voice: 'access', reach: 'reach', fb_dslite: 'reach', fb_ports_busy: 'reach', fb_guide: 'reach',
+    review: 'check', confirm: 'check' })[id] || 'about';
+  return { current: 'questions', sub };
 }
 
 // helpBlocks(text) -> [{p:"…"} | {ol:["…"]}]: die CLI-Hilfe (feste Zeilenbreite, „  1.“-Listen) als Absätze und Liste.
@@ -332,6 +330,6 @@ function packagesArg(Q, A) {
   return p.length ? p.join(',') : 'none';
 }
 
-module.exports = { PHASES, PH, steps, reachMode, answered, envOf, question, phaseOf, helpBlocks, valueProblem,
+module.exports = { steps, reachMode, answered, envOf, question, stepOf, helpBlocks, valueProblem,
   allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, myfritzZone, myfritzCandidates, myfritzGuess,
   userLanguage, userName, parseHints, webhookFailing, hostDef, pkgDef };

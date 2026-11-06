@@ -186,106 +186,169 @@ function cursor() {
 }
 
 // --- Seiten (View-Modell für ui/app.js) ------------------------------------------------------------------------
-const MSG = {
-  empty: 'Hier fehlt noch etwas.',
-  invalid: 'Das passt nicht (ungültig oder Tippfehler). Bitte prüfe die Eingabe.',
-  line: 'Bitte nur eine Zeile eingeben, ohne Zeilenumbruch.',
-  choose: 'Wähle eine Antwort aus.',
-  offline: 'Konnte gerade nicht online prüfen. Die Angabe ist übernommen und wird bei der Einrichtung noch einmal geprüft.',
-};
+// --- Sprache der Einrichtung (Owner 2026-11-06: Antippen auf der Sprach-Seite stellt sofort alles um) --------------
+// Texte aus dem Textkatalog der Pakete (packages/<pkg>/locales/<lang>.json, locale_lint prüft Vollständigkeit und
+// Platzhalter): <pkg>.wizard.* (eigene Texte für das Fenster der App, „Rechner“ statt „Server“, ohne Terminal-Befehle),
+// <pkg>.package.name/summary, core.persona.name.*. Fehlt ein Key, gilt Deutsch, dann der CLI-Text der Frage.
+const PKG_DIR = process.env.WIZARD_PKG_DIR || path.join(__dirname, '..', '..', 'packages');
+const CAT = {};
+function loadCatalog() {
+  let pkgs = [];
+  try { pkgs = fs.readdirSync(PKG_DIR); } catch (_) { return; }
+  for (const p of pkgs) {
+    let files = [];
+    try { files = fs.readdirSync(path.join(PKG_DIR, p, 'locales')); } catch (_) { continue; }
+    for (const f of files) {
+      const m = /^([a-z]{2,8})\.json$/.exec(f);
+      if (!m) continue;
+      let o = null;
+      try { o = JSON.parse(fs.readFileSync(path.join(PKG_DIR, p, 'locales', f), 'utf8')); } catch (_) { continue; }
+      const t = CAT[m[1]] || (CAT[m[1]] = {});
+      for (const [k, v] of Object.entries(o || {})) {
+        if (typeof v === 'string' && (k.includes('.wizard.') || /\.package\.(name|summary)$/.test(k) || k.startsWith('core.persona.name.'))) t[k] = v;
+      }
+    }
+  }
+}
+// uiLang — Sprache der Seiten: gewählt (P.ui_lang), sonst Vorschlag vom Rechner, sonst Deutsch.
+function uiLang() {
+  const langs = (Q && Q.languages) || [];
+  if (P && P.ui_lang && langs.some((l) => l.code === P.ui_lang)) return P.ui_lang;
+  return flow.userLanguage(hints().LA_USER_LANG, langs) || 'de';
+}
+function has(key) { return !!((CAT[uiLang()] || {})[key] || (CAT.de || {})[key]); }
+function T(key, vars) {
+  const l = uiLang();
+  const s = (CAT[l] && CAT[l][key]) || (CAT.de && CAT.de[key]) || key;
+  return vars ? s.replace(/\{([a-z_]+)\}/g, (m, k) => (vars[k] !== undefined ? String(vars[k]) : m)) : s;
+}
+// Texte der Fragen: Host-Fragen core.wizard.q.<key>, Paket-Einstellungen <pkg>.wizard.cfg_<cat>_<key>, Zugänge <pkg>.wizard.<env>.
+function qKey(q) {
+  if (!q.pkg) return `core.wizard.q.${q.key.toLowerCase()}`;
+  return q.setting ? `${q.pkg}.wizard.cfg_${q.setting.replace(/\./g, '_')}` : `${q.pkg}.wizard.${q.key.toLowerCase()}`;
+}
+function qTitle(q) { const k = qKey(q) + '.title'; return has(k) ? T(k) : q.label; }
+function qLabel(q) { const k = qKey(q) + '.label'; return has(k) ? T(k) : qTitle(q); }
+function qHelp(q) {
+  const k = qKey(q) + '.help';
+  if (has(k)) return flow.helpBlocks(T(k));
+  return has(qKey(q) + '.title') ? [] : flow.helpBlocks(q.help);
+}
+function pkgName(p) { return has(`${p.id}.package.name`) ? T(`${p.id}.package.name`) : p.name; }
+function pkgSummary(p) { return has(`${p.id}.package.summary`) ? T(`${p.id}.package.summary`) : p.summary; }
+// Auswahl einer Frage in der Sprache der Seite: Sprachen bleiben in Eigenschreibweise (Deutsch / English / 한국어), damit
+//   man nach einem Verklicken zurückfindet; Charaktere aus core.persona.name.<code>.
+function choicesOf(q) {
+  if (!q.choices) return null;
+  if (q.key === 'OWNER_PERSONA') return q.choices.map((c) => ({ value: c.value, label: has(`core.persona.name.${c.value}`) ? T(`core.persona.name.${c.value}`) : c.label }));
+  return q.choices;
+}
+function setLang(code) {
+  if (P.phase !== 'questions' || !((Q && Q.languages) || []).some((l) => l.code === code)) return { error: T('core.wizard.msg.choose') };
+  P.ui_lang = code;
+  save();
+  return { ok: true };
+}
+// Texte der Knöpfe und festen Hinweise in ui/app.js (kommen mit jeder Seite, auch in die Vorschau-Bilder).
+function uiTexts() {
+  const o = {};
+  for (const k of ['next', 'back', 'skip', 'retry', 'change', 'change_label', 'secret_kept', 'found_addresses', 'one_moment', 'report_show',
+    'report_note', 'report_copied', 'offline', 'open_via_app', 'session_expired', 'doc_title']) o[k] = T(`core.wizard.ui.${k}`);
+  o.choose = T('core.wizard.msg.choose');
+  // Schritt-Leiste (gemeinsamer Block ui.steps.js): Beschriftung je id, Kurzform für schmale Fenster, Name für Vorleser.
+  o.step = {};
+  for (const id of ['prepare', 'docker', 'questions', 'about', 'access', 'modules', 'reach', 'check', 'install', 'connect', 'power', 'done']) {
+    o.step[id] = T(`core.wizard.step.${id}`);
+  }
+  o.step_short = T('core.wizard.step.short');
+  o.step_aria = T('core.wizard.step.aria');
+  return o;
+}
+
 // Optionale CLI-Fragen, die der Wizard trotzdem nicht überspringen lässt (Grund an der Stelle in pageFor).
 const NO_SKIP = ['DOMAIN', 'GOOGLE_API_KEY', 'OWNER_LANGUAGE', 'OWNER_PERSONA'];
-const PAPERLESS_MSG = {
-  localhost: '„localhost“ meint für den Assistenten ihn selbst, nicht deinen Rechner. Nimm die Adresse des Rechners im Netzwerk, zum Beispiel http://192.168.1.50:8000.',
-  invalid: 'Das sieht nicht nach einer Adresse aus. Sie beginnt mit http:// oder https://.',
-  unreachable: 'Unter dieser Adresse antwortet nichts. Prüfe, ob Paperless läuft und ob du die Adresse so auch im Browser öffnest.',
-  not_paperless: 'Unter dieser Adresse antwortet kein Paperless. Prüfe die Adresse und den Port.',
-  token_rejected: 'Paperless lehnt diesen Zugang ab. Kopiere den Token noch einmal aus deinem Profil in Paperless.',
-  too_old: 'Dein Paperless ist zu alt. Nötig ist Paperless-NGX 3.0 oder neuer.',
-};
+const PAPERLESS_REASONS = ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old'];
 
 function optionsFor(id) {
+  const o = (value, key, tag) => ({ value, label: T(`core.wizard.opt.${key}`), desc: T(`core.wizard.opt.${key}_desc`),
+    tag: tag ? T('core.wizard.ui.recommended') : null });
   switch (id) {
-    case 'voice': return [
-      { value: 'no', label: 'Nein, ich schreibe lieber', desc: 'Du kannst das später nachholen.' },
-      { value: 'yes', label: 'Ja, ich trage einen Schlüssel ein', desc: 'Dauert etwa 5 Minuten.' }];
-    case 'tg_busy': return [
-      { value: 'new', label: 'Einen neuen Bot anlegen', tag: 'empfohlen', desc: 'Dauert zwei Minuten, der andere Dienst läuft einfach weiter.' },
-      { value: 'take', label: 'Diesen Bot übernehmen', desc: 'Nur, wenn du sicher bist, dass der andere Dienst nicht mehr gebraucht wird.' }];
-    case 'reach': return [
-      { value: 'tunnel', label: 'Über einen sicheren Tunnel', tag: 'empfohlen', desc: 'Geht mit jedem Anschluss. Du brauchst ein kostenloses Konto bei Tailscale; die Anmeldung kommt nach der Installation.' },
-      { value: 'fritzbox', label: 'Über meine FritzBox', desc: 'Einige Schritte im Router, kein fremdes Konto. Dein Anschluss braucht eine eigene IPv4-Adresse.' }];
-    case 'fb_dslite': return [
-      { value: 'no', label: 'Nein, dort steht kein DS-Lite', desc: 'Weiter mit der FritzBox.' },
-      { value: 'yes', label: 'Ja, dort steht DS-Lite', desc: 'Telegram erreicht dich über die FritzBox dann nicht. Wir nehmen den Tunnel.' }];
-    case 'packages': return Q.packages.map((p) => ({ value: p.id, label: p.name, desc: p.summary }));
+    case 'voice': return [o('no', 'voice_no'), o('yes', 'voice_yes')];
+    case 'tg_busy': return [o('new', 'tg_new', true), o('take', 'tg_take')];
+    case 'reach': return [o('tunnel', 'reach_tunnel', true), o('fritzbox', 'reach_fritzbox')];
+    case 'fb_dslite': return [o('no', 'dslite_no'), o('yes', 'dslite_yes')];
+    case 'packages': return Q.packages.map((p) => ({ value: p.id, label: pkgName(p), desc: pkgSummary(p) }));
     default: return null;
   }
 }
 
 function pageFor(id) {
-  const base = { id, phase: flow.phaseOf(id), phases: flow.PHASES };
+  const base = { id, step: flow.stepOf(id) };
   const q = flow.question(Q, id);
   if (q) {
     const key = q.key;
     const v = P.A[key];
+    const next = T('core.wizard.ui.next');
     const page = Object.assign(base, {
-      kind: q.kind, title: q.label, help: flow.helpBlocks(q.help), optional: !q.required,
+      kind: q.kind, title: qTitle(q), help: qHelp(q), optional: !q.required,
       value: q.secret ? '' : (typeof v === 'string' ? v : ''), hasSecret: q.secret && v === null,
-      options: q.choices, next: 'Weiter',
+      options: choicesOf(q), next,
     });
     if (key === 'DOMAIN') {
-      page.title = 'Füge die MyFRITZ!-Adresse deines Rechners ein';
-      page.help = [{ p: 'Sie steht in der Freigabe im Feld „MyFRITZ!-Adresse“, zum Beispiel meinrechner.deine-domain.myfritz.net. Warte danach etwa eine Minute, bis sie eingetragen ist.' }];
       page.optional = false;
       Object.assign(page, domainView(v));
     }
-    // Vorschläge vom Rechner (hints.env der App: LA_USER_LANG, LA_USER_FULLNAME), nur solange nichts beantwortet ist.
-    if (key === 'OWNER_LANGUAGE' && !v) page.value = flow.userLanguage(hints().LA_USER_LANG, Q.languages) || 'de';
-    if (key === 'OWNER_FIRST_NAME' && v === undefined) page.value = flow.userName(hints().LA_USER_FULLNAME).first;
-    if (key === 'OWNER_LAST_NAME' && v === undefined) page.value = flow.userName(hints().LA_USER_FULLNAME).last;
+    // Vorschläge vom Rechner (hints.env der App), nur solange nichts beantwortet ist, sichtbar als Vorschlag gekennzeichnet.
+    const fromAccount = { kind: '', text: T('core.wizard.msg.from_account') };
+    if (key === 'OWNER_LANGUAGE') {
+      const hinted = flow.userLanguage(hints().LA_USER_LANG, Q.languages);
+      page.value = v || P.ui_lang || hinted || 'de';
+      page.langSwitch = true;   // ui/app.js: Antippen stellt die Seiten sofort um (/api/lang)
+      if (!v && !P.ui_lang && hinted) page.note = fromAccount;
+    }
+    for (const [k, part] of [['OWNER_FIRST_NAME', 'first'], ['OWNER_LAST_NAME', 'last']]) {
+      if (key !== k || v !== undefined) continue;
+      page.value = flow.userName(hints().LA_USER_FULLNAME)[part];
+      if (page.value) page.note = fromAccount;
+    }
     if (q.setting === 'general.paperless_url' && v === undefined) Object.assign(page, paperlessSearchView());
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
     if (NO_SKIP.includes(key)) page.optional = false;
-    if (q.kind === 'date') page.placeholder = 'JJJJ-MM-TT';
+    if (q.kind === 'date') page.placeholder = T('core.wizard.ui.date_placeholder');
     return page;
   }
+  const next = T('core.wizard.ui.next');
+  const P1 = (k) => [{ p: T(k) }];
   switch (id) {
-    case 'tg_busy': return Object.assign(base, { kind: 'choice', title: 'Dieser Bot läuft schon woanders',
-      help: [{ p: 'Er schickt seine Nachrichten gerade an einen anderen Dienst. Übernehmen wir ihn, bekommt dieser Dienst nichts mehr.' }],
-      note: P.A.__tg_conflict && P.A.__tg_conflict !== 'polling' ? { kind: 'warn', text: `Bisherige Adresse: ${P.A.__tg_conflict}` } : null,
-      options: optionsFor(id), value: P.A.__tg_choice || 'new', next: 'Weiter' });
-    case 'voice': return Object.assign(base, { kind: 'choice', title: 'Möchtest du dem Bot auch Sprachnachrichten schicken?',
-      help: [{ p: 'Dafür brauchst du zusätzlich einen Schlüssel von Google im bezahlten Tarif. Nur dann nutzt Google deine Aufnahmen nicht zum Training. Ohne Schlüssel läuft alles andere normal.' }],
-      options: optionsFor(id), value: P.A.__voice || '', next: 'Weiter' });
-    case 'packages': return Object.assign(base, { kind: 'multi', title: 'Was soll dein Assistent können?',
-      help: [{ p: 'Das Grundsystem mit Haushalt, Erinnerungen und Hilfe ist immer dabei. Den Rest kannst du jetzt wählen oder später dazunehmen.' }],
-      options: optionsFor(id), value: P.A.__packages || [], next: 'Weiter' });
-    case 'reach': return Object.assign(base, { kind: 'choice', title: 'Wie soll Telegram deinen Rechner erreichen?',
-      help: [{ p: 'Telegram muss deine Nachrichten bei dir abliefern können, auch wenn du unterwegs bist.' }],
-      options: optionsFor(id), value: P.A.__reach || 'tunnel', next: 'Weiter' });
-    case 'fb_dslite': return Object.assign(base, { kind: 'choice', title: 'Steht in deiner FritzBox „DS-Lite“?',
-      help: [{ p: 'Öffne im Browser fritz.box und gehe zu Internet → Online-Monitor. Schaue, ob dort das Wort „DS-Lite“ steht. Dann kann Telegram deinen Rechner über die FritzBox nicht erreichen.' }],
-      link: { href: GUIDE_URL, label: 'Ausführliche Anleitung mit Bildern öffnen' },
-      options: optionsFor(id), value: P.A.__dslite || '', next: 'Weiter' });
-    case 'fb_ports_busy': return Object.assign(base, { kind: 'info', title: 'Der FritzBox-Weg ist auf diesem Rechner schon belegt',
-      help: [{ p: 'Ein anderes Programm auf diesem Rechner nutzt schon den Weg, den die FritzBox bräuchte. Wir ändern daran nichts, sonst fällt es aus.' }, { p: 'Wähle stattdessen „Über einen sicheren Tunnel“, der stört nichts.' }],
-      next: 'Den Tunnel nehmen' });
-    case 'fb_guide': return Object.assign(base, { kind: 'info', title: 'Richte die FritzBox ein',
-      help: [{ p: 'In der FritzBox stellst du ein, dass Nachrichten aus dem Internet bei diesem Rechner ankommen. Unten siehst du die Schritte. Ausführlich, mit allen Sonderfällen, steht es in der Anleitung.' }],
-      note: { kind: 'warn', text: 'Meldet die FritzBox „Freigabe existiert bereits“, nutzt schon etwas anderes diesen Weg. Lösche nichts, sonst fällt es aus. Geh dann zurück und wähle „Über einen sicheren Tunnel“.' },
-      link: { href: GUIDE_URL, label: 'Ausführliche Anleitung öffnen' }, next: 'Ich habe die Freigaben angelegt' });
-    case 'review': return Object.assign(base, { kind: 'review', title: 'Stimmt alles so?', rows: reviewRows(), next: 'Alles richtig, weiter' });
-    case 'confirm': return Object.assign(base, { kind: 'confirm', title: 'Das wird auf deinem Rechner geändert',
-      help: [{ p: 'Bis hierher hat die Einrichtung nichts verändert. Du kannst jetzt noch abbrechen.' }],
-      groups: confirmGroups(), next: 'Einverstanden, Installation starten' });
+    case 'tg_busy': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.tg_busy_title'), help: P1('core.wizard.page.tg_busy_help'),
+      note: P.A.__tg_conflict && P.A.__tg_conflict !== 'polling' ? { kind: 'warn', text: T('core.wizard.page.tg_busy_previous', { host: P.A.__tg_conflict }) } : null,
+      options: optionsFor(id), value: P.A.__tg_choice || 'new', next });
+    case 'voice': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.voice_title'), help: P1('core.wizard.page.voice_help'),
+      options: optionsFor(id), value: P.A.__voice || '', next });
+    case 'packages': return Object.assign(base, { kind: 'multi', title: T('core.wizard.page.packages_title'), help: P1('core.wizard.page.packages_help'),
+      options: optionsFor(id), value: P.A.__packages || [], next });
+    case 'reach': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.reach_title'), help: P1('core.wizard.page.reach_help'),
+      options: optionsFor(id), value: P.A.__reach || 'tunnel', next });
+    case 'fb_dslite': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.dslite_title'), help: P1('core.wizard.page.dslite_help'),
+      link: { href: GUIDE_URL, label: T('core.wizard.page.guide_pictures') },
+      options: optionsFor(id), value: P.A.__dslite || '', next });
+    case 'fb_ports_busy': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.ports_busy_title'),
+      help: [{ p: T('core.wizard.page.ports_busy_help') }, { p: T('core.wizard.page.ports_busy_help2') }],
+      next: T('core.wizard.page.ports_busy_next') });
+    case 'fb_guide': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.fb_guide_title'), help: P1('core.wizard.page.fb_guide_help'),
+      note: { kind: 'warn', text: T('core.wizard.page.fb_guide_note') },
+      link: { href: GUIDE_URL, label: T('core.wizard.page.fb_guide_link') }, next: T('core.wizard.page.fb_guide_next') });
+    case 'review': return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
+      next: T('core.wizard.page.review_next') });
+    case 'confirm': return Object.assign(base, { kind: 'confirm', title: T('core.wizard.page.confirm_title'), help: P1('core.wizard.page.confirm_help'),
+      groups: confirmGroups(), next: T('core.wizard.page.confirm_next') });
     case 'install': return Object.assign(base, installView());
     case 'connect': return Object.assign(base, connectView());
-    case 'handoff': return Object.assign(base, { kind: 'handoff', title: 'Dein Bot ist eingerichtet', note: keyExpiryNote(),
-      help: [{ p: P.notes.welcome_sent ? 'Er hat dir in Telegram geschrieben. Tippe dort auf „Haushalt einrichten“.' : 'Schreib ihm in Telegram einfach /start, er zeigt dir den nächsten Schritt.' },
-        { p: 'Zum Schluss fragen wir dich noch, ob dieser Rechner wach bleiben soll, damit dein Bot jederzeit antwortet.' }],
-      next: P.phase === 'handoff' ? null : 'Weiter', action: 'handoff', done: P.phase === 'handoff' });
+    case 'handoff': return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
+      help: [{ p: T(P.notes.welcome_sent ? 'core.wizard.page.handoff_welcome' : 'core.wizard.page.handoff_start') },
+        { p: T('core.wizard.page.handoff_awake') }],
+      next: P.phase === 'handoff' ? null : next, action: 'handoff', done: P.phase === 'handoff' });
     default: return Object.assign(base, { kind: 'info', title: '…' });
   }
 }
@@ -312,13 +375,13 @@ function startPaperlessSearch() {
 function paperlessSearchView() {
   startPaperlessSearch();
   const s = P.notes.paperless_search || { state: 'running', found: [] };
-  if (s.state === 'running') return { poll: true, note: { kind: '', text: 'Suche im Heimnetz nach Paperless …', busy: true } };
+  if (s.state === 'running') return { poll: true, note: { kind: '', text: T('core.wizard.paperless.searching'), busy: true } };
   if (s.found.length === 1) {
-    return { value: s.found[0], note: { kind: '', text: s.local ? 'Auf diesem Rechner läuft Paperless. Die Adresse ist schon eingetragen, prüf sie kurz.'
-      : 'Im Heimnetz gefunden. Die Adresse ist schon eingetragen, prüf sie kurz.' } };
+    return { value: s.found[0], note: { kind: '', text: s.local ? T('core.wizard.paperless.found_local')
+      : T('core.wizard.paperless.found_lan') } };
   }
-  if (s.found.length > 1) return { suggestions: s.found, note: { kind: '', text: 'Im Heimnetz läuft Paperless mehrmals. Tipp die richtige Adresse an.' } };
-  return { note: { kind: '', text: 'Im Heimnetz wurde kein Paperless gefunden. Trag die Adresse selbst ein.' } };
+  if (s.found.length > 1) return { suggestions: s.found, note: { kind: '', text: T('core.wizard.paperless.found_many') } };
+  return { note: { kind: '', text: T('core.wizard.paperless.found_none') } };
 }
 
 // MyFRITZ-Adresse dieses Rechners finden (Seite h:DOMAIN): Kennung der Box (LA_MYFRITZ_ZONE), Gerätenamen-
@@ -326,7 +389,15 @@ function paperlessSearchView() {
 //   hinter dem Feld und nur der Gerätename fehlt. Ohne Zone wie bisher (ganze Adresse eintippen).
 // hints — Vorschläge der Start-App, bei jedem Gebrauch frisch gelesen (die App schreibt die Datei vor jedem `ctl.js url` neu).
 //   Fehlt sie oder bricht sie eine Regel: keine Vorschläge. Werte nie loggen, nie in den Fehlerbericht.
-function hints() { try { return flow.parseHints(fs.readFileSync(HINTS_FILE, 'utf8')); } catch (_) { return {}; } }
+//   Kurz zwischengespeichert (1 s): eine Seite fragt die Sprache dutzendfach ab.
+let hintsCache = { at: 0, v: {} };
+function hints() {
+  if (Date.now() - hintsCache.at < 1000) return hintsCache.v;
+  let v = {};
+  try { v = flow.parseHints(fs.readFileSync(HINTS_FILE, 'utf8')); } catch (_) { /* keine Vorschläge */ }
+  hintsCache = { at: Date.now(), v };
+  return v;
+}
 function myfritzZone() { return flow.myfritzZone(hints().LA_MYFRITZ_ZONE); }
 let domainSearching = null;
 function dnsResolves(name) {
@@ -347,17 +418,23 @@ function domainView(v) {
       .finally(() => { domainSearching = null; });
   }
   const s = P.notes.domain_guess || { state: 'running' };
-  if (s.state === 'running') return { poll: true, note: { kind: '', text: 'Suche die Adresse deines Rechners …', busy: true } };
-  if (s.name) return { value: v || s.name, note: { kind: '', text: 'Gefunden. Die Adresse ist schon eingetragen, prüf sie kurz.' } };
+  if (s.state === 'running') return { poll: true, note: { kind: '', text: T('core.wizard.domain.searching'), busy: true } };
+  if (s.name) return { value: v || s.name, note: { kind: '', text: T('core.wizard.domain.found') } };
   const prefix = v && v.endsWith('.' + zone) ? v.slice(0, -zone.length - 1) : (v || '');
   return { value: prefix, suffix: '.' + zone, placeholder: 'meinrechner',
-    note: { kind: '', text: 'Trag vorne nur noch den Gerätenamen ein. Du siehst ihn in der FritzBox unter Internet → Freigaben, in der Zeile dieses Rechners.' } };
+    note: { kind: '', text: T('core.wizard.domain.suffix') } };
 }
 
 function labelOf(id, value) {
   const q = flow.question(Q, id);
-  if (q && q.choices) { const c = q.choices.find((x) => x.value === value); return c ? c.label : value; }
+  const ch = q && choicesOf(q);
+  if (ch) { const c = ch.find((x) => x.value === value); return c ? c.label : value; }
   return value;
+}
+// Datum wie in der gewählten Sprache (Muster aus languages.list im Core-Manifest).
+function showDate(iso) {
+  const [y, m, d] = iso.split('-');
+  return ({ en: `${d}/${m}/${y}`, ko: `${y}. ${m}. ${d}.` })[uiLang()] || `${d}.${m}.${y}`;
 }
 function reviewRows() {
   const rows = [];
@@ -368,113 +445,114 @@ function reviewRows() {
     if (q) {
       const v = P.A[q.key];
       let shown;
-      if (q.secret) shown = v === null ? 'eingetragen' : 'übersprungen';
-      else if (q.kind === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(v || '')) shown = v.split('-').reverse().join('.');
-      else shown = v ? labelOf(id, v) : 'übersprungen';
+      if (q.secret) shown = T(v === null ? 'core.wizard.review.entered' : 'core.wizard.review.skipped');
+      else if (q.kind === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(v || '')) shown = showDate(v);
+      else shown = v ? labelOf(id, v) : T('core.wizard.review.skipped');
       if (q.key === 'GOOGLE_API_KEY') continue;   // steht schon in der Zeile „Sprachnachrichten“
-      const pk = q.pkg ? flow.pkgDef(Q, q.pkg).name + ': ' : '';
-      rows.push({ label: q.key === 'DOMAIN' ? 'MyFRITZ!-Adresse' : pk + q.label, value: shown, goto: id });
-    } else if (id === 'voice') rows.push({ label: 'Sprachnachrichten', value: P.A.__voice === 'yes' ? 'ja, Google-Schlüssel eingetragen' : 'nein', goto: id });
-    else if (id === 'packages') {
-      const n = (P.A.__packages || []).map((p) => (flow.pkgDef(Q, p) || {}).name).filter(Boolean);
-      rows.push({ label: 'Funktionen', value: n.length ? 'Grundsystem, ' + n.join(', ') : 'nur Grundsystem', goto: id });
-    } else if (id === 'reach') rows.push({ label: 'Erreichbarkeit', value: flow.reachMode(P.A) === 'fritzbox' ? 'FritzBox' : 'Tunnel', goto: id });
+      const pk = q.pkg ? pkgName(flow.pkgDef(Q, q.pkg)) + ': ' : '';
+      rows.push({ label: pk + qLabel(q), value: shown, goto: id });
+    } else if (id === 'voice') {
+      rows.push({ label: T('core.wizard.review.voice'), value: T(P.A.__voice === 'yes' ? 'core.wizard.review.voice_yes' : 'core.wizard.review.voice_no'), goto: id });
+    } else if (id === 'packages') {
+      const n = (P.A.__packages || []).map((p) => flow.pkgDef(Q, p)).filter(Boolean).map(pkgName);
+      rows.push({ label: T('core.wizard.review.packages'), value: n.length ? T('core.wizard.review.base_plus', { list: n.join(', ') }) : T('core.wizard.review.base_only'), goto: id });
+    } else if (id === 'reach') {
+      rows.push({ label: T('core.wizard.review.reach'), value: T(flow.reachMode(P.A) === 'fritzbox' ? 'core.wizard.review.reach_fritzbox' : 'core.wizard.review.reach_tunnel'), goto: id });
+    }
   }
   return rows;
 }
 function confirmGroups() {
   const mode = flow.reachMode(P.A);
   return [
-    { title: 'Neu dazu kommt', items: [
-      'Dein Assistent bekommt einen eigenen, abgetrennten Bereich auf diesem Rechner',
-      mode === 'fritzbox' ? 'Die Verbindung über die zwei Freigaben, die du in der FritzBox angelegt hast' : 'Ein Tunnel über dein Tailscale-Konto, nur für die Adressen von Telegram',
-      'Dein Telegram-Bot wird auf diesen Rechner eingestellt'] },
-    { title: 'Das bleibt, wie es ist', items: ['Deine anderen Programme, auch alles, was schon in Docker läuft', 'Deine Dateien und der Schutz deiner Festplatte', 'Die Energie-Einstellungen, bis du zum Schluss zustimmst'] },
+    { title: T('core.wizard.confirm.new_title'), items: [T('core.wizard.confirm.new_area'),
+      T(mode === 'fritzbox' ? 'core.wizard.confirm.new_fritzbox' : 'core.wizard.confirm.new_tunnel'), T('core.wizard.confirm.new_bot')] },
+    { title: T('core.wizard.confirm.keep_title'), items: [T('core.wizard.confirm.keep_programs'), T('core.wizard.confirm.keep_files'),
+      T('core.wizard.confirm.keep_energy')] },
   ];
 }
 
 // Fortschritt der Installation: die Schritt-Codes aus provision.sh (ui_step <text> <stage>) in sechs Gruppen.
 const STAGE_GROUPS = [
-  ['Rechner prüfen', ['preflight']],
-  ['Programme einrichten', ['base', 'n8n', 'gateway']],
-  ['Datenbank einrichten', ['backup', 'postgres', 'schema']],
-  ['Zugänge einrichten', ['access']],
-  ['Bot und Funktionen einspielen', ['workflows', 'packages', 'cli']],
-  ['Alles einmal prüfen', ['final']],
+  ['check', ['preflight']],
+  ['programs', ['base', 'n8n', 'gateway']],
+  ['database', ['backup', 'postgres', 'schema']],
+  ['access', ['access']],
+  ['bot', ['workflows', 'packages', 'cli']],
+  ['final', ['final']],
 ];
 function installView() {
   const ins = P.install || {};
   const g = STAGE_GROUPS.findIndex(([, st]) => st.includes(ins.stage));
   const at = P.phase === 'installing' || P.phase === 'failed' ? Math.max(0, g) : STAGE_GROUPS.length;
   const failed = P.phase === 'failed';
-  return { kind: 'install', title: failed ? 'Die Einrichtung ist hängen geblieben' : 'Dein Assistent wird eingerichtet',
-    help: failed ? [] : [{ p: 'Das dauert ein paar Minuten. Du kannst das Fenster offen lassen und etwas anderes tun.' }],
-    items: STAGE_GROUPS.map(([t], i) => ({ text: t, state: i < at ? 'ok' : i === at ? (failed ? 'bad' : 'run') : '' })),
-    failed, note: failed ? { kind: 'bad', text: `Beim Schritt „${STAGE_GROUPS[Math.max(0, g)][0]}“ hat etwas nicht geklappt. Deine Antworten sind gespeichert. Versuch es noch einmal; klappt es wieder nicht, schick den Bericht an die Person, die dir hilft.` } : null,
+  const stage = (k) => T(`core.wizard.stage.${k}`);
+  return { kind: 'install', title: T(failed ? 'core.wizard.install.failed_title' : 'core.wizard.install.title'),
+    help: failed ? [] : [{ p: T('core.wizard.install.help') }],
+    items: STAGE_GROUPS.map(([k], i) => ({ text: stage(k), state: i < at ? 'ok' : i === at ? (failed ? 'bad' : 'run') : '' })),
+    failed, note: failed ? { kind: 'bad', text: T('core.wizard.install.failed_note', { step: stage(STAGE_GROUPS[Math.max(0, g)][0]) }) } : null,
     poll: P.phase === 'installing' };
 }
 
 // Verbinden: beim Tunnel erst die Anmeldung bei Tailscale (Paket 3 meldet den Zustand), dann das Pairing per QR-Code.
-// Texte je Zustand des Tunnels (Paket 3). Knöpfe zeigen nur Adressen von login.tailscale.com (TS_URL).
+// Texte je Zustand des Tunnels (Paket 3, Katalog core.wizard.reach.*). Knöpfe zeigen nur Adressen von login.tailscale.com (TS_URL).
 const REACH_TEXT = {
-  starting: { title: 'Der Tunnel startet', help: 'Das dauert nur einen Moment.', wait: 'Der Tunnel startet …' },
-  needs_login: { title: 'Melde dich bei Tailscale an', help: 'Es öffnet sich eine neue Seite. Du kannst dich dort mit deinem Google-, Apple- oder Microsoft-Konto anmelden.',
-    link: 'Tailscale-Anmeldung öffnen', wait: 'Warte auf deine Anmeldung …' },
-  needs_machine_auth: { title: 'Gib diesen Rechner in Tailscale frei', help: 'Dein Tailscale-Konto möchte, dass du neue Geräte selbst freigibst. Öffne dort die Liste deiner Geräte und gib diesen Rechner frei.',
-    link: 'Geräteliste in Tailscale öffnen', wait: 'Warte auf die Freigabe …' },
-  needs_funnel: { title: 'Erlaube deinem Rechner den Empfang', help: 'Bestätige auf der nächsten Seite einmal, dass Nachrichten von außen bei diesem Rechner ankommen dürfen. Nur die Adressen für Telegram sind offen, alles andere bleibt zu.',
-    link: 'Freigabe-Seite öffnen', wait: 'Warte auf deine Bestätigung …' },
-  key_expired: { title: 'Die Anmeldung bei Tailscale ist abgelaufen', help: 'Melde diesen Rechner noch einmal bei Tailscale an.', link: 'Tailscale-Anmeldung öffnen',
-    wait: 'Warte auf deine Anmeldung …' },
-  ports_busy: { title: 'Der FritzBox-Weg ist auf diesem Rechner belegt', help: 'Ein anderes Programm nutzt schon den Weg, den die FritzBox bräuchte. Wir ändern daran nichts, sonst fällt es aus.',
-    note: 'Nimm stattdessen „Über einen sicheren Tunnel“. Umstellen kannst du das im Menü der App.', retry: true },
+  starting: { title: 'starting_title', help: 'starting_help', wait: 'starting_wait' },
+  needs_login: { title: 'needs_login_title', help: 'needs_login_help', link: 'login_link', wait: 'login_wait' },
+  needs_machine_auth: { title: 'needs_machine_auth_title', help: 'needs_machine_auth_help', link: 'needs_machine_auth_link', wait: 'needs_machine_auth_wait' },
+  needs_funnel: { title: 'needs_funnel_title', help: 'needs_funnel_help', link: 'needs_funnel_link', wait: 'needs_funnel_wait' },
+  key_expired: { title: 'key_expired_title', help: 'key_expired_help', link: 'login_link', wait: 'login_wait' },
+  ports_busy: { title: 'ports_busy_title', help: 'ports_busy_help', note: 'ports_busy_note', retry: true },
 };
 // keyExpiryNote — Tunnel: Tailscale meldet Geräte nach einer Frist ab (Standard 180 Tage), dann schweigt der Bot. Unter 30
 //   Tagen (Paket 3: key_days_left) ein Hinweis, wie man den Ablauf abschaltet.
 function keyExpiryNote() {
   const t = P.notes.connect && P.notes.connect.tunnel;
   if (!t || t.days === null || t.days === undefined || t.days >= 30 || flow.reachMode(P.A) !== 'tunnel') return null;
-  return { kind: 'warn', text: `Tailscale meldet diesen Rechner in ${t.days} Tagen ab, dann erreicht Telegram den Bot nicht mehr. Schalte das ab: in Tailscale unter „Machines“ beim Rechner „Disable key expiry“.` };
+  return { kind: 'warn', text: T('core.wizard.connect.key_expiry', { days: t.days }) };
 }
 // webhookNote — Zustellfehler verständlich erklären, mit dem nächsten Schritt je Weg, statt still zu warten.
 function webhookNote(c) {
   const w = c.webhook;
   if (!w) return null;
-  if (w.state === 'foreign') return { kind: 'warn', text: 'Dein Bot liefert seine Nachrichten noch an einen anderen Dienst. Schließ dort die Verbindung oder leg einen neuen Bot an.' };
+  if (w.state === 'foreign') return { kind: 'warn', text: T('core.wizard.webhook.foreign') };
   if (!w.error) return null;
-  if (flow.reachMode(P.A) === 'fritzbox') {
-    return { kind: 'warn', text: 'Telegram kommt gerade nicht bei deinem Rechner an. Prüf in der FritzBox unter Internet → Freigaben, ob beide Freigaben (HTTP-Server und HTTPS-Server) für diesen Rechner aktiv sind. Steht im Online-Monitor „DS-Lite“, geht dieser Weg nicht; stell dann in der App auf „Über einen sicheren Tunnel“ um.' };
-  }
-  return { kind: 'warn', text: 'Telegram kommt gerade nicht bei deinem Rechner an. Prüf in Tailscale, ob die Freigabe für Nachrichten von außen (Funnel) für diesen Rechner noch an ist. Tipp danach in Telegram noch einmal auf „Starten“.' };
+  return { kind: 'warn', text: T(flow.reachMode(P.A) === 'fritzbox' ? 'core.wizard.webhook.fritzbox' : 'core.wizard.webhook.tunnel') };
 }
 function connectView() {
   const c = P.notes.connect || {};
-  const v = { kind: 'connect', title: 'Verbinde dich mit deinem Bot', poll: true };
+  const C = (k) => T(`core.wizard.connect.${k}`);
+  const v = { kind: 'connect', title: C('title'), poll: true };
   if (c.activating || (c.tunnel && c.tunnel.state === 'pending_activation')) {
-    return Object.assign(v, { help: [{ p: 'Der Tunnel steht. Jetzt wird dein Bot darauf eingestellt.' }], wait: 'Die Verbindung wird eingerichtet …' });
+    return Object.assign(v, { help: [{ p: C('activating') }], wait: C('activating_wait') });
   }
-  const T = c.tunnel && REACH_TEXT[c.tunnel.state];
-  if (T) {
+  const R = c.tunnel && REACH_TEXT[c.tunnel.state];
+  if (R) {
+    const t = (k) => (R[k] ? T(`core.wizard.reach.${R[k]}`) : null);
     // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
     const href = c.tunnel.url || (c.tunnel.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
-    return Object.assign(v, { title: T.title, help: [{ p: T.help }], note: T.note ? { kind: 'warn', text: T.note } : null,
-      link: href ? { href, label: T.link, primary: true } : null,
-      wait: T.wait ? (href || !T.link ? T.wait : 'Der Tunnel startet …') : null,
-      poll: !T.retry, action: T.retry ? 'connect_retry' : null, next: T.retry ? 'Noch einmal prüfen' : null });
+    return Object.assign(v, { title: t('title'), help: [{ p: t('help') }], note: R.note ? { kind: 'warn', text: t('note') } : null,
+      link: href ? { href, label: t('link'), primary: true } : null,
+      wait: R.wait ? (href || !R.link ? t('wait') : T('core.wizard.reach.starting_wait')) : null,
+      poll: !R.retry, action: R.retry ? 'connect_retry' : null, next: R.retry ? C('check_again') : null });
   }
   if (c.problem) {
-    return Object.assign(v, { help: [{ p: 'Telegram erreicht deinen Rechner noch nicht.' }], note: { kind: 'warn', text: c.problem },
-      poll: false, action: 'connect_retry', next: 'Noch einmal prüfen' });
+    return Object.assign(v, { help: [{ p: C('not_reaching') }], note: { kind: 'warn', text: problemText(c.problem) },
+      poll: false, action: 'connect_retry', next: C('check_again') });
   }
-  if (c.expired) return Object.assign(v, { help: [{ p: 'Der Code ist abgelaufen.' }], poll: false, action: 'pair_new', next: 'Neuen Code anzeigen' });
+  if (c.expired) return Object.assign(v, { help: [{ p: C('expired') }], poll: false, action: 'pair_new', next: C('new_code') });
   if (PAIR) {
-    return Object.assign(v, { qr: PAIR.qr, link: { href: PAIR.link, label: 'Link öffnen, wenn du Telegram auf diesem Rechner hast' },
-      help: [{ p: 'Scanne den Code mit dem Handy. Telegram öffnet deinen Bot.' }, { p: 'Tippe dort auf „Starten“.' },
-        { p: 'Der Code gilt 10 Minuten und zeigt nur dir, dass du der Besitzer bist.' }],
+    return Object.assign(v, { qr: PAIR.qr, link: { href: PAIR.link, label: C('open_link') },
+      help: [{ p: C('scan') }, { p: C('tap_start') }, { p: C('code_valid') }],
       note: webhookNote(c),
-      wait: c.connected ? 'Verbunden. Der Bot wird auf dich eingestellt …' : 'Warte auf deine Nachricht an den Bot …' });
+      wait: C(c.connected ? 'connected_wait' : 'waiting') });
   }
-  return Object.assign(v, { help: [{ p: 'Einen Moment, der Code wird vorbereitet.' }], wait: 'Bereite die Verbindung vor …' });
+  return Object.assign(v, { help: [{ p: C('preparing') }], wait: C('preparing_wait') });
+}
+// problemText — Grund beim Verbinden: eigene Codes aus dem Katalog; ein Text der CLI (deutsch) nur auf Deutsch, sonst allgemein.
+function problemText(p) {
+  if (p === 'code_failed' || p === 'activation_failed') return T(`core.wizard.connect.${p}`);
+  return uiLang() === 'de' ? p : T('core.wizard.connect.not_reaching');
 }
 
 function view() {
@@ -483,22 +561,24 @@ function view() {
   const s = list();
   const i = s.indexOf(id);
   page.canBack = P.phase === 'questions' && i > 0 && !['install', 'connect', 'handoff'].includes(id);
+  page.lang = uiLang();
+  page.t = uiTexts();
   return page;
 }
 
 // --- Antworten ------------------------------------------------------------------------------------------------
 async function answer(id, raw, skip) {
-  if (P.phase !== 'questions' || id !== cursor()) return { error: 'Diese Seite ist gerade nicht offen. Lade die Seite neu.' };
+  if (P.phase !== 'questions' || id !== cursor()) return { error: T('core.wizard.msg.not_open') };
   const q = flow.question(Q, id);
   if (q) {
-    if (typeof raw !== 'string' || /[\r\n]/.test(raw)) return { error: MSG.line };
+    if (typeof raw !== 'string' || /[\r\n]/.test(raw)) return { error: T('core.wizard.msg.line') };
     const value = raw.trim();
-    if (flow.valueProblem(value) === 'control') return { error: MSG.line };
-    if (flow.valueProblem(value) === 'length') return { error: MSG.invalid };
+    if (flow.valueProblem(value) === 'control') return { error: T('core.wizard.msg.line') };
+    if (flow.valueProblem(value) === 'length') return { error: T('core.wizard.msg.invalid') };
     // Schon eingetragenes Geheimnis + leeres Feld = behalten (die Seite zeigt Geheimnisse nie wieder an).
     if (value === '' && !skip && q.secret && P.A[q.key] === null) { P.cursor = firstOpen(); save(); return { ok: true }; }
-    if (value === '' && (q.required || NO_SKIP.includes(q.key))) return { error: q.choices ? MSG.choose : MSG.empty };
-    if (value !== '' && skip) return { error: MSG.invalid };
+    if (value === '' && (q.required || NO_SKIP.includes(q.key))) return { error: T(q.choices ? 'core.wizard.msg.choose' : 'core.wizard.msg.empty') };
+    if (value !== '' && skip) return { error: T('core.wizard.msg.invalid') };
     let check = null;
     let note = null;
     let v = value;
@@ -507,9 +587,10 @@ async function answer(id, raw, skip) {
     if (zone && /^[A-Za-z0-9-]{1,63}$/.test(v)) v = `${v}.${zone}`;
     if (v !== '') {
       const r = await bridge(['validate', q.validateRef], { input: v, timeoutMs: 30000 });
-      if (!r) return { error: 'Die Prüfung hat nicht geantwortet. Versuch es gleich noch einmal.' };
-      if (r.rc === 1) return { error: r.problem ? r.problem + '.' : MSG.invalid };
-      if (r.rc === 2) note = MSG.offline;
+      if (!r) return { error: T('core.wizard.msg.no_reply') };
+      // Grund der CLI-Prüfung (deutsch) nur auf Deutsch, sonst der allgemeine Satz.
+      if (r.rc === 1) return { error: r.problem && uiLang() === 'de' ? r.problem + '.' : T('core.wizard.msg.invalid') };
+      if (r.rc === 2) note = T('core.wizard.msg.offline');
       if (typeof r.value === 'string' && r.value !== '') v = r.value;
       // Paperless (Plan *Die Module wie in der CLI*): Adresse, Version und Zugang live prüfen.
       if (q.pkg === 'paperless') {
@@ -517,18 +598,19 @@ async function answer(id, raw, skip) {
         const token = q.cred ? v : (SECRETS.PAPERLESS_API_TOKEN || '');   // neue Adresse: vorhandenen Zugang gleich mitprüfen
         if (url) {
           const pc = await bridge(['paperless-check'], { input: `${url}\n${token}\n`, timeoutMs: 20000 });
-          if (pc && !pc.ok) return { error: PAPERLESS_MSG[pc.reason] || MSG.invalid };
-          if (pc && pc.ok) check = pc.version ? `Paperless ${pc.version} gefunden${token ? ', Zugang funktioniert' : ''}` : 'Paperless antwortet';
+          if (pc && !pc.ok) return { error: T(PAPERLESS_REASONS.includes(pc.reason) ? `core.wizard.paperless.${pc.reason}` : 'core.wizard.msg.invalid') };
+          if (pc && pc.ok) check = pc.version ? T(token ? 'core.wizard.check.paperless_access' : 'core.wizard.check.paperless', { version: pc.version }) : T('core.wizard.check.paperless_answers');
         }
       }
     }
     setAnswer(q, v);
+    if (q.key === 'OWNER_LANGUAGE') P.ui_lang = v;   // die Einrichtung spricht ab hier die gewählte Sprache
     if (q.key === 'TELEGRAM_BOT_TOKEN') {
       delete P.A.__tg_conflict; delete P.A.__tg_choice; delete P.notes.bot;
       if (v) {
         const t = await bridge(['tg-check'], { env: { TELEGRAM_BOT_TOKEN: v }, timeoutMs: 30000 });
         if (t && t.ok) {
-          if (/^[A-Za-z0-9_]{1,64}$/.test(t.bot || '')) { check = `Gefunden: dein Bot @${t.bot}`; P.notes.bot = t.bot; }
+          if (/^[A-Za-z0-9_]{1,64}$/.test(t.bot || '')) { check = T('core.wizard.check.bot', { bot: t.bot }); P.notes.bot = t.bot; }
           if (t.webhook_host) P.A.__tg_conflict = String(t.webhook_host).slice(0, 253);
           else if (t.polling_conflict) P.A.__tg_conflict = 'polling';
         }
@@ -540,7 +622,7 @@ async function answer(id, raw, skip) {
   }
   switch (id) {
     case 'tg_busy':
-      if (!['new', 'take'].includes(raw)) return { error: MSG.choose };
+      if (!['new', 'take'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       if (raw === 'new') {
         delete P.A.__tg_conflict; delete P.A.__tg_choice; delete P.notes.bot;
         delete P.A.TELEGRAM_BOT_TOKEN; delete P.S.TELEGRAM_BOT_TOKEN; delete SECRETS.TELEGRAM_BOT_TOKEN;
@@ -551,18 +633,18 @@ async function answer(id, raw, skip) {
       P.A.__tg_choice = 'take';
       break;
     case 'voice':
-      if (!['yes', 'no'].includes(raw)) return { error: MSG.choose };
+      if (!['yes', 'no'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__voice = raw;
       if (raw === 'no') { delete P.S.GOOGLE_API_KEY; delete SECRETS.GOOGLE_API_KEY; P.A.GOOGLE_API_KEY = ''; }
       else if (P.A.GOOGLE_API_KEY === '') delete P.A.GOOGLE_API_KEY;
       break;
     case 'packages': {
-      if (!Array.isArray(raw) || raw.some((p) => typeof p !== 'string' || !flow.pkgDef(Q, p))) return { error: MSG.choose };
+      if (!Array.isArray(raw) || raw.some((p) => typeof p !== 'string' || !flow.pkgDef(Q, p))) return { error: T('core.wizard.msg.choose') };
       P.A.__packages = Q.packages.map((p) => p.id).filter((p) => raw.includes(p));
       break;
     }
     case 'reach':
-      if (!['tunnel', 'fritzbox'].includes(raw)) return { error: MSG.choose };
+      if (!['tunnel', 'fritzbox'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__reach = raw;
       delete P.A.__ports;   // bei jeder Wahl neu messen: ein inzwischen beendetes Programm gibt den Weg wieder frei
       if (raw === 'fritzbox') {
@@ -572,14 +654,14 @@ async function answer(id, raw, skip) {
       }
       break;
     case 'fb_dslite':
-      if (!['yes', 'no'].includes(raw)) return { error: MSG.choose };
+      if (!['yes', 'no'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__dslite = raw;
       break;
     case 'fb_guide': P.A.__fb_guide = true; break;
     case 'fb_ports_busy': P.A.__reach = 'tunnel'; break;
     case 'review': P.cursor = 'confirm'; save(); return { ok: true };
     case 'confirm': return startInstall();
-    default: return { error: 'Diese Seite kennt keine Antwort.' };
+    default: return { error: T('core.wizard.msg.unknown_page') };
   }
   P.cursor = firstOpen();
   save();
@@ -593,8 +675,8 @@ function back() {
   if (i > 0) { P.cursor = s[i - 1]; save(); }
 }
 function gotoStep(id) {
-  if (P.phase !== 'questions' || !['review', 'confirm'].includes(cursor())) return { error: 'Ändern geht nur in der Übersicht.' };
-  if (!list().includes(id) || ['review', 'confirm', 'install', 'connect', 'handoff'].includes(id)) return { error: 'Unbekannte Angabe.' };
+  if (P.phase !== 'questions' || !['review', 'confirm'].includes(cursor())) return { error: T('core.wizard.msg.change_in_review') };
+  if (!list().includes(id) || ['review', 'confirm', 'install', 'connect', 'handoff'].includes(id)) return { error: T('core.wizard.msg.unknown_item') };
   P.cursor = id;
   save();
   return { ok: true };
@@ -615,9 +697,9 @@ function readResult() {
 function startInstall() {
   if (child) return { ok: true };
   const open = list().find((id) => id !== 'review' && list().indexOf(id) < list().indexOf('review') && !flow.answered(Q, P.A, id));
-  if (open) { P.cursor = open; save(); return { error: 'Eine Angabe fehlt noch.' }; }
+  if (open) { P.cursor = open; save(); return { error: T('core.wizard.msg.missing') }; }
   let txt;
-  try { txt = flow.renderAnswers(Q, flow.answerLines(Q, P.A, SECRETS)); } catch (_) { return { error: 'Eine Angabe passt nicht. Geh zurück zur Übersicht und prüfe sie.' }; }
+  try { txt = flow.renderAnswers(Q, flow.answerLines(Q, P.A, SECRETS)); } catch (_) { return { error: T('core.wizard.msg.bad_answer') }; }
   fs.mkdirSync(RUN_DIR, { recursive: true, mode: 0o700 });
   rmQuiet(RESULT);
   atomicWrite(ANSWERS, txt);
@@ -677,7 +759,7 @@ function startActivation(c) {
   const done = (code) => {
     c.activating = false;
     if (code === 0) c.activated = true;
-    else c.problem = 'Die Verbindung zu Telegram ließ sich gerade nicht einrichten. Versuch es noch einmal; klappt es wieder nicht, schick den Bericht an die Person, die dir hilft.';
+    else c.problem = 'activation_failed';   // Code, Text beim Anzeigen (problemText)
     delete c.tunnel;   // neu abfragen
     save();
   };
@@ -704,12 +786,12 @@ async function connectTick(force) {
     if (c.activating) return;
     if (!PAIR && !c.connected && !c.problem && !c.expired) {
       const reach = await laCli('reach');
-      if (reach && reach.ok === false) { c.problem = String(reach.problem || 'Telegram erreicht deinen Rechner noch nicht.').slice(0, 400); save(); return; }
+      if (reach && reach.ok === false) { c.problem = String(reach.problem || T('core.wizard.connect.not_reaching')).slice(0, 400); save(); return; }
       const a = await laCli('arm');
       if (a && a.ok && a.connected) { c.connected = true; }
       else if (a && a.ok && /^https:\/\/t\.me\/[A-Za-z0-9_]{1,64}\?start=[A-Za-z0-9_-]{1,64}$/.test(a.link || '')) {
         PAIR = { link: a.link, qr: qr.toSvg(qr.encode(a.link)), armed: Date.now() };
-      } else { c.problem = 'Der Code für die Verbindung ließ sich nicht erzeugen. Versuch es gleich noch einmal.'; save(); return; }
+      } else { c.problem = 'code_failed'; save(); return; }
     }
     if (PAIR && !c.connected) {
       if (Date.now() - PAIR.armed > TOKEN_TTL_MS) { c.expired = true; PAIR = null; save(); return; }
@@ -740,10 +822,10 @@ async function action(name) {
     case 'connect_retry': delete c.problem; delete c.tunnel; await connectTick(true); return { ok: true };
     case 'pair_new': delete c.expired; await connectTick(true); return { ok: true };
     case 'handoff':
-      if (P.phase !== 'connected') return { error: 'Noch nicht verbunden.' };
+      if (P.phase !== 'connected') return { error: T('core.wizard.msg.not_connected') };
       P.phase = 'handoff'; save(); return { ok: true };
     case 'retry': retry(); return { ok: true };
-    default: return { error: 'Unbekannte Aktion.' };
+    default: return { error: T('core.wizard.msg.unknown_action') };
   }
 }
 
@@ -845,7 +927,7 @@ async function handle(req, res) {
   if (req.method === 'GET') {
     if (url.pathname === '/api/state') {
       if (!Q) await loadQuestions();
-      if (!Q) return send(res, 503, { error: 'Der Wizard konnte die Fragen nicht laden.' });
+      if (!Q) return send(res, 503, { error: T('core.wizard.msg.no_questions') });
       connectTick(false).catch(() => {});   // im Hintergrund: finalize dauert Minuten, die Seite zeigt bis dahin „Warte …“
       return send(res, 200, { csrf: session.csrf, page: view() });
     }
@@ -859,12 +941,13 @@ async function handle(req, res) {
   if (!safeEq(req.headers['x-csrf-token'] || '', session.csrf)) return deny(res, 403);
   const body = await readBody(req);
   if (!body || typeof body !== 'object') return send(res, 400, { error: 'bad request' });
-  if (!['/api/answer', '/api/back', '/api/goto', '/api/action'].includes(url.pathname)) return deny(res, 404);
+  if (!['/api/answer', '/api/back', '/api/goto', '/api/action', '/api/lang'].includes(url.pathname)) return deny(res, 404);
   const r = await serial(async () => {
     switch (url.pathname) {
       case '/api/answer': return answer(String(body.id || ''), body.value, body.skip === true);
       case '/api/back': back(); return { ok: true };
       case '/api/goto': return gotoStep(String(body.id || ''));
+      case '/api/lang': return setLang(String(body.lang || ''));
       default: return action(String(body.name || ''));
     }
   });
@@ -879,9 +962,10 @@ function serial(fn) {
   return p;
 }
 
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`); }
 function page403() {
-  return '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Einrichtung</title><link rel="stylesheet" href="/app.css"></head>'
-    + '<body><main class="solo"><h1>Bitte öffne die Einrichtung über die App</h1><p class="lead">Dieser Link gilt nur einmal. Schließe das Fenster und öffne die App lifeagents neu.</p></main></body></html>';
+  return `<!DOCTYPE html><html lang="${esc(uiLang())}"><head><meta charset="utf-8"><title>${esc(T('core.wizard.ui.doc_title'))}</title><link rel="stylesheet" href="/app.css"></head>`
+    + `<body><main class="solo"><h1>${esc(T('core.wizard.ui.open_via_app'))}</h1><p class="lead">${esc(T('core.wizard.ui.link_once'))}</p></main></body></html>`;
 }
 
 // --- Steuerkanal (nur root im master: `node ctl.js issue|status|finish`) ------------------------------------------
@@ -909,7 +993,7 @@ function startCtl() {
       const cmd = buf.split('\n')[0].trim();
       if (cmd === 'issue') s.end(JSON.stringify({ url: issueToken() }) + '\n');
       // bot = Benutzername aus getMe (öffentlich, kein Geheimnis): die App braucht ihn für „Telegram öffnen“.
-      else if (cmd === 'status') s.end(JSON.stringify(Object.assign({ phase: P.phase, step: Q ? cursor() : '' }, P.notes.bot ? { bot: P.notes.bot } : {})) + '\n');
+      else if (cmd === 'status') s.end(JSON.stringify(Object.assign({ phase: P.phase, step: Q ? cursor() : '', lang: uiLang() }, P.notes.bot ? { bot: P.notes.bot } : {})) + '\n');
       else if (cmd === 'finish') { s.end(JSON.stringify({ ok: true }) + '\n', finishAll); }
       else s.end(JSON.stringify({ error: 'unknown' }) + '\n');
     });
@@ -934,6 +1018,7 @@ function loadQuestions() {
 async function main() {
   if (fs.existsSync(DONE)) { process.stdout.write(JSON.stringify({ ev: 'wizard_done' }) + '\n'); process.exit(0); }
   KEY = loadKey();
+  loadCatalog();
   P = loadProgress();
   await loadQuestions();
   startCtl();

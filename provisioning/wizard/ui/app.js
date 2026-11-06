@@ -11,6 +11,13 @@
   let pollT = null;
   let busy = false;
   let renderedId = null;
+  // Texte der Knöpfe und festen Hinweise in der Sprache der Seite (server.js uiTexts); vor der ersten Seite Deutsch.
+  let T = { next: 'Weiter', back: 'Zurück', skip: 'Überspringen', retry: 'Noch einmal versuchen', change: 'Ändern', change_label: '{label} ändern',
+    secret_kept: 'Schon eingetragen. Leer lassen, um es zu behalten.', found_addresses: 'Gefundene Adressen', one_moment: 'Einen Moment …',
+    report_show: 'Bericht für die Hilfe anzeigen', report_note: 'Darin stehen keine Namen und keine Schlüssel, nur der Stand der Einrichtung.',
+    report_copied: 'In die Zwischenablage kopiert', offline: 'Keine Verbindung zur Einrichtung. Versuch es gleich noch einmal.',
+    open_via_app: 'Bitte öffne die Einrichtung über die App', choose: 'Wähle eine Antwort aus.',
+    session_expired: 'Die Sitzung ist abgelaufen. Schließe das Fenster und öffne die App lifeagents neu. Deine Antworten sind gespeichert.' };
 
   function h(tag, attrs) {
     const e = document.createElement(tag);
@@ -47,7 +54,13 @@
 
   function apply(r) {
     if (r.csrf) csrf = r.csrf;
-    if (r.page) { page = r.page; render(); }
+    if (r.page) {
+      page = r.page;
+      if (page.t) T = page.t;
+      if (page.lang) document.documentElement.lang = page.lang;
+      if (T.doc_title) document.title = T.doc_title;
+      render();
+    }
   }
 
   async function load() {
@@ -65,8 +78,8 @@
 
   function fatal() {
     clearTimeout(pollT);
-    main.replaceChildren(h('h1', { text: 'Bitte öffne die Einrichtung über die App' }),
-      h('p', { class: 'lead', text: 'Die Sitzung ist abgelaufen. Schließe das Fenster und öffne die App lifeagents neu. Deine Antworten sind gespeichert.' }));
+    main.replaceChildren(h('h1', { text: T.open_via_app }),
+      h('p', { class: 'lead', text: T.session_expired }));
   }
 
   function helpNodes(blocks) {
@@ -84,7 +97,7 @@
     const r = await api('POST', path, body);
     busy = false;
     if (r.fatal) return fatal();
-    if (r.offline) { if (btn) btn.disabled = false; setErr('Keine Verbindung zum Wizard. Versuch es gleich noch einmal.'); return; }
+    if (r.offline) { if (btn) btn.disabled = false; setErr(T.offline); return; }
     if (r.error) { if (r.csrf) csrf = r.csrf; if (btn) btn.disabled = false; setErr(r.error); return; }
     const msg = r.check || r.note || okMsg;
     if (msg) {
@@ -107,7 +120,7 @@
   function next() {
     const p = page;
     if (p.action) return post('/api/action', { name: p.action });
-    if (p.kind === 'choice' && !currentValue()) return setErr('Wähle eine Antwort aus.');
+    if (p.kind === 'choice' && !currentValue()) return setErr(T.choose);
     return post('/api/answer', { id: p.id, value: currentValue() });
   }
 
@@ -130,7 +143,7 @@
 
     if (['text', 'date', 'secret'].includes(p.kind)) {
       const type = p.kind === 'secret' ? 'password' : p.kind === 'date' ? 'date' : 'text';
-      const inp = h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? 'Schon eingetragen. Leer lassen, um es zu behalten.' : (p.placeholder || null),
+      const inp = h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? T.secret_kept : (p.placeholder || null),
         autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'er',
         on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } } } });
       // Fester Teil hinter dem Feld (z. B. .<kennung>.myfritz.net): nur der Gerätename vorne wird getippt.
@@ -138,7 +151,7 @@
         p.suffix ? h('div', { class: 'with-suffix' }, inp, h('span', { class: 'suffix', text: p.suffix })) : inp);
       // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
       if ((p.suggestions || []).length) {
-        kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': 'Gefundene Adressen' }, p.suggestions.map((s) => h('button', {
+        kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': T.found_addresses }, p.suggestions.map((s) => h('button', {
           type: 'button', class: 'choice', on: { click: (e) => {
             const i = document.getElementById('in'); i.value = s; i.focus();
             main.querySelectorAll('.suggest .choice').forEach((b) => b.classList.toggle('sel', b === e.currentTarget));
@@ -158,6 +171,8 @@
           wrap.querySelectorAll('[data-c]').forEach((x) => { x.classList.toggle('sel', x === b); x.setAttribute('aria-checked', String(x === b)); });
           setErr('');
           if (art && art.select) art.select(o.value);   // Bild folgt der Auswahl (z. B. Charakter des Bots)
+          // Sprach-Seite: die ganze Einrichtung wechselt sofort; die Auswahl selbst bleibt in Eigenschreibweise.
+          if (p.langSwitch) post('/api/lang', { lang: o.value });
         });
         wrap.appendChild(b);
       }
@@ -165,7 +180,7 @@
     }
     if (p.kind === 'review') {
       kids.push(h('dl', null, (p.rows || []).map((r) => h('div', { class: 'rv' }, h('dt', { text: r.label }), h('dd', { text: String(r.value).replace(/\.(?=\S)/g, '.​') }),
-        h('button', { type: 'button', 'aria-label': `${r.label} ändern`, on: { click: () => post('/api/goto', { id: r.goto }) } }, 'Ändern')))));
+        h('button', { type: 'button', 'aria-label': T.change_label.replace('{label}', r.label), on: { click: () => post('/api/goto', { id: r.goto }) } }, T.change)))));
     }
     if (p.kind === 'confirm') {
       for (const g of p.groups || []) kids.push(h('p', { class: 'group-title', text: g.title }), h('ul', null, g.items.map((t) => h('li', { text: t }))));
@@ -185,21 +200,21 @@
       kids.push(h('p', null, h('a', { href: p.link.href, target: '_blank', rel: 'noopener noreferrer', text: p.link.label })));
     }
     // Nach „Weiter“ holt die App (gleiches Fenster) ihre eigenen Seiten zurück, sobald sie phase=handoff sieht (alle 3 s).
-    if (p.kind === 'handoff' && p.done) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), 'Einen Moment …')));
+    if (p.kind === 'handoff' && p.done) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), T.one_moment)));
 
     kids.push(h('div', { class: 'err', id: 'er', role: 'alert' }), h('div', { id: 'ck' }));
     // Einbaustelle für Bilder und Animationen (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild.
     // Platz und Verhalten im schmalen Fenster regelt art.css; die CSP gilt auch dort (kein style=, kein Inline-Skript).
     if (art && art.el && !art.side) kids.push(art.el);
     if (p.kind === 'install' && p.failed) {
-      kids.push(h('p', null, h('button', { type: 'button', id: 'rp', on: { click: showReport } }, 'Bericht für die Hilfe anzeigen')), h('div', { id: 'rpt' }));
+      kids.push(h('p', null, h('button', { type: 'button', id: 'rp', on: { click: showReport } }, T.report_show)), h('div', { id: 'rpt' }));
     }
     kids.push(h('div', { class: 'spacer' }));
     const actions = h('div', { class: 'actions' });
-    actions.appendChild(p.canBack ? h('button', { type: 'button', class: 'link', id: 'bk', on: { click: () => post('/api/back', {}) } }, 'Zurück') : h('span'));
+    actions.appendChild(p.canBack ? h('button', { type: 'button', class: 'link', id: 'bk', on: { click: () => post('/api/back', {}) } }, T.back) : h('span'));
     const right = h('div', { class: 'right' });
-    if (p.optional && p.kind !== 'multi') right.appendChild(h('button', { type: 'button', class: 'link', id: 'sk', on: { click: () => post('/api/answer', { id: p.id, value: '', skip: true }) } }, 'Überspringen'));
-    if (p.kind === 'install' && p.failed) right.appendChild(h('button', { type: 'button', class: 'primary', id: 'nx', on: { click: () => post('/api/action', { name: 'retry' }) } }, 'Noch einmal versuchen'));
+    if (p.optional && p.kind !== 'multi') right.appendChild(h('button', { type: 'button', class: 'link', id: 'sk', on: { click: () => post('/api/answer', { id: p.id, value: '', skip: true }) } }, T.skip));
+    if (p.kind === 'install' && p.failed) right.appendChild(h('button', { type: 'button', class: 'primary', id: 'nx', on: { click: () => post('/api/action', { name: 'retry' }) } }, T.retry));
     else if (p.next) right.appendChild(h('button', { type: 'button', class: 'primary', id: 'nx', on: { click: next } }, p.next));
     actions.appendChild(right);
     kids.push(actions);
@@ -215,8 +230,8 @@
     if (r.fatal) return fatal();
     const box = document.getElementById('rpt');
     if (!box || !r.text) return;
-    box.replaceChildren(h('p', { class: 'small', text: 'Darin stehen keine Namen und keine Schlüssel, nur der Stand der Einrichtung.' }), h('pre', { class: 'report', text: r.text }));
-    try { await navigator.clipboard.writeText(r.text); box.prepend(h('div', { class: 'check', text: '✓ In die Zwischenablage kopiert' })); } catch (_) { /* nur anzeigen */ }
+    box.replaceChildren(h('p', { class: 'small', text: T.report_note }), h('pre', { class: 'report', text: r.text }));
+    try { await navigator.clipboard.writeText(r.text); box.prepend(h('div', { class: 'check', text: '✓ ' + T.report_copied })); } catch (_) { /* nur anzeigen */ }
   }
 
   load();

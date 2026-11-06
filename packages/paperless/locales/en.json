@@ -7,5 +7,9 @@
   "paperless.help.documents.description": "Find and read documents in your Paperless instance and get questions about them answered (read-only, adults only).",
   "paperless.help.documents.ex1": "Ask the document AI what notice period my mobile phone contract has.",
   "paperless.help.documents.ex2": "Read me the document with number 42.",
-  "paperless.help.documents.ex3": "Find my rental contract in the documents."
+  "paperless.help.documents.ex3": "Find my rental contract in the documents.",
+  "paperless.wizard.cfg_general_paperless_url.title": "Address of your Paperless instance",
+  "paperless.wizard.cfg_general_paperless_url.help": "At this address the bot searches and reads your documents in Paperless, the same way you open Paperless in your browser, for example http://192.168.1.50:8000 (no slash at the end). Paperless-NGX 3.0 or newer is needed.",
+  "paperless.wizard.paperless_api_token.title": "Paperless access token",
+  "paperless.wizard.paperless_api_token.help": "So that the bot can search and read in Paperless. It never writes anything.\n\nRecommendation: create a separate read-only user in Paperless that may see the documents you want, plus their tags, correspondents and document types. All adult members see in the bot what this user sees, children do not.\n\nToken: as this user, top right Profile → “My Profile” → create and copy the “API Auth Token”. Paste only the characters, without the word “Token”."
 }

@@ -587,7 +587,7 @@
   "core.wizard.page.ports_busy_help2": "Choose “Through a secure tunnel” instead, it does not interfere with anything.",
   "core.wizard.page.ports_busy_next": "Use the tunnel",
   "core.wizard.page.fb_guide_title": "Set up the FritzBox",
-  "core.wizard.page.fb_guide_help": "In the FritzBox you set messages from the internet to arrive at this computer. The steps are shown below. The guide covers it in detail, with all special cases.",
+  "core.wizard.page.fb_guide_help": "Follow these steps in your FritzBox.",
   "core.wizard.page.fb_guide_note": "If the FritzBox says “sharing already exists”, something else already uses this route. Do not delete anything, otherwise it stops working. Go back and choose “Through a secure tunnel”.",
   "core.wizard.page.fb_guide_link": "Open the detailed guide",
   "core.wizard.page.fb_guide_next": "I have created the port sharing",

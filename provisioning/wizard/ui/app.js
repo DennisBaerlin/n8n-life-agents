@@ -297,13 +297,14 @@ const UiNudge = {
     renderedId = p.id;
     // Bild dieser Seite (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild; side = neben die Auswahl.
     const art = window.WizardArt && typeof window.WizardArt.mount === 'function' ? window.WizardArt.mount(p) : null;
+    const takes = (art && art.takes) || [];   // was das Bild selbst zeigt (Hinweis, Anleitungs-Link), lässt die Seite weg
     const kids = [
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
     kids.push(...help);
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
-    else if (p.note) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));
+    else if (p.note && !takes.includes('note')) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));   // takes: das Bild zeigt den Hinweis selbst
 
     if (['text', 'date', 'secret'].includes(p.kind)) {
       const type = p.kind === 'secret' ? 'password' : p.kind === 'date' ? 'date' : 'text';
@@ -371,7 +372,7 @@ const UiNudge = {
       }
       if (p.link) kids.push(h('p', null, h('a', { class: p.link.primary ? 'button primary' : null, href: p.link.href, target: '_blank', rel: 'noopener noreferrer', text: p.link.label })));
       if (p.wait) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.wait)));
-    } else if (p.link) {
+    } else if (p.link && !takes.includes('link')) {
       kids.push(h('p', null, h('a', { href: p.link.href, target: '_blank', rel: 'noopener noreferrer', text: p.link.label })));
     }
     // Nach „Weiter“ holt die App (gleiches Fenster) ihre eigenen Seiten zurück, sobald sie phase=handoff sieht (alle 3 s).

@@ -87,6 +87,27 @@ test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBo
   assert.ok(flow.steps(Q, { __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }).includes('fb_ports_busy'));
 });
 
+test('Projekt-Zeichen: ui/mark.html ist dasselbe SVG wie die Quelle der Site', () => {
+  const fs = require('fs');
+  const svg = (f) => /<svg[\s\S]*<\/svg>/.exec(fs.readFileSync(f, 'utf8'))[0].replace(/\s+/g, ' ');
+  assert.equal(svg(path.join(WIZ, 'ui', 'mark.html')), svg(path.join(WIZ, '..', '..', 'docs', 'site', 'layouts', 'partials', 'mark.html')));
+});
+
+test('Paperless-Adresse vorausfüllen: genau ein erreichbarer Treffer, sonst leer', () => {
+  const g = flow.paperlessGuess;
+  assert.equal(g([{ ip: '0.0.0.0', port: 8000 }], '192.0.2.10'), 'http://192.0.2.10:8000');
+  assert.equal(g([{ ip: '192.0.2.10', port: 8010 }, { ip: '::', port: 8010 }], '192.0.2.10'), 'http://192.0.2.10:8010', 'derselbe Port doppelt = ein Treffer');
+  assert.equal(g([{ ip: '0.0.0.0', port: 8000 }, { ip: '0.0.0.0', port: 8001 }], '192.0.2.10'), '', 'mehrdeutig = leer');
+  assert.equal(g([{ ip: '127.0.0.1', port: 8000 }, { ip: '::1', port: 8001 }], '192.0.2.10'), '', 'nur lokal = aus dem Verbund nicht erreichbar');
+  assert.equal(g([{ ip: '198.51.100.7', port: 8000 }], '192.0.2.10'), '', 'an eine fremde Adresse gebunden');
+  assert.equal(g([], '192.0.2.10'), '');
+  assert.equal(g(null, '192.0.2.10'), '');
+  assert.equal(g([{ ip: '0.0.0.0', port: 8000 }], ''), '', 'ohne Heimnetz-Adresse der App = leer');
+  assert.equal(g([{ ip: '0.0.0.0', port: 8000 }], '127.0.0.1'), '');
+  assert.equal(g([{ ip: '0.0.0.0', port: 8000 }], '192.0.2.10; rm -rf /'), '', 'nur echte IPv4');
+  assert.equal(g([{ ip: '0.0.0.0', port: 0 }, { ip: '0.0.0.0', port: 'x' }], '192.0.2.10'), '');
+});
+
 test('Hilfetext der CLI: Listen, Absätze, Terminal-Befehle entfallen', () => {
   const b = flow.helpBlocks('Erste Zeile\nzweite Zeile.\n  1. Eins\n  2. Zwei mit\n     Fortsetzung\nSpäter nachtragen: lifeagents reconfigure');
   assert.deepEqual(b, [{ p: 'Erste Zeile zweite Zeile.' }, { ol: ['Eins', 'Zwei mit Fortsetzung'] }]);

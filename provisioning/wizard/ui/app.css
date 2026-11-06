@@ -55,6 +55,38 @@
   --bg: #FFFFFF;
   --bg-soft: #F1F8FB;
 }
+.phone {
+  --ink: #EEF3F6;
+  --gray: #A2B1BC;
+  --hairline: #2A343C;
+  --accent: #5DB7DD;
+  --accent-hover: #A8D3E6;
+  --accent-mid: #2A5A70;
+  --accent-pale: #183A4A;
+  --accent-wash: #1B2329;
+  --warn: #E0A030;
+  --warn-wash: #3A2E10;
+  --alert: #E5605F;
+  --alert-wash: #3D1F20;
+  --bg: #12181D;
+  --bg-soft: #1B2329;
+}
+.phone .screen {
+  --ink: #17212B;
+  --gray: #55636E;
+  --hairline: #E2E7EC;
+  --accent: #12638A;
+  --accent-hover: #0D4D6C;
+  --accent-mid: #A8D3E6;
+  --accent-pale: #DCF0F8;
+  --accent-wash: #F1F8FB;
+  --warn: #CC8600;
+  --warn-wash: #FDF3D8;
+  --alert: #D23F44;
+  --alert-wash: #FDE8E8;
+  --bg: #FFFFFF;
+  --bg-soft: #F1F8FB;
+}
 /* ui-tokens:end */
 
 * { box-sizing: border-box; }
@@ -129,3 +161,14 @@ dl { margin: 0; }
 .choices.multi .choice b::before { content: ""; display: inline-block; width: 18px; height: 18px; border: 1.5px solid var(--gray); border-radius: 5px; margin-right: 10px; vertical-align: -3px; text-align: center; font-size: 13px; line-height: 15px; }
 .choices.multi .choice.sel b::before { content: "✓"; border-color: var(--accent); background: var(--bg); color: var(--ink); }
 .choices.multi .choice small { padding-left: 28px; }
+
+/* Gefundene Adressen (z. B. mehrere Paperless-Instanzen im Heimnetz): Antippen trägt sie ins Feld ein. */
+.suggest { margin-top: 10px; }
+.suggest .choice { padding: 10px 14px; }
+
+/* Knopfleiste immer sichtbar (App-Fenster 760 × 640): unten angeheftet wie in der Start-App. */
+.actions { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 14px; margin-bottom: -14px; border-top: 1px solid var(--hairline); z-index: 2; }
+/* Einfachauswahl: Kreis zeigt die Wahl zusätzlich zur Fläche (Zustand nie nur über Farbe). */
+.choices:not(.multi) .choice b::before { content: ""; display: inline-block; width: 16px; height: 16px; border: 1.5px solid var(--gray); border-radius: 50%; margin-right: 10px; vertical-align: -2px; box-sizing: border-box; }
+.choices:not(.multi) .choice.sel b::before { border: 5px solid var(--accent); background: var(--bg); }
+.choices:not(.multi) .choice small { padding-left: 26px; }

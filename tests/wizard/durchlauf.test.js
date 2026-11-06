@@ -32,7 +32,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
   const ip = lanIp();
   assert.ok(ip, 'Container braucht eine Netz-Adresse für die Paperless-Attrappe');
   const plUrl = `http://${ip}:${pl.address().port}`;
-  const w = await startWizard();
+  const w = await startWizard({ env: { LA_HOST_IP: '192.0.2.10' } });
   try {
     await login(w);
     assert.equal((await page(w)).id, 'h:OWNER_LANGUAGE');
@@ -59,6 +59,8 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     const pk = await page(w);
     assert.deepEqual(pk.options.map((o) => o.value), ['career', 'estate', 'finance', 'paperless'], 'Module aus der CLI-Quelle');
     assert.ok(pk.options.every((o) => o.label && o.desc), 'Name + package.summary');
+    // Paperless läuft auf diesem Rechner (ein veröffentlichter Port, einer nur lokal): Adresse vorausgefüllt.
+    fs.writeFileSync(path.join(w.fake, 'paperless_ports'), JSON.stringify([{ ip: '0.0.0.0', port: 8010 }, { ip: '127.0.0.1', port: 8011 }]));
     await expectOk(await answer(w, 'packages', ['paperless', 'career', 'estate']));
     // Folgefragen nur der gewählten Module, je Seite eine.
     await expectOk(await answer(w, 'c:career:ADZUNA_APP_ID', 'beispiel-id'));
@@ -66,6 +68,9 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     await expectOk(await answer(w, 'c:career:JSEARCH_API_KEY', '', { skip: true }));
     assert.equal((await answer(w, 's:estate:general.bundesland', 'atlantis')).status, 422);
     await expectOk(await answer(w, 's:estate:general.bundesland', 'thueringen'));
+    const pre = await waitFor(async () => { const x = await page(w); return x.poll ? null : x; });
+    assert.equal(pre.value, 'http://192.0.2.10:8010', 'vorausgefüllt aus dem Paperless-Container dieses Rechners');
+    assert.match(pre.note.text, /Auf diesem Rechner läuft Paperless/);
     const loc = await answer(w, 's:paperless:general.paperless_url', 'http://localhost:8000');
     assert.equal(loc.status, 422);
     assert.match(loc.json.error, /localhost/);
@@ -220,7 +225,19 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_funnel');
     const fu = await waitFor(async () => { const p = await page(w); return p.title === 'Erlaube deinem Rechner den Empfang' ? p : null; });
     assert.equal(fu.link, null, 'fremde Adresse wird nie als Knopf gezeigt');
-    fs.writeFileSync(path.join(w.fake, 'reach'), 'ready');
+    // Paket-3-Zustände (reach_status_json): Geräte-Freigabe ohne Link -> feste Geräteliste; Funnel-Seite von Tailscale.
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_machine_auth', url: '' }));
+    const ma = await waitFor(async () => { const p = await page(w); return p.title === 'Gib diesen Rechner in Tailscale frei' ? p : null; });
+    assert.equal(ma.link.href, 'https://login.tailscale.com/admin/machines');
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
+    const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
+    assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
+    // Tunnel steht, Telegram zeigt noch nicht darauf: der Wizard fährt einmal reach.sh activate, danach Pairing.
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'pending_activation', url: '' }));
     await waitFor(async () => !!(await page(w)).qr);
+    assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['activate'], 'genau einmal aktiviert');
+    fs.writeFileSync(path.join(w.fake, 'paired'), '');
+    const ho = await waitFor(async () => { const p = await page(w); return p.id === 'handoff' ? p : null; });
+    assert.match(ho.note.text, /in 12 Tagen ab/, 'Hinweis zum Ablauf der Tailscale-Anmeldung');
   } finally { await w.stop(); }
 });

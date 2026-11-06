@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Attrappe der Wizard-Brücke für die Gratis-Tests: Fragen, lokale Prüfregeln und Paperless-Prüfung kommen aus der ECHTEN
 # bridge.sh; nur Live-Dienste (Telegram, Anthropic, Google) und die Schnittstellen zu Paket 1/3 sind fest verdrahtet.
-# Steuerung über Dateien in $WIZARD_FAKE_DIR: reach (Tunnel-Zustand), ports (free|busy), tg_conflict (Host).
+# Steuerung über Dateien in $WIZARD_FAKE_DIR: reach (Tunnel-Zustand), ports (free|busy), tg_conflict (Host),
+# paperless_ports (JSON-Liste veröffentlichter Paperless-Ports wie rt_published_ports_json).
 set -euo pipefail
 REAL="${WIZARD_FAKE_REAL_BRIDGE:?}"
 D="${WIZARD_FAKE_DIR:?}"
@@ -24,7 +25,10 @@ case "${1:-}" in
     jq -nc --arg h "$host" '{ok:true, bot:"beispiel_bot", webhook_host:$h, polling_conflict:false}' ;;
   reach-status)
     st="$(cat "$D/reach" 2>/dev/null || echo ready)"
+    case "$st" in '{'*) printf '%s\n' "$st"; exit 0 ;; esac   # ganzes JSON wie reach_status_json
     jq -nc --arg s "$st" '{state:$s, url:(if $s == "needs_login" then "https://login.tailscale.com/a/beispiel123" elif $s == "needs_funnel" then "https://evil.example/phish" else "" end)}' ;;
+  paperless-ports)
+    jq -nc --argjson p "$(cat "$D/paperless_ports" 2>/dev/null || echo "[]")" '{ports:$p}' ;;
   reach-ports)
     jq -nc --arg s "$(cat "$D/ports" 2>/dev/null || echo unknown)" '{state:$s}' ;;
   *) exec bash "$REAL" "$@" ;;

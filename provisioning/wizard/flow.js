@@ -241,6 +241,25 @@ function parseAnswers(text) {
   return m;
 }
 
+// paperlessGuess(ports, lanIp) -> vorausgefüllte Paperless-Adresse oder '' (Owner-Runde 2026-11-06: „wenn was gefunden
+//   wird, sonst leer lassen“). Nur DIESER Rechner: ports = veröffentlichte Ports von Containern mit Paperless-Image
+//   ([{ip, port}], aus runtime.sh), lanIp = Heimnetz-Adresse des Rechners (die App setzt LA_HOST_IP). Ein Port nur an
+//   127.0.0.1/::1 ist aus dem Verbund nicht erreichbar und zählt nicht. Genau ein Treffer -> http://<lanIp>:<port>; keiner
+//   oder mehrere (mehrdeutig) -> ''. Bestätigt wird wie bei einer Eingabe per Live-Check.
+const IPV4_RE = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+function paperlessGuess(ports, lanIp) {
+  if (!IPV4_RE.test(String(lanIp || '')) || /^(127\.|0\.)/.test(lanIp)) return '';
+  const ok = new Set();
+  for (const p of Array.isArray(ports) ? ports : []) {
+    const ip = String((p && p.ip) || '');
+    const port = Number(p && p.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) continue;
+    if (!['', '0.0.0.0', '::', lanIp].includes(ip)) continue;   // 127.0.0.1, ::1 oder eine fremde Adresse: nicht von hier erreichbar
+    ok.add(port);
+  }
+  return ok.size === 1 ? `http://${lanIp}:${[...ok][0]}` : '';
+}
+
 // packagesArg(Q, A) -> Wert für `provision.sh --packages` (der bestehende Weg der CLI): Komma-Liste oder none.
 function packagesArg(Q, A) {
   const p = (A.__packages || []).filter((x) => pkgDef(Q, x));
@@ -248,4 +267,4 @@ function packagesArg(Q, A) {
 }
 
 module.exports = { PHASES, PH, steps, reachMode, answered, envOf, question, phaseOf, helpBlocks, valueProblem,
-  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, hostDef, pkgDef };
+  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, hostDef, pkgDef };

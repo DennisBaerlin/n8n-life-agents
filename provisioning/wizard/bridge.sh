@@ -43,6 +43,11 @@ if [ -f "$_BR_PROV/lib/runtime.sh" ]; then
   # shellcheck source=/dev/null
   . "$_BR_PROV/lib/runtime.sh"
 fi
+# Erreichbarkeit (Paket 3): reach_status_json, falls vorhanden.
+if [ -f "$_BR_PROV/lib/reach.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_BR_PROV/lib/reach.sh"
+fi
 
 # Host-Fragen, die der Wizard stellt (Reihenfolge = _INSTALL_ENV_KEYS). Nicht dabei: die n8n-Anmeldung (die Installation
 # erzeugt sie) und der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3). DOMAIN fragt der Wizard nur
@@ -245,7 +250,8 @@ br_tg_check() {
 }
 
 # reach-status — Zustand des Tunnels für die Anzeige im Wizard (Schnittstelle zu Paket 3). Ist dort reach_status_json
-#   definiert, gilt es: {"state":"needs_login|needs_funnel|starting|ready|unavailable","url":"https://login.tailscale.com/…",
+#   definiert, gilt es (Format von Paket 3, lib/reach.sh): {"mode":…,"state":"unavailable|starting|needs_login|needs_machine_auth|
+#   needs_funnel|key_expired|ports_busy|pending_activation|ready","url":"https://login.tailscale.com/…","key_days_left":…,
 #   "dns_name":"…"}. Bis dahin: unbekannt.
 br_reach_status() {
   if declare -F reach_status_json >/dev/null; then reach_status_json; return 0; fi
@@ -265,8 +271,19 @@ br_reach_ports() {
   jq -nc '{state:"unknown"}'
 }
 
+# paperless-ports — veröffentlichte Ports der Paperless-Container auf DIESEM Rechner (Vorausfüllung der Adresse, Owner-Runde
+#   2026-11-06; kein Abtasten des Heimnetzes). Docker-Abfragen nur über runtime.sh (contract_lint 32):
+#   rt_published_ports_json <image-muster> <container-port> -> [{"ip":"0.0.0.0","port":8010}, …]. Ohne die Funktion: keine.
+#   Ausgabe {"ports":[…]}; die Entscheidung (genau ein erreichbarer Treffer) trifft flow.paperlessGuess.
+br_paperless_ports() {
+  local p='[]'
+  if declare -F rt_published_ports_json >/dev/null; then p="$(rt_published_ports_json paperless-ngx 8000 2>/dev/null || echo '[]')"; fi
+  jq -nc --argjson p "$(jq -c 'if type == "array" then . else [] end' <<<"${p:-[]}" 2>/dev/null || echo '[]')" '{ports:$p}'
+}
+
 case "${1:-}" in
   questions)       br_questions ;;
+  paperless-ports) br_paperless_ports ;;
   reach-ports)     br_reach_ports ;;
   validate)        [ -n "${2:-}" ] || exit 64; br_validate "$2" ;;
   paperless-check) br_paperless_check ;;

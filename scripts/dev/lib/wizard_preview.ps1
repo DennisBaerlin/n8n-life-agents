@@ -61,6 +61,16 @@ function Get-WizardPreviewHtml([string]$RepoRoot, $Entry, [int]$PhoneWidth = 0, 
     $model = $model.Replace('</', '<\/')
     $stub = "window.WIZARD_PREVIEW = (function () { var m = $model; return { error: m.error, value: m.value, api: function (method, path) { return Promise.resolve(method === 'GET' && path === '/api/state' ? { csrf: 'vorschau', page: m.page } : { error: 'Vorschau: nichts wird gesendet.' }); } }; })();"
     $width = if ($PhoneWidth -gt 0) { "html { width: ${PhoneWidth}px; }" } else { '' }
+    # Bilder (di9, ui/art/): eingebettet wie app.*, fehlen sie, bleibt die Stelle leer
+    $artCss = ''; $artJs = ''
+    if (Test-Path (Join-Path $ui 'art\art.css')) { $artCss = [System.IO.File]::ReadAllText((Join-Path $ui 'art\art.css'), $u8) }
+    if (Test-Path (Join-Path $ui 'art\art.js')) { $artJs = [System.IO.File]::ReadAllText((Join-Path $ui 'art\art.js'), $u8) }
+    if ($Scheme -ne 'auto') { $artCss = $artCss.Replace('@media (prefers-color-scheme: dark)', $(if ($Scheme -eq 'dark') { '@media all' } else { '@media not all' })) }
+    # Zeichen wie server.js indexHtml(): Kommentar der Datei weg, an jede Stelle <!--mark--> einsetzen
+    $mark = [regex]::Replace([System.IO.File]::ReadAllText((Join-Path $ui 'mark.html'), $u8), '^<!--[\s\S]*?-->\s*', '').Trim()
+    $shell = $shell.Replace('<!--mark-->', $mark)
     $shell = $shell.Replace('<link rel="stylesheet" href="/app.css">', "<style>$css`n$width</style>")
+    $shell = $shell.Replace('<link rel="stylesheet" href="/art.css">', "<style>$artCss</style>")
+    $shell = $shell.Replace('<script src="/art.js"></script>', "<script>$artJs</script>")
     $shell.Replace('<script src="/app.js"></script>', "<script>$stub</script><script>$js</script>")
 }

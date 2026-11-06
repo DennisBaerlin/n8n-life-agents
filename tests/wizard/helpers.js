@@ -21,7 +21,7 @@ function freePort() {
 // Attrappen ausführbar in ein Wegwerf-Verzeichnis kopieren (der Repo-Baum ist im Test-Container schreibgeschützt).
 function fixtures(dir) {
   const out = {};
-  for (const f of ['fake_bridge.sh', 'fake_provision.sh', 'fake_lifeagents.sh']) {
+  for (const f of ['fake_bridge.sh', 'fake_provision.sh', 'fake_lifeagents.sh', 'fake_reach.sh']) {
     const dst = path.join(dir, f);
     fs.copyFileSync(path.join(__dirname, 'fixtures', f), dst);
     fs.chmodSync(dst, 0o755);
@@ -40,7 +40,7 @@ async function startWizard(opts = {}) {
     WIZARD_PORT: String(port), WIZARD_BIND: '127.0.0.1', WIZARD_PUBLIC_ORIGIN: `http://127.0.0.1:${port}`,
     WIZARD_STATE_DIR: path.join(dir, 'state'), WIZARD_RUN_DIR: path.join(dir, 'run'), WIZARD_KEY_FILE: path.join(dir, 'etc', 'wizard.key'),
     WIZARD_BRIDGE: fx['fake_bridge.sh'], WIZARD_FAKE_REAL_BRIDGE: path.join(WIZ, 'bridge.sh'), WIZARD_FAKE_DIR: fake,
-    LA_PROVISION: fx['fake_provision.sh'], LA_CLI: fx['fake_lifeagents.sh'], WIZARD_POLL_MS: '50',
+    LA_PROVISION: fx['fake_provision.sh'], LA_CLI: fx['fake_lifeagents.sh'], LA_REACH: fx['fake_reach.sh'], WIZARD_POLL_MS: '50',
     WIZARD_GUIDE_URL: 'https://beispiel.example/anleitung/',
   }, opts.env || {});
   const proc = spawn(process.execPath, [path.join(WIZ, 'server.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });

@@ -52,7 +52,9 @@
 # (Dateiliste: Show-InstallCoreHint), weist der Schnellpfad auf `-Reset -Cold` vor dem Push hin.
 #
 # PARALLEL-LIMIT + AUFRAEUMEN (RAM, 16-GB-Host): ein neues Substrat startet erst, wenn weniger als
-# $env:N8NTEST_MAX_PARALLEL (Default 2) andere laufen (wartet bis $env:N8NTEST_WAIT_MIN = 15 Min). Jedes Substrat
+# $env:N8NTEST_MAX_PARALLEL (Default 2) andere laufen (wartet bis $env:N8NTEST_WAIT_MIN = 15 Min). RESERVIERUNG: Die Leitung
+# sagt einen Platz einer wartenden Session mit scripts/reserve_substrate_slot.ps1 zu; bis zum Start (max. 60 Min) zaehlt er wie ein
+# laufendes Substrat fuer alle ANDEREN Container, der reservierte darf starten und loest sie damit ein. Jedes Substrat
 # traegt die Labels lifeagents.substrate/lifeagents.worktree; der SessionEnd-Hook .claude/hooks/stop_own_substrate.ps1
 # raeumt beim Session-Ende das des eigenen WORKTREES ab, nie im geteilten Haupt-Checkout (dort -Down selbst; Opt-out: $env:LIFEAGENTS_KEEP_SUBSTRATE=1).
 #
@@ -95,6 +97,7 @@ $HostPort   = if ($env:N8NTEST_PORT) { $env:N8NTEST_PORT } else { '5680' }
 $N8nUrl     = "http://127.0.0.1:$HostPort"
 . "$PSScriptRoot\test_n8n_state.ps1"     # Get-TestN8nStateFile: Zustandsdatei JE Container (zweites Substrat ueberschreibt nichts)
 $StateFile  = Get-TestN8nStateFile -Container $Container
+. "$PSScriptRoot\..\lib\substrate_reservations.ps1"   # Reservierung von Substrat-Plaetzen (Wait-SubstrateSlot)
 $ContainerRoot = '/opt/n8n-life-agents'   # provisioning/ + packages/ als Geschwister (REPO_ROOT)
 $EnvFileInC = '/root/.n8ntest_install.env'
 
@@ -143,38 +146,27 @@ function Get-ContainerId {
 # lagert Windows sonst aus und ALLE Tests werden langsam). Zaehlt laufende Substrate (Container-Label
 # lifeagents.substrate, vom Basis-Image geerbtes Label lifeagents.substrate-base ODER nacktes $Image -> auch
 # Alt-Container ohne Label; kein ancestor= auf das Basis-Image: BuildKit setzt dafuer keine verlaesslichen
-# Eltern-Verweise) ausser dem eigenen; ab $env:N8NTEST_MAX_PARALLEL (Default 2)
+# Eltern-Verweise) ausser dem eigenen, dazu gueltige Reservierungen fuer andere Container (scripts/lib/substrate_reservations.ps1);
+# ab $env:N8NTEST_MAX_PARALLEL (Default 2)
 # wird gewartet (Poll 30 s, max. $env:N8NTEST_WAIT_MIN Minuten, Default 15), dann klarer Abbruch. Kein Deckel je
 # Container (ein harter --memory-Deckel koennte n8n mitten im Test beenden; die Summe begrenzt dieses Limit).
 function Get-OtherSubstrates {
-    $ids = @()
-    foreach ($f in @("label=lifeagents.substrate=n8n", "label=lifeagents.substrate-base=1", "ancestor=$Image")) {
-        # {{.Labels}} statt {{.Label "x"}}: PS 5.1 verstuemmelt eingebettete Anfuehrungszeichen in nativen Argumenten.
-        $r = Invoke-Native docker @('ps','--filter',$f,'--format','{{.Names}}|{{.Labels}}')
-        if ($r.Code -ne 0) { continue }
-        foreach ($line in @($r.Output | Where-Object { $_ })) {
-            $n, $labels = "$line" -split '\|', 2
-            if ($n -eq $Container) { continue }
-            $wt = ((("$labels" -split ',') | Where-Object { $_ -like 'lifeagents.worktree=*' } | Select-Object -First 1) -replace '^lifeagents\.worktree=', '')
-            $ids += "$n|$wt"
-        }
-    }
-    return @($ids | Sort-Object -Unique)
+    return @(Get-RunningSubstrates -Image $Image | Where-Object { $_.Name -ne $Container })
 }
 function Wait-SubstrateSlot {
     $max  = if ($env:N8NTEST_MAX_PARALLEL) { [int]$env:N8NTEST_MAX_PARALLEL } else { 2 }
     $wait = if ($env:N8NTEST_WAIT_MIN)     { [int]$env:N8NTEST_WAIT_MIN }     else { 15 }
     $deadline = (Get-Date).AddMinutes($wait)
     while ($true) {
-        $others = @(Get-OtherSubstrates)
-        if ($others.Count -lt $max) { return }
-        $list = ($others | ForEach-Object { $n, $w = $_ -split '\|', 2; if ($w) { "$n ($w)" } else { $n } }) -join ', '
+        $running = @(Get-OtherSubstrates | ForEach-Object { $_.Name })
+        $slot = Get-SlotAvailability -Running $running -Reservations @(Read-SlotReservations) -Own $Container -Max $max
+        if ($slot.Free) { return }
+        $msg = Format-SlotBlockedMessage -Availability $slot -Own $Container -Max $max
         if ((Get-Date) -ge $deadline) {
-            throw ("Parallel-Limit: bereits {0} n8n-Test-Substrate laufen ({1}); Limit {2}. Ein fremdes Substrat " +
-                   "nicht abreissen -- warten, bis die besitzende Session es mit -Down beendet, oder die Grenze bewusst " +
-                   "per `$env:N8NTEST_MAX_PARALLEL anheben.") -f $others.Count, $list, $max
+            throw ("Parallel-Limit: $msg`nEin fremdes Substrat nicht abreissen -- warten, bis die besitzende Session es mit -Down " +
+                   "beendet, oder die Grenze bewusst per `$env:N8NTEST_MAX_PARALLEL anheben.")
         }
-        Write-Host ("Parallel-Limit {0} erreicht ({1}) -- warte auf einen freien Platz ..." -f $max, $list) -ForegroundColor Yellow
+        Write-Host "Parallel-Limit: $msg -- warte auf einen freien Platz ..." -ForegroundColor Yellow
         Start-Sleep -Seconds 30
     }
 }
@@ -435,6 +427,7 @@ if (-not (Get-ContainerId)) {
         '--label',"lifeagents.worktree=$RepoRoot",
         $RunImage))
     if ($r.Code -ne 0) { throw "docker run fehlgeschlagen: $($r.Output -join "`n")" }
+    if (Remove-SlotReservation -Container $Container) { Write-Host "Reservierung fuer $Container eingeloest." }   # laeuft jetzt, zaehlt als Substrat
     if ($BaseBuilt) { Remove-StaleSubstrateBaseImages -Keep $RunImage }
 } elseif (-not (Get-ContainerId -RunningOnly)) {
     $r = Invoke-Native docker @('start',$Container)

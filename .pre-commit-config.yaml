@@ -287,6 +287,13 @@ repos:
         pass_filenames: false
         files: ^(scripts/(bootstrap_test_db|dev/bootstrap_test_n8n|dev/docker_volume_cleanup_test|lib/git_sandbox)|\.claude/hooks/stop_own_substrate)\.ps1$
 
+      - id: substrate-reservation-test
+        name: substrate_reservation_test (substrate slot reservation - list, expiry, slot decision, CLI; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/substrate_reservation_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/substrate_reservations|reserve_substrate_slot|dev/substrate_reservation_test)\.ps1$
+
       - id: capabilities-catalog
         name: build.ps1 -VerifyCatalog (capabilities catalog drift)
         language: system

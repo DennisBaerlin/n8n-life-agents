@@ -33,6 +33,7 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
   - Aufgabe, betroffene Dateien, woran „fertig“ erkennbar ist
   - Session-ID der Leitung und die Regel *Fragen an den Owner laufen über die Leitung* (`/coordinate` §5)
   - eigene Container mit Session-Kürzel, freie Ports nach `docker ps`
+  - n8n-Test-Substrat nur nach Reservierung durch die Leitung, die die Plätze verteilt (`scripts/reserve_substrate_slot.ps1`); kalte Läufe standardmäßig auf GitHub-Runnern; Compose- und andere Probe-Container kurz halten.
   - Repo öffentlich, nur erfundene Werte, auch in Commits und Kommentaren
   - Testfälle nie ändern, nur damit sie grün werden; Streichen erst nach Owner-Freigabe
   - bezahlte Suiten und Mini-App nur im jeweiligen Owner-Fenster
@@ -52,7 +53,7 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 
 Diese Anleitung soll mit jedem Sprint besser werden. Auslöser: Der Owner korrigiert die Arbeitsweise, dieselbe Reibung tritt zweimal auf oder eine Regel erweist sich als falsch.
 
-1. **Vorschlagen:** dem Owner die Regel im genauen Wortlaut in ein bis zwei Sätzen zeigen, im selben Zug, nicht erst am Sprint-Ende.
+1. **Festhalten und vorschlagen:** die Regel im genauen Wortlaut in ein bis zwei Sätzen als Zeile unter `## Verbesserungen` festhalten (Verbesserungs-Liste unten). Dem Owner zeigt die Leitung sie gebündelt am Sprint-Ende; was sich im selben Sprint wiederholen würde, sofort.
 2. **Richtige Adresse wählen (ein Fakt, eine Adresse):**
    - Alltag der Leitung → hier
    - Zusammenspiel der Sessions → `/coordinate`
@@ -62,7 +63,9 @@ Diese Anleitung soll mit jedem Sprint besser werden. Auslöser: Der Owner korrig
 3. **Umbauen statt anhängen:** Die Regel ersetzt, was ihr widerspricht. Anlass nur nennen, wenn die Regel sonst unverständlich wäre, und dann ohne Privates.
 4. **Sichern:** auf das Ja des Owners committen, unabhängig von laufenden Paketen. Laufende Unter-Sessions bekommen die Regel per `SendMessage`.
 
-**Rückblick am Sprint-Ende:** Wo stand die Arbeit still? Was musste der Owner zweimal sagen oder selbst bemerken? Was hat Kontingent gekostet, ohne zu helfen? Daraus höchstens drei Vorschläge, einzeln zur Entscheidung.
+**Verbesserungs-Liste:** Jede Reibung, jeder eigene Fehler und jede Owner-Korrektur kommt sofort als Zeile in die Stand-Datei unter `## Verbesserungen`: was passiert ist, die Ursache und ein Vorschlag mit Ziel-Adresse (Skill, Hook, Skript). Am Sprint-Ende legt die Leitung alle offenen Zeilen dem Owner gebündelt als Karten vor, jede mit Empfehlung. Was sich sonst im selben Sprint wiederholen würde, schlägt sie sofort vor.
+
+Leitfragen dafür: Wo stand die Arbeit still? Was musste der Owner zweimal sagen oder selbst bemerken? Was hat Kontingent gekostet, ohne zu helfen? Daraus höchstens drei Vorschläge, einzeln zur Entscheidung.
 
 ## 4. Sprint-Ende und Übergabe
 
@@ -77,6 +80,7 @@ Diese Anleitung soll mit jedem Sprint besser werden. Auslöser: Der Owner korrig
 
 ## Offen, der Reihe nach
 ## Owner-Entscheide (Wortlaut)
+## Verbesserungen (was passiert ist, Ursache, Vorschlag + Ziel-Adresse)
 ## Unter-Sessions (ID, Branch, Stand)
 ## Container (Name, Port, Halter)
 ```

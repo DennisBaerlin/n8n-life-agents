@@ -67,6 +67,8 @@
     const W = o.width, H = o.height, N = o.steps.length, SLOW = 1.5, MINK = 0.86;
     const fig = h('figure', { class: 'art art-guide', 'data-art': o.name });
     const svg = fromMarkup(o.svg);
+    // Echte Werte statt Platzhalter, wo der Wizard sie kennt (Owner): o.texts = { Selektor: Text }, nur per textContent
+    for (const [sel, text] of Object.entries(o.texts || {})) if (text) svg.querySelectorAll(sel).forEach((e) => { e.textContent = text; });
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     const cam = svg.querySelector('.cam');
     const ring = svg.querySelector('.ring');
@@ -119,6 +121,10 @@
       cam.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${s})`;
     }
     function setRing(r) {
+      if (typeof r === 'string') {   // Selektor: Rahmen um ein Element, dessen Breite erst der echte Wert ergibt (o.texts)
+        const e = svg.querySelector(r), b = e && e.getBBox ? e.getBBox() : null;
+        r = b && b.width ? [b.x - 4, b.y - 3, b.width + 8, b.height + 6] : null;
+      }
       ring.classList.toggle('on', !!r);
       if (r) { ring.setAttribute('x', r[0]); ring.setAttribute('y', r[1]); ring.setAttribute('width', r[2]); ring.setAttribute('height', r[3]); }
     }
@@ -151,7 +157,7 @@
       return st;
     }
     function caption(n) {
-      line.replaceChildren(h('b', { text: `${stepOf(n)}: ` }), o.steps[n].cap);
+      line.textContent = o.steps[n].cap;   // Position zeigen nur die Punkte (Owner: keine zweite Zählung neben der Schritt-Leiste)
       dots.forEach((d, k) => { d.classList.toggle('on', k === n); d.setAttribute('aria-current', k === n ? 'step' : 'false'); });
       back.disabled = n === 0;
       next.hidden = n + 1 >= N;   // letzter Schritt: kein Neustart-Knopf neben dem Hauptknopf des Wizards
@@ -290,7 +296,7 @@ ${scenes}
    <text class="t-th" x="530" y="200">Port extern</text><text class="t-th" x="530" y="213">vergeben IPv4</text>
    <text class="t-th" x="618" y="200">Port extern</text><text class="t-th" x="618" y="213">vergeben IPv6</text>
    <line class="ln" x1="222" y1="220" x2="758" y2="220"/>
-   <text class="t-s pr-name" x="230" y="240">drucker</text><text class="t-s pc-name" x="230" y="240">mein-rechner</text><rect class="ph" x="340" y="232" width="70" height="8" rx="4"/>
+   <text class="t-s pr-name" x="230" y="240">drucker</text><text class="t-s pc-name pc-host" x="230" y="240">mein-rechner</text><rect class="ph" x="340" y="232" width="70" height="8" rx="4"/>
    <circle class="ibtn" cx="716" cy="235" r="11"/><path class="pen" d="M711 240 l8 -8 l2 2 l-8 8 h-2 z"/>
    <circle class="ibtn" cx="744" cy="235" r="11"/><path class="bin" d="M739 230 h10 M741 230 v10 h6 v-10"/>
    <rect class="btn2" x="474" y="262" width="194" height="26" rx="3"/><text class="t-btn2" x="571" y="279">Gerät für Freigaben hinzufügen</text>
@@ -308,7 +314,7 @@ ${scenes}
    <text class="t-m" x="312" y="94">Freigabe</text>
    <circle class="help" cx="748" cy="89" r="11"/><text class="t-help" x="748" y="94">?</text>
    <text class="t-lbl" x="240" y="128">Gerät</text>
-   <rect class="field" x="360" y="110" width="200" height="26" rx="3"/><text class="t-s" x="370" y="128">mein-rechner</text><path class="caret" d="M540 120 l5 5 l5 -5"/>
+   <rect class="field" x="360" y="110" width="200" height="26" rx="3"/><text class="t-s pc-host" x="370" y="128">mein-rechner</text><path class="caret" d="M540 120 l5 5 l5 -5"/>
    <text class="t-lbl" x="240" y="162">IPv4-Adresse</text><rect class="field-off" x="360" y="146" width="200" height="24" rx="3"/><rect class="ph" x="370" y="154" width="90" height="8" rx="4"/>
    <text class="t-lbl" x="240" y="194">MAC-Adresse</text><rect class="field-off" x="360" y="178" width="200" height="24" rx="3"/><rect class="ph" x="370" y="186" width="110" height="8" rx="4"/>
    <text class="t-lbl" x="252" y="226">IPv6 Interface-ID</text><text class="t-s" x="360" y="226">: :</text>
@@ -359,7 +365,8 @@ ${scenes}
    <text class="t-s app-http" x="440" y="275">HTTP-Server</text><text class="t-s app-https" x="440" y="275">HTTPS-Server</text><path class="caret" d="M638 267 l5 5 l5 -5"/>
    <text class="t-lbl" x="300" y="311">Verzeichnis (optional)</text><rect class="field" x="430" y="294" width="228" height="28" rx="3"/>
    <text class="t-lbl" x="300" y="349">MyFRITZ!-Adresse</text><rect class="field-off" x="430" y="332" width="228" height="28" rx="3"/>
-   <g class="addr"><text class="t-s t-strong" x="440" y="351">mein-rechner</text><text class="t-s" x="524" y="351">.</text><rect class="ph" x="530" y="343" width="52" height="8" rx="4"/><text class="t-s" x="584" y="351">.myfritz.net</text></g>
+   <clipPath id="fb-addr-clip"><rect x="432" y="334" width="224" height="24"/></clipPath>
+   <g class="addr" clip-path="url(#fb-addr-clip)"><text class="t-s" x="440" y="351"><tspan class="t-strong pc-host addr-host">mein-rechner</tspan><tspan class="addr-zone">.deine-domain.myfritz.net</tspan></text></g>
    <circle class="radio" cx="276" cy="382" r="7"/><circle class="radio-on r2" cx="276" cy="382" r="4"/>
    <text class="t-m" x="292" y="387">Portfreigabe</text>
    <line class="ln" x1="266" y1="406" x2="664" y2="406"/>
@@ -403,13 +410,14 @@ ${scenes}
   function fbShare(page) {
     const note = page.note && page.note.text ? page.note.text : null;
     return fbGuided(page, { name: 'fb-share', height: 680, steps: FB_SHARE_STEPS, hint: note, takes: note ? ['note'] : [],
+      texts: { '.pc-host': page.fbHost },   // Name des Rechners in der FritzBox, nur wenn der Server ihn sicher kennt
       svg: fbSvg(680, FB_SHARE_DATA, FB_SHARE_SCENES), initial: FB_SHARE_INITIAL });
   }
 
   // ---------- B2: Name für die MyFRITZ!-Adresse (Seite h:DOMAIN, page.art 'myfritz_name') ----------
   // Dieselben Bilder wie fb_guide, Schritte 1–2 sind dieselben Objekte. Der Rechner hat schon beide Freigaben; die
-  // MyFRITZ!-Adresse zeigt der Dialog „Freigabe anlegen“ (belegter Wortlaut), deshalb „Neue Freigabe“ nur zum Nachschauen
-  // und am Ende „Abbrechen“. Vorderer Teil = Name, die Endung (Zone) nur als Balken.
+  // MyFRITZ!-Adresse zeigt der Dialog „Freigabe anlegen“ (belegter Wortlaut), deshalb „Neue Freigabe“ nur zum Nachschauen.
+  // Vorderer Teil = Name; die Endung ist die echte Zone der Seite (page.suffix), zu lang wird sie am Feldrand abgeschnitten.
   const FB_NAME_STEPS = [
     FB_OPEN,
     FB_SHARE_STEPS[1],
@@ -418,10 +426,11 @@ ${scenes}
       acts: [{ to: [716, 235], click: true, set: { scene: 'dev', rows: '2' }, cam: { x: 490, y: 560, s: 1 }, wait: 900 },
         { to: [752, 602], click: true, set: { scene: 'dlg', radio: '1', addr: '1' }, cam: DLG, ring: [426, 328, 236, 36], wait: 900 }] },
     { key: 'myfritz_name_5',
-      acts: [{ to: [530, 362], ring: [434, 334, 94, 24], cam: { x: 500, y: 330, s: 1.3 }, wait: 1200 }] },   // endet auf dem Namen
+      acts: [{ to: [530, 362], ring: '.addr-host', cam: { x: 500, y: 330, s: 1.3 }, wait: 1200 }] },   // endet auf dem Namen
   ];
   function fbName(page) {
     return fbGuided(page, { name: 'myfritz-name', height: 680, steps: FB_NAME_STEPS, place: 'before',
+      texts: { '.pc-host': page.fbHost, '.addr-zone': page.suffix },   // echte Endung (Zone) aus dem Eingabefeld der Seite
       svg: fbSvg(680, FB_SHARE_DATA, FB_SHARE_SCENES), initial: Object.assign({}, FB_SHARE_INITIAL, { pc: '1' }) });
   }
 

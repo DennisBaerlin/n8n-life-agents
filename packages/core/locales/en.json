@@ -33,7 +33,7 @@
   "core.art.reach.phone": "Your phone",
   "core.art.reach.proxy.label": "Your own proxy",
   "core.art.reach.proxy.s3": "A proxy is a go-between computer on the internet: it takes the message and passes it on to your home.",
-  "core.art.reach.router": "Your router",
+  "core.art.reach.router": "Your router stays as it is.",
   "core.art.reach.s1": "You message your assistant from your phone.",
   "core.art.reach.s2": "Telegram sends the message on over the internet.",
   "core.art.reach.s4": "Your computer answers, and your data stays at home.",

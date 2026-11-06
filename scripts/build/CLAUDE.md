@@ -4,9 +4,9 @@ Die Bau-Engine (`build.ps1` + `lib/`) generiert alle n8n-Workflow-JSONs aus den 
 
 ## Layout
 
-- Die Engine **kennt kein Paket beim Namen** (`core_literal_lint` über `scripts/build/**/*.ps1`); alles Paket-Wissen kommt aus Manifesten und Paket-Build-Defs. Build-Defs liegen uniform unter `packages/<pkg>/build/workflows/`, Builder werden per AST entdeckt (keine Registry); eine `tools/`-Def hat genau eine `Build-*`-Funktion.
-- Credentials nur über die `$CRED_*`-Deskriptoren (Host-Block in `build.ps1`, Paket-Deskriptoren aus `lib/credentials.ps1`); unbekannte Variable oder Credential ohne `__CRED_…__`-Platzhalter bricht den Build.
-- **Build ist deterministisch:** `Save-WorkflowFile` macht jede Knoten-id, vorhandene `webhookId` und GUID-förmige innere id zur UUID-v5 aus Workflow- + Knoten-Name (+ JSON-Pfad), sortiert ungeordnete Hashtables und schreibt LF nur bei echter Änderung → ein unveränderter Workflow baut byte-identisch (Refactor-Beweis = `git status` leer). `New-Id` ist nur Platzhalter; eine feste/zufällige GUID oder ein doppelter Knoten-Name bricht den Build. Knoten- oder Workflow-Umbenennung = neue IDs (beim Telegram-Trigger: neue Empfangsadresse, n8n meldet sie beim Deploy neu an).
+- Die Engine kennt kein Paket beim Namen (`core_literal_lint` über `scripts/build/**/*.ps1`); alles Paket-Wissen kommt aus Manifesten und Paket-Build-Defs. Build-Defs liegen uniform unter `packages/<pkg>/build/workflows/`, Builder werden per AST entdeckt (keine Registry); eine `tools/`-Def hat genau eine `Build-*`-Funktion.
+- Credentials nur über die `$CRED_*`-Deskriptoren (`build.ps1`, `lib/credentials.ps1`).
+- **Build ist deterministisch** (`Save-WorkflowFile`, IDs als UUID-v5 aus den Namen): ein unveränderter Workflow baut byte-identisch (Refactor-Beweis = `git status` leer); eine feste/zufällige GUID oder ein doppelter Knoten-Name bricht den Build. Knoten- oder Workflow-Umbenennung = neue IDs (beim Telegram-Trigger: neue Empfangsadresse, n8n meldet sie beim Deploy neu an).
 
 ## Modell-Node-Builder
 

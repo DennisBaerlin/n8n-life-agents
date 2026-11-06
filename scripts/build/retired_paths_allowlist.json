@@ -1,8 +1,6 @@
 {
   "_comment": "Ratchet fuer scripts/layout_lint.ps1 L4 (Retired-Roots db//n8n/). Jeder Eintrag = eine HEUTE getrackte, legitime Erwaehnung eines Root-Tokens (Datei|Token|count) mit Begruendung, jede reason mit deklariertem Klassen-Praefix (Vorbild core_literal_allowlist.json). Klassen: 'package-relative' = beschreibt den per-Paket-`db/`-Subdir bzw. das tests-`db/<pkg>/`-Bucket (kein Root-db/); 'retired-note' = historische Notiz, dass ein alter `db/`-Pfad retired ist; 'prose-fp' = deliberate-simple-Regex-FP, der Slash ist ein Prosa-Trenner, kein Pfad (Regex NICHT verkomplizieren -- Plan-Auflage); 'meta' = Doku, die den Lint-Mechanismus / die L4-Tokens selbst beschreibt (Self-Reference). Neues Token ohne Eintrag = harter FAIL (layout_lint L4). Alternative Stage-1-Suppression fuer neue deliberate Einzelfaelle: 'lint-ignore' in der Zeile. Pflege: bei Entfernung count anpassen bzw. Eintrag loeschen (Ratchet schrumpft).",
   "allow": [
-    { "file": "CLAUDE.md", "token": "db/", "count": 2,
-      "reason": "package-relative -- Repo-Struktur-Tabelle beschreibt den per-Paket `db/`-Subdir + das tests-`db/<pkg>/`-Bucket; keine Root-db/-Wurzel." },
     { "file": "config/.squawk.toml", "token": "db/", "count": 1,
       "reason": "retired-note -- WP-9-Kommentar dokumentiert den Glob-Flip des toten `db/migrations`-Globs auf `packages/*/db/migrations`." },
     { "file": "docs/package-contract.md", "token": "db/", "count": 1,

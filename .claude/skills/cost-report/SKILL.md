@@ -1,20 +1,20 @@
 ---
 name: cost-report
-description: Monatliche Routine am 1. - KI-Kostenbericht des Vormonats mit der Rechenmechanik von /costs (Preise aus agent.ai_models, Daten aus core.llm_usage), Cache-Trefferquote und Trend zum Monat davor. Nur lesend auf dem Live-LXC, Bericht als privates Artefakt. Nutzen für den geplanten Monatslauf oder auf Zuruf "was hat die KI im Monat gekostet".
+description: Monatliche Routine am 1. – KI-Kostenbericht des Vormonats mit der Rechenmechanik von /costs, Cache-Trefferquote und Trend. Nur lesend auf dem Live-LXC, Bericht als privates Artefakt. Nutzen für den geplanten Lauf oder auf Zuruf „was hat die KI im Monat gekostet“.
 ---
 
 # KI-Kostenbericht (`/cost-report`)
 
-Der Telegram-Befehl `/costs` zeigt 7 und 30 Tage. Diese Routine liefert **volle Kalendermonate** mit Trend und Cache-Trefferquote. Gerechnet wird mit **derselben Formel** wie `core.fn_get_llm_cost_report` (`packages/core/db/migrations/R__fn_get_llm_cost_report.sql`; den Kopf lesen, falls sie sich geändert hat — die fn ist die Wahrheit, dieser Skill folgt ihr).
+Der Telegram-Befehl `/costs` zeigt 7 und 30 Tage. Diese Routine liefert volle Kalendermonate mit Trend und Cache-Trefferquote. Gerechnet wird mit derselben Formel wie `core.fn_get_llm_cost_report` (`packages/core/db/migrations/R__fn_get_llm_cost_report.sql`; den Kopf lesen, falls sie sich geändert hat — die fn ist die Wahrheit, dieser Skill folgt ihr).
 
 ## Harte Grenzen
 
-- **Nur lesend**, wie bei `/live-findings`: Zugang aus der `.env` des Haupt-Checkouts (`DEV_INSTANCE_*`), Rezept und Dauer-Erlaubnis in den Memory-Notizen `owner-instance-ssh-access` und `live-system-read-permission`; `SET default_transaction_read_only = on;`. **Kein Import** (`core.fn_import_llm_usage` schreibt) und keine Änderung am System.
-- Der Bericht ist privat (Beträge): **nie ins Repo**, nur privates Artefakt/Dokument im Konto des Owners. Host und Zugangsdaten nie in den Bericht.
+- **Nur lesend**, wie bei `/live-findings`: Zugang aus der `.env` des Haupt-Checkouts (`DEV_INSTANCE_*`), Rezept und Dauer-Erlaubnis in den Memory-Notizen `owner-instance-ssh-access` und `live-system-read-permission`; `SET default_transaction_read_only = on;`. Kein Import (`core.fn_import_llm_usage` schreibt) und keine Änderung am System.
+- Der Bericht ist privat (Beträge): nie ins Repo, nur privates Artefakt/Dokument im Konto des Owners. Host und Zugangsdaten nie in den Bericht.
 
 ## Kosten-Politik
 
-Owner-Entscheid 2026-11-02: Das Hauptmodell einer geplanten Aufgabe ist der App-Standard (Opus), also gehört die Fleißarbeit an einen **Sonnet-Unteragenten** (`Explore`, immer mit `model: "sonnet"`): Datenstand prüfen, SQL bzw. Mitschrift lesen und die Summen je Monat/Workflow/Modell liefern. Du prüfst die Summen stichprobenartig nach (z. B. Gesamtsumme gegen die Teilsummen), ordnest ein und schreibst den Bericht.
+Die Fleißarbeit macht ein Sonnet-Unteragent (`Explore`): Datenstand prüfen, SQL bzw. Mitschrift lesen und die Summen je Monat/Workflow/Modell liefern. Du prüfst die Summen stichprobenartig nach (z. B. Gesamtsumme gegen die Teilsummen), ordnest ein und schreibst den Bericht.
 
 ## Ablauf
 

@@ -1,26 +1,26 @@
 ---
 name: privacy-deep-review
-description: Geplante Tiefenprüfung des öffentlichen Repos auf persönliche Hinweise - wöchentlich alles Neue seit der letzten Prüfung, monatlich der ganze Stand samt Website, Commit-, Tag- und Release-Texten, nach Auffrischen der lokalen Liste. Ändert nichts, Bericht nur als privates Artefakt, nie ein Wert im Text. Nutzen für den geplanten Lauf (Args woche oder monat) oder auf Zuruf "Tiefenprüfung".
+description: Geplante Tiefenprüfung des öffentlichen Repos auf persönliche Hinweise – wöchentlich das Neue, monatlich der ganze Stand samt Site, Commit-, Tag- und Release-Texten. Ändert nichts, Bericht nur als privates Artefakt, nie ein Wert. Args woche oder monat; auf Zuruf „Tiefenprüfung“.
 ---
 
 # Tiefenprüfung des öffentlichen Repos (`/privacy-deep-review`)
 
 Die Prüfung vor jedem Push (`/privacy-review`) sieht nur, was gerade neu ist. Diese Prüfung sieht, was trotzdem draußen liegt: was vor den Sperren hineinkam, was erst jetzt auffällt, weil die Liste gewachsen ist, und was Pushes nicht berührt, etwa Release-Texte. Sie ist nicht deterministisch und übersieht einen Teil.
 
-Grundsatz „Agenten schlagen vor, der Nutzer bestätigt“: Du **liest und berichtest**, du änderst nichts. Der Owner verbessert diesen Skill, wenn der Bericht nicht passt.
+Grundsatz „Agenten schlagen vor, der Nutzer bestätigt“: Du liest und berichtest, du änderst nichts. Der Owner verbessert diesen Skill, wenn der Bericht nicht passt.
 
 ## Harte Grenzen
 
-- **Nur lesend:** kein Commit, kein Push, kein Bereinigen, keine Änderung auf GitHub oder am Live-System. Ein Fix ist ein **Vorschlag** im Bericht.
+- **Nur lesend:** kein Commit, kein Push, kein Bereinigen, keine Änderung auf GitHub oder am Live-System. Ein Fix ist ein Vorschlag im Bericht.
 - **Geprüft wird das Öffentliche:** Maßstab ist `origin`, nicht dein lokaler Stand. Ein Mitlesen im Haupt-Checkout ist erlaubt, ein Wechsel des Branches dort nicht. `git fetch origin` ist erlaubt.
 - **Nie ein Wert im Text:** Bericht, Nachrichten und Dateinamen nennen nur Datei, Zeile und Art wie „Wohnform“ oder „Betrag“. Das gilt auch für die Antworten der Unteragenten.
-- **Bericht nur privat:** als **privates Artefakt** (`Artifact`-Tool, Standard = privat, nicht teilen), nie im Repo. Das Repo ist öffentlich, und eine Fundliste zeigt, wo die echten Stellen liegen.
+- **Bericht nur privat:** als privates Artefakt (`Artifact`-Tool, Standard = privat, nicht teilen), nie im Repo. Das Repo ist öffentlich, und eine Fundliste zeigt, wo die echten Stellen liegen.
 - **Bei einem Fund nicht reflexhaft bereinigen:** Ein Bereinigungs-Commit zeigt den Wert gebündelt. Der Weg steht in `/privacy-incident`, der Owner entscheidet.
 - Ausführung nur über das PowerShell-Tool (Root-`CLAUDE.md` *Scripts*).
 
 ## Kosten-Politik
 
-Die Fleißarbeit tragen **Sonnet-Unteragenten** (`Explore`, immer mit `model: "sonnet"`). Ein Unteragent liest höchstens etwa 300 KB, größere Bereiche teilst du nach Ordnern auf; der ganze Stand passt nicht in einen. Du bewertest nur, gewichtest und schreibst den Bericht. Sie arbeiten nacheinander statt alle auf einmal, und sie lesen keine generierten Dateien doppelt.
+Die Fleißarbeit tragen Sonnet-Unteragenten (`Explore`, immer mit `model: "sonnet"`). Ein Unteragent liest höchstens etwa 300 KB, größere Bereiche teilst du nach Ordnern auf; der ganze Stand passt nicht in einen. Du bewertest nur, gewichtest und schreibst den Bericht. Sie arbeiten nacheinander statt alle auf einmal, und sie lesen keine generierten Dateien doppelt.
 
 ## Stand merken
 

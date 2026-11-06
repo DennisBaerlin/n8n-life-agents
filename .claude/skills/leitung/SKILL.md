@@ -1,11 +1,11 @@
 ---
 name: leitung
-description: Macht diese Session zur Leit-Session - liest den aktuellen Stand aus der privaten Stand-Datei, traegt das Status-Panel ein, verteilt Arbeit auf Unter-Sessions, fuehrt zusammen und entwickelt die Arbeitsweise dauerhaft weiter. Nutzen, sobald der Owner sagt "du bist die Leitung", "uebernimm die Leitung", "du leitest" oder /leitung aufruft. Nicht fuer Unter-Sessions.
+description: Macht diese Session zur Leit-Session – liest die private Stand-Datei, verteilt Arbeit auf Unter-Sessions, führt zusammen, entwickelt die Arbeitsweise weiter. Nutzen, sobald der Owner „du bist die Leitung“, „übernimm die Leitung“ oder „du leitest“ sagt oder /leitung aufruft. Nicht für Unter-Sessions.
 ---
 
 # Leit-Session (`/leitung`)
 
-Owner-Regel (2026-11-02): Der Satz „du bist die Leitung“ reicht. Alles Weitere steht hier, der Owner muss keine Datei nennen.
+Der Satz „du bist die Leitung“ reicht; alles Weitere steht hier, der Owner muss keine Datei nennen.
 
 | Was | Wo |
 |---|---|
@@ -41,16 +41,16 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 - **Schlank bleiben:** Große Dateien und lange Protokolle lesen Unter-Sessions, die Leitung bekommt das Ergebnis.
 - **Stand sofort festhalten:** Session-ID, Branch, Container und jede Owner-Entscheidung im Wortlaut kommen gleich in die Stand-Datei, nicht erst am Ende. Erledigtes fliegt raus; die Datei beschreibt nur das Jetzt.
 - **Entscheidungen als Karte:** Offene Punkte und Entscheidungen für den Owner stellt die Leitung immer als Karte, mit kurzer Erläuterung der Folgen und Empfehlung.
-- **Freigaben:** Der Owner bestätigt jedes Paket vor dem Merge. Merge, Push und Release nur auf das eigene Wort des Owners im Chat der Leitung; `/coordinate` §5 *Owner-Freigaben*. Prüfungen werden nie übersprungen.
+- **Freigaben:** Merge, Push und Release nur auf das eigene Wort des Owners im Chat der Leitung (`/coordinate` §5 *Owner-Freigaben*). Prüfungen werden nicht übersprungen.
 - **Push-Sperre:** Soll nichts nach GitHub (z. B. vor einem Repo-Neustart), setzt die Leitung `.\scripts\set_no_push.ps1 -On`, noch bevor ein Brief das Pushen erwähnt. Aufheben kann nur der Owner im Terminal (`-Off`).
 - **Warten:** Auf GitHub-Läufe per `gh run watch` im Hintergrund, der Owner soll nicht nachfragen müssen (`/coordinate` §5 *Offene Läufe*).
-- **Über Remote Control:** Der Owner sieht keine Seitenfenster, Bilder und Diffs darum als Datei in den Chat. Sessions starten geht dann nicht (`/coordinate` §5).
-- **Plan-Freigabe:** Bei einer weitergeleiteten Plan-Karte sagt die Leitung dem Owner, das schlichte „Akzeptieren“ zu wählen; die Option „mit Bearbeitungsrecht“ stellt die Session von Auto um. Danach prüft sie `permissionMode` der Session.
+- **Über Remote Control:** Der Owner sieht keine Seitenfenster, Bilder und Diffs darum als Datei in den Chat. Die App verweigert dann den Start einer Session; das sagt die Leitung sofort, der Owner tippt die Nachricht in der Desktop-App.
+- **Plan-Freigabe:** Bei einer weitergeleiteten Plan-Karte sagt die Leitung dem Owner, das schlichte „Akzeptieren“ zu wählen; die Option „mit Bearbeitungsrecht“ stellt die Session von Auto um. Danach prüft sie `permissionMode` und stellt im selben Schritt die Denkstufe laut Plan-Zeile ein: für eine neue bauende Session per `start_session` `effort`, für die planende Session per `set_session_effort`. Liegt die Stufe über der eigenen, fragt die App den Owner; die Leitung kündigt das in derselben Nachricht wie die Plan-Abnahme an, damit kein eigener Termin entsteht.
 - **Nur Belegtes behaupten:** Eine Regel oder Zusage erst schreiben, wenn sie ausprobiert ist. Was nicht geprüft wurde, steht als ungeprüft im Bericht.
 
 ## 3. Arbeitsweise weiterentwickeln
 
-Diese Anleitung soll mit jedem Sprint besser werden. **Auslöser:** Der Owner korrigiert die Arbeitsweise, dieselbe Reibung tritt zweimal auf oder eine Regel erweist sich als falsch.
+Diese Anleitung soll mit jedem Sprint besser werden. Auslöser: Der Owner korrigiert die Arbeitsweise, dieselbe Reibung tritt zweimal auf oder eine Regel erweist sich als falsch.
 
 1. **Vorschlagen:** dem Owner die Regel im genauen Wortlaut in ein bis zwei Sätzen zeigen, im selben Zug, nicht erst am Sprint-Ende.
 2. **Richtige Adresse wählen (ein Fakt, eine Adresse):**
@@ -66,7 +66,7 @@ Diese Anleitung soll mit jedem Sprint besser werden. **Auslöser:** Der Owner ko
 
 ## 4. Sprint-Ende und Übergabe
 
-- Unter-Sessions gesammelt zum Archivieren vorschlagen, Container und Worktrees abräumen (`/coordinate` §5 *Sprint-Ende*), danach `.\scripts\register_sub_session.ps1 -Clear`.
+- Nach dem Merge die fertigen Unter-Sessions gesammelt zum Archivieren vorschlagen und auf das Ja des Owners archivieren (`archive_session`: stoppt die Session, räumt ihren Worktree ab, wiederherstellbar). Vorher muss alles aus ihnen gemerged und ihr Nachlauf erledigt sein. Löschen (`delete_session`) nur auf ausdrücklichen Wunsch des Owners. Danach per `docker ps` die Container fertiger Sessions abräumen, auch `db_test`-Container (die bleiben nach dem Session-Ende stehen), und `.\scripts\register_sub_session.ps1 -Clear`.
 - Stand-Datei und Memory aktualisieren, sodass eine neue Session ohne dieses Gespräch weitermachen kann.
 - Auf neue Session oder `/clear` hinweisen (Root-`CLAUDE.md` *Entwicklungszyklus*). Die neue Leitung startet der Owner mit dem einen Satz.
 

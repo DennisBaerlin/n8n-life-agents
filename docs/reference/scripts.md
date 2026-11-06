@@ -55,3 +55,4 @@ Der Substrat-Treiber liest die Test-Identität + optionale Secrets aus `.env` (g
 ## Entscheidungen (bei uns anders — belegt)
 
 - **Layout-/Doku-Enforcement als PowerShell-local-Hooks** (doc_lint Check 8/8b + `layout_lint` L1–L7) statt OSS-Tools: ls-lint liest keine Datei-Inhalte; pygrep/semgrep können weder zeilen-genaue Ratchet-Suppression noch pfad-abgeleitete Erwartungswerte; lychee/MD051/remark erfassen nur echte `[text](file#anchor)`-Links, nicht die deutsche Prosa-Pointer-Form. Übernommen: die Dead-Gate-Prüfung der `files:`-/`exclude:`-Filter über die prek-nativen `repo: meta`-Hooks `check-hooks-apply` + `check-useless-excludes`. Kipp-Kriterien → privates Backlog.
+- **Schnellpfad über ein lokales Basis-Image** statt Cache-Varianten: verworfen sind npm-Cache-Volume (`npm cache clean` + Entpacken dominieren), apt-cacher-ng (kein HTTPS-Caching für PGDG/NodeSource) und Testcontainers-Reuse (passt nicht zu systemd-Containern mit Provisioning).

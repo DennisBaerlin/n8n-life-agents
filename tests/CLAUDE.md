@@ -9,19 +9,20 @@
 
 ## LLM-Test-Kosten: OWNER-ONLY
 
-- `n8n_test`, `orch_test`, `e2e_test`, `judge_eval`, `multiturn_test` kosten API-Credits → nur im Owner-Fenster (Hook `.claude/hooks/enforce_owner_window.ps1`; Root-`CLAUDE.md` *Scripts*). Claude **empfiehlt** die Suite und nennt das exakte Kommando (Tabelle in der Referenz), führt sie nicht aus.
+- `n8n_test`, `orch_test`, `e2e_test`, `judge_eval`, `multiturn_test` kosten API-Credits (Owner-Fenster, Root-`CLAUDE.md` *Scripts*); Claude empfiehlt die Suite mit dem exakten Kommando (Tabelle in der Referenz).
 - Empfehlung bei: Modellwechsel, Prompt-Refactor, geänderter Tool-Description, neuem Tool (Golden), Orchestrator-Routing. Keine bei DB-Fixes, Stickies, Skript-Refactoring, Doku, Migrationen. `db_test.ps1` und `infra_test.ps1` sind gratis — immer mitlaufen lassen.
 - **Gezielt statt alles:** nur die Fälle, die der Diff berührt (gefilterte Fall-Datei für `n8n_test -CasesFile`, `judge_eval` direkt danach, der nächste Lauf überschreibt das Bundle); eine Suite, deren Oberfläche der Diff nicht ändert, läuft nicht. Vorher dem Owner Anzahl, Grund, grobe Kosten und das Ungeprüfte nennen. Volllauf nur mit begründetem Anlass und nach Rückfrage.
 
 ## Flakiness + Quarantäne
 
 - Routing-Tests sind ein weiches Gate; ein einzelner Fail beweist keine Regression. `"quarantined": true` am Case: wird ausgeführt und berichtet, aber nicht gewertet und nicht ins Judge-Bundle geschrieben — Pflicht: `notes` mit Grund + Re-Evaluierungs-Trigger.
-- **Treiber mit Fall-Liste** (freie Suiten `real_ingress`, `mock_route`, `infra_test`, `hitl_gate`; `cron_text` hat eine eigene, gleichwertige Absicherung) setzen jeden Fall in `try`/`catch` **im selben Bereich** wie den Zähler und rufen im `catch` `Write-CaseAbort` (`scripts/dev/test_n8n_state.ps1`, Abschnitt *Fall-Abbruch*): Der Zähler wird nie in einem Scriptblock hochgezählt (eine Kopie ginge verloren, der Lauf bliebe grün), die Fälle laufen mit dem `foreach`-Statement, nie mit `ForEach-Object` (dort beendet `continue` mehr als den Fall). Kein automatisches Wiederholen: Ein roter Fall wird einzeln wiederholt. Eigenbau statt Pester, weil die Fälle linear Substrat-Zustand teilen und `exit $failed` der Vertrag mit `run_free_gates.ps1` ist. Mechanik → `docs/reference/tests.md` *Flakiness-Mechanik*.
+- **Treiber mit Fall-Liste** (freie Suiten `real_ingress`, `mock_route`, `infra_test`, `hitl_gate`; `cron_text` hat eine eigene, gleichwertige Absicherung) setzen jeden Fall in `try`/`catch` im selben Bereich wie den Zähler und rufen im `catch` `Write-CaseAbort` (`scripts/dev/test_n8n_state.ps1`, Abschnitt *Fall-Abbruch*): Der Zähler wird nie in einem Scriptblock hochgezählt (eine Kopie ginge verloren, der Lauf bliebe grün), die Fälle laufen mit dem `foreach`-Statement, nie mit `ForEach-Object` (dort beendet `continue` mehr als den Fall). Kein automatisches Wiederholen: Ein roter Fall wird einzeln wiederholt. Eigenbau statt Pester, weil die Fälle linear Substrat-Zustand teilen und `exit $failed` der Vertrag mit `run_free_gates.ps1` ist. Mechanik → `docs/reference/tests.md` *Flakiness-Mechanik*.
 - Rubrics auf Output-Substanz schreiben, nicht auf die `read_tools`-Liste (der n8n-Action-Log ist unvollständig). Massenhaft `status=error` ⟹ zuerst Modell-Quota prüfen, nicht die Korrelation debuggen.
 
 ## DB-Tests: Pattern
 
-- DB-Gesetze und die **Rollen-Perspektiv-Pflicht** (`SET LOCAL ROLE` in `tests/db/cross/test_role_permissions.sql`; `db_test` läuft als Superuser) → `.claude/rules/sql.md` (lädt beim Öffnen einer `.sql`).
+DB-Gesetze und Rollen-Perspektiv-Pflicht → `.claude/rules/sql.md`.
+
 - Inner Loop: `db_test.ps1 -Filter '*<subject>*'` (Naming `fn_X → test_fn_X` ist die Change→Test-Map); die Voll-Suite fährt der Pre-Push-Hook; Schema-/Trigger-Querschnitt → einmal voll manuell.
 - Jede Datei self-contained (`BEGIN … DO $$ … RAISE EXCEPTION 'FAIL: …' … $$; ROLLBACK;`).
 
@@ -33,12 +34,12 @@
 
 ## E2E-Tier
 
-- Voraussetzungen (Konten, Sparziel, Kauf …) per `setup_sql` über die `<pkg>.fn_*` anlegen, der Agent macht nur den **geprüften** Schritt: 4–5 Writes in einer Nachricht sprengen `maxIterations` (bezahlter Lauf 2026-10-23). Jeder Fall muss `status=success` enden (C3/C4), sonst bekäme der Nutzer eine Fehlermeldung.
-- Jede E2E-Entität trägt `__E2E__` im Namen; Cleanup **nur** über `agent.fn_clear_e2e_data()` (kein unqualifizierter DELETE). Neue löschbare Entität im E2E ⟹ den Sentinel-Scope des Paket-Hooks `<pkg>.fn_clear_e2e_data` erweitern (sonst Leak).
+- Voraussetzungen (Konten, Sparziel, Kauf …) per `setup_sql` über die `<pkg>.fn_*` anlegen, der Agent macht nur den geprüften Schritt: 4–5 Writes in einer Nachricht sprengen `maxIterations`. Jeder Fall muss `status=success` enden (C3/C4), sonst bekäme der Nutzer eine Fehlermeldung.
+- Jede E2E-Entität trägt `__E2E__` im Namen; Cleanup nur über `agent.fn_clear_e2e_data()` (kein unqualifizierter DELETE). Neue löschbare Entität im E2E ⟹ den Sentinel-Scope des Paket-Hooks `<pkg>.fn_clear_e2e_data` erweitern (sonst Leak).
 - Nur sequentielle Läufe (fester Marker); Advisor/Monitor-E2E nutzen den `test_e2e`-chat_id nur für den Sentinel-Domain-Switch.
 
 ## Golden-Cases
 
-- Self-contained, reale Entitätsnamen; `create_*` mit **neuen** Namen (Dedup-Treffer → Agent fragt nach → FAIL).
+- Self-contained, reale Entitätsnamen; `create_*` mit neuen Namen (Dedup-Treffer → Agent fragt nach → FAIL).
 - `set_*`/`close_*`/`delete_*`: Routing-Golden nur mit dauerhafter Fixture-Entität, sonst DB-Test + E2E statt eines erzwungenen Goldens (der FAIL wäre ein Fixture-Defekt).
 - Onboarding-Vorzustand per `"onboarding": "unknown"` (Haushalt) bzw. `"package_onboarding": {"<pkg>.<section_key>": "unknown"}` (offener Paket-Bereich; vor jedem Case wird alles auf completed zurückgesetzt), Default nach Seed: completed. Eine Voraussetzung, die nicht in die Fixtures darf (Einnahme: `real_ingress` braucht den Haushalt ohne), per `setup_sql` wie im E2E-Tier (`__E2E__`-Entitäten, aufgeräumt vor dem nächsten Case). Mock-Tier: jeder Golden braucht ein Szenario in `tests/mock_llm/scenarios.json` (`mock_lint`).

@@ -1,6 +1,6 @@
 ---
 name: Explore
-description: Read-only Code-Suche im Repo (Dateien finden, Muster aufspüren, Aufrufketten verfolgen) auf einem günstigen Modell. Ersetzt den eingebauten Explore-Agenten, der unter Fable sonst auf Opus läuft.
+description: Read-only Code-Suche im Repo (Dateien finden, Muster aufspüren, Aufrufketten verfolgen) auf einem günstigen Modell. Ersetzt den eingebauten Explore-Agenten.
 model: sonnet
 omitClaudeMd: true
 disallowedTools: Edit, Write, NotebookEdit

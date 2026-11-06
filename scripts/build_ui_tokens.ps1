@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # build_ui_tokens.ps1 -- schreibt die Farben aus config/ui.tokens.json als markierten Block in die Datei jeder Oberflaeche
 # (Liste und Begruendung: scripts/lib/ui_tokens.ps1). Nur der Block aendert sich, die Marker muessen schon in der Datei stehen.
+# Erzeugt ausserdem das Zeichen-Partial der Site (docs/site/layouts/partials/mark.html) aus config/ui.mark.svg.
 # Danach bei der Doku-Seite: .\scripts\build_site.ps1 (der Hugo-Output ist getrackt). Die Pruefung im Commit macht
 # scripts/ui_token_lint.ps1.
 #   .\scripts\build_ui_tokens.ps1            Bloecke schreiben
@@ -27,4 +28,13 @@ foreach ($s in (Get-UiSurfaces)) {
     [System.IO.File]::WriteAllText($abs, $text, $u8)
     Write-Host "  [neu] $($s.Name): $($s.File)" -ForegroundColor Cyan
 }
+# Zeichen-Partial der Site (ganze Datei erzeugt)
+$markPaths = @(Get-UiMarkPaths $RepoRoot)
+if ($markPaths.Count -eq 0) { throw "Keine <path>-Zeilen in $(Get-UiMarkSourcePath)." }
+$markAbs = Join-Path $RepoRoot (Get-UiMarkPartialPath)
+$markWant = Get-UiMarkPartialText $markPaths
+$markHave = if (Test-Path $markAbs) { [System.IO.File]::ReadAllText($markAbs, $u8) } else { '' }
+if ($markHave -ceq $markWant) { Write-Host '  [OK] mark: aktuell' -ForegroundColor Green }
+elseif ($Verify) { Write-Host "  [FAIL] mark: $(Get-UiMarkPartialPath) ist veraltet" -ForegroundColor Red; $fails++ }
+else { [System.IO.File]::WriteAllText($markAbs, $markWant, $u8); Write-Host "  [neu] mark: $(Get-UiMarkPartialPath)" -ForegroundColor Cyan }
 exit $fails

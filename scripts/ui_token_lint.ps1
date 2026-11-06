@@ -14,6 +14,9 @@
 #                    Abdunklung); pilot:<warum> alter Wert, die Umstellung raeumt ihn ab; art:<warum> Zeichnung.
 #   (5) Neue Flaechen UI-Datei ausserhalb der registrierten Wurzeln -> FAIL (Oberflaeche in lib/ui_tokens.ps1 eintragen).
 #   (6) Bot-Profilbild  das committete JPG ist aus dem aktuellen Zeichen und der Farbdatei abgeleitet (Pruefwert der Quelle).
+#   (7) Zeichen        das Site-Partial ist aus config/ui.mark.svg erzeugt (sonst: scripts/build_ui_tokens.ps1); jede inline-SVG im
+#                    Zeichen-Kasten (viewBox 0 0 26 26) unter den Wurzeln aus Get-UiScanRoots traegt die Pfade der Quelle, nur die
+#                    Farben duerfen abweichen. Ausnahmen mit Begruendung: Get-UiMarkExempt.
 # -Baseline: druckt die gefundenen Literale als JSON-Geruest (reason:'TODO').
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose)
@@ -45,7 +48,23 @@ foreach ($sc in $selfCases) {
     if (($got -join '|') -ne (@($sc.want) -join '|')) { Fail "Selbst-Assert Literal: '$($sc.c)' -> erwartet [$(@($sc.want) -join ', ')], gefunden [$($got -join ', ')] -- Erkennung defekt" }
 }
 if (-not (Get-UiBlockRegex 'x').IsMatch("/* ui-tokens:begin x (y) */`n:root { }`n/* ui-tokens:end */")) { Fail 'Selbst-Assert: Block-Muster erkennt den Block nicht' }
-if ($fails -gt 0) { Write-Host "ui_token_lint: $fails Fehler (Selbst-Asserts)" -ForegroundColor Red; exit $fails }
+# Zeichen-Erkennung: jede inline-SVG im Zeichen-Kasten (viewBox 0 0 26 26) muss die Pfade der Quelle tragen; Farben duerfen abweichen
+$mk = @('<path d="M1 1 L5 5" fill="var(--mark, var(--accent))" stroke-width="2"/>', '<path d="M2 2" fill="none" stroke="var(--mark-check, var(--bg))"/>')
+$mkOk = '<svg width="26" height="26" viewBox="0 0 26 26"><path d="M1 1 L5 5" fill="var(--accent)" stroke-width="2"/><path d="M2 2" fill="none" stroke="var(--bg)"/></svg>'
+$markCases = @(
+    @{ n = 'Zeichen mit anderen Farbvariablen';  c = $mkOk;                                                                         want = 0 }
+    @{ n = 'altes Zeichen (Kreis)';              c = '<svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="12"/></svg>';            want = 1 }
+    @{ n = 'geaenderte Geometrie';               c = $mkOk.Replace('M1 1 L5 5', 'M1 1 L5 6');                                      want = 1 }
+    @{ n = 'geaenderte Strichbreite';            c = $mkOk.Replace('stroke-width="2"', 'stroke-width="3"');                        want = 1 }
+    @{ n = 'Zeichen nur halb (Haekchen fehlt)';  c = '<svg viewBox="0 0 26 26"><path d="M1 1 L5 5" fill="var(--accent)" stroke-width="2"/></svg>'; want = 1 }
+    @{ n = 'anderer Kasten ist kein Zeichen';    c = '<svg viewBox="0 0 24 24"><circle r="3"/></svg>';                              want = 0 }
+    @{ n = 'Kommentar zaehlt nicht';             c = '<!-- <svg viewBox="0 0 26 26"><circle r="3"/></svg> -->';                     want = 0 }
+    @{ n = 'umbrochene Attribute';               c = ($mkOk -replace ' ', "`n  ");                                                  want = 0 }
+)
+foreach ($mc in $markCases) {
+    $got = @(Get-UiMarkProblems $mc.c $mk).Count
+    if ($got -ne $mc.want) { Fail "Selbst-Assert Zeichen: '$($mc.n)' -> erwartet $($mc.want) Fund(e), gefunden $got -- Zeichen-Erkennung defekt" }
+}if ($fails -gt 0) { Write-Host "ui_token_lint: $fails Fehler (Selbst-Asserts)" -ForegroundColor Red; exit $fails }
 
 # --- (1) Farbdatei ----------------------------------------------------------------------------------------------
 $tokens = Read-UiTokens $RepoRoot
@@ -90,6 +109,9 @@ foreach ($s in $surfaces) {
 }
 
 # --- (4) Literale -----------------------------------------------------------------------------------------------
+$markPaths = @(Get-UiMarkPaths $RepoRoot)
+if ($markPaths.Count -lt 2) { Fail "Zeichen: weniger als zwei <path>-Zeilen in $(Get-UiMarkSourcePath) -- Quelle kaputt?" }
+$markExempt = Get-UiMarkExempt
 $tracked = @(git -c core.quotepath=off -C $RepoRoot ls-files)   # ohne die Option stuenden Umlaut-Pfade in Anfuehrungszeichen, ihre Endung passte nicht
 if ($tracked.Count -eq 0) { Fail 'Scope-Selbst-Assert: git ls-files leer -- Scan tot'; exit $fails }
 $scanRoots = @(Get-UiScanRoots)
@@ -105,6 +127,9 @@ foreach ($f in $scanFiles) {
     $fileText = [System.IO.File]::ReadAllText($abs, $u8)
     # Marker sind nur in der Datei einer registrierten Oberflaeche gueltig, sonst versteckten sie dort feste Farben vor (3) und (4)
     if ($fileText.Contains('ui-tokens:begin') -and -not (@($surfaces | ForEach-Object { $_.File }) -contains $f)) { Fail "Block-Marker in $f, die Datei ist keine registrierte Oberflaeche (Get-UiSurfaces)" }
+    if (-not $markExempt.ContainsKey($f)) {
+        foreach ($mp in (Get-UiMarkProblems $fileText $markPaths)) { Fail "Zeichen in ${f}: Inline-SVG im Zeichen-Kasten (viewBox 0 0 26 26) weicht vom Projekt-Zeichen ab (`"$mp...`") -- die <path>-Zeilen 1:1 aus $(Get-UiMarkSourcePath) uebernehmen (Site: erzeugt per scripts/build_ui_tokens.ps1)" }
+    }
     foreach ($lit in (Get-UiColorLiterals $fileText)) {
         $k = "$f|$lit"
         if ($found.ContainsKey($k)) { $found[$k]++ } else { $found[$k] = 1 }
@@ -143,6 +168,13 @@ foreach ($f in $tracked) {
     if ($uiExt -notcontains [System.IO.Path]::GetExtension($f).ToLowerInvariant()) { continue }
     if ((Test-UnderPrefix $f $scanRoots) -or (Test-UnderPrefix $f $excluded)) { continue }
     Fail "UI-Datei ausserhalb der registrierten Oberflaechen: $f -- in scripts/lib/ui_tokens.ps1 (Get-UiScanRoots, Get-UiSurfaces) eintragen und nach /ui-task vorgehen"
+}
+
+# --- (7) Zeichen ------------------------------------------------------------------------------------------------
+$markPartial = Join-Path $RepoRoot (Get-UiMarkPartialPath)
+if (-not (Test-Path $markPartial)) { Fail "Zeichen: Partial fehlt: $(Get-UiMarkPartialPath) -- .\scripts\build_ui_tokens.ps1" }
+elseif ([System.IO.File]::ReadAllText($markPartial, $u8) -cne (Get-UiMarkPartialText $markPaths)) {
+    Fail "Zeichen: $(Get-UiMarkPartialPath) passt nicht zu $(Get-UiMarkSourcePath) (Partial ist erzeugt, nicht von Hand zu aendern) -- .\scripts\build_ui_tokens.ps1, danach .\scripts\build_site.ps1"
 }
 
 # --- (6) Bot-Profilbild -----------------------------------------------------------------------------------------

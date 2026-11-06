@@ -23,6 +23,7 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 
 ## Farben und Formen
 
+- **Ein Zeichen für alle Oberflächen:** Das Projekt-Zeichen (Sprechblase mit Giebeldach und Häkchen) steht nur in `config/ui.mark.svg`; die Doku-Seite bekommt ihr Partial daraus erzeugt (`scripts/build_ui_tokens.ps1`), jede andere Oberfläche übernimmt die `<path>`-Zeilen 1:1 (Farben dürfen abweichen), und `ui_token_lint` weist ein abweichendes oder altes Zeichen ab.
 - **Nie Werte fest eintragen.** Eine Oberfläche nutzt `var(--token)`; ihre Variablen kommen als erzeugter Block aus `config/ui.tokens.json` (`scripts/build_ui_tokens.ps1`). Zur Laufzeit wird nichts nachgeladen. `scripts/ui_token_lint.ps1` weist neue feste Farben ab.
 - **Neue Farbe nötig?** Erst fragen, ob eine vorhandene Rolle passt. Sonst ein Token mit Verwendung in der Farbdatei und mit Kontrast-Paarung.
 - **Lesen:** `ink` auf `bg`. Der Hauptknopf ist `ink` mit `bg` als Schrift.

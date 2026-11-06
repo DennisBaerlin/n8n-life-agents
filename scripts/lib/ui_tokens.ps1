@@ -51,7 +51,7 @@ function Get-UiScanExtensions { @('.css', '.html', '.htm', '.js', '.svg', '.vue'
 # prueft scripts/ui_token_lint.ps1). Farben gegenueber der Website getauscht: helles Zeichen auf voller Akzentflaeche, weil die
 # runde Anzeige eine volle Flaeche braucht und JPG keine Transparenz kennt. Das Zeichen fuellt knapp die Haelfte der Breite und
 # bleibt so auch im kleinen Kreis frei stehen. Vom Zeichen zaehlt nur die Geometrie: jede Farbangabe darin wird hier gesetzt.
-function Get-UiBotProfilePaths { @{ Mark = 'docs/site/layouts/partials/mark.html'; Dir = 'packages/core/build/bot_profile'; Jpg = 'bot_profile.jpg'; Sha = 'source.sha256' } }
+function Get-UiBotProfilePaths { @{ Mark = 'config/ui.mark.svg'; Dir = 'packages/core/build/bot_profile'; Jpg = 'bot_profile.jpg'; Sha = 'source.sha256' } }
 function Get-UiBotProfileSvg([string]$MarkFile, $Tokens) {
     $size = 640; $markBox = 26; $markSize = 400
     $accent = Get-UiColorHex $Tokens 'light' 'accent'
@@ -73,6 +73,44 @@ function Get-UiTextSha256([string]$Text) {
     try { -join ($sha.ComputeHash($script:UiTokensUtf8.GetBytes($Text)) | ForEach-Object { $_.ToString('x2') }) } finally { $sha.Dispose() }
 }
 
+# Das eine Zeichen des Projekts: config/ui.mark.svg. Jede Oberflaeche, die es zeigt, uebernimmt die <path>-Zeilen 1:1 (Geometrie,
+# Strichbreite, Linienenden); nur die Farben duerfen abweichen (var(...)). Die Site bekommt ihr Partial erzeugt (Get-UiMarkPartialText),
+# alle anderen Dateien prueft der Lint (Get-UiMarkProblems) -- ein altes oder abweichendes Zeichen laesst den Commit scheitern.
+function Get-UiMarkSourcePath { 'config/ui.mark.svg' }
+function Get-UiMarkPartialPath { 'docs/site/layouts/partials/mark.html' }
+# Dateien mit einer 26er-SVG, die kein Projekt-Zeichen ist (Begruendung je Eintrag).
+function Get-UiMarkExempt { @{ 'docs/site/layouts/partials/phone-frame-close.html' = 'Senden-Knopf des Telegram-Chat-Nachbaus, kein Projekt-Zeichen' } }
+function Get-UiMarkPaths([string]$RepoRoot) {
+    $svg = [System.IO.File]::ReadAllText((Join-Path $RepoRoot (Get-UiMarkSourcePath)), $script:UiTokensUtf8)
+    $svg = [regex]::Replace($svg, '<!--[\s\S]*?-->', '')
+    @([regex]::Matches($svg, '<path\s[^>]*/>') | ForEach-Object { $_.Value })
+}
+# Farben sind nicht Teil der Geometrie: fill/stroke="var(...)" -> "C"; Leerraum vereinheitlicht.
+function ConvertTo-UiMarkNorm([string]$Text) {
+    $t = [regex]::Replace($Text, '\b(fill|stroke)="var\((?:[^()"]|\([^()"]*\))*\)"', '$1="C"')
+    [regex]::Replace($t, '\s+', ' ')
+}
+function Get-UiMarkPartialText([string[]]$MarkPaths) {
+    $l = [System.Collections.Generic.List[string]]::new()
+    $l.Add('{{/* Zeichen des Projekts, eine Adresse fuer Menue, Fusszeile und Chat-Nachbau: Sprechblase mit Giebeldach und Haekchen.')
+    $l.Add('     Farben umkehrbar ueber --mark und --mark-check (.tg-avatar: weiss auf Petrol).')
+    $l.Add('     ERZEUGT aus config/ui.mark.svg von scripts/build_ui_tokens.ps1, nicht von Hand aendern. */}}')
+    $l.Add('<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">')
+    foreach ($p in $MarkPaths) { $l.Add("  $p") }
+    $l.Add('</svg>')
+    ($l -join "`n") + "`n"
+}
+# Funde in einem Dateitext: jede inline-SVG im Zeichen-Kasten (viewBox 0 0 26 26) muss alle Pfade der Quelle tragen.
+function Get-UiMarkProblems([string]$Text, [string[]]$MarkPaths) {
+    $t = [regex]::Replace($Text, '/\*[\s\S]*?\*/', '')
+    $t = [regex]::Replace($t, '<!--[\s\S]*?-->', '')
+    $want = @($MarkPaths | ForEach-Object { ConvertTo-UiMarkNorm $_ })
+    foreach ($m in [regex]::Matches($t, '<svg\b[^>]*\bviewBox="0 0 26 26"[^>]*>[\s\S]*?</svg>')) {
+        $have = ConvertTo-UiMarkNorm $m.Value
+        $missing = @($want | Where-Object { -not $have.Contains($_) })
+        if ($missing.Count -gt 0) { $m.Value.Substring(0, [Math]::Min(70, $m.Value.Length)) -replace '\s+', ' ' }
+    }
+}
 function Read-UiTokens([string]$RepoRoot) {
     [System.IO.File]::ReadAllText((Join-Path (Join-Path $RepoRoot 'config') 'ui.tokens.json'), $script:UiTokensUtf8) | ConvertFrom-Json
 }

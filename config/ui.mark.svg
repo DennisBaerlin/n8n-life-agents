@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 26">
+  <!-- Das eine Zeichen des Projekts: Sprechblase mit Giebeldach und Haekchen. Quelle fuer ALLE Oberflaechen (Site, Wizard, Start-App,
+       Bot-Profilbild); Pruefung: scripts/ui_token_lint.ps1, Site-Partial erzeugt scripts/build_ui_tokens.ps1.
+       Nur die Pfad-Zeilen zaehlen (Geometrie und Strich muessen 1:1 uebernommen werden). Farben umkehrbar ueber --mark und
+       --mark-check (Standard accent und bg); eine Oberflaeche ohne diese Variablen darf var(--accent) und var(--bg) setzen. -->
+  <path d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

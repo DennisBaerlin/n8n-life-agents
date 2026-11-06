@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # render_bot_profile.ps1 -- erzeugt das Telegram-Profilbild des Bots packages/core/build/bot_profile/bot_profile.jpg (640 x 640 px)
-# aus dem einen Zeichen des Projekts (docs/site/layouts/partials/mark.html) und der Farbdatei (config/ui.tokens.json).
+# aus dem einen Zeichen des Projekts (config/ui.mark.svg) und der Farbdatei (config/ui.tokens.json).
 # Das JPG ist committet: der Release-Tarball enthaelt nur provisioning/ und packages/, das Zielsystem hat keinen Browser.
 # Der Installer laedt es hoch (provisioning/lib/bootstrap_owner.sh _ensure_bot_profile_photo), wenn der Bot noch kein Bild hat.
 # Nach jeder Aenderung am Zeichen oder an den Farben neu laufen lassen und Bild + Pruefwert (source.sha256) mit-committen;

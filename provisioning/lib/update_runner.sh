@@ -18,6 +18,8 @@
 #
 # Reads globals: PROVISION_GH_API, PROVISION_REPO_SLUG (common.sh), N8N_PORT (Default 5678).
 
+# Verbund: auf dem Volume var_la (das Protokoll eines Updates muss den master-Wechsel ueberleben).
+if rt_is_compose; then UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-/var/lib/lifeagents/log}"; fi
 UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-/var/log/lifeagents}"
 
 # update_cli [args] — der `lifeagents update`-Arm: --check | --run-requested (Timer, kehren zurueck) oder ein normales
@@ -26,6 +28,7 @@ update_cli() {
   case "${1:-}" in
     --check)         update_check; return 0 ;;
     --run-requested) update_run_requested; return 0 ;;
+    --tick)          update_tick; return 0 ;;
   esac
   local tag=latest
   while [ "$#" -gt 0 ]; do
@@ -197,7 +200,7 @@ _ur_last_error() {
 # _ur_run_one <id> <tag> <kind> <installed> — einen uebernommenen Auftrag pruefen, ausfuehren, abschliessen, melden.
 _ur_run_one() {
   local id="$1" tag="$2" kind="$3" installed="$4"
-  local cmp work code latest log rf rc status stage changed reason missing failed backup bot detail
+  local cmp work code latest log rf rc
 
   if ! _ur_is_tag "$tag"; then
     _ur_finish "$id" failed preflight unknown false "Ungültiges Tag im Auftrag."; _ur_report "$id" result bot_up=true; return 0
@@ -236,6 +239,8 @@ _ur_run_one() {
   rf="$(mktemp /run/lifeagents-update-result.XXXXXX)"
   _ur_notice "Update-Auftrag ${id}: ${installed} -> ${tag} (${kind}), Protokoll ${log}"
   rc=0
+  # LIFEAGENTS_UPDATE_REQUEST_ID: im Docker-Verbund merkt sich der master-Wechsel den Auftrag (lib/master_swap.sh), damit der
+  # neue master ihn abschliesst.
   # Linke Seite einer ||-Liste: errexit greift im Block nicht, PIPESTATUS gehoert noch der Pipeline (Exit des Updates,
   # nicht von tee). Die Sperre erbt das Kind ueber den offenen fd + LIFEAGENTS_UPDATE_LOCK_HELD (update_lock_acquire).
   {
@@ -245,7 +250,20 @@ _ur_run_one() {
     rc="${PIPESTATUS[0]}"
   } || true
   chmod 0640 "$log" 2>/dev/null || true
+  if [ "$(_ur_result "$rf" status)" = handoff ]; then
+    # Docker-Verbund: der Helfer wechselt gleich den master, der neue schliesst den Auftrag ab (lib/master_swap.sh).
+    rm -f -- "$rf"
+    _ur_notice "Update-Auftrag ${id}: an den master-Wechsel übergeben — der neue master setzt fort."
+    return 0
+  fi
+  _ur_conclude "$id" "$rc" "$rf" "$log"
+  return 0
+}
 
+# _ur_conclude <id> <exit-code> <ergebnis-datei> <log> — Ergebnis eines Update-Laufs lesen, Auftrag abschliessen, melden
+#   (Chat-Runner und Fortsetzung nach einem master-Wechsel). Loescht die Ergebnis-Datei.
+_ur_conclude() {
+  local id="$1" rc="$2" rf="$3" log="$4" status stage changed reason missing failed backup bot detail
   status="$(_ur_result "$rf" status)"; stage="$(_ur_result "$rf" stage)"; changed="$(_ur_result "$rf" changed)"
   reason="$(_ur_result "$rf" reason_code)"; missing="$(_ur_result "$rf" missing_keys)"
   failed="$(_ur_result "$rf" failed_packages)"; backup="$(_ur_result "$rf" backup)"
@@ -279,6 +297,9 @@ update_run_requested() {
   # nimmt dieselbe Sperre) -> haengende Auftraege duerfen als interrupted geschlossen werden.
   update_lock_acquire || { log "Update-Sperre belegt (anderes Update/Einrichtung läuft) — nächster Lauf."; return 0; }
   local installed claim rec n i id tag kind bot
+  # Docker-Verbund: ein offener master-Wechsel geht VOR jeden neuen Auftrag — und vor dem Schliessen haengender Auftraege,
+  # denn sein Auftrag steht bis zum Abschluss offen (lib/master_swap.sh).
+  if rt_is_compose && master_swap_pending; then _ur_swap_continue; return 0; fi
   installed="$(_ur_installed)"
   claim="$(_ur_sql "$(jq -nc --arg i "$installed" '{installed:$i}')" "SELECT core.fn_update_request_claim(:'p'::jsonb);")" \
     || { _ur_alert "Update-Runner: DB nicht erreichbar."; return 0; }
@@ -327,5 +348,83 @@ _ur_menu_refresh() {
   [ -n "${REPO_ROOT:-}" ] || REPO_ROOT="${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}"
   _ur_notice "Übersicht-Knopf: Haushalt oder Einstellung geändert — Menü-Knöpfe werden neu gesetzt."
   _set_bot_menu_buttons "$token"
+  return 0
+}
+
+# _ur_swap_continue — Rolle 3 des master-Wechsels (lib/master_swap.sh): im neuen master provision.sh aus dem Image-Baum
+#   fahren und den Auftrag abschliessen; nach einem Rueckweg des Helfers den Auftrag als gescheitert melden (nichts
+#   geaendert). Laeuft unter der Update-Sperre (update_run_requested).
+_ur_swap_continue() {
+  local what id tag mode allow log rf rc=0 bot drop note
+  what="$(master_swap_resolve)"
+  id="$(_swap_get REQUEST_ID)"; tag="$(_swap_get TAG)"; mode="$(_swap_get MODE)"; allow="$(_swap_get ALLOW_DOWNGRADE)"
+  case "$what" in
+    none|wait) return 0 ;;
+    apply)
+      _swap_set PHASE applying
+      mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"
+      log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
+      rf="$(mktemp /tmp/lifeagents-update-result.XXXXXX)"
+      _ur_notice "master-Wechsel auf ${tag} steht — Einrichtung läuft weiter (${mode:-update}), Protokoll ${log}"
+      {
+        RELEASE_TAG="$tag" LIFEAGENTS_RESULT_FILE="$rf" LIFEAGENTS_UPDATE_REQUESTED=1 LIFEAGENTS_ALLOW_DOWNGRADE="${allow:-0}" \
+          bash "${MASTER_IMAGE_TREE}/provisioning/provision.sh" </dev/null 2>&1 | tee -a "$log" >/dev/null
+        rc="${PIPESTATUS[0]}"
+      } || true
+      chmod 0640 "$log" 2>/dev/null || true
+      # Rueckweg (lifeagents rollback): erst nach erfolgreichem Einspielen die beiseitegelegte DB loeschen + Owner melden.
+      drop="$(_swap_get DROP_DB_AFTER)"; note="$(_swap_get NOTIFY)"
+      if [ "$rc" -eq 0 ] && [ -n "$drop" ]; then pg_su_exec dropdb --if-exists --force "$drop" >/dev/null 2>&1 || true; fi
+      if [ "$rc" -eq 0 ] && [ -n "$note" ]; then notify_owner_telegram "$note" || true; fi
+      master_swap_close
+      if [ -n "$id" ]; then _ur_conclude "$id" "$rc" "$rf" "$log"; else rm -f -- "$rf"; fi
+      if [ "$rc" -eq 0 ]; then _ur_notice "Update auf ${tag} abgeschlossen."; else _ur_alert "Update auf ${tag} gescheitert (Exit ${rc}) — Protokoll ${log}"; fi
+      ;;
+    rolled_back|interrupted)
+      master_swap_close
+      _ur_alert "master-Wechsel auf ${tag:-?} nicht abgeschlossen (${what}) — es läuft der vorherige Stand."
+      if [ -n "$id" ]; then
+        if _ur_bot_up nowait; then bot=true; else bot=false; fi
+        # Schritt "base": im Verbund stecken die Basis-Programme im master-Image (core.fn_update_report kennt den Code).
+        if [ "$what" = rolled_back ]; then
+          _ur_finish "$id" failed base unknown false "Das neue Programm-Paket startete nicht — der vorherige Stand läuft unverändert weiter."
+        else
+          _ur_finish "$id" failed base unknown null "Der Wechsel wurde unterbrochen."
+        fi
+        _ur_report "$id" result "bot_up=$bot"
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# update_tick — Ersatz der beiden systemd-Timer im Docker-Verbund (`lifeagents update --tick`, die Schleife im master ruft es
+#   jede Minute als frischen Prozess): Auftraege wie lifeagents-update-run, einmal am Tag ab UPDATE_CHECK_AT (Haushalts-
+#   Zeitzone) der Release-Check wie lifeagents-update-check. Vor der ersten Installation (keine VERSION) still. Zustand in
+#   UPDATE_TICK_STATE (doctor prueft, ob die Schleife lebt). Immer rc 0.
+UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
+UPDATE_CHECK_AT="${UPDATE_CHECK_AT:-1020}"   # HHMM, wie lifeagents-update-check.timer
+BACKUP_AUTO_AT="${BACKUP_AUTO_AT:-0330}"     # HHMM, taegliche Sicherung in den Rechner-Ordner (nur Verbund)
+update_tick() {
+  require_root
+  [ -r "$(lifeagents_version_marker)" ] || return 0
+  mkdir -p "$(dirname "$UPDATE_TICK_STATE")"
+  env_upsert "$UPDATE_TICK_STATE" LAST_TICK "$(date -u +%s)"
+  ( update_run_requested ) || true   # Teilschale: die Update-Sperre (fd 9) endet mit ihr
+  local tz today now last
+  tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
+  today="$(TZ="${tz:-Europe/Berlin}" date +%Y-%m-%d)"; now="$(TZ="${tz:-Europe/Berlin}" date +%H%M)"
+  last="$(read_env_value "$UPDATE_TICK_STATE" LAST_CHECK 2>/dev/null || true)"
+  if [ "$last" != "$today" ] && [ "$((10#$now))" -ge "$((10#$UPDATE_CHECK_AT))" ]; then
+    env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$today"
+    ( update_check ) || true
+  fi
+  # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund, Fund 7; ohne gewaehlten Ordner still) als eigener Prozess —
+  # die backup-Arm-Bibliotheken laedt nur die CLI.
+  last="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP 2>/dev/null || true)"
+  if rt_is_compose && [ "$last" != "$today" ] && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ]; then
+    env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$today"
+    "$(command -v lifeagents || printf '/usr/local/bin/lifeagents')" backup auto </dev/null || true
+  fi
   return 0
 }

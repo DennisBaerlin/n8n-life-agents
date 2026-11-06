@@ -2077,8 +2077,11 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
 }
 $rtRel = 'provisioning/lib/runtime.sh'
 $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
-$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+(image|volume)\s+(inspect|create)\b|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
-$composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b'
+# Deinstaller (Pruefliste Nr. 17, Paket 2): `volume rm` nur mit EINEM Namen aus "$1" (rt_volume_rm_own prueft davor unser
+# Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
+# damit kein zweiter, breiterer Aufruf durchrutscht.
+$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(>|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
+$composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
     $iss = New-Object System.Collections.Generic.List[string]
@@ -2117,6 +2120,11 @@ foreach ($sa in @(
     @{ n = 'runtime: ps -q';         r = $rtRel; t = "  docker ps -q`n";                                           want = 2 },
     @{ n = 'runtime: compose frei';  r = $rtRel; t = "  docker compose down -v`n";                                 want = 2 },
     @{ n = 'runtime: compose down';  r = $rtRel; t = "  _rt_compose down`n";                                       want = 1 },
+    @{ n = 'runtime: down fest ok';  r = $rtRel; t = "rt_stack_down() { _rt_compose down --remove-orphans; }`n";   want = 0 },
+    @{ n = 'runtime: down -v';       r = $rtRel; t = "  _rt_compose down --remove-orphans -v`n";                   want = 2 },
+    @{ n = 'runtime: volume rm ok';  r = $rtRel; t = "  docker volume rm `"`$1`" >/dev/null`n";                    want = 0 },
+    @{ n = 'runtime: volume rm frei'; r = $rtRel; t = "  docker volume rm `"`$name`"`n";                           want = 1 },
+    @{ n = 'runtime: volume prune';  r = $rtRel; t = "  docker volume prune -f`n";                                 want = 2 },
     @{ n = 'runtime: compose up ok'; r = $rtRel; t = "  _rt_compose up -d --no-deps n8n`n";                        want = 0 },
     @{ n = 'runtime: run ohne --rm'; r = $rtRel; t = "  docker run busybox true`n";                                want = 1 })) {
     $got = (Get-RuntimeWrapperIssues $sa.r $sa.t).Count
@@ -2179,6 +2187,18 @@ foreach ($k in 'N8N_VERSION', 'PG_VERSION', 'NODE_MAJOR') {
 $rtTxt = [System.IO.File]::ReadAllText((Join-Path $provDir 'lib\runtime.sh'), $Utf8NoBom)
 $cState = @(([regex]::Match($rtTxt, '(?m)^LA_STATE_VOLUMES="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ })
 if (-not $cState.Count) { $errors.Add("COMPOSE-PINS: LA_STATE_VOLUMES in lib/runtime.sh nicht lesbar -- Check 33 ist defekt.") }
+# Der Helfer des master-Wechsels (lib/master_swap.sh) legt den master aus seiner Env-Datei an: jede Variable, die compose.yml
+# interpoliert, muss in SWAP_STACK_VARS stehen — sonst entstuende der neue master mit anderer Definition (oder gar nicht).
+$swapPath = Join-Path $provDir 'lib\master_swap.sh'
+if (Test-Path $composePath) {
+    $swapVars = @()
+    if (Test-Path $swapPath) { $swapVars = @(([regex]::Match([System.IO.File]::ReadAllText($swapPath, $Utf8NoBom), '(?m)^SWAP_STACK_VARS="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ }) }
+    if (-not $swapVars.Count) { $errors.Add("COMPOSE-PINS: SWAP_STACK_VARS in lib/master_swap.sh nicht lesbar -- Check 33 ist defekt.") }
+    else {
+        $cyVars = @([regex]::Matches([System.IO.File]::ReadAllText($composePath, $Utf8NoBom), '\$\{(LA_[A-Z0-9_]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+        foreach ($v in $cyVars) { if ($swapVars -notcontains $v) { $errors.Add("COMPOSE-PINS: compose.yml interpoliert $v, SWAP_STACK_VARS (lib/master_swap.sh) kennt es nicht -- der Helfer legte den master anders an.") } }
+    }
+}
 # Spiegel der Start-App (Paket 6): provisioning/desktop/core/src/contract.rs STATE_VOLUMES muss dieselbe Menge sein (die App
 # legt die Volumes vor dem ersten Start an). Datei fehlt (Branch ohne App) = nichts zu pruefen.
 function Get-AppStateVolumes([string]$Rs) {

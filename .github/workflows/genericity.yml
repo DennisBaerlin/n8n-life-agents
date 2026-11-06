@@ -354,3 +354,203 @@ jobs:
           docker rm -f ci-neighbour >/dev/null 2>&1 || true
           docker volume rm ci-neighbour-data >/dev/null 2>&1 || true
           docker network rm ci-neighbour-net >/dev/null 2>&1 || true
+
+  # Laufzeit im Docker-Verbund (Paket 2): Versionssprung als master-Image-Wechsel ueber den Helfer (lib/master_swap.sh) mit
+  # Abbruch je Schritt — Image nicht ladbar / neues Image kaputt (Rueckweg des Helfers) / Einrichtung scheitert nach der
+  # Sicherung (lifeagents rollback --yes: Daten zurueck + master zurueck) —, die Tick-Schleife statt der Update-Timer, die
+  # CLI ueberlebt jede Neuanlage des master, Sicherung in einen Ordner AUF DEM RECHNER + Restore, doctor misst Namensraum und
+  # Netz-Grenze, Deinstallation ohne und mit Daten neben einem Nachbarn (Vorher-Nachher gleich). Kern-Installation
+  # (--packages none) haelt den Lauf kurz; alle Pakete prueft compose-stack-cold.
+  compose-stack-ops:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      LA_PROJECT: ci-ops
+      LA_EDGE_PORT: '5890'
+      LA_WIZARD_PORT: '5891'
+      LA_MASTER_IMAGE: ci-ops-master:a
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build master images (a = release tree, b = newer, c = broken, d = setup fails after the backup)
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD provisioning packages .gitattributes \
+            | docker build -q -f provisioning/compose/master.Dockerfile -t ci-ops-master:a -
+          printf 'FROM ci-ops-master:a\nLABEL io.lifeagents.ci=b\n' | docker build -q -t ci-ops-master:b -
+          printf 'FROM ci-ops-master:a\nRUN rm /usr/bin/jq\n' | docker build -q -t ci-ops-master:c -
+          printf '%s\n' 'FROM ci-ops-master:b' \
+            "RUN printf '\\nupgrade_finish() { die \"CI: Fehler nach der Sicherung\"; }\\n' >> /opt/lifeagents/provisioning/lib/upgrade_guard.sh" \
+            | docker build -q -t ci-ops-master:d -
+          docker run --rm --entrypoint tail ci-ops-master:d -n 2 /opt/lifeagents/provisioning/lib/upgrade_guard.sh
+
+      - name: Neighbour before (foreign container, volume, network + a decoy volume with our prefix but no label)
+        run: |
+          set -euo pipefail
+          docker network create ci-neighbour-net >/dev/null
+          docker volume create ci-neighbour-data >/dev/null
+          docker volume create "${LA_PROJECT}_fremd" >/dev/null
+          docker run -d --name ci-neighbour --network ci-neighbour-net -v ci-neighbour-data:/data alpine:3.20 \
+            sh -c 'echo keep > /data/marker; sleep 3600' >/dev/null
+          state() {
+            docker inspect -f '{{.Id}} {{.State.StartedAt}} {{.RestartCount}} {{.State.Status}}' ci-neighbour
+            docker volume inspect -f '{{.Name}} {{.CreatedAt}}' ci-neighbour-data "${LA_PROJECT}_fremd"
+            docker network inspect -f '{{.Id}}' ci-neighbour-net
+            docker exec ci-neighbour cat /data/marker
+          }
+          state > "$RUNNER_TEMP/neighbour.before"; cat "$RUNNER_TEMP/neighbour.before"
+
+      - name: Install the core (release v9.0.0 on image a), CLI + tick loop alive
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 16)"; echo "::add-mask::$pw"
+          echo "LA_PG_SUPERPW=$pw" >> "$GITHUB_ENV"
+          export LA_PG_SUPERPW="$pw"
+          bash provisioning/compose/stack.sh up
+          printf "%s\n" "N8N_OWNER_EMAIL='ci@example.com'" "N8N_OWNER_PASSWORD='CiRunner1'" "OWNER_FIRST_NAME='CI'" \
+            "OWNER_LAST_NAME='Runner'" "OWNER_BIRTH_DATE='1990-01-01'" "OWNER_LANGUAGE='de'" "LLM_GATEWAY_KEEPALIVE_HOURS=0" \
+            | docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /root/answers.env'
+          docker exec -e RELEASE_TAG=v9.0.0 "$LA_PROJECT-master" \
+            bash /opt/lifeagents/provisioning/provision.sh --unattended /root/answers.env --profile dev --packages none
+          test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
+          docker exec "$LA_PROJECT-master" test -L /usr/local/bin/lifeagents
+          for _ in $(seq 1 30); do docker exec "$LA_PROJECT-master" grep -q '^LAST_TICK=' /var/lib/lifeagents/update-tick.state 2>/dev/null && break; sleep 5; done
+          docker exec "$LA_PROJECT-master" cat /var/lib/lifeagents/update-tick.state
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Backup to a folder on the host + restore (Fund 7)
+        run: |
+          set -euo pipefail
+          q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
+          mkdir -p "$RUNNER_TEMP/bk"
+          docker exec "$LA_PROJECT-master" lifeagents backup host-dir "$RUNNER_TEMP/bk"
+          q "INSERT INTO agent.core_contexts (name, description, managed_by, content) VALUES ('ci_restore_probe', 'CI', 'agent', 'vorher')" >/dev/null
+          docker exec "$LA_PROJECT-master" lifeagents backup export
+          sudo ls -l "$RUNNER_TEMP/bk"
+          name="$(sudo find "$RUNNER_TEMP/bk" -maxdepth 1 -name 'lifeagents-backup-*.nla.enc' -printf '%f\n' | head -n1)"
+          [ -n "$name" ]
+          # Auf der Docker-Platte liegt keine Kopie: die Sicherung steht nur im Rechner-Ordner.
+          if docker exec "$LA_PROJECT-master" sh -c 'ls /root/*.nla.enc /opt/lifeagents/*.nla.enc 2>/dev/null' | grep -q .; then echo "FAIL Kopie im master"; exit 1; fi
+          q "UPDATE agent.core_contexts SET content = 'nachher' WHERE name = 'ci_restore_probe'" >/dev/null
+          docker exec "$LA_PROJECT-master" lifeagents backup restore "$name" --yes
+          test "$(q "SELECT content FROM agent.core_contexts WHERE name = 'ci_restore_probe'")" = vorher
+
+      - name: Version jump, abort 1 — the new master image cannot be loaded (nothing changes)
+        run: |
+          set -euo pipefail
+          if docker exec "$LA_PROJECT-master" bash -c '. /opt/lifeagents/provisioning/lib/common.sh; . /opt/lifeagents/provisioning/lib/master_swap.sh; master_swap_begin v9.1.0 "$LA_COMPOSE_FILE" ci-ops-master:gibt-es-nicht'; then
+            echo "FAIL Wechsel ohne ladbares Image lief"; exit 1
+          fi
+          docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state
+          test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = ci-ops-master:a
+
+      - name: Version jump, abort 2 — the new master image is broken (helper rolls back)
+        run: |
+          set -euo pipefail
+          docker exec "$LA_PROJECT-master" bash -c '. /opt/lifeagents/provisioning/lib/common.sh; . /opt/lifeagents/provisioning/lib/master_swap.sh; master_swap_begin v9.1.0 "$LA_COMPOSE_FILE" ci-ops-master:c'
+          done=""
+          for _ in $(seq 1 60); do
+            img="$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master" 2>/dev/null || true)"
+            if [ "$img" = ci-ops-master:a ] && docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state 2>/dev/null; then done=1; break; fi
+            sleep 5
+          done
+          [ -n "$done" ] || { docker logs --tail 40 "$LA_PROJECT-master"; exit 1; }
+          test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Version jump a -> b (helper swaps, the new master sets up v9.1.0 after a backup)
+        run: |
+          set -euo pipefail
+          docker exec "$LA_PROJECT-master" bash -c '. /opt/lifeagents/provisioning/lib/common.sh; . /opt/lifeagents/provisioning/lib/master_swap.sh; master_swap_begin v9.1.0 "$LA_COMPOSE_FILE" ci-ops-master:b'
+          done=""
+          for _ in $(seq 1 180); do
+            if [ "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master" 2>/dev/null)" = ci-ops-master:b ] \
+               && [ "$(docker exec "$LA_PROJECT-master" lifeagents version 2>/dev/null)" = v9.1.0 ] \
+               && docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state 2>/dev/null; then done=1; break; fi
+            sleep 5
+          done
+          [ -n "$done" ] || { docker logs --tail 60 "$LA_PROJECT-master"; exit 1; }
+          docker exec "$LA_PROJECT-master" sh -c 'ls -l /var/lib/lifeagents/backups/pre-upgrade-*.dump.gpg'
+          sudo find "$RUNNER_TEMP/bk" -maxdepth 1 -name 'pre-upgrade-*.dump.gpg' | grep -q .
+          docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/upgrade.pending
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Version jump, abort 3 — setup fails after the backup, then lifeagents rollback --yes (data + master back)
+        run: |
+          set -euo pipefail
+          q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d postgres -tAc "$1" | tr -d '[:space:]'; }
+          docker exec "$LA_PROJECT-master" bash -c '. /opt/lifeagents/provisioning/lib/common.sh; . /opt/lifeagents/provisioning/lib/master_swap.sh; master_swap_begin v9.2.0 "$LA_COMPOSE_FILE" ci-ops-master:d'
+          done=""
+          for _ in $(seq 1 180); do
+            if [ "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master" 2>/dev/null)" = ci-ops-master:d ] \
+               && docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state 2>/dev/null; then done=1; break; fi
+            sleep 5
+          done
+          [ -n "$done" ] || { docker logs --tail 60 "$LA_PROJECT-master"; exit 1; }
+          docker exec "$LA_PROJECT-master" test -e /var/lib/lifeagents/upgrade.pending   # gescheitert NACH der Sicherung
+          test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.1.0
+          grep -q '^FROM_MASTER_IMAGE=ci-ops-master:b$' <(docker exec "$LA_PROJECT-master" cat /var/lib/lifeagents/upgrade.pending)
+          docker exec "$LA_PROJECT-master" lifeagents rollback --yes
+          done=""
+          for _ in $(seq 1 180); do
+            if [ "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master" 2>/dev/null)" = ci-ops-master:b ] \
+               && docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state 2>/dev/null \
+               && [ -z "$(q "SELECT 1 FROM pg_database WHERE datname = 'n8n_before_rollback'")" ]; then done=1; break; fi
+            sleep 5
+          done
+          [ -n "$done" ] || { docker logs --tail 60 "$LA_PROJECT-master"; exit 1; }
+          docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/upgrade.pending
+          test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT content FROM agent.core_contexts WHERE name = 'ci_restore_probe'" | tr -d '[:space:]')" = vorher
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: doctor sees a separated namespace after a lone anchor restart (Einwand 17)
+        run: |
+          set -euo pipefail
+          docker restart "$LA_PROJECT-anchor" >/dev/null
+          out="$(docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh || true)"
+          printf '%s\n' "$out" | grep 'Netz-Namensraum getrennt'
+          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml restart anchor >/dev/null   # restart: true im Pod zieht die Mitglieder nach
+          for _ in $(seq 1 60); do curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness" && break; sleep 3; done
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Uninstall keeping data, data is found again; uninstall with data; neighbour unchanged
+        run: |
+          set -euo pipefail
+          bash provisioning/compose/stack.sh uninstall
+          test -z "$(docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}}')"
+          docker volume inspect "${LA_PROJECT}_pgdata" >/dev/null
+          bash provisioning/compose/stack.sh up
+          test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT content FROM agent.core_contexts WHERE name = 'ci_restore_probe'" | tr -d '[:space:]')" = vorher
+          bash provisioning/compose/stack.sh uninstall --delete-data
+          test -z "$(docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}}')"
+          test -z "$(docker volume ls --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Name}}')"
+          test -z "$(docker network ls --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Name}}')"
+          state() {
+            docker inspect -f '{{.Id}} {{.State.StartedAt}} {{.RestartCount}} {{.State.Status}}' ci-neighbour
+            docker volume inspect -f '{{.Name}} {{.CreatedAt}}' ci-neighbour-data "${LA_PROJECT}_fremd"
+            docker network inspect -f '{{.Id}}' ci-neighbour-net
+            docker exec ci-neighbour cat /data/marker
+          }
+          state > "$RUNNER_TEMP/neighbour.after"
+          diff "$RUNNER_TEMP/neighbour.before" "$RUNNER_TEMP/neighbour.after"
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          for c in master n8n postgres gateway edge swap; do echo "=== $c"; docker logs --tail 80 "$LA_PROJECT-$c" 2>&1 || true; done
+          docker exec "$LA_PROJECT-master" sh -c 'cat /var/lib/lifeagents/master-swap/state; tail -n 60 /var/lib/lifeagents/log/*.log' 2>&1 || true
+
+      - name: Teardown (only our project + the neighbour)
+        if: always()
+        run: |
+          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down --remove-orphans || true
+          docker rm -f "$LA_PROJECT-swap" >/dev/null 2>&1 || true
+          docker volume rm "${LA_PROJECT}_fremd" "${LA_PROJECT}_shared" "${LA_PROJECT}_gw_code" "${LA_PROJECT}_n8n_patches" >/dev/null 2>&1 || true
+          # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
+          for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
+          docker rm -f ci-neighbour >/dev/null 2>&1 || true
+          docker volume rm ci-neighbour-data >/dev/null 2>&1 || true
+          docker network rm ci-neighbour-net >/dev/null 2>&1 || true

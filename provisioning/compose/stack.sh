@@ -8,7 +8,11 @@
 #   bash provisioning/compose/stack.sh install <antwort-datei> [provision.sh-Flags…]
 #                                                               Antwort-Datei in den master legen, provision.sh dort fahren
 #   bash provisioning/compose/stack.sh ps                       Zustand der eigenen Container
-# Abbau (Volumes nur nach Rueckfrage) gehoert dem Deinstaller (Paket 2), nicht hierher.
+#   bash provisioning/compose/stack.sh uninstall [--delete-data]
+#                                                               Entfernen (Pruefliste Nr. 17): Container + Netze dieses Projekts;
+#                                                               mit --delete-data (die App fragt VORHER ausdruecklich) auch die
+#                                                               Daten-Volumes — jedes nur mit unserem Label. Images bleiben (die
+#                                                               App entfernt nur, was ihr Journal als selbst geladen fuehrt).
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,5 +43,24 @@ case "${1:-}" in
     exit "$rc"
     ;;
   ps) rt_stack_ps ;;
-  *) printf 'Usage: stack.sh up | install <antwort-datei> [flags…] | ps\n' >&2; exit 2 ;;
+  uninstall)
+    del=0
+    case "${2:-}" in --delete-data) del=1 ;; '') ;; *) die "Unbekannte Option: $2" ;; esac
+    rt_docker_ok || die "Docker antwortet nicht."
+    # Kein noch laufender master-Wechsel: der Helfer legte den master sonst gleich wieder an.
+    if rt_swap_helper_running; then die "Gerade läuft ein Update (master-Wechsel) — danach erneut entfernen. Nichts geändert."; fi
+    rt_stack_down || die "Container ließen sich nicht entfernen — Daten unberührt."
+    # Abgeleitete Volumes (jeder Installer-Lauf schreibt sie neu, keine Nutzerdaten) gehen immer; Compose nennt sie
+    # <projekt>_<name> und versieht sie mit unserem Label (compose.yml).
+    for v in shared gw_code n8n_patches; do rt_volume_rm_own "${LA_PROJECT}_${v}" || true; done
+    if [ "$del" -eq 1 ]; then
+      rc=0
+      for v in $LA_STATE_VOLUMES; do rt_volume_rm_own "${LA_PROJECT}_${v}" || rc=1; done
+      [ "$rc" -eq 0 ] || die "Mindestens ein Volume trug nicht unser Label und blieb stehen (siehe oben)."
+      ok "Verbund ${LA_PROJECT} entfernt, Daten gelöscht."
+    else
+      ok "Verbund ${LA_PROJECT} entfernt; die Daten bleiben (Volumes ${LA_PROJECT}_*) — eine neue Installation findet sie wieder."
+    fi
+    ;;
+  *) printf 'Usage: stack.sh up | install <antwort-datei> [flags…] | ps | uninstall [--delete-data]\n' >&2; exit 2 ;;
 esac

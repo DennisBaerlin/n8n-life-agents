@@ -41,10 +41,12 @@ Usage: lifeagents <befehl> [optionen]
               aus dem oeffentlichen Repo). Sichert vor jedem Versionswechsel die ganze DB.
               --version <tag> = genau dieses Release; aelter als installiert nur mit
               --allow-downgrade (besser: lifeagents rollback). Die Timer des Updates im Chat
-              rufen intern --check (taeglicher Release-Check) und --run-requested auf.
+              rufen intern --check (taeglicher Release-Check) und --run-requested auf; im Docker-Verbund
+              ersetzt die Schleife im master beide durch --tick (jede Minute).
   rollback    Nach einem gescheiterten Update zurück zur vorherigen Version: stellt die Daten
               der Sicherung von vor dem Update her und spielt den vorherigen Stand ein. Daten
-              seit der Sicherung gehen verloren -> fragt vorher nach. Braucht root + Terminal.
+              seit der Sicherung gehen verloren -> fragt vorher nach. Braucht root + Terminal; im
+              Docker-Verbund --yes, wenn die Start-App schon selbst nachgefragt hat.
   package     Fach-Pakete verwalten: catalog/list/install/reconfigure/activate/deactivate/
               uninstall/doctor (Core/Package-Architektur). `lifeagents package help` für Details.
   reconfigure Angaben nach der Installation ändern oder neu anwenden: Grundsystem (Internet-Adresse,
@@ -59,7 +61,7 @@ Usage: lifeagents <befehl> [optionen]
   backup      Nutzerdaten sichern/wiederherstellen: export/restore (verschluesselt, paket-bewusst,
               atomar). `lifeagents backup help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.
-  uninstall   Instanz abbauen (Schema DROP, Dienste stop); --purge-data für den Voll-Wipe,
+  uninstall   Instanz abbauen (Schema DROP, Dienste stop; im Docker-Verbund entfernt die Start-App); --purge-data für den Voll-Wipe,
               --yes für ohne Rückfrage durchreichen: `lifeagents uninstall --purge-data --yes`. Braucht root.
   version     Installierte Release-Version anzeigen.
   help        Diese Hilfe.
@@ -135,7 +137,7 @@ case "$cmd" in
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
     done
-    upgrade_rollback
+    upgrade_rollback "$@"
     ;;
   package)
     # Fach-Paket-Lebenszyklus: common.sh + pkg_lifecycle.sh + pkg_teardown.sh sourcen und dispatchen.

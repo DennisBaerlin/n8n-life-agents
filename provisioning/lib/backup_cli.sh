@@ -169,23 +169,81 @@ _bkp_notify_telegram() {
   return 0
 }
 
+# _bkp_require_pg <programm> — pg_dump/pg_restore muessen dort liegen, wo die Wrapper sie ausfuehren: auf dem LXC lokal,
+#   im Docker-Verbund im Datenbank-Container (pg_su_exec = docker exec, im master gibt es sie nicht).
+_bkp_require_pg() { if rt_is_compose; then require_cmd docker; else require_cmd "$1"; fi; }
+
+# --- Sicherungs-Ordner auf dem Rechner (Docker-Verbund, Plan-Pruefung Fund 7) ------------------------------------------
+# Die Docker-Platte kann mit allen Volumes verschwinden ("Clean up data", defekte VM-Platte) -> Sicherungen gehen in einen
+# vom Nutzer gewaehlten Ordner AUF DEM RECHNER. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim). Nur absolute
+# Pfade ohne Komma (Trenner der --mount-Angabe) und ohne Zeilenumbruch.
+BACKUP_HOST_KEEP="${BACKUP_HOST_KEEP:-14}"   # so viele automatische Sicherungen bleiben im Ordner (aelteste gehen zuerst)
+_bkp_host_dir() { read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true; }
+_bkp_host_dir_valid() {
+  case "$1" in
+    /*) ;; *) return 1 ;;
+  esac
+  case "$1" in *,*|*$'\n'*|*$'\r'*|*'"'*) return 1 ;; esac
+  return 0
+}
+# _bkp_host_dir_ok <ordner> — gueltig UND auf dem Rechner beschreibbar (Probe-Datei anlegen und wieder loeschen).
+_bkp_host_dir_ok() { _bkp_host_dir_valid "$1" && rt_host_check "$1"; }
+# _bkp_host_rotate <ordner> — nur unsere eigenen Sicherungen (lifeagents-backup-*.nla.enc) jenseits der neuesten
+#   BACKUP_HOST_KEEP entfernen; alles andere im Ordner bleibt unberuehrt. Fehler = nur Warnung.
+_bkp_host_rotate() { rt_host_rotate "$1" "$BACKUP_HOST_KEEP" || warn "Alte Sicherungen im Ordner '$1' ließen sich nicht aufräumen."; }
+
+# backup_cmd_host_dir [<ordner>] — Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (Wizard/Start-App, Terminal).
+backup_cmd_host_dir() {
+  rt_is_compose || die "Der Sicherungs-Ordner auf dem Rechner gibt es nur im Docker-Verbund."
+  if [ "$#" -eq 0 ]; then
+    local d; d="$(_bkp_host_dir)"
+    if [ -n "$d" ]; then printf '%s\n' "$d"; else log "Noch kein Sicherungs-Ordner gewählt."; fi
+    return 0
+  fi
+  _bkp_host_dir_valid "$1" || die "Ungültiger Ordner '$1' (absoluter Pfad auf dem Rechner, ohne Komma)."
+  rt_host_check "$1" || die "Ordner '$1' ist auf dem Rechner nicht vorhanden oder nicht beschreibbar (bei Docker Desktop: Ordner unter Einstellungen > Ressourcen > Dateifreigabe)."
+  env_upsert "$(lifeagents_env_file core)" BACKUP_HOST_DIR "$1"
+  ok "Sicherungen gehen ab jetzt nach '$1' (auf dem Rechner, verschlüsselt)."
+}
+
+# backup_cmd_auto — taegliche Sicherung in den Rechner-Ordner (Tick im master, update_runner.sh). Ohne gemerkten Ordner
+#   still (der Wizard fragt ihn ab); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft.
+backup_cmd_auto() {
+  [ -n "$(_bkp_host_dir)" ] || return 0
+  ( backup_cmd_export --to-host ) || warn "Tägliche Sicherung in den Rechner-Ordner fehlgeschlagen — nächster Versuch morgen."
+  return 0
+}
+
 # ============================================================
 # export
 # ============================================================
 backup_cmd_export() {
-  require_cmd jq; require_cmd pg_dump; require_cmd gpg
+  require_cmd jq; _bkp_require_pg pg_dump; require_cmd gpg
   _bkp_resolve_db
   # Arg-Parse wie backup_cmd_restore (reihenfolge-robust): optionaler Positional-Pfad + --notify-telegram.
   # Mehrfacher Positional = letzter gewinnt (konsistent mit restore). Default-Pfad NACH der Schleife.
-  local out="" notify=0 a
+  # --to-host <ordner> (Docker-Verbund): das fertige Chiffrat in einen Ordner AUF DEM RECHNER (Fund 7); ohne Pfad und
+  # ohne --to-host nimmt der Verbund den gemerkten Ordner (BACKUP_HOST_DIR), nie die Docker-Platte.
+  local out="" notify=0 a host="" want_host=0 prev=""
   for a in "$@"; do
+    if [ "$prev" = --to-host ]; then host="$a"; prev=""; continue; fi
     case "$a" in
       --notify-telegram) notify=1 ;;
+      --to-host)         want_host=1; prev="$a" ;;
       --*)               die "Unbekannte Option: $a" ;;
       *)                 out="$a" ;;
     esac
   done
-  if [ -z "$out" ]; then out="$(pwd)/lifeagents-backup-$(date -u +%Y%m%d%H%M%S).nla.enc"; fi
+  [ -z "$prev" ] || die "--to-host braucht einen Ordner."
+  if rt_is_compose && [ -z "$out" ]; then want_host=1; fi
+  if [ "$want_host" -eq 1 ]; then
+    rt_is_compose || die "--to-host gibt es nur im Docker-Verbund."
+    [ -n "$host" ] || host="$(_bkp_host_dir)"
+    [ -n "$host" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — einmalig: lifeagents backup host-dir <ordner>"
+    _bkp_host_dir_ok "$host" || die "Ordner '${host}' ist kein gültiger, beschreibbarer Ordner auf dem Rechner."
+  fi
+  local name; name="lifeagents-backup-$(date -u +%Y%m%d%H%M%S).nla.enc"
+  if [ -z "$out" ]; then out="$(pwd)/${name}"; fi
 
   local key; key="$(_bkp_key)"
   [ -n "$key" ] && [ "${#key}" -ge 16 ] || die "Backup-Schluessel fehlt/zu kurz (core.backup_key '${BACKUP_KEY_NAME}', >=16 Zeichen). Der Installer setzt ihn out-of-band (bootstrap_owner _ensure_backup_secret)."
@@ -200,6 +258,8 @@ backup_cmd_export() {
   # EXIT-Trap waere es unter `set -u` "unbound variable".
   # shellcheck disable=SC2064  # bewusst JETZT expandieren: $tmp ist local -> bei der global feuernden EXIT-Trap unter `set -u` unbound
   trap "rm -rf -- '$tmp'" EXIT
+  # Rechner-Ordner: das Chiffrat entsteht im tmpfs und geht danach in genau einem Kurzlauf-Container hinaus.
+  if [ "$want_host" -eq 1 ]; then out="$tmp/${name}"; fi
 
   # --- (1) data.dump: pg_dump -a --disable-triggers -Fc mit -t je bulk-Tabelle (qualifiziert/validiert) ---
   local dump_args=() t
@@ -261,12 +321,18 @@ backup_cmd_export() {
   if ! gpg_sym_encrypt "$key" "$out" "$tarf"; then
     die "gpg-Verschluesselung fehlgeschlagen."
   fi
-  ok "Backup geschrieben: $out"
+  if [ "$want_host" -eq 1 ]; then
+    rt_host_put "$host" "$name" < "$out" || die "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
+    _bkp_host_rotate "$host"
+    ok "Backup geschrieben: ${host}/${name} (Ordner auf dem Rechner)"
+  else
+    ok "Backup geschrieben: $out"
+  fi
   log "Inhalt: $(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + $(_bkp_filtered | grep -c .) gefilterte; aktive Pakete: ${pkgs_json}"
   # Off-Site: optional verschluesselt an den Telegram-Owner-Chat (best-effort, kippt den fertigen Export nie).
   if [ "$notify" -eq 1 ]; then
     _bkp_notify_telegram "$out" || true
-  else
+  elif [ "$want_host" -eq 0 ]; then
     log "Off-Site-Hinweis: liegt auf der VM — per scp/Backup wegkopieren (der Schluessel liegt OFFLINE separat). Tipp: 'lifeagents backup export --notify-telegram' schickt eine verschluesselte Kopie an deinen Telegram-Chat."
   fi
 }
@@ -275,12 +341,15 @@ backup_cmd_export() {
 # restore
 # ============================================================
 backup_cmd_restore() {
-  require_cmd jq; require_cmd pg_restore; require_cmd gpg
+  require_cmd jq; _bkp_require_pg pg_restore; require_cmd gpg
   _bkp_resolve_db
-  local enc="" force=0 a
+  # --from-host (Docker-Verbund): <datei> liegt in einem Ordner AUF DEM RECHNER — als voller Pfad oder als Name im gemerkten
+  # Ordner (BACKUP_HOST_DIR). Im Verbund ist das ohne Pfad der Normalfall (die Auswahl listet den gemerkten Ordner).
+  local enc="" force=0 a from_host=0
   for a in "$@"; do
     case "$a" in
       --yes|-y) force=1 ;;
+      --from-host) from_host=1 ;;
       --*)      die "Unbekannte Option: $a" ;;
       *)        enc="$a" ;;
     esac
@@ -290,7 +359,16 @@ backup_cmd_restore() {
   # Timestamp -> neueste zuerst; eine Voll-Pfad-Sortierung liesse das Verzeichnis-Praefix
   # dominieren, Cold-Eyes A1). Danach laufen Wipe-Uebersicht + 'ja'-Confirm unveraendert (E8).
   # Kein Treffer/Abbruch -> unveraenderte Usage.
-  if [ -z "$enc" ] && ui_interactive; then
+  if rt_is_compose && { [ -z "$enc" ] || [ ! -r "$enc" ]; }; then from_host=1; fi
+  if [ -z "$enc" ] && [ "$from_host" -eq 1 ] && ui_interactive; then
+    ensure_gum
+    local _hd _hpick
+    _hd="$(_bkp_host_dir)"
+    [ -n "$_hd" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben: lifeagents backup restore --from-host <ordner>/<datei>"
+    _hpick="$(rt_host_ls "$_hd" | sort -r | while IFS= read -r b; do printf '%s\t%s\n' "$b" "$b"; done \
+      | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
+    [ -n "$_hpick" ] && enc="$_hpick"
+  elif [ -z "$enc" ] && ui_interactive; then
     ensure_gum
     local _pick
     _pick="$( { ls -1 -- *.nla.enc /root/*.nla.enc 2>/dev/null || true; } \
@@ -301,8 +379,17 @@ backup_cmd_restore() {
       | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
     [ -n "$_pick" ] && enc="$_pick"
   fi
-  [ -n "$enc" ] || die "Usage: lifeagents backup restore <datei.nla.enc> [--yes]"
-  [ -r "$enc" ] || die "Backup-Datei nicht lesbar: $enc"
+  [ -n "$enc" ] || die "Usage: lifeagents backup restore <datei.nla.enc> [--from-host] [--yes]"
+  local host_src=""
+  if [ "$from_host" -eq 1 ]; then
+    case "$enc" in
+      /*) host_src="$enc" ;;
+      */*) die "Datei als Name im gemerkten Ordner oder mit vollem Pfad angeben: $enc" ;;
+      *) host_src="$(_bkp_host_dir)"; [ -n "$host_src" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben."; host_src="${host_src%/}/$enc" ;;
+    esac
+  else
+    [ -r "$enc" ] || die "Backup-Datei nicht lesbar: $enc"
+  fi
 
   local key; key="$(_bkp_key)"
   [ -n "$key" ] && [ "${#key}" -ge 16 ] || die "Backup-Schluessel fehlt/zu kurz (core.backup_key '${BACKUP_KEY_NAME}')."
@@ -314,6 +401,12 @@ backup_cmd_restore() {
   trap "rm -rf -- '$tmp'" EXIT
 
   # --- (1) Entschluesseln + Header lesen (VOR jedem Wipe) ---
+  # Rechner-Ordner: das Chiffrat zuerst in den tmpfs holen (nur lesend gemountet, genau dieser eine Ordner).
+  if [ -n "$host_src" ]; then
+    rt_host_get "$(dirname "$host_src")" "$(basename "$host_src")" > "$tmp/in.nla.enc" && [ -s "$tmp/in.nla.enc" ] \
+      || die "Sicherung '${host_src}' auf dem Rechner nicht lesbar. Es wurde NICHTS geaendert."
+    enc="$tmp/in.nla.enc"
+  fi
   if ! gpg_sym_decrypt "$key" "$enc" > "$tmp/bundle.tar.gz"; then
     die "Entschluesselung fehlgeschlagen — falscher Backup-Schluessel oder beschaedigte Datei. Es wurde NICHTS geaendert."
   fi
@@ -465,6 +558,8 @@ MENU
   local verb="${1:-help}"; shift || true
   case "$verb" in
     export)  backup_cmd_export "$@" ;;
+    host-dir) backup_cmd_host_dir "$@" ;;
+    auto)    backup_cmd_auto ;;
     restore) backup_cmd_restore "$@" ;;
     help|--help|-h)
       cat >&2 <<'EOF'
@@ -480,6 +575,14 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
                            zeigt VOR der Rückfrage die betroffenen Pakete + Tabellen. Fehlt ein Bundle-Paket ->
                            Angebot, es zu installieren (--no-seed); dann versionsgleich restoren (sonst sauberer
                            Abbruch). --yes überspringt Rückfrage + nimmt Auto-Install an.
+
+Nur im Docker-Verbund (Mac/Windows-App) — Sicherungen liegen in einem Ordner AUF DEM RECHNER, nicht auf der Docker-Platte:
+  host-dir [<ordner>]      Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (absoluter Pfad, wird auf Schreibrecht geprüft).
+  export [--to-host [<ordner>]]
+                           Ohne Pfad schreibt der Verbund immer in den Rechner-Ordner (behält die letzten 14 Sicherungen).
+  restore [<name>|<pfad>] [--from-host] [--yes]
+                           Ohne Datei: Auswahl aus dem Rechner-Ordner; <name> = Datei im gewählten Ordner.
+  auto                     Tägliche Sicherung in den Rechner-Ordner (läuft von selbst um 03:30 im master; ohne Ordner still).
 
 Automatisch (Off-Site, taeglich 03:30) — eine Zeile in die root-crontab ('crontab -e'):
   30 3 * * * cd /root && lifeagents backup export --notify-telegram >> /var/log/lifeagents-backup.log 2>&1

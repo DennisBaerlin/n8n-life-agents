@@ -26,6 +26,9 @@
 # Release-Quelle (PROVISION_REPO_SLUG, PROVISION_GH_API) lebt in common.sh — geteilt mit dem Rueckweg-Hinweis
 # (upgrade_guard.sh); install.sh traegt als self-contained Bootstrap bewusst eine eigene Kopie.
 PROVISION_ASSET_BASENAME="n8n-life-agents"
+# Docker-Verbund: Update = master-Wechsel ueber einen Helfer (fetch_and_run_release, upgrade_rollback).
+# shellcheck source=master_swap.sh
+. "$(dirname "${BASH_SOURCE[0]}")/master_swap.sh"
 
 # >>> gh-download — GESPIEGELT in provisioning/install.sh UND provisioning/lib/fetch_release.sh; beide Bloecke
 #     byte-gleich halten (contract_lint Check 23). Erwartet vom Umfeld: PROVISION_GH_API, PROVISION_REPO_SLUG, die, die_because.
@@ -200,6 +203,18 @@ fetch_and_run_release() {
   for _c in "$work"/*/provisioning/provision.sh; do [ -e "$_c" ] && { applier="$_c"; break; }; done
   [ -n "$applier" ] || die "Im Asset fehlt provisioning/provision.sh (unvollstaendiges Release)."
   ok "Release ${tag} entpackt nach ${applier%/provisioning/provision.sh}"
+
+  # Docker-Verbund: das Release bringt ein eigenes master-Image (lib/master_swap.sh). Ziel aus der GEPRUEFTEN compose.yml;
+  # ist es nicht das laufende, uebernimmt der Helfer (der master endet hier) und der neue master setzt fort.
+  if rt_is_compose; then
+    local _tree="${applier%/provisioning/provision.sh}" _target
+    _target="$(rt_master_image_of "$_tree/provisioning/compose/compose.yml")"
+    [ -n "$_target" ] || die_because master_image "Das Release ${tag} nennt kein master-Image (compose.yml) — Update im Docker-Verbund abgebrochen, es wurde nichts geändert."
+    if [ "$_target" != "${LA_MASTER_IMAGE:-}" ]; then
+      master_swap_begin "$tag" "$_tree/provisioning/compose/compose.yml" "$_target"
+      exit 0
+    fi
+  fi
 
   _exec_applier "$applier" "$tag" "$@"
 }

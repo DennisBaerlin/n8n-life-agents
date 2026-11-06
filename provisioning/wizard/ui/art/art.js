@@ -264,7 +264,7 @@ ${scenes}
 </svg>`;
   }
   // Schritt 1 beider FritzBox-Animationen: links „Internet“ aufklappen
-  const FB_OPEN = { key: 'fb_open', acts: [{ to: [104, 112], click: true, set: { sub: '1' }, ring: [10, 102, 184, 26] }] };
+  const FB_OPEN = { key: 'fb_open', acts: [{ to: [122, 116], click: true, set: { sub: '1' }, ring: [10, 102, 184, 26] }] };
   function fbGuided(page, o) {
     const tx = texts(page);
     const link = page.link && page.link.href ? page.link : null;
@@ -290,7 +290,7 @@ ${scenes}
    <text class="t-th" x="530" y="200">Port extern</text><text class="t-th" x="530" y="213">vergeben IPv4</text>
    <text class="t-th" x="618" y="200">Port extern</text><text class="t-th" x="618" y="213">vergeben IPv6</text>
    <line class="ln" x1="222" y1="220" x2="758" y2="220"/>
-   <text class="t-s" x="230" y="240">drucker</text><rect class="ph" x="340" y="232" width="70" height="8" rx="4"/>
+   <text class="t-s pr-name" x="230" y="240">drucker</text><text class="t-s pc-name" x="230" y="240">mein-rechner</text><rect class="ph" x="340" y="232" width="70" height="8" rx="4"/>
    <circle class="ibtn" cx="716" cy="235" r="11"/><path class="pen" d="M711 240 l8 -8 l2 2 l-8 8 h-2 z"/>
    <circle class="ibtn" cx="744" cy="235" r="11"/><path class="bin" d="M739 230 h10 M741 230 v10 h6 v-10"/>
    <rect class="btn2" x="474" y="262" width="194" height="26" rx="3"/><text class="t-btn2" x="571" y="279">Gerät für Freigaben hinzufügen</text>
@@ -359,6 +359,7 @@ ${scenes}
    <text class="t-s app-http" x="440" y="275">HTTP-Server</text><text class="t-s app-https" x="440" y="275">HTTPS-Server</text><path class="caret" d="M638 267 l5 5 l5 -5"/>
    <text class="t-lbl" x="300" y="311">Verzeichnis (optional)</text><rect class="field" x="430" y="294" width="228" height="28" rx="3"/>
    <text class="t-lbl" x="300" y="349">MyFRITZ!-Adresse</text><rect class="field-off" x="430" y="332" width="228" height="28" rx="3"/>
+   <g class="addr"><text class="t-s t-strong" x="440" y="351">mein-rechner</text><text class="t-s" x="524" y="351">.</text><rect class="ph" x="530" y="343" width="52" height="8" rx="4"/><text class="t-s" x="584" y="351">.myfritz.net</text></g>
    <circle class="radio" cx="276" cy="382" r="7"/><circle class="radio-on r2" cx="276" cy="382" r="4"/>
    <text class="t-m" x="292" y="387">Portfreigabe</text>
    <line class="ln" x1="266" y1="406" x2="664" y2="406"/>
@@ -394,12 +395,34 @@ ${scenes}
       acts: [{ to: [754, 656], click: true, cam: { x: 490, y: 600, s: 1 }, ring: [664, 630, 98, 36] }] },
   ];
 
+  // pc = Rechner statt Drucker in der Geräteliste, addr = MyFRITZ!-Adresse im Dialog sichtbar (Namens-Animation)
+  const FB_SHARE_DATA = 'data-radio="0" data-chk="0" data-rows="0" data-app="http" data-pc="0" data-addr="0"';
+  const FB_SHARE_INITIAL = { sub: '0', act: 'none', scene: 'home', radio: '0', chk: '0', rows: '0', app: 'http', pc: '0', addr: '0' };
+
   // Seiten-Hinweis „Freigabe existiert bereits“ gehört zum Speichern mit „OK“ (Schritt 6) und steht dort im Bild.
   function fbShare(page) {
     const note = page.note && page.note.text ? page.note.text : null;
     return fbGuided(page, { name: 'fb-share', height: 680, steps: FB_SHARE_STEPS, hint: note, takes: note ? ['note'] : [],
-      svg: fbSvg(680, 'data-radio="0" data-chk="0" data-rows="0" data-app="http"', FB_SHARE_SCENES),
-      initial: { sub: '0', act: 'none', scene: 'home', radio: '0', chk: '0', rows: '0', app: 'http' } });
+      svg: fbSvg(680, FB_SHARE_DATA, FB_SHARE_SCENES), initial: FB_SHARE_INITIAL });
+  }
+
+  // ---------- B2: Name für die MyFRITZ!-Adresse (Seite h:DOMAIN, page.art 'myfritz_name') ----------
+  // Dieselben Bilder wie fb_guide, Schritte 1–2 sind dieselben Objekte. Der Rechner hat schon beide Freigaben; die
+  // MyFRITZ!-Adresse zeigt der Dialog „Freigabe anlegen“ (belegter Wortlaut), deshalb „Neue Freigabe“ nur zum Nachschauen
+  // und am Ende „Abbrechen“. Vorderer Teil = Name, die Endung (Zone) nur als Balken.
+  const FB_NAME_STEPS = [
+    FB_OPEN,
+    FB_SHARE_STEPS[1],
+    { key: 'myfritz_name_3', acts: [{ to: [724, 244], ring: [224, 222, 534, 28], wait: 900 }] },
+    { key: 'myfritz_name_4',
+      acts: [{ to: [716, 235], click: true, set: { scene: 'dev', rows: '2' }, cam: { x: 490, y: 560, s: 1 }, wait: 900 },
+        { to: [752, 602], click: true, set: { scene: 'dlg', radio: '1', addr: '1' }, cam: DLG, ring: [426, 328, 236, 36], wait: 900 }] },
+    { key: 'myfritz_name_5',
+      acts: [{ to: [530, 362], ring: [434, 334, 94, 24], cam: { x: 500, y: 330, s: 1.3 }, wait: 1200 }] },   // endet auf dem Namen
+  ];
+  function fbName(page) {
+    return fbGuided(page, { name: 'myfritz-name', height: 680, steps: FB_NAME_STEPS, place: 'before',
+      svg: fbSvg(680, FB_SHARE_DATA, FB_SHARE_SCENES), initial: Object.assign({}, FB_SHARE_INITIAL, { pc: '1' }) });
   }
 
   // ---------- B: DS-Lite im Online-Monitor (Seite fb_dslite) ----------
@@ -520,6 +543,7 @@ ${scenes}
   const ART = {
     fb_guide: fbShare,
     dslite: fbDslite,   // page.art: nur wenn die Erkennung unsicher war (Server)
+    myfritz_name: fbName,   // page.art: MyFRITZ!-Adresse nicht automatisch gefunden (Server)
     'h:OWNER_PERSONA': persona,
   };
 

@@ -119,6 +119,8 @@
 .fb[data-scene="dlg"] .s-dev, .fb[data-scene="dlg"] .s-dlg { opacity: 1; visibility: visible; }
 .fb .row-http, .fb .row-https, .fb .app-https, .fb[data-app="https"] .app-http { display: none; }
 .fb[data-rows="1"] .row-http, .fb[data-rows="2"] .row-http, .fb[data-rows="2"] .row-https, .fb[data-app="https"] .app-https { display: inline; }
+.fb .pc-name, .fb[data-pc="1"] .pr-name, .fb .addr { display: none; }
+.fb[data-pc="1"] .pc-name, .fb[data-addr="1"] .addr { display: inline; }
 /* Online-Monitor (data-art="fb-dslite"): Szenen mon/det, Anzeige DS-Lite (data-v="ds") oder eigene IPv4 (data-v="v4") */
 .fb[data-act="monitor"] .act-monitor { opacity: 1; }
 .fb[data-act="monitor"] .t-om { fill: var(--bg); }

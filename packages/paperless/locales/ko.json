@@ -7,5 +7,9 @@
   "paperless.help.documents.description": "Paperless 인스턴스의 문서를 찾고 읽으며 문서에 관한 질문에 답을 받아요 (읽기 전용, 성인만).",
   "paperless.help.documents.ex1": "문서 AI에게 제 휴대폰 계약의 해지 예고 기간을 물어봐 주세요.",
   "paperless.help.documents.ex2": "42번 문서를 읽어 주세요.",
-  "paperless.help.documents.ex3": "문서에서 제 임대차 계약서를 찾아 주세요."
+  "paperless.help.documents.ex3": "문서에서 제 임대차 계약서를 찾아 주세요.",
+  "paperless.wizard.cfg_general_paperless_url.title": "Paperless 주소",
+  "paperless.wizard.cfg_general_paperless_url.help": "봇은 이 주소에서 Paperless의 문서를 찾고 읽어요. 브라우저에서 Paperless를 여는 주소와 같아요. 예: http://192.168.1.50:8000 (끝에 슬래시 없이). Paperless-NGX 3.0 이상이 필요해요.",
+  "paperless.wizard.paperless_api_token.title": "Paperless 접근 토큰",
+  "paperless.wizard.paperless_api_token.help": "봇이 Paperless에서 찾고 읽을 수 있게 해 줘요. 봇은 아무것도 쓰지 않아요.\n\n추천: Paperless에 읽기 권한만 있는 사용자를 따로 만들고, 원하는 문서와 그 태그, 거래처, 문서 유형을 볼 수 있게 해 주세요. 성인 구성원은 봇에서 이 사용자가 보는 것을 모두 보고, 아이들은 보지 않아요.\n\n토큰: 이 사용자로 오른쪽 위 프로필 → „My Profile“ → „API Auth Token“을 만들고 복사해요. „Token“이라는 단어 없이 문자열만 붙여 넣어 주세요."
 }

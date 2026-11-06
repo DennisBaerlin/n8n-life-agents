@@ -108,16 +108,25 @@ test('Paperless-Adresse vorausfüllen: genau ein erreichbarer Treffer, sonst lee
   assert.equal(g([{ ip: '0.0.0.0', port: 0 }, { ip: '0.0.0.0', port: 'x' }], '192.0.2.10'), '');
 });
 
-test('MyFRITZ-Adresse: Zone und Kandidaten streng geprüft, erster auflösbarer Name gewinnt', async () => {
+test('MyFRITZ-Adresse: Zone und Namen streng geprüft, vorgeschlagen nur, was auf diesen Anschluss zeigt', async () => {
   assert.equal(flow.myfritzZone('Deine-Domain.myfritz.net.'), 'deine-domain.myfritz.net');
   for (const bad of ['', 'myfritz.net', 'zwei.deine-domain.myfritz.net', 'deine-domain.myfritz.net.evil.example', 'mein rechner.deine-domain.myfritz.net']) assert.equal(flow.myfritzZone(bad), '', bad);
-  assert.deepEqual(flow.myfritzCandidates('Mac-Mini, meinrechner mac-mini ;rm -rf /, -x'), ['mac-mini', 'meinrechner']);
+  // Name der FritzBox zuerst, dann die weiteren; Unbrauchbares fällt weg.
+  assert.deepEqual(flow.myfritzCandidates('Kims-PC', 'Mac-Mini, kims-pc mac-mini ;rm -rf /, -x'), ['kims-pc', 'mac-mini']);
+  const Z = 'deine-domain.myfritz.net'; const IP = '203.0.113.7';
+  const dnsTab = { [`mac-mini.${Z}`]: ['198.51.100.9'], [`meinrechner.${Z}`]: [IP] };
   const seen = [];
-  const resolve = async (n) => { seen.push(n); return n === 'meinrechner.deine-domain.myfritz.net'; };
-  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['mac-mini', 'meinrechner', 'x'], resolve), 'meinrechner.deine-domain.myfritz.net');
-  assert.deepEqual(seen, ['mac-mini.deine-domain.myfritz.net', 'meinrechner.deine-domain.myfritz.net'], 'stoppt beim ersten Treffer');
-  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['a'], async () => { throw new Error('x'); }), '');
-  assert.equal(await flow.myfritzGuess('', ['a'], async () => true), '');
+  const lookup = async (n) => { seen.push(n); return dnsTab[n] || []; };
+  assert.equal(await flow.domainCheck(`meinrechner.${Z}`, lookup, IP), 'ok');
+  assert.equal(await flow.domainCheck(`mac-mini.${Z}`, lookup, IP), 'wrong_ip', 'zeigt woandershin');
+  assert.equal(await flow.domainCheck(`neu.${Z}`, lookup, IP), 'pending', 'Freigabe fehlt oder wird gerade eingetragen');
+  assert.equal(await flow.domainCheck(`meinrechner.${Z}`, lookup, ''), 'found', 'ohne bekannte IPv4 nur „gefunden“');
+  assert.equal(await flow.domainCheck('x', async () => { throw new Error('x'); }, IP), 'pending');
+  seen.length = 0;
+  assert.equal(await flow.myfritzGuess(Z, ['mac-mini', 'meinrechner', 'x'], lookup, IP), `meinrechner.${Z}`, 'falsche IP wird übersprungen');
+  assert.deepEqual(seen, [`mac-mini.${Z}`, `meinrechner.${Z}`], 'stoppt beim ersten geprüften Treffer');
+  assert.equal(await flow.myfritzGuess(Z, ['meinrechner'], lookup, ''), '', 'ohne öffentliche IPv4 kein Vorschlag');
+  assert.equal(await flow.myfritzGuess('', ['meinrechner'], lookup, IP), '', 'ohne Kennung kein Vorschlag');
 });
 
 test('Vorschläge vom Rechner: Sprache auf angebotene Codes, Name am letzten Leerzeichen', () => {
@@ -170,4 +179,26 @@ test('Zustellfehler: nur frisch und mit wartenden Nachrichten (Format Paket 3)',
   assert.equal(f({ webhook_error: 'Connection timed out', webhook_error_at: now - 60, webhook_pending: 0 }, now), false, 'nichts wartet');
   assert.equal(f({ webhook_error: '' }, now), false);
   assert.equal(f(null, now), false);
+});
+
+test('Texte der Einrichtung: jeder feste Katalog-Key im Code steht in allen Sprachen', () => {
+  const fs = require('fs');
+  const { REPO } = require('./helpers');
+  const cat = {};
+  for (const l of ['de', 'en', 'ko']) cat[l] = JSON.parse(fs.readFileSync(path.join(REPO, 'packages', 'core', 'locales', `${l}.json`), 'utf8'));
+  const src = fs.readFileSync(path.join(WIZ, 'server.js'), 'utf8');
+  const keys = new Set([...src.matchAll(/'(core\.wizard\.[a-z0-9_.]+)'/g)].map((m) => m[1]));
+  // Zusammengesetzte Keys: Präfix + bekannte Endungen.
+  for (const k of ['next', 'back', 'skip', 'retry', 'change', 'change_label', 'secret_kept', 'found_addresses', 'one_moment', 'report_show',
+    'report_note', 'report_copied', 'offline', 'open_via_app', 'session_expired', 'doc_title']) keys.add(`core.wizard.ui.${k}`);
+  for (const k of ['voice_no', 'voice_yes', 'tg_new', 'tg_take', 'reach_tunnel', 'reach_fritzbox', 'dslite_no', 'dslite_yes']) { keys.add(`core.wizard.opt.${k}`); keys.add(`core.wizard.opt.${k}_desc`); }
+  for (const k of ['check', 'programs', 'database', 'access', 'bot', 'final']) keys.add(`core.wizard.stage.${k}`);
+  for (const k of ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old']) keys.add(`core.wizard.paperless.${k}`);
+  for (const k of ['title', 'activating', 'activating_wait', 'not_reaching', 'check_again', 'expired', 'new_code', 'open_link', 'scan', 'tap_start',
+    'code_valid', 'connected_wait', 'waiting', 'preparing', 'preparing_wait', 'code_failed', 'activation_failed', 'key_expiry']) keys.add(`core.wizard.connect.${k}`);
+  for (const m of src.matchAll(/(\w+): '([a-z_]+)'/g)) if (/_(title|help|link|wait|note)$/.test(m[2])) keys.add(`core.wizard.reach.${m[2]}`);
+  for (const k of ['owner_language', 'owner_first_name', 'owner_last_name', 'owner_birth_date', 'owner_persona', 'telegram_bot_token', 'anthropic_api_key',
+    'google_api_key', 'domain']) keys.add(`core.wizard.q.${k}.title`);
+  assert.ok(keys.size > 100, 'Keys gefunden');
+  for (const k of keys) for (const l of ['de', 'en', 'ko']) assert.ok(typeof cat[l][k] === 'string' && cat[l][k], `${k} fehlt in ${l}.json`);
 });

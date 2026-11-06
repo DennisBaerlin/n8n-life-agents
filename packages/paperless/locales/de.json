@@ -7,5 +7,9 @@
   "paperless.help.documents.description": "Dokumente in deiner Paperless-Instanz finden, lesen und Fragen dazu beantworten lassen (nur lesend, nur für Erwachsene).",
   "paperless.help.documents.ex1": "Frag die Dokumenten-KI, welche Kündigungsfrist mein Handyvertrag hat.",
   "paperless.help.documents.ex2": "Lies mir das Dokument mit der Nummer 42 vor.",
-  "paperless.help.documents.ex3": "Finde meinen Mietvertrag in den Dokumenten."
+  "paperless.help.documents.ex3": "Finde meinen Mietvertrag in den Dokumenten.",
+  "paperless.wizard.cfg_general_paperless_url.title": "Adresse deiner Paperless-Instanz",
+  "paperless.wizard.cfg_general_paperless_url.help": "Unter dieser Adresse sucht und liest der Bot deine Dokumente in Paperless, so wie du Paperless im Browser aufrufst, zum Beispiel http://192.168.1.50:8000 (ohne Schrägstrich am Ende). Nötig ist Paperless-NGX 3.0 oder neuer.",
+  "paperless.wizard.paperless_api_token.title": "Paperless-Zugangstoken",
+  "paperless.wizard.paperless_api_token.help": "Damit der Bot in Paperless suchen und lesen kann. Er schreibt nie etwas.\n\nEmpfehlung: Leg in Paperless einen eigenen Nutzer nur mit Leserechten an, der die gewünschten Dokumente und deren Schlagworte, Korrespondenten und Dokumenttypen sehen darf. Alle erwachsenen Mitglieder sehen im Bot, was dieser Nutzer sieht, Kinder nicht.\n\nToken: als dieser Nutzer oben rechts Profil → „Mein Profil“ → „API-Auth-Token“ erzeugen und kopieren. Nur die Zeichenfolge einfügen, ohne das Wort „Token“."
 }

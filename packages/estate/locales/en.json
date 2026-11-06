@@ -341,5 +341,7 @@
   "estate.cron.review_register.off_toast": "Estate check off",
   "estate.cron.review_register.on_message": "Estate check on: if something important is missing or the register has not been checked for a long time, I let you know.",
   "estate.cron.review_register.off_message": "Estate check off: I will no longer point out gaps in the emergency register on my own.",
-  "estate.cron.remind_case_tasks.label": "Deadlines after a death or incapacity"
+  "estate.cron.remind_case_tasks.label": "Deadlines after a death or incapacity",
+  "estate.wizard.cfg_general_bundesland.title": "Which German state do you live in?",
+  "estate.wizard.cfg_general_bundesland.help": "Deadlines in an event case (for example disclaiming an inheritance) count working days. Which days are public holidays depends on the state."
 }

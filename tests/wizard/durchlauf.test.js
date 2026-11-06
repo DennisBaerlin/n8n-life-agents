@@ -47,6 +47,12 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal((await answer(w, 'h:OWNER_BIRTH_DATE', '2999-01-01')).status, 422);
     assert.equal((await answer(w, 'h:OWNER_BIRTH_DATE', '01.02.1985')).status, 422);
     await expectOk(await answer(w, 'h:OWNER_BIRTH_DATE', '1984-07-15'));
+    // Handy-Bild der Charakter-Seite: Zeichen + echte Sprechweise aus dem Katalog, je Sprache; Standard ohne Rahmensatz.
+    const pe = await page(w);
+    const butler = pe.options.find((o) => o.value === 'butler');
+    assert.equal(butler.emoji, '🎩');
+    assert.ok(butler.frame.de.startsWith('🎩') && butler.frame.en && butler.frame.ko, 'Sprechweise in allen Sprachen');
+    assert.deepEqual(pe.options.find((o) => o.value === 'neutral').frame, {});
     assert.equal((await answer(w, 'h:OWNER_PERSONA', 'pirat')).status, 422, 'nur angebotene Charaktere');
     await expectOk(await answer(w, 'h:OWNER_PERSONA', 'butler'));
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', '')).status, 422, 'Pflicht');
@@ -106,12 +112,12 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     let rv = await page(w);
     assert.equal(rv.id, 'review');
     const rows = Object.fromEntries(rv.rows.map((r) => [r.label, r.value]));
-    assert.equal(rows['Telegram-Bot-Token'], 'eingetragen');
-    assert.equal(rows['Dein Nachname'], "O'Beispiel");
-    assert.equal(rows['Dein Geburtsdatum'], '15.07.1984', 'Datum wie eingegeben, nicht ISO');
+    assert.equal(rows['Telegram-Bot'], 'eingetragen');
+    assert.equal(rows['Nachname'], "O'Beispiel");
+    assert.equal(rows['Geburtsdatum'], '15.07.1984', 'Datum wie eingegeben, nicht ISO');
     assert.equal(rows['MyFRITZ!-Adresse'], 'meinrechner.deine-domain.myfritz.net');
     assert.equal(rows['Sprachnachrichten'], 'ja, Google-Schlüssel eingetragen');
-    assert.ok(!('Google-API-Schlüssel' in rows), 'eine Zeile je Fakt');
+    assert.ok(!('Google-Schlüssel' in rows), 'eine Zeile je Fakt');
     assert.equal(rows['Funktionen'], 'Grundsystem, Karriere, Nachlass & Vorsorge, Dokumente');
     assert.equal(rows['Erreichbarkeit'], 'FritzBox');
     assert.ok(!JSON.stringify(rv).includes('beispiel-token'), 'kein Geheimnis in der Übersicht');
@@ -145,13 +151,13 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal(cn.link.href, 'https://t.me/beispiel_bot?start=0123456789abcdef');
     assert.ok(!fs.readFileSync(path.join(w.dir, 'state', 'progress.json'), 'utf8').includes('0123456789abcdef'), 'Pairing-Code nie auf der Platte');
     assert.equal(cn.canBack, false);
-    assert.deepEqual(await ctl(w, 'status'), { phase: 'pairing', step: 'connect', bot: 'beispiel_bot' });
+    assert.deepEqual(await ctl(w, 'status'), { phase: 'pairing', step: 'connect', lang: 'de', bot: 'beispiel_bot' }, 'lang: Sprache der Einrichtung für die Seiten der App');
     fs.writeFileSync(path.join(w.fake, 'paired'), '');
     const ho = await waitFor(async () => { const p = await page(w); return p.id === 'handoff' ? p : null; });
     assert.match(ho.help[0].p, /Haushalt einrichten/);
     assert.deepEqual(fs.readFileSync(path.join(w.fake, 'pair_calls'), 'utf8').trim().split('\n'), ['arm', 'finalize']);
     await expectOk(await post(w, '/api/action', { name: 'handoff' }));
-    assert.deepEqual(await ctl(w, 'status'), { phase: 'handoff', step: 'handoff', bot: 'beispiel_bot' }, 'Bot-Name für „Telegram öffnen“ der App');
+    assert.deepEqual(await ctl(w, 'status'), { phase: 'handoff', step: 'handoff', lang: 'de', bot: 'beispiel_bot' }, 'Bot-Name für „Telegram öffnen“ der App');
     assert.equal((await ctl(w, 'finish')).ok, true);
     assert.equal(await w.exited, 0);
   } finally { pl.close(); await w.stop(); }
@@ -163,6 +169,9 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await login(w);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'en'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
       ['h:OWNER_BIRTH_DATE', '1970-12-31'], ['h:OWNER_PERSONA', 'neutral']]) await expectOk(await answer(w, id, v));
+    // Bot-Sprache Englisch, Seiten der Einrichtung zurück auf Deutsch (die Texte unten sind deutsch geprüft).
+    assert.equal((await page(w)).lang, 'en', 'die Antwort stellt die Einrichtung mit um');
+    await expectOk(await post(w, '/api/lang', { lang: 'de' }));
     // Prüfliste Nr. 10: der Bot hat schon eine fremde Webhook-Adresse.
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
     await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '111:alt-beispiel'));
@@ -252,21 +261,97 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
   } finally { await w.stop(); }
 });
 
-test('MyFRITZ-Adresse: Gerätename löst per DNS auf -> vorausgefüllt mit Hinweis', async () => {
+// MyFRITZ (Owner, 2. Runde): nur eine GEPRÜFTE Adresse wird eingetragen; sonst feste Endung, Name der FritzBox als Vorschlag
+// zum Antippen und Live-Prüfung beim Tippen. Attrappen: WIZARD_FAKE_DNS „name=ipv4,…“, public_ip = öffentliche IPv4 (Paket 3).
+const Z = 'deine-domain.myfritz.net';
+const PUB = '203.0.113.7';
+async function toDomain(hints, dnsSpec, ip) {
+  const w = await startWizard({ hints, env: { WIZARD_FAKE_DNS: dnsSpec } });
+  if (ip !== undefined) fs.writeFileSync(path.join(w.fake, 'public_ip'), ip);
+  await login(w);
+  for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'fritzbox'], ['fb_dslite', 'no'],
+    ['fb_guide', null]]) await expectOk(await answer(w, id, v));
+  const dom = await waitFor(async () => { const x = await page(w); return x.id === 'h:DOMAIN' && !x.poll ? x : null; });
+  return { w, dom };
+}
+const live = async (w, value) => (await post(w, '/api/check', { id: 'h:DOMAIN', value })).json.live;
+
+test('MyFRITZ: Name der FritzBox zeigt auf diesen Anschluss -> geprüft eingetragen', async () => {
   // hints.env roh mit CRLF (Windows-Schreiber): ein CR am Zeilenende wird geduldet.
-  const w = await startWizard({ hints: 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net\r\nLA_HOST_NAME_CANDIDATES=kim-pc mac-mini\r\n',
-    env: { WIZARD_FAKE_DNS: 'mac-mini.deine-domain.myfritz.net' } });
+  const { w, dom } = await toDomain(`LA_MYFRITZ_ZONE=${Z}\r\nLA_HOST_NAME_FRITZ=Kims-PC\r\nLA_HOST_NAME_CANDIDATES=mac-mini\r\n`,
+    `kims-pc.${Z}=${PUB}`, PUB);
   try {
-    await login(w);
-    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
-      ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'fritzbox'], ['fb_dslite', 'no'],
-      ['fb_guide', null]]) await expectOk(await answer(w, id, v));
-    const dom = await waitFor(async () => { const x = await page(w); return x.id === 'h:DOMAIN' && !x.poll ? x : null; });
-    assert.equal(dom.value, 'mac-mini.deine-domain.myfritz.net');
-    assert.ok(!dom.suffix);
-    assert.match(dom.note.text, /Gefunden/);
+    assert.equal(dom.value, `kims-pc.${Z}`);
+    assert.ok(!dom.suffix && !dom.live);
+    assert.match(dom.note.text, /Geprüft/);
     await expectOk(await answer(w, 'h:DOMAIN', dom.value));
     assert.equal((await page(w)).id, 'review');
+  } finally { await w.stop(); }
+});
+
+test('MyFRITZ: falsche IP, umbenannt oder Freigabe fehlt -> nichts eingetragen, Vorschlag zum Antippen, Live-Prüfung', async () => {
+  // falsche IP: der FritzBox-Name löst auf, zeigt aber woandershin; „meinrechner“ = in der FritzBox umbenannt, noch nicht da.
+  const { w, dom } = await toDomain({ LA_MYFRITZ_ZONE: Z, LA_HOST_NAME_FRITZ: 'kims-pc', LA_HOST_NAME_CANDIDATES: 'mac-mini' },
+    `kims-pc.${Z}=198.51.100.9`, PUB);
+  try {
+    assert.equal(dom.value, '', 'nichts eingetragen');
+    assert.equal(dom.suffix, `.${Z}`);
+    assert.deepEqual(dom.suggestions, ['kims-pc'], 'Name der FritzBox nur als Vorschlag');
+    assert.ok(dom.live && dom.live.recheck);
+    assert.equal((await live(w, 'kims-pc')).state, 'wrong_ip');
+    assert.equal((await live(w, 'meinrechner')).state, 'pending');
+    assert.match((await live(w, 'meinrechner')).text, /etwa eine Minute/);
+    assert.equal((await live(w, 'nicht gültig!')), null, 'nur gültige Gerätenamen');
+    assert.equal((await page(w)).id, 'h:DOMAIN', 'Prüfen ändert nichts am Stand');
+  } finally { await w.stop(); }
+});
+
+test('MyFRITZ: öffentliche IPv4 unbekannt -> kein Vorschlag; Live-Prüfung meldet nur „gefunden“', async () => {
+  const { w, dom } = await toDomain({ LA_MYFRITZ_ZONE: Z, LA_HOST_NAME_FRITZ: 'kims-pc' }, `kims-pc.${Z}=${PUB}`, '');
+  try {
+    assert.equal(dom.value, '');
+    assert.equal((await live(w, 'kims-pc')).state, 'found');
+  } finally { await w.stop(); }
+});
+
+test('MyFRITZ: ohne Kennung der FritzBox wie bisher die ganze Adresse eintippen', async () => {
+  const { w, dom } = await toDomain({ LA_HOST_NAME_FRITZ: 'kims-pc' }, `kims-pc.${Z}=${PUB}`, PUB);
+  try {
+    assert.ok(!dom.suffix && !dom.live && !dom.suggestions);
+    assert.equal(await live(w, 'kims-pc'), null);
+  } finally { await w.stop(); }
+});
+
+test('Sprache: Antippen stellt die Einrichtung sofort um, die Auswahl bleibt in Eigenschreibweise', async () => {
+  const w = await startWizard({ hints: { LA_USER_LANG: 'de-DE', LA_USER_FULLNAME: 'Erika Beispiel' } });
+  try {
+    await login(w);
+    let p = await page(w);
+    assert.equal(p.id, 'h:OWNER_LANGUAGE');
+    assert.equal(p.title, 'Sprache');
+    assert.equal(p.lang, 'de');
+    assert.ok(p.langSwitch);
+    assert.match(p.note.text, /Benutzerkonto/, 'Vorschlag vom Rechner sichtbar gekennzeichnet');
+    const names = p.options.map((o) => o.label);
+    let r = await post(w, '/api/lang', { lang: 'en' });
+    assert.equal(r.status, 200);
+    p = r.json.page;
+    assert.equal(p.title, 'Language');
+    assert.equal(p.lang, 'en');
+    assert.equal(p.value, 'en', 'Auswahl bleibt markiert');
+    assert.equal(p.t.next, 'Next');
+    assert.deepEqual(p.options.map((o) => o.label), names, 'Sprachen in Eigenschreibweise');
+    r = await post(w, '/api/lang', { lang: 'ko' });
+    assert.equal(r.json.page.title, '언어');
+    assert.equal((await post(w, '/api/lang', { lang: 'xx' })).status, 422, 'nur angebotene Sprachen');
+    await expectOk(await answer(w, 'h:OWNER_LANGUAGE', 'en'));
+    p = await page(w);
+    assert.equal(p.title, 'Your first name');
+    assert.equal(p.value, 'Erika');
+    assert.match(p.note.text, /user account/);
+    assert.ok(!JSON.stringify(p).includes('Server'), 'App-Weg: Rechner/computer, nie Server');
+    assert.equal((await answer(w, 'h:OWNER_FIRST_NAME', '')).json.error, 'Something is still missing here.');
   } finally { await w.stop(); }
 });

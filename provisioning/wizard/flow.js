@@ -10,17 +10,12 @@
 //   - DOMAIN nur beim FritzBox-Weg, mit eigener Erklärung: der CLI-Hilfetext beschreibt den eigenen Reverse Proxy.
 'use strict';
 
-// Phasen der Seitenleiste. Start, Vorbereiten, Dauerbetrieb und Fertig zeigt die App selbst (Paket 6/7); der Wizard
-// zeigt sie mit, damit die Leiste über beide Fenster gleich bleibt.
-const PHASES = ['Start', 'Vorbereiten', 'Über dich', 'Telegram', 'KI-Schlüssel', 'Funktionen', 'Erreichbarkeit',
-  'Prüfen', 'Installieren', 'Verbinden', 'Dauerbetrieb', 'Fertig'];
-const PH = Object.fromEntries(PHASES.map((p, i) => [p, i]));
-
-// Host-Fragen in der Reihenfolge der CLI (_INSTALL_ENV_KEYS) mit ihrer Phase. TELEGRAM vor ANTHROPIC wie dort.
-const HOST_PHASE = {
-  OWNER_LANGUAGE: PH['Über dich'], OWNER_FIRST_NAME: PH['Über dich'], OWNER_LAST_NAME: PH['Über dich'],
-  OWNER_BIRTH_DATE: PH['Über dich'], OWNER_PERSONA: PH['Über dich'], TELEGRAM_BOT_TOKEN: PH.Telegram,
-  ANTHROPIC_API_KEY: PH['KI-Schlüssel'], GOOGLE_API_KEY: PH['KI-Schlüssel'],
+// Schritt-Leiste über App und Wizard (Owner-Wunsch, mit Paket 6/7 vereinbart): Reihenfolge und ids nur im gemeinsamen
+// Block ui.steps.js (Kopie aus config/, scripts/build_ui_tokens.ps1), Beschriftungen im Katalog core.wizard.step.<id>.
+// Der Wizard zeichnet „questions“ mit Unterschritten, „install“ und „connect“; die App den Rest.
+const HOST_SUB = {
+  OWNER_LANGUAGE: 'about', OWNER_FIRST_NAME: 'about', OWNER_LAST_NAME: 'about', OWNER_BIRTH_DATE: 'about', OWNER_PERSONA: 'about',
+  TELEGRAM_BOT_TOKEN: 'access', ANTHROPIC_API_KEY: 'access', GOOGLE_API_KEY: 'access', DOMAIN: 'reach',
 };
 // Eigene Reihenfolge in „Über dich“: Sprache zuerst (Entwurf), Charakter zuletzt.
 const ABOUT_ORDER = ['OWNER_LANGUAGE', 'OWNER_FIRST_NAME', 'OWNER_LAST_NAME', 'OWNER_BIRTH_DATE', 'OWNER_PERSONA'];
@@ -122,13 +117,16 @@ function question(Q, id) {
   return null;
 }
 
-// phaseOf(id) -> Index in PHASES.
-function phaseOf(id) {
-  if (id.startsWith('h:')) { const k = id.slice(2); return k === 'DOMAIN' ? PH.Erreichbarkeit : HOST_PHASE[k]; }
-  if (id.startsWith('s:') || id.startsWith('c:') || id === 'packages') return PH.Funktionen;
-  return ({ tg_busy: PH.Telegram, voice: PH['KI-Schlüssel'], reach: PH.Erreichbarkeit, fb_dslite: PH.Erreichbarkeit,
-    fb_ports_busy: PH.Erreichbarkeit, fb_guide: PH.Erreichbarkeit, review: PH['Prüfen'], confirm: PH['Prüfen'],
-    install: PH.Installieren, connect: PH.Verbinden, handoff: PH.Dauerbetrieb })[id] ?? PH['Über dich'];
+// stepOf(id) -> {current, sub}: Platz einer Seite in der Schritt-Leiste.
+function stepOf(id) {
+  if (id === 'install' || id === 'connect') return { current: id, sub: null };
+  if (id === 'handoff') return { current: 'connect', sub: null };   // letzte Seite des Wizards, danach übernimmt die App
+  let sub = 'about';
+  if (id.startsWith('h:')) sub = HOST_SUB[id.slice(2)] || 'about';
+  else if (id.startsWith('s:') || id.startsWith('c:') || id === 'packages') sub = 'modules';
+  else sub = ({ tg_busy: 'access', voice: 'access', reach: 'reach', fb_dslite: 'reach', fb_ports_busy: 'reach', fb_guide: 'reach',
+    review: 'check', confirm: 'check' })[id] || 'about';
+  return { current: 'questions', sub };
 }
 
 // helpBlocks(text) -> [{p:"…"} | {ol:["…"]}]: die CLI-Hilfe (feste Zeilenbreite, „  1.“-Listen) als Absätze und Liste.
@@ -260,23 +258,34 @@ function paperlessGuess(ports, lanIp) {
   return ok.size === 1 ? `http://${lanIp}:${[...ok][0]}` : '';
 }
 
-// MyFRITZ-Adresse vorausfüllen (Owner-Wunsch über die Leitung): die App liest die Kennung der FritzBox aus deren
-//   Zertifikat (LA_MYFRITZ_ZONE = <kennung>.myfritz.net) und mögliche Gerätenamen dieses Rechners
-//   (LA_HOST_NAME_CANDIDATES, Komma oder Leerzeichen). myfritzZone/myfritzCandidates prüfen beides streng;
-//   myfritzGuess probiert per DNS (resolve = async name -> bool) der Reihe nach <kandidat>.<zone>, der erste Treffer zählt.
+// MyFRITZ-Adresse (Owner-Wunsch über die Leitung, 2. Runde: „testen, bevor das vorgeschlagen wird“, Namen lassen sich in
+//   der FritzBox umbenennen): die App liest die Kennung der FritzBox aus deren Zertifikat (LA_MYFRITZ_ZONE =
+//   <kennung>.myfritz.net), den Namen, den die FritzBox selbst für den Rechner führt (LA_HOST_NAME_FRITZ), und weitere
+//   mögliche Gerätenamen (LA_HOST_NAME_CANDIDATES). myfritzZone/myfritzCandidates prüfen streng, der FritzBox-Name zuerst.
+//   domainCheck bewertet eine Adresse: öffentlich aufgelöst (lookup = async name -> [IPv4]) UND auf die öffentliche IPv4 des
+//   Anschlusses (Paket 3) zeigend = 'ok'; aufgelöst ohne bekannte IPv4 = 'found'; aufgelöst, aber woandershin = 'wrong_ip';
+//   nicht aufgelöst = 'pending' (Freigabe fehlt noch oder die FritzBox trägt sie gerade ein). myfritzGuess schlägt nur
+//   eine Adresse mit 'ok' vor, sonst nichts.
 const ZONE_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.myfritz\.net$/;
 const LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 function myfritzZone(z) { const v = String(z || '').trim().toLowerCase().replace(/\.$/, ''); return ZONE_RE.test(v) ? v : ''; }
-function myfritzCandidates(s) {
+function myfritzCandidates(fritzName, others) {
   const out = [];
-  for (const c of String(s || '').toLowerCase().split(/[\s,]+/)) if (LABEL_RE.test(c) && !out.includes(c)) out.push(c);
+  for (const c of `${fritzName || ''},${others || ''}`.toLowerCase().split(/[\s,]+/)) if (LABEL_RE.test(c) && !out.includes(c)) out.push(c);
   return out.slice(0, 8);
 }
-async function myfritzGuess(zone, candidates, resolve) {
-  if (!zone) return '';
+async function domainCheck(name, lookup, publicIp) {
+  let addrs = [];
+  try { addrs = await lookup(name); } catch (_) { addrs = []; }
+  if (!Array.isArray(addrs) || !addrs.length) return 'pending';
+  if (!IPV4_RE.test(String(publicIp || ''))) return 'found';
+  return addrs.includes(publicIp) ? 'ok' : 'wrong_ip';
+}
+async function myfritzGuess(zone, candidates, lookup, publicIp) {
+  if (!zone || !IPV4_RE.test(String(publicIp || ''))) return '';
   for (const c of candidates) {
     const name = `${c}.${zone}`;
-    try { if (await resolve(name)) return name; } catch (_) { /* nächster */ }
+    if (await domainCheck(name, lookup, publicIp) === 'ok') return name;
   }
   return '';
 }
@@ -298,7 +307,7 @@ function userName(full) {
 //   der Leitung: keine Umgebungsvariablen, die stünden dauerhaft in `docker inspect`). Gelesen, nie ausgeführt, nach den
 //   Regeln der Antwort-Datei ohne Kopfzeile: KEY=wert roh, kein doppelter Schlüssel, keine Steuerzeichen (ein CR am
 //   Zeilenende wird geduldet). Eine verletzte Regel = gar kein Vorschlag; unbekannte Schlüssel und leere Werte zählen nicht.
-const HINT_KEYS = ['LA_HOST_IP', 'LA_MYFRITZ_ZONE', 'LA_HOST_NAME_CANDIDATES', 'LA_USER_FULLNAME', 'LA_USER_LANG'];
+const HINT_KEYS = ['LA_HOST_IP', 'LA_MYFRITZ_ZONE', 'LA_HOST_NAME_FRITZ', 'LA_HOST_NAME_CANDIDATES', 'LA_USER_FULLNAME', 'LA_USER_LANG'];
 function parseHints(text) {
   if (typeof text !== 'string' || text.length > 8192) return {};
   const lines = text.split('\n');
@@ -332,6 +341,6 @@ function packagesArg(Q, A) {
   return p.length ? p.join(',') : 'none';
 }
 
-module.exports = { PHASES, PH, steps, reachMode, answered, envOf, question, phaseOf, helpBlocks, valueProblem,
-  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, myfritzZone, myfritzCandidates, myfritzGuess,
+module.exports = { steps, reachMode, answered, envOf, question, stepOf, helpBlocks, valueProblem,
+  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, myfritzZone, myfritzCandidates, domainCheck, myfritzGuess,
   userLanguage, userName, parseHints, webhookFailing, hostDef, pkgDef };

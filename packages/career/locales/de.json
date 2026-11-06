@@ -87,5 +87,10 @@
   "career.plan.name": "Karriereplan",
   "career.plan_section.situation": "Ausgangslage",
   "career.plan_section.targets": "Ziele",
-  "career.plan_section.path": "Weg zum Ziel"
+  "career.plan_section.path": "Weg zum Ziel",
+  "career.wizard.adzuna_app_id.title": "Adzuna App-ID",
+  "career.wizard.adzuna_app_id.help": "Eine zusätzliche Quelle für Stellenangebote (Adzuna, enthält auch StepStone-Anzeigen). Ohne sie sucht der Karriere-Assistent nur bei der Bundesagentur für Arbeit.\n\nKostenlos: developer.adzuna.com → registrieren → „App ID“ und „App Key“ kopieren. Beide gehören zusammen: der Key wird gleich danach gefragt. Lässt du die App-ID leer, entfällt er.",
+  "career.wizard.adzuna_app_key.title": "Adzuna App-Key",
+  "career.wizard.jsearch_api_key.title": "JSearch-Schlüssel",
+  "career.wizard.jsearch_api_key.help": "Eine weitere Quelle für Stellenangebote (JSearch, enthält auch LinkedIn-Stellen).\n\nKostenloser Tarif: rapidapi.com → nach „JSearch“ suchen → „Subscribe“ (Basic, kostenlos) → den „X-RapidAPI-Key“ kopieren."
 }

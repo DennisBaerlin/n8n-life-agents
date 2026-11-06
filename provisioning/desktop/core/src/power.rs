@@ -188,11 +188,8 @@ pub fn parse_guid(text: &str) -> Option<String> {
 /// `powercfg /query <schema> <sub> <setting>` → Netzteil-Wert. Die letzten beiden Hex-Werte der Ausgabe sind
 /// Netzteil und Akku, in jeder Sprache in dieser Reihenfolge.
 pub fn parse_ac_index(text: &str) -> Option<u32> {
-    let hex: Vec<u32> = text
-        .split_whitespace()
-        .filter_map(|w| w.strip_prefix("0x"))
-        .filter_map(|h| u32::from_str_radix(h, 16).ok())
-        .collect();
+    let hex: Vec<u32> =
+        text.split_whitespace().filter_map(|w| w.strip_prefix("0x")).filter_map(|h| u32::from_str_radix(h, 16).ok()).collect();
     (hex.len() >= 2).then(|| hex[hex.len() - 2])
 }
 
@@ -315,7 +312,10 @@ mod tests {
 
     #[test]
     fn mac_laptop_sets_only_ac_and_only_known_keys() {
-        let after = BOOK_BEFORE.replace(" autorestart          0", " autorestart          1").replace("AC Power:\n lidwake              1\n autorestart          1\n sleep                1", "AC Power:\n lidwake              1\n autorestart          1\n sleep                0");
+        let after = BOOK_BEFORE.replace(" autorestart          0", " autorestart          1").replace(
+            "AC Power:\n lidwake              1\n autorestart          1\n sleep                1",
+            "AC Power:\n lidwake              1\n autorestart          1\n sleep                0",
+        );
         let h = FakeHost::mac()
             .on_seq("/usr/bin/pmset -g custom", vec![CmdOut::ok(BOOK_BEFORE), CmdOut::ok(&after)])
             .on(&admin("/usr/bin/pmset -c sleep 0 displaysleep 10 autorestart 1"), CmdOut::ok(""));
@@ -415,7 +415,10 @@ mod tests {
                 "powercfg.exe /getactivescheme",
                 vec![CmdOut::ok(ACTIVE_DE), CmdOut::ok(&format!("GUID des Energieschemas: {OURS}  (lifeagents Dauerbetrieb)\r\n"))],
             )
-            .on("powercfg.exe /duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e", CmdOut::ok(&format!("GUID des Energieschemas: {OURS}  (Ausbalanciert)\r\n")))
+            .on(
+                "powercfg.exe /duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e",
+                CmdOut::ok(&format!("GUID des Energieschemas: {OURS}  (Ausbalanciert)\r\n")),
+            )
             .on(&format!("powercfg.exe /changename {OURS} {WIN_SCHEME_NAME}"), CmdOut::ok(""))
             .on(&format!("powercfg.exe /setacvalueindex {OURS} SUB_SLEEP STANDBYIDLE 0"), CmdOut::ok(""))
             .on(&format!("powercfg.exe /setacvalueindex {OURS} SUB_VIDEO VIDEOIDLE 600"), CmdOut::ok(""))
@@ -458,7 +461,10 @@ mod tests {
 
     #[test]
     fn guid_and_index_parsing() {
-        assert_eq!(parse_guid("Power Scheme GUID: 381B4222-F694-41F0-9685-FF5BB260DF2E  (Balanced)").as_deref(), Some("381b4222-f694-41f0-9685-ff5bb260df2e"));
+        assert_eq!(
+            parse_guid("Power Scheme GUID: 381B4222-F694-41F0-9685-FF5BB260DF2E  (Balanced)").as_deref(),
+            Some("381b4222-f694-41f0-9685-ff5bb260df2e")
+        );
         assert_eq!(parse_guid("kein Schema"), None);
         assert_eq!(parse_ac_index(&query_out(600, 300)), Some(600));
         assert_eq!(parse_ac_index("Current AC Power Setting Index: 0x00000000\nCurrent DC Power Setting Index: 0x00000384"), Some(0));

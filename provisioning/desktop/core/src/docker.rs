@@ -23,16 +23,27 @@ pub enum DockerCall<'a> {
     VolumeList,
     NetworkList,
     ImageList,
+    /// Ist ein Image schon da? (Vor dem Start: was wir laden, steht danach im Journal.)
+    ImageInspect(&'a str),
     /// Objekte mit unserem Namen (Prüfliste Nr. 7): Name und unser Label.
     OurContainers,
     OurVolumes,
     // --- ändern, nur unser Projekt ---
     /// Erste Zustimmung: `anchor` + `master` starten.
-    ComposeUpFirst { file: &'a str, env_file: &'a str },
+    ComposeUpFirst {
+        file: &'a str,
+        env_file: &'a str,
+    },
     /// Nach der Einrichtung bei jeder Anmeldung: vorhandene Container starten, nichts neu anlegen.
-    ComposeStart { file: &'a str, env_file: &'a str },
+    ComposeStart {
+        file: &'a str,
+        env_file: &'a str,
+    },
     /// Entfernen (Nr. 17): Container und Netz des Projekts, nie Volumes (die sind `external`).
-    ComposeDown { file: &'a str, env_file: &'a str },
+    ComposeDown {
+        file: &'a str,
+        env_file: &'a str,
+    },
     /// Volume löschen, nur nach Rückfrage und nur mit unserem Label (Aufrufer prüft).
     VolumeRemove(&'a str),
     /// Image löschen, nur wenn das Journal sagt, dass wir es geladen haben.
@@ -76,6 +87,10 @@ impl Docker {
             DockerCall::VolumeList => p(&mut a, &["volume", "ls", "--format", "{{.Name}}|{{.Labels}}"]),
             DockerCall::NetworkList => p(&mut a, &["network", "ls", "--no-trunc", "--format", "{{.Name}}|{{.ID}}"]),
             DockerCall::ImageList => p(&mut a, &["image", "ls", "--no-trunc", "--format", "{{.Repository}}:{{.Tag}}|{{.ID}}"]),
+            DockerCall::ImageInspect(reference) => {
+                p(&mut a, &["image", "inspect", "--format", "{{.Id}}"]);
+                a.push(reference.to_string());
+            }
             DockerCall::OurContainers => {
                 p(&mut a, &["container", "ls"]);
                 push_all_states(&mut a);
@@ -158,6 +173,7 @@ mod tests {
             DockerCall::VolumeList,
             DockerCall::NetworkList,
             DockerCall::ImageList,
+            DockerCall::ImageInspect("busybox@sha256:00"),
             DockerCall::OurContainers,
             DockerCall::OurVolumes,
             DockerCall::ComposeUpFirst { file: "c.yml", env_file: "e.env" },
@@ -168,6 +184,7 @@ mod tests {
             DockerCall::Master(MasterCmd::WizardUrl),
             DockerCall::Master(MasterCmd::WizardStatus),
             DockerCall::Master(MasterCmd::PowerDone(true)),
+            DockerCall::Master(MasterCmd::ReleaseWebhook),
         ]
     }
 

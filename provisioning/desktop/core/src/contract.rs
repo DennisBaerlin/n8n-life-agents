@@ -33,6 +33,9 @@ pub enum MasterCmd {
     WizardStatus,
     /// `power-done yes|no` – Antwort auf die Dauerbetrieb-Frage; der Wizard geht danach zu „Fertig“.
     PowerDone(bool),
+    /// Vor dem Entfernen (Nr. 17): Telegram-Webhook auf den Stand vor der Einrichtung zurück (alte Adresse aus
+    /// dem Journal des `master`) oder löschen. Exit 0 = erledigt. Gehört zu Paket 2 (`uninstall`).
+    ReleaseWebhook,
 }
 
 impl MasterCmd {
@@ -42,6 +45,7 @@ impl MasterCmd {
             MasterCmd::WizardStatus => vec!["lifeagents", "wizard", "status"],
             MasterCmd::PowerDone(true) => vec!["lifeagents", "wizard", "power-done", "yes"],
             MasterCmd::PowerDone(false) => vec!["lifeagents", "wizard", "power-done", "no"],
+            MasterCmd::ReleaseWebhook => vec!["lifeagents", "telegram", "release-webhook"],
         };
         v.into_iter().map(String::from).collect()
     }

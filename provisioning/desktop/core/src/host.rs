@@ -128,18 +128,11 @@ impl Host for RealHost {
         cmd.args(args);
         no_window(&mut cmd);
         let out = cmd.output().map_err(|e| format!("{program}: {e}"))?;
-        Ok(CmdOut {
-            code: out.status.code().unwrap_or(-1),
-            stdout: decode(&out.stdout),
-            stderr: decode(&out.stderr),
-        })
+        Ok(CmdOut { code: out.status.code().unwrap_or(-1), stdout: decode(&out.stdout), stderr: decode(&out.stderr) })
     }
     fn spawn(&self, program: &str, args: &[String]) -> Result<(), String> {
         let mut cmd = std::process::Command::new(program);
-        cmd.args(args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+        cmd.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
         no_window(&mut cmd);
         cmd.spawn().map(|_| ()).map_err(|e| format!("{program}: {e}"))
     }
@@ -169,16 +162,15 @@ impl Host for RealHost {
         std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
     }
     fn now(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
     }
 }
 
 /// Windows-Werkzeuge wie `wsl.exe -l` schreiben UTF-16; alles andere ist UTF-8.
 pub fn decode(bytes: &[u8]) -> String {
-    let looks_utf16 = bytes.len() >= 2 && bytes.len() % 2 == 0 && bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count() * 2 > bytes.len() / 2;
+    let looks_utf16 = bytes.len() >= 2
+        && bytes.len().is_multiple_of(2)
+        && bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count() * 2 > bytes.len() / 2;
     if looks_utf16 {
         let units: Vec<u16> = bytes.chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
         return String::from_utf16_lossy(&units).trim_start_matches('\u{feff}').to_string();

@@ -174,7 +174,12 @@ fn scan_installed(host: &dyn Host) -> Vec<Engine> {
             add(
                 &mut out,
                 Engine::Podman,
-                any(&[s("/opt/podman/bin/podman"), s("/opt/homebrew/bin/podman"), s("/usr/local/bin/podman"), s("/Applications/Podman Desktop.app")]),
+                any(&[
+                    s("/opt/podman/bin/podman"),
+                    s("/opt/homebrew/bin/podman"),
+                    s("/usr/local/bin/podman"),
+                    s("/Applications/Podman Desktop.app"),
+                ]),
             );
             let app = out.iter().any(|e| matches!(e, Engine::DockerDesktop | Engine::OrbStack | Engine::RancherDesktop));
             add(&mut out, Engine::HomebrewDocker, !app && any(&[s("/opt/homebrew/bin/docker")]));
@@ -182,20 +187,24 @@ fn scan_installed(host: &dyn Host) -> Vec<Engine> {
         Os::Windows => {
             let pf = host.env("ProgramFiles").unwrap_or_else(|| s("C:\\Program Files"));
             let la = host.env("LOCALAPPDATA").unwrap_or_else(|| join(Os::Windows, &[&home, "AppData\\Local"]));
-            let reg = host
-                .run("reg", &args(&["query", "HKLM\\SOFTWARE\\Docker Inc.\\Docker Desktop"]))
-                .map(|o| o.success())
-                .unwrap_or(false);
+            let reg =
+                host.run("reg", &args(&["query", "HKLM\\SOFTWARE\\Docker Inc.\\Docker Desktop"])).map(|o| o.success()).unwrap_or(false);
             add(&mut out, Engine::DockerDesktop, reg || any(&[join(Os::Windows, &[&pf, "Docker\\Docker\\Docker Desktop.exe"])]));
             add(
                 &mut out,
                 Engine::RancherDesktop,
-                any(&[join(Os::Windows, &[&pf, "Rancher Desktop\\Rancher Desktop.exe"]), join(Os::Windows, &[&la, "Programs\\Rancher Desktop\\Rancher Desktop.exe"])]),
+                any(&[
+                    join(Os::Windows, &[&pf, "Rancher Desktop\\Rancher Desktop.exe"]),
+                    join(Os::Windows, &[&la, "Programs\\Rancher Desktop\\Rancher Desktop.exe"]),
+                ]),
             );
             add(
                 &mut out,
                 Engine::Podman,
-                any(&[join(Os::Windows, &[&pf, "RedHat\\Podman\\podman.exe"]), join(Os::Windows, &[&la, "Programs\\Podman Desktop\\Podman Desktop.exe"])]),
+                any(&[
+                    join(Os::Windows, &[&pf, "RedHat\\Podman\\podman.exe"]),
+                    join(Os::Windows, &[&la, "Programs\\Podman Desktop\\Podman Desktop.exe"]),
+                ]),
             );
             // Eigene Engine in WSL nur suchen, wenn sonst nichts da ist: sie wäre der einzige Grund, nicht zu holen.
             if out.is_empty() && wsl_engine(host) {
@@ -214,16 +223,11 @@ fn wsl_engine(host: &dyn Host) -> bool {
         return false;
     }
     let skip = ["docker-desktop", "docker-desktop-data", "rancher-desktop", "rancher-desktop-data", "podman-machine-default"];
-    out.stdout
-        .replace('\0', "")
-        .lines()
-        .map(|l| l.trim())
-        .filter(|d| !d.is_empty() && !skip.contains(d))
-        .any(|d| {
-            host.run("wsl.exe", &args(&["--distribution", d, "--exec", "sh", "-c", "command -v dockerd"]))
-                .map(|o| o.success() && !o.stdout.trim().is_empty())
-                .unwrap_or(false)
-        })
+    out.stdout.replace('\0', "").lines().map(|l| l.trim()).filter(|d| !d.is_empty() && !skip.contains(d)).any(|d| {
+        host.run("wsl.exe", &args(&["--distribution", d, "--exec", "sh", "-c", "command -v dockerd"]))
+            .map(|o| o.success() && !o.stdout.trim().is_empty())
+            .unwrap_or(false)
+    })
 }
 
 /// Der Docker-Befehl als fester Pfad: Eine Mac-App sieht den PATH der Kommandozeile nicht.
@@ -399,17 +403,15 @@ mod tests {
     fn version_json(api: &str) -> String {
         format!(r#"{{"Client":{{"Version":"27.3.1"}},"Server":{{"Version":"27.3.1","ApiVersion":"{api}"}}}}"#)
     }
-    const DAEMON_DOWN: &str = "Cannot connect to the Docker daemon at unix:///Users/erika/.docker/run/docker.sock. Is the docker daemon running?";
+    const DAEMON_DOWN: &str =
+        "Cannot connect to the Docker daemon at unix:///Users/erika/.docker/run/docker.sock. Is the docker daemon running?";
 
     /// Befehl + Kontext antworten wie ein echtes Docker; `up` = Daemon läuft.
     fn with_cli(h: FakeHost, bin: &str, ctx: &str, endpoint: &str, up: Option<(&str, &str, u64, u32, &str)>) -> FakeHost {
         let h = h
             .with_path(bin)
             .on(&format!("{bin} context show"), CmdOut::ok(&format!("{ctx}\n")))
-            .on(
-                &format!("{bin} context inspect {ctx} --format {{{{.Endpoints.docker.Host}}}}"),
-                CmdOut::ok(&format!("{endpoint}\n")),
-            );
+            .on(&format!("{bin} context inspect {ctx} --format {{{{.Endpoints.docker.Host}}}}"), CmdOut::ok(&format!("{endpoint}\n")));
         match up {
             None => h
                 .on(&format!("{bin} --context {ctx} info --format {{{{json .}}}}"), CmdOut::fail(1, DAEMON_DOWN))
@@ -423,10 +425,17 @@ mod tests {
 
     fn mac_dd_running(api: &str, mem_gib: u64, stats: &str) -> FakeHost {
         let h = FakeHost::mac().with_path("/Applications/Docker.app");
-        with_cli(h, DD_CLI, "desktop-linux", "unix:///Users/erika/.docker/run/docker.sock", Some(("Docker Desktop", api, mem_gib, 3, stats)))
+        with_cli(
+            h,
+            DD_CLI,
+            "desktop-linux",
+            "unix:///Users/erika/.docker/run/docker.sock",
+            Some(("Docker Desktop", api, mem_gib, 3, stats)),
+        )
     }
 
-    const STATS_3: &str = "paperless-webserver-1|612.5MiB / 7.654GiB\npaperless-broker-1|9.2MiB / 7.654GiB\npaperless-db-1|48MiB / 7.654GiB\n";
+    const STATS_3: &str =
+        "paperless-webserver-1|612.5MiB / 7.654GiB\npaperless-broker-1|9.2MiB / 7.654GiB\npaperless-db-1|48MiB / 7.654GiB\n";
 
     fn assert_never_installs(f: &Finding) {
         assert_ne!(f.verdict, Verdict::Missing, "Fund {:?} darf nie als „fehlt“ gelten", f.installed);
@@ -501,7 +510,13 @@ mod tests {
     #[test]
     fn mac_orbstack_running_is_reused_untested() {
         let h = FakeHost::mac().with_path("/Applications/OrbStack.app");
-        let h = with_cli(h, "/Users/erika/.orbstack/bin/docker", "orbstack", "unix:///Users/erika/.orbstack/run/docker.sock", Some(("OrbStack", "1.47", 8, 1, "")));
+        let h = with_cli(
+            h,
+            "/Users/erika/.orbstack/bin/docker",
+            "orbstack",
+            "unix:///Users/erika/.orbstack/run/docker.sock",
+            Some(("OrbStack", "1.47", 8, 1, "")),
+        );
         let f = detect(&h);
         assert_eq!(f.verdict, Verdict::Ready { engine: Engine::OrbStack, tested: false, containers_running: 1 });
     }
@@ -516,7 +531,13 @@ mod tests {
     #[test]
     fn mac_rancher_running_is_reused() {
         let h = FakeHost::mac().with_path("/Applications/Rancher Desktop.app");
-        let h = with_cli(h, "/Users/erika/.rd/bin/docker", "rancher-desktop", "unix:///Users/erika/.rd/docker.sock", Some(("Rancher Desktop", "1.46", 8, 0, "")));
+        let h = with_cli(
+            h,
+            "/Users/erika/.rd/bin/docker",
+            "rancher-desktop",
+            "unix:///Users/erika/.rd/docker.sock",
+            Some(("Rancher Desktop", "1.46", 8, 0, "")),
+        );
         let f = detect(&h);
         assert_eq!(f.verdict, Verdict::Ready { engine: Engine::RancherDesktop, tested: false, containers_running: 0 });
     }
@@ -530,7 +551,13 @@ mod tests {
     #[test]
     fn mac_colima_running_is_unsupported() {
         let h = FakeHost::mac().with_path("/opt/homebrew/bin/colima");
-        let h = with_cli(h, "/opt/homebrew/bin/docker", "colima", "unix:///Users/erika/.colima/default/docker.sock", Some(("Ubuntu 24.04 LTS", "1.47", 8, 2, "")));
+        let h = with_cli(
+            h,
+            "/opt/homebrew/bin/docker",
+            "colima",
+            "unix:///Users/erika/.colima/default/docker.sock",
+            Some(("Ubuntu 24.04 LTS", "1.47", 8, 2, "")),
+        );
         let f = detect(&h);
         assert_eq!(f.verdict, Verdict::Unsupported { engine: Engine::Colima });
     }
@@ -578,7 +605,8 @@ mod tests {
     fn mac_desktop_installed_but_active_context_is_colima() {
         // Docker Desktop ist da, benutzt wird aber Colima: nichts umstellen, Hilfe zeigen.
         let h = FakeHost::mac().with_path("/Applications/Docker.app").with_path("/opt/homebrew/bin/colima");
-        let h = with_cli(h, DD_CLI, "colima", "unix:///Users/erika/.colima/default/docker.sock", Some(("Ubuntu 24.04 LTS", "1.47", 8, 2, "")));
+        let h =
+            with_cli(h, DD_CLI, "colima", "unix:///Users/erika/.colima/default/docker.sock", Some(("Ubuntu 24.04 LTS", "1.47", 8, 2, "")));
         let f = detect(&h);
         assert_eq!(f.verdict, Verdict::Unsupported { engine: Engine::Colima });
         assert!(f.installed.contains(&Engine::DockerDesktop) && f.installed.contains(&Engine::Colima));
@@ -590,7 +618,11 @@ mod tests {
         detect(&h);
         let calls = h.calls.borrow().clone();
         for c in &calls {
-            let ok = c.contains(" context show") || c.contains(" context inspect ") || c.contains(" info ") || c.contains(" version ") || c.contains(" stats --no-stream");
+            let ok = c.contains(" context show")
+                || c.contains(" context inspect ")
+                || c.contains(" info ")
+                || c.contains(" version ")
+                || c.contains(" stats --no-stream");
             assert!(ok, "Erkennung darf nur lesen: {c}");
         }
         assert!(h.spawned.borrow().is_empty());
@@ -630,7 +662,13 @@ mod tests {
     #[test]
     fn win_desktop_running_is_reused() {
         let h = win().with_path(WIN_DD_EXE);
-        let h = with_cli(h, WIN_DD_CLI, "desktop-linux", "npipe:////./pipe/dockerDesktopLinuxEngine", Some(("Docker Desktop", "1.47", 8, 3, STATS_3)));
+        let h = with_cli(
+            h,
+            WIN_DD_CLI,
+            "desktop-linux",
+            "npipe:////./pipe/dockerDesktopLinuxEngine",
+            Some(("Docker Desktop", "1.47", 8, 3, STATS_3)),
+        );
         let f = detect(&h);
         assert_eq!(f.verdict, Verdict::Ready { engine: Engine::DockerDesktop, tested: true, containers_running: 3 });
         assert_eq!(f.docker.unwrap().context, "desktop-linux");

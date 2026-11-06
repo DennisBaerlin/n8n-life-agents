@@ -20,13 +20,24 @@ pub enum Step {
     /// Docker war aus und wurde von der App gestartet.
     DockerStarted,
     /// Bestandsaufnahme fremder Objekte (Datei neben dem Journal).
-    Inventory { file: String },
+    Inventory {
+        file: String,
+    },
     /// Images, die vor dem Start fehlten und darum von uns geladen werden.
-    ImagesPulled { refs: Vec<String> },
+    ImagesPulled {
+        refs: Vec<String>,
+    },
     /// `anchor` + `master` gestartet.
-    CoreStarted { compose_file: String, env_file: String },
-    PowerChanged { backup: PowerBackup },
-    AutostartInstalled { entry: Autostart },
+    CoreStarted {
+        compose_file: String,
+        env_file: String,
+    },
+    PowerChanged {
+        backup: PowerBackup,
+    },
+    AutostartInstalled {
+        entry: Autostart,
+    },
     /// Der Wizard meldet „fertig“; ab hier startet die App nur noch.
     SetupComplete,
 }
@@ -54,7 +65,9 @@ pub enum Status {
     /// Noch nie etwas geändert.
     Fresh,
     /// Ein Schritt begonnen, aber nicht beendet: fortsetzen oder zurück.
-    Interrupted { step: Step },
+    Interrupted {
+        step: Step,
+    },
     /// Einrichtung läuft noch (Wizard offen), nichts abgebrochen.
     InProgress,
     Complete,
@@ -67,10 +80,19 @@ pub enum Status {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Undo {
     Nothing,
-    ComposeDown { compose_file: String, env_file: String },
-    RemoveImages { refs: Vec<String> },
-    RestorePower { backup: PowerBackup },
-    RemoveAutostart { entry: Autostart },
+    ComposeDown {
+        compose_file: String,
+        env_file: String,
+    },
+    RemoveImages {
+        refs: Vec<String>,
+    },
+    RestorePower {
+        backup: PowerBackup,
+    },
+    RemoveAutostart {
+        entry: Autostart,
+    },
     /// Docker Desktop selbst wird nie still entfernt: getrennte Frage (Nr. 17).
     AskRemoveDocker,
 }
@@ -80,7 +102,9 @@ pub fn undo_of(step: &Step) -> Undo {
         Step::DockerInstalled => Undo::AskRemoveDocker,
         Step::DockerStarted | Step::Inventory { .. } | Step::SetupComplete => Undo::Nothing,
         Step::ImagesPulled { refs } => Undo::RemoveImages { refs: refs.clone() },
-        Step::CoreStarted { compose_file, env_file } => Undo::ComposeDown { compose_file: compose_file.clone(), env_file: env_file.clone() },
+        Step::CoreStarted { compose_file, env_file } => {
+            Undo::ComposeDown { compose_file: compose_file.clone(), env_file: env_file.clone() }
+        }
         Step::PowerChanged { backup } => Undo::RestorePower { backup: backup.clone() },
         Step::AutostartInstalled { entry } => Undo::RemoveAutostart { entry: entry.clone() },
     }
@@ -242,7 +266,9 @@ mod tests {
             Step::ImagesPulled { refs: vec!["busybox@sha256:aa".into(), "ghcr.io/example/master@sha256:bb".into()] },
             Step::CoreStarted { compose_file: "/c/compose.yml".into(), env_file: "/c/app.env".into() },
             Step::PowerChanged { backup: PowerBackup::Mac { ac: BTreeMap::from([("sleep".to_string(), "1".to_string())]) } },
-            Step::AutostartInstalled { entry: Autostart::MacLaunchAgent { path: "/Users/erika/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist".into() } },
+            Step::AutostartInstalled {
+                entry: Autostart::MacLaunchAgent { path: "/Users/erika/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist".into() },
+            },
             Step::SetupComplete,
         ]
     }
@@ -294,9 +320,15 @@ mod tests {
         for stop in 1..=steps.len() {
             for interrupted in [false, true] {
                 let h = FakeHost::mac()
-                    .on("docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down", CmdOut::ok(""))
+                    .on(
+                        "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+                        CmdOut::ok(""),
+                    )
                     .on("docker --context desktop-linux image rm busybox@sha256:aa", CmdOut::ok(""))
-                    .on("docker --context desktop-linux image rm ghcr.io/example/master@sha256:bb", CmdOut::fail(1, "image is being used by stopped container"))
+                    .on(
+                        "docker --context desktop-linux image rm ghcr.io/example/master@sha256:bb",
+                        CmdOut::fail(1, "image is being used by stopped container"),
+                    )
                     .on("/usr/bin/osascript -e do shell script \"/usr/bin/pmset -c sleep 1\" with administrator privileges", CmdOut::ok(""))
                     .on("/usr/bin/pmset -g custom", CmdOut::ok("AC Power:\n sleep                1\n"))
                     .with_path("/Users/erika/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist");
@@ -314,10 +346,22 @@ mod tests {
                 rollback(&h, &mut j, Some(&docker())).unwrap_or_else(|e| panic!("Stufe {stop}: {e}"));
                 let reached: Vec<&Step> = steps.iter().take(stop).collect();
                 let has = |f: fn(&Step) -> bool| reached.iter().any(|s| f(s));
-                assert_eq!(h.called("docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down"), has(|s| matches!(s, Step::CoreStarted { .. })), "Stufe {stop}");
-                assert_eq!(h.calls_starting("docker --context desktop-linux image rm").len(), if has(|s| matches!(s, Step::ImagesPulled { .. })) { 2 } else { 0 });
+                assert_eq!(
+                    h.called(
+                        "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down"
+                    ),
+                    has(|s| matches!(s, Step::CoreStarted { .. })),
+                    "Stufe {stop}"
+                );
+                assert_eq!(
+                    h.calls_starting("docker --context desktop-linux image rm").len(),
+                    if has(|s| matches!(s, Step::ImagesPulled { .. })) { 2 } else { 0 }
+                );
                 assert_eq!(h.calls_starting("/usr/bin/osascript").len(), usize::from(has(|s| matches!(s, Step::PowerChanged { .. }))));
-                assert_eq!(h.exists("/Users/erika/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist"), !has(|s| matches!(s, Step::AutostartInstalled { .. })));
+                assert_eq!(
+                    h.exists("/Users/erika/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist"),
+                    !has(|s| matches!(s, Step::AutostartInstalled { .. }))
+                );
                 // Docker selbst wird nie still entfernt; der Eintrag bleibt für die eigene Frage stehen.
                 let left: Vec<&Entry> = j.entries.iter().filter(|e| e.state != State::Undone).collect();
                 assert!(left.iter().all(|e| e.step == Step::DockerInstalled), "Stufe {stop}: {left:?}");
@@ -345,7 +389,10 @@ mod tests {
         }
         assert!(rollback(&h, &mut j, Some(&docker())).is_err());
         assert_eq!(j.status(), Status::InProgress, "nichts als zurückgenommen markiert");
-        h.set("docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down", CmdOut::ok(""));
+        h.set(
+            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+            CmdOut::ok(""),
+        );
         rollback(&h, &mut j, Some(&docker())).unwrap();
         assert_eq!(j.status(), Status::RolledBack);
     }

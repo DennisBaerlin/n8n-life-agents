@@ -34,17 +34,36 @@ pub struct Snapshot {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Deviation {
-    ContainerGone { name: String },
+    ContainerGone {
+        name: String,
+    },
     /// Neu gestartet, angehalten, anderes Image oder neuer Neustart-Zähler.
-    ContainerChanged { name: String, field: String },
-    ContainerNew { name: String },
-    VolumeGone { name: String },
-    VolumeNew { name: String },
-    NetworkGone { name: String },
-    NetworkNew { name: String },
+    ContainerChanged {
+        name: String,
+        field: String,
+    },
+    ContainerNew {
+        name: String,
+    },
+    VolumeGone {
+        name: String,
+    },
+    VolumeNew {
+        name: String,
+    },
+    NetworkGone {
+        name: String,
+    },
+    NetworkNew {
+        name: String,
+    },
     /// Image fehlt oder sein Tag zeigt jetzt auf ein anderes Image (Einwand 30).
-    ImageGoneOrMoved { image: String },
-    PowerChanged { key: String },
+    ImageGoneOrMoved {
+        image: String,
+    },
+    PowerChanged {
+        key: String,
+    },
 }
 
 fn lines(host: &dyn Host, d: &Docker, call: DockerCall) -> Result<Vec<String>, String> {
@@ -91,7 +110,8 @@ pub fn take(host: &dyn Host, d: &Docker) -> Result<Snapshot, String> {
         })
         .collect();
     volumes.sort();
-    let mut networks: Vec<String> = lines(host, d, DockerCall::NetworkList)?.into_iter().filter(|l| !is_our_name(l.split('|').next().unwrap_or(""))).collect();
+    let mut networks: Vec<String> =
+        lines(host, d, DockerCall::NetworkList)?.into_iter().filter(|l| !is_our_name(l.split('|').next().unwrap_or(""))).collect();
     networks.sort();
     let mut images = lines(host, d, DockerCall::ImageList)?;
     images.sort();
@@ -172,9 +192,13 @@ pub fn running_programs(s: &Snapshot) -> Vec<String> {
 pub enum OwnObjects {
     None,
     /// Von einer früheren Einrichtung (tragen unser Label): Journal entscheidet über Fortsetzen oder Rückweg.
-    Ours { names: Vec<String> },
+    Ours {
+        names: Vec<String>,
+    },
     /// Tragen unseren Namen, aber nicht unser Label: gehören jemand anderem → Abbruch, nichts überschreiben.
-    Foreign { names: Vec<String> },
+    Foreign {
+        names: Vec<String>,
+    },
 }
 
 pub fn own_objects(host: &dyn Host, d: &Docker) -> Result<OwnObjects, String> {
@@ -235,7 +259,10 @@ mod tests {
     #[test]
     fn snapshot_excludes_our_objects() {
         let s = take(&host_with(PAPERLESS, VOLS, IMGS), &d()).unwrap();
-        assert_eq!(s.containers.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["old-test", "paperless-broker-1", "paperless-webserver-1"]);
+        assert_eq!(
+            s.containers.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["old-test", "paperless-broker-1", "paperless-webserver-1"]
+        );
         assert_eq!(s.volumes, vec!["paperless_data"]);
         assert_eq!(s.networks, vec!["bridge|n1", "paperless_default|n2"]);
         assert_eq!(running_programs(&s), vec!["paperless"]);
@@ -263,11 +290,22 @@ mod tests {
     #[test]
     fn missing_volume_and_moved_tag_are_reported() {
         let before = take(&host_with(PAPERLESS, VOLS, IMGS), &d()).unwrap();
-        let after = take(&host_with(PAPERLESS, "lifeagents_pgdata|io.lifeagents.install=1\n", "ghcr.io/paperless-ngx/paperless-ngx:2.13|sha256:21\nredis:7|sha256:ff\nbusybox:1.37|sha256:bb\n"), &d()).unwrap();
+        let after = take(
+            &host_with(
+                PAPERLESS,
+                "lifeagents_pgdata|io.lifeagents.install=1\n",
+                "ghcr.io/paperless-ngx/paperless-ngx:2.13|sha256:21\nredis:7|sha256:ff\nbusybox:1.37|sha256:bb\n",
+            ),
+            &d(),
+        )
+        .unwrap();
         let dev = compare(&before, &after, &[]);
         assert!(dev.contains(&Deviation::VolumeGone { name: "paperless_data".into() }));
         assert!(dev.contains(&Deviation::ImageGoneOrMoved { image: "redis:7".into() }));
-        assert!(!dev.iter().any(|x| matches!(x, Deviation::ImageGoneOrMoved { image } if image.starts_with("busybox"))), "neue Images sind erlaubt");
+        assert!(
+            !dev.iter().any(|x| matches!(x, Deviation::ImageGoneOrMoved { image } if image.starts_with("busybox"))),
+            "neue Images sind erlaubt"
+        );
     }
 
     #[test]
@@ -287,9 +325,15 @@ mod tests {
             .on(&cmd(DockerCall::OurVolumes), CmdOut::ok(""));
         assert_eq!(own_objects(&h, &d()).unwrap(), OwnObjects::Foreign { names: vec!["lifeagents-db".into()] });
         let h = FakeHost::mac()
-            .on(&cmd(DockerCall::OurContainers), CmdOut::ok("lifeagents-master|com.docker.compose.project=lifeagents,io.lifeagents.install=1\n"))
+            .on(
+                &cmd(DockerCall::OurContainers),
+                CmdOut::ok("lifeagents-master|com.docker.compose.project=lifeagents,io.lifeagents.install=1\n"),
+            )
             .on(&cmd(DockerCall::OurVolumes), CmdOut::ok("lifeagents_pgdata|io.lifeagents.install=1\nmy-lifeagents_x|\n"));
-        assert_eq!(own_objects(&h, &d()).unwrap(), OwnObjects::Ours { names: vec!["lifeagents-master".into(), "lifeagents_pgdata".into()] });
+        assert_eq!(
+            own_objects(&h, &d()).unwrap(),
+            OwnObjects::Ours { names: vec!["lifeagents-master".into(), "lifeagents_pgdata".into()] }
+        );
     }
 
     #[test]

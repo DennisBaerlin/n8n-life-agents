@@ -6,14 +6,19 @@
 
 pub mod admin;
 pub mod autostart;
+pub mod changes;
 pub mod contract;
+pub mod core_start;
 pub mod detect;
 pub mod docker;
+pub mod docker_desktop;
 pub mod host;
 pub mod inventory;
 pub mod journal;
 pub mod power;
+pub mod report;
 pub mod system;
+pub mod uninstall;
 
 /// Alle Quellen der Bibliothek, für Tests, die über den ganzen Code wachen (z. B. keine Sicherheits-Einstellung).
 #[cfg(test)]
@@ -21,15 +26,20 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
     vec![
         ("admin.rs", include_str!("admin.rs")),
         ("autostart.rs", include_str!("autostart.rs")),
+        ("changes.rs", include_str!("changes.rs")),
         ("contract.rs", include_str!("contract.rs")),
+        ("core_start.rs", include_str!("core_start.rs")),
         ("detect.rs", include_str!("detect.rs")),
         ("docker.rs", include_str!("docker.rs")),
+        ("docker_desktop.rs", include_str!("docker_desktop.rs")),
         ("host.rs", include_str!("host.rs")),
         ("inventory.rs", include_str!("inventory.rs")),
         ("journal.rs", include_str!("journal.rs")),
         ("lib.rs", include_str!("lib.rs")),
         ("power.rs", include_str!("power.rs")),
+        ("report.rs", include_str!("report.rs")),
         ("system.rs", include_str!("system.rs")),
+        ("uninstall.rs", include_str!("uninstall.rs")),
     ]
 }
 

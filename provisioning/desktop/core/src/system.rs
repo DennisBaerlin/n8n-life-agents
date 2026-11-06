@@ -140,7 +140,15 @@ fn check_windows(host: &dyn Host) -> SystemReport {
         check("power-source", !flag("on_battery"), false, if flag("on_battery") { "battery" } else { "ac" }, "ac"),
     ];
     let caption = v.get("caption").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    SystemReport { os: Os::Windows, arch: host.arch(), os_version: format!("{caption} ({build})"), ram_gb, free_gb, laptop: flag("battery"), checks }
+    SystemReport {
+        os: Os::Windows,
+        arch: host.arch(),
+        os_version: format!("{caption} ({build})"),
+        ram_gb,
+        free_gb,
+        laptop: flag("battery"),
+        checks,
+    }
 }
 
 /// Wo läuft die App gerade? Mac: Aus der eingehängten DMG oder verschoben (App Translocation) heißt
@@ -181,7 +189,10 @@ mod tests {
             .on("/usr/sbin/sysctl -n kern.hv_support", CmdOut::ok("1\n"))
             .on("/usr/sbin/sysctl -n hw.optional.arm64", CmdOut::ok("1\n"))
             .on("/usr/bin/pmset -g batt", CmdOut::ok(batt))
-            .on("/usr/bin/tmutil status", CmdOut::ok("Backup session status:\n{\n    ClientID = \"com.apple.backupd\";\n    Running = 0;\n}\n"))
+            .on(
+                "/usr/bin/tmutil status",
+                CmdOut::ok("Backup session status:\n{\n    ClientID = \"com.apple.backupd\";\n    Running = 0;\n}\n"),
+            )
     }
     const MINI: &str = "Now drawing from 'AC Power'\n";
     const BOOK_BATT: &str = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1234)\t80%; discharging\n";

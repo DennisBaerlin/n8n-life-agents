@@ -31,6 +31,9 @@
 --     handelbaren Bloecke auf deren Summe; der Ist-Nenner sind nur handelbare Klassen MIT Plan-Block (Cash als
 --     freies Cash). net_worth-Basis zaehlt die Immobilie (symmetrisch mit ihrem Kredit). Sparziel ohne Topf ->
 --     savings_goal_unmeasurable statt savings_pace.
+--   Kurs-Luecke (2026-11-06): Ziel mit has_fx_gap und Rueckstand -> kein savings_pace (fn_savings_goal_pace 'unknown');
+--     data_quality nennt die aktiven Konten mit einer Waehrung ohne Kurs (dq_null_rate {account} | dq_null_rate_many
+--     {accounts}, Wahl nach Anzahl in der DB); Digest digest_goal_line_fx_gap und goal_reached_fx_gap sagen „mindestens“.
 --   Monats-Check (WP-E): account_coverage:<konto> = Deckungs-Vorschau (finance.fn_account_outlook) unterschreitet
 --     den Puffer finance.coverage_buffer_eur, nur Konten mit Kontoauszug; recurring_missing:<ketten-kopf> = die
 --     juengsten zwei Termine einer laufenden Dauerauftrags-Kette hat ein Kontoauszug als fehlend festgestellt.
@@ -88,7 +91,9 @@ DECLARE
     v_null_rate    jsonb := '[]'::jsonb;   -- WP-3c: in Nutzung befindliche Fremdwaehrungen OHNE FX-Kurs
     v_null_tag_cnt int := 0;
     v_null_price_cnt int := 0;
-    v_null_rate_cnt int := 0;
+    v_null_rate_codes text[] := '{}';   -- dieselben Codes als Array (Abgleich je Konto)
+    v_null_rate_accts text[] := '{}';   -- 2026-11-06: Konten/Depots, die einen Betrag in einer Waehrung ohne Kurs tragen
+    v_null_rate_latch jsonb := '[]'::jsonb;   -- je solches Konto ein Latch (neues Konto ohne Kurs meldet erneut)
     v_price_asof   date;
     v_price_stale  boolean := false;
     v_blk          jsonb;
@@ -157,6 +162,8 @@ BEGIN
     -- hier nur die Meldung. pace_drift_pp IS NOT NULL == (Zieldatum nach created_at) == der frueheren v_total>0-Guard.
     -- "hinter Plan" (Toleranz core/advisor/drift_pace_pp) entscheidet finance.fn_savings_goal_pace — dieselbe Regel wie die
     -- Ampel der Mini-App (2026-10-28). Abfrage bewusst unveraendert (Reihenfolge der Alerts), nur die Bedingung wechselt.
+    -- 'unknown' (Kurs-Luecke, 2026-11-06) meldet hier nie: der Rueckstand ist nicht beurteilbar, die Luecke selbst
+    -- meldet der Daten-Hinweis (data_quality, dq_null_rate nennt das Konto) — einmal, gelatcht.
     FOR r IN
         SELECT p.name,
                COALESCE(p.progress_percent, 0)                      AS prog,
@@ -214,10 +221,17 @@ BEGIN
     -- current_amount >= target (nicht bei "hinter Plan"; das ist der Pace-Alert oben). Nicht bei einem Ziel, das allein
     -- durch Hand-Zuordnung gedeckt ist (earmarked_amount >= current_amount): die Karte der Zuordnung/Anlage hat die
     -- Deckung schon gemeldet, ein Morgen-Alert waere Rauschen (Sparziel-Zweckbindung 2026-10-27).
+    -- Kurs-Luecke (2026-11-06): der Stand ist eine Untergrenze -> „mindestens“ und die Konten ohne Kurs nennen
+    -- (goal_reached_fx_gap); „uebertroffen“ vs. „genau erreicht“ ist dann nicht entscheidbar.
     FOR r IN
         SELECT p.name,
                COALESCE(p.current_amount, 0) AS saved,
-               p.target_amount               AS target
+               p.target_amount               AS target,
+               p.has_fx_gap,
+               (SELECT string_agg(DISTINCT a.name, ', ' ORDER BY a.name)
+                  FROM finance.savings_goal_account_share s
+                  JOIN finance.accounts a ON a.id = s.account_id
+                 WHERE s.goal_id = p.id AND s.has_fx_gap) AS gap_accounts
         FROM finance.savings_goal_progress p
         WHERE p.status = 'active' AND p.target_amount > 0 AND COALESCE(p.current_amount, 0) >= p.target_amount
           AND COALESCE(p.current_amount, 0) > COALESCE(p.earmarked_amount, 0)
@@ -230,11 +244,15 @@ BEGIN
             'label',      r.name,
             'value',      round(r.saved, 2),
             'target',     round(r.target, 2),
-            'msg',        jsonb_build_array(core.fn_ui_tpl(
-                              CASE WHEN r.saved > r.target THEN 'finance.advisor.goal_exceeded'
-                                   ELSE 'finance.advisor.goal_reached' END,
-                              jsonb_build_object('name', r.name, 'saved', core.fn_ui_money(r.saved),
-                                                 'target', core.fn_ui_money(r.target)))));
+            'msg',        jsonb_build_array(CASE WHEN r.has_fx_gap AND r.gap_accounts IS NOT NULL
+                              THEN core.fn_ui_tpl('finance.advisor.goal_reached_fx_gap',
+                                       jsonb_build_object('name', r.name, 'saved', core.fn_ui_money(r.saved),
+                                                          'target', core.fn_ui_money(r.target), 'accounts', r.gap_accounts))
+                              ELSE core.fn_ui_tpl(
+                                       CASE WHEN r.saved > r.target THEN 'finance.advisor.goal_exceeded'
+                                            ELSE 'finance.advisor.goal_reached' END,
+                                       jsonb_build_object('name', r.name, 'saved', core.fn_ui_money(r.saved),
+                                                          'target', core.fn_ui_money(r.target))) END));
     END LOOP;
 
     -- ---------- (2) Notreserve (Ruecklage kind emergency_reserve, 2026-10-30) ----------
@@ -801,12 +819,34 @@ BEGIN
     -- Roll-up-Summen (Net-Worth/Reserve/Runway) ueberspringen den Betrag STILL -> Zwilling zu null_price:
     -- die Luecke wird sichtbar gemeldet statt still als 0 verbucht. real_estate/pension tragen keine currency
     -- (EUR by construction) -> nie hier. Loan/Festgeld/p2p sind ueber accounts.currency abgedeckt.
-    SELECT count(*)::int,
-           COALESCE(jsonb_agg(jsonb_build_object('currency', code)), '[]'::jsonb)
-    INTO v_null_rate_cnt, v_null_rate
+    SELECT COALESCE(array_agg(code ORDER BY code), '{}'),
+           COALESCE(jsonb_agg(jsonb_build_object('currency', code) ORDER BY code), '[]'::jsonb)
+    INTO v_null_rate_codes, v_null_rate
     FROM (SELECT ac.code FROM finance.fn_active_currencies() ac
           WHERE NOT EXISTS (SELECT 1 FROM finance.fx_rates fxr
                             WHERE fxr.base_currency = 'EUR' AND fxr.quote_currency = ac.code)) s;
+    -- 2026-11-06 (Laien-Pruefung): der Daten-Hinweis nennt das betroffene Konto statt des Waehrungscodes. Abgebildet
+    -- auf das tragende Konto: ein AKTIVES Konto mit dieser Kontowaehrung oder ein Depot mit Bestand (shares > 0),
+    -- dessen Positions-, Quote- oder juengste Kurswaehrung (dieselben Quellen wie fn_active_currencies) keinen Kurs
+    -- hat; dazu jedes Konto (auch geschlossen), auf dem ein aktives Sparziel einen Anteil ohne Kurs traegt
+    -- (savings_goal_account_share.has_fx_gap), damit jedes „mindestens“/unknown seinen Grund im Hinweis hat. Ein
+    -- geschlossenes Konto ohne Ziel-Anteil zaehlt nicht mehr. v_null_rate (Codes) bleibt das Rohfeld.
+    SELECT COALESCE(array_agg(a.name ORDER BY a.name), '{}'),
+           COALESCE(jsonb_agg('null_rate:' || a.id ORDER BY a.id), '[]'::jsonb)
+      INTO v_null_rate_accts, v_null_rate_latch
+      FROM finance.accounts a
+     WHERE (a.status = 'active'
+            AND (a.currency::text = ANY (v_null_rate_codes)
+                 OR EXISTS (SELECT 1 FROM finance.depot_holdings h
+                            LEFT JOIN LATERAL (SELECT mp.currency FROM finance.market_prices mp
+                                                WHERE mp.symbol = h.symbol ORDER BY mp.as_of DESC LIMIT 1) lp ON true
+                             WHERE h.account_id = a.id AND h.shares > 0
+                               AND (h.currency::text = ANY (v_null_rate_codes)
+                                    OR h.quote_currency::text = ANY (v_null_rate_codes)
+                                    OR lp.currency::text = ANY (v_null_rate_codes)))))
+        OR EXISTS (SELECT 1 FROM finance.savings_goal_account_share s
+                   JOIN finance.savings_goals g ON g.id = s.goal_id AND g.status = 'active'
+                    WHERE s.account_id = a.id AND s.has_fx_gap);
 
     -- price_as_of (juengster Kurs gehaltener Symbole) + Stale-Flag
     SELECT max(mp.as_of) INTO v_price_asof
@@ -885,7 +925,7 @@ BEGIN
     -- Digest listet sie zusaetzlich unbedingt (nicht-unterdrueckbar im Quartals-Review). Kurs-Luecken allein loesen den
     -- Alert NICHT aus (2026-10-27): die meldet agent.finance.cron_remind_missing_prices (sonst Doppel-Meldung); sie stehen
     -- nur mit im Text, wenn der Alert aus anderem Grund kommt.
-    IF v_null_tag_cnt > 0 OR v_null_rate_cnt > 0 OR jsonb_array_length(v_unmapped) > 0 THEN
+    IF v_null_tag_cnt > 0 OR cardinality(v_null_rate_accts) > 0 OR jsonb_array_length(v_unmapped) > 0 THEN
         v_dq_msg := jsonb_build_array(
             core.fn_ui_tpl('finance.advisor.dq_intro'),
             -- Namen (bis 5) statt nur Anzahl (2026-10-23); mehr -> eigener Text "und n weitere"
@@ -903,18 +943,21 @@ BEGIN
                                FROM jsonb_array_elements(v_null_price) WITH ORDINALITY t(e, ord) WHERE ord <= 5))) END,
             CASE WHEN v_null_price_cnt > 5 THEN core.fn_ui_tpl('finance.advisor.dq_null_price_more',
                  jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt - 5))) END,
-            CASE WHEN v_null_rate_cnt > 0 THEN core.fn_ui_tpl('finance.advisor.dq_null_rate',
-                 jsonb_build_object('n', core.fn_ui_num(v_null_rate_cnt))) END);
+            -- Einzahl/Mehrzahl waehlt die DB (kein „(en)“ im Text); Mehrzahl-Liste nur mit Komma (Anfuehrungszeichen je Sprache)
+            CASE WHEN cardinality(v_null_rate_accts) = 1 THEN core.fn_ui_tpl('finance.advisor.dq_null_rate',
+                     jsonb_build_object('account', v_null_rate_accts[1]))
+                 WHEN cardinality(v_null_rate_accts) > 1 THEN core.fn_ui_tpl('finance.advisor.dq_null_rate_many',
+                     jsonb_build_object('accounts', array_to_string(v_null_rate_accts, ', '))) END);
         v_alerts := v_alerts || jsonb_build_object(
             'metric_key', 'data_quality',
             'kind',       'data_quality',
             'label',      'data_quality',
-            'value',      v_null_tag_cnt + v_null_price_cnt + v_null_rate_cnt + jsonb_array_length(v_unmapped),
+            'value',      v_null_tag_cnt + v_null_price_cnt + cardinality(v_null_rate_accts) + jsonb_array_length(v_unmapped),
             'msg',        v_dq_msg,
             -- latch_keys (2026-10-23, Engine core.fn_advisor_review_evaluate von Session 6b): je ungetaggter Position
             -- ein Latch -> eine NEUE ungetaggte Position meldet erneut; ohne Engine-Unterstuetzung ignoriert
             'latch_keys', (SELECT COALESCE(jsonb_agg('null_tag:' || (e->>'holding_id')), '[]'::jsonb)
-                           FROM jsonb_array_elements(v_null_tag) e));
+                           FROM jsonb_array_elements(v_null_tag) e) || v_null_rate_latch);
     END IF;
 
     -- ---------- Voll-Digest (Quartals-Review) ----------
@@ -976,6 +1019,12 @@ BEGIN
                          THEN core.fn_ui_tpl('finance.advisor.digest_maintenance_line', jsonb_build_object(
                                   'name', sgp.name, 'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),
                                   'rate', core.fn_ui_money(m.running_monthly_eur)))
+                         -- Kurs-Luecke (2026-11-06): Stand ist Untergrenze -> „mindestens“, ohne Prozent und ohne Zusatz
+                         -- (den Grund nennt der Daten-Hinweis im selben Digest, v_dq_msg unten)
+                         WHEN sgp.progress_measurable AND sgp.has_fx_gap
+                         THEN core.fn_ui_tpl('finance.advisor.digest_goal_line_fx_gap', jsonb_build_object(
+                                  'name', sgp.name, 'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),
+                                  'target', core.fn_ui_money(sgp.target_amount)))
                          WHEN sgp.progress_measurable
                          THEN core.fn_ui_tpl('finance.advisor.digest_goal_line', jsonb_build_object(
                                   'name', sgp.name, 'pct', core.fn_ui_num(COALESCE(sgp.progress_percent, 0)),

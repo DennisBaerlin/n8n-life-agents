@@ -1040,6 +1040,108 @@ END $$;
 ROLLBACK TO SAVEPOINT paket3;
 
 -- ============================================================
+-- (G3) Kurs-Luecke im Sparziel (2026-11-06): gemessener Stand = Untergrenze.
+--   kein savings_pace bei Rueckstand + Luecke (fn_savings_goal_pace 'unknown'); der Daten-Hinweis nennt das
+--   aktive Konto (Einzahl dq_null_rate {account}, Mehrzahl dq_null_rate_many {accounts}), ein geschlossenes Konto
+--   allein meldet nichts; Digest-Zeile „mindestens“ (digest_goal_line_fx_gap); erreichtes Ziel mit Luecke ->
+--   goal_reached_fx_gap mit dem Kontonamen. Gegenprobe mit CHF-Kurs: alles wie ohne Luecke.
+-- ============================================================
+SAVEPOINT fxgap;
+UPDATE finance.recurring_payments SET status = 'paused';
+UPDATE finance.savings_goals SET status = 'completed';
+DO $$
+DECLARE
+  r jsonb; v_eur int; v_chf int; v_chf2 int; v_alt int; v_reise int; v_voll int;
+BEGIN
+  -- kontrollierte Erwartung: jede andere Waehrung in Nutzung bekommt einen Kurs, CHF hat keinen
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of)
+    SELECT 'EUR', ac.code, 1.5, current_date FROM finance.fn_active_currencies() ac
+     WHERE EXISTS (SELECT 1 FROM finance.currencies c WHERE c.code = ac.code)
+    ON CONFLICT DO NOTHING;
+  PERFORM finance.fn_ensure_currency('CHF');
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF' OR base_currency = 'CHF';
+
+  -- geschlossenes CHF-Konto allein -> kein Daten-Hinweis zum Wechselkurs
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__fx_closed__', 'cash', 'CHF', 'closed');
+  r := finance.fn_advisor_review('finance');
+  IF (r->'alerts')::text LIKE '%finance.advisor.dq_null_rate%' THEN
+    RAISE EXCEPTION 'FAIL [G3 closed]: geschlossenes Konto darf keinen Wechselkurs-Hinweis ausloesen (alerts=%)', r->'alerts'; END IF;
+
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__fx_eur__', 'cash', 'EUR', 'active') RETURNING id INTO v_eur;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__fx_chf__', 'cash', 'CHF', 'active') RETURNING id INTO v_chf;
+  -- 365 Tage Laufzeit, 100 vergangen -> erwartet 27,4 %; gemessen 5 % (nur der EUR-Anteil) -> Drift 22,4 > 10
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at)
+    VALUES ('__fx_reise__', 10000, current_date + 265, now() - interval '100 days') RETURNING id INTO v_reise;
+  -- erreicht schon ohne den CHF-Anteil
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at)
+    VALUES ('__fx_voll__', 1000, current_date + 265, now() - interval '100 days') RETURNING id INTO v_voll;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
+    (v_eur, 500, current_date - 5, 'transfer', v_reise, gen_random_uuid()),
+    (v_chf, 400, current_date - 5, 'transfer', v_reise, gen_random_uuid()),
+    (v_eur, 1100, current_date - 5, 'transfer', v_voll, gen_random_uuid()),
+    (v_chf, 50, current_date - 5, 'transfer', v_voll, gen_random_uuid());
+  IF finance.fn_savings_goal_pace(v_reise) IS DISTINCT FROM 'unknown' THEN
+    RAISE EXCEPTION 'FAIL [G3 setup]: Ziel mit Luecke + Rueckstand muss unknown sein, got %', finance.fn_savings_goal_pace(v_reise); END IF;
+
+  r := finance.fn_advisor_review('finance');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'savings_pace' AND a->>'label' = '__fx_reise__') THEN
+    RAISE EXCEPTION 'FAIL [G3 pace]: Ziel mit Kurs-Luecke darf nicht "hinter Plan" melden (alerts=%)', r->'alerts'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+                 WHERE a->>'metric_key' = 'data_quality'
+                   AND jsonb_path_exists(a->'msg', '$[*] ? (@.value == "finance.advisor.dq_null_rate" && @.params.account == "__fx_chf__")')) THEN
+    RAISE EXCEPTION 'FAIL [G3 dq one]: Daten-Hinweis nennt das Konto __fx_chf__ nicht (Einzahl) (alerts=%)', r->'alerts'; END IF;
+  IF NOT jsonb_path_exists(r->'digest'->'lines',
+         '$.** ? (@.value == "finance.advisor.digest_goal_line_fx_gap" && @.params.name == "__fx_reise__")') THEN
+    RAISE EXCEPTION 'FAIL [G3 digest]: Digest-Zeile „mindestens“ fuer __fx_reise__ fehlt (lines=%)', r->'digest'->'lines'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+                 WHERE a->>'metric_key' = 'savings_goal_reached:__fx_voll__'
+                   AND jsonb_path_exists(a->'msg', '$[*] ? (@.value == "finance.advisor.goal_reached_fx_gap" && @.params.accounts == "__fx_chf__")')) THEN
+    RAISE EXCEPTION 'FAIL [G3 reached]: erreichtes Ziel mit Luecke ohne „mindestens“ + Kontoname (alerts=%)', r->'alerts'; END IF;
+  RAISE NOTICE 'PASS [G3: Luecke -> kein savings_pace, Hinweis nennt das Konto, Digest „mindestens“, erreicht mit Kontoname]';
+
+  -- zweites aktives Konto ohne Kurs -> Mehrzahl, Namen sortiert, mit Komma
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__fx_zweit__', 'cash', 'CHF', 'active') RETURNING id INTO v_chf2;
+  r := finance.fn_advisor_review('finance');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+                 WHERE a->>'metric_key' = 'data_quality'
+                   AND jsonb_path_exists(a->'msg', '$[*] ? (@.value == "finance.advisor.dq_null_rate_many" && @.params.accounts == "__fx_chf__, __fx_zweit__")')) THEN
+    RAISE EXCEPTION 'FAIL [G3 dq many]: Mehrzahl-Hinweis mit beiden Konten fehlt (alerts=%)', r->'alerts'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+                 WHERE a->>'metric_key' = 'data_quality'
+                   AND a->'latch_keys' @> jsonb_build_array('null_rate:' || v_chf, 'null_rate:' || v_chf2)) THEN
+    RAISE EXCEPTION 'FAIL [G3 latch]: je Konto ohne Kurs ein Latch null_rate:<id> erwartet (alerts=%)', r->'alerts'; END IF;
+  RAISE NOTICE 'PASS [G3: zwei Konten -> Mehrzahl-Text mit beiden Namen, je Konto ein Latch]';
+
+  -- geschlossenes Konto, auf dem ein aktives Ziel noch einen Anteil ohne Kurs traegt -> wird mitgenannt
+  -- (jedes „mindestens“/unknown hat seinen Grund im Hinweis)
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__fx_alt__', 'cash', 'CHF', 'active') RETURNING id INTO v_alt;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_alt, 100, current_date - 5, 'transfer', v_reise, gen_random_uuid());
+  UPDATE finance.accounts SET status = 'closed' WHERE id = v_alt;
+  r := finance.fn_advisor_review('finance');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+                 WHERE a->>'metric_key' = 'data_quality'
+                   AND jsonb_path_exists(a->'msg', '$[*] ? (@.value == "finance.advisor.dq_null_rate_many" && @.params.accounts == "__fx_alt__, __fx_chf__, __fx_zweit__")')) THEN
+    RAISE EXCEPTION 'FAIL [G3 closed share]: geschlossenes Konto mit Ziel-Anteil ohne Kurs fehlt im Hinweis (alerts=%)', r->'alerts'; END IF;
+  RAISE NOTICE 'PASS [G3: geschlossenes Konto mit Ziel-Anteil ohne Kurs wird genannt]';
+
+  -- Gegenprobe: CHF-Kurs da -> Rueckstand wird gemeldet, Digest normal, kein Wechselkurs-Hinweis
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'CHF', 1.5, current_date);
+  r := finance.fn_advisor_review('finance');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'savings_pace' AND a->>'label' = '__fx_reise__') THEN
+    RAISE EXCEPTION 'FAIL [G3 contra pace]: mit Kurs muss "hinter Plan" kommen (alerts=%)', r->'alerts'; END IF;
+  IF (r->'alerts')::text LIKE '%finance.advisor.dq_null_rate%' THEN
+    RAISE EXCEPTION 'FAIL [G3 contra dq]: mit Kurs kein Wechselkurs-Hinweis (alerts=%)', r->'alerts'; END IF;
+  IF jsonb_path_exists(r->'digest'->'lines', '$.** ? (@.value == "finance.advisor.digest_goal_line_fx_gap")')
+     OR NOT jsonb_path_exists(r->'digest'->'lines', '$.** ? (@.value == "finance.advisor.digest_goal_line" && @.params.name == "__fx_reise__")') THEN
+    RAISE EXCEPTION 'FAIL [G3 contra digest]: mit Kurs normale Digest-Zeile erwartet (lines=%)', r->'digest'->'lines'; END IF;
+  IF (r->'alerts')::text LIKE '%finance.advisor.goal_reached_fx_gap%' THEN
+    RAISE EXCEPTION 'FAIL [G3 contra reached]: mit Kurs kein „mindestens“ beim erreichten Ziel'; END IF;
+  RAISE NOTICE 'PASS [G3: Gegenprobe mit CHF-Kurs -> Pace-Alert, normale Zeile, kein Hinweis]';
+END $$;
+ROLLBACK TO SAVEPOINT fxgap;
+
+-- ============================================================
 -- Umschicht-Hilfe (Glide Path, Sparziel-Zweckbindung 2026-10-27; Owner: Fenster 60 Monate, Toleranz 10 pp):
 --   erlaubt im Depot = Ziel * Restmonate / Fenster; mehr als erlaubt + Toleranz -> savings_goal_derisk mit
 --   Vorschlagsbetrag (drift) und latch_keys je Restjahr; mit aktivem Sparplan zusaetzlich der Pausieren-Satz.

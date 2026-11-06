@@ -31,7 +31,8 @@
 --     · bis <Monat>" bzw. „x erreicht · geplant fuer <Datum>" (dann voller Balken). Pille nach Rang: alert „<Depot>: Kurswert x unter dem
 --     Zurueckgelegten" (ein fuer den Betrachter SICHTBARES Depot mit Ziel-Geld im Zustand short; eine Delle (dip) zeigt
 --     nichts; mehrere Ziele auf einem Depot tragen dieselbe Pille, der Depot-Name sagt, wen sie betrifft) > warn „hinter
---     Plan · fehlen x" (behind_amount > 0; bei fx-Luecke keine Pille, der Rueckstand waere zu hoch, nur gap — BACKLOG)
+--     Plan · fehlen x" (behind_amount > 0; bei fx-Luecke liefert fn_savings_goal_pace nie behind, sondern unknown ->
+--     keine Pille, nur gap; 2026-11-06)
 --     > neutral pausiert / nicht messbar. gap auch bei einem sichtbaren Depot ohne Kurs (unknown) und bei einer
 --     Plan-Rate ohne Kurs. Aufklappen (<= 8 Zeilen): Rate je Quellen-Art (Sparplaene mit Namen — fuer das Kind nur die
 --     sichtbaren, der Betrag zaehlt alle; Dauerauftrag „Rate von <Konto>" = Betrag · Rhythmus; sonst „keine laufende
@@ -125,7 +126,7 @@ BEGIN
          WHERE b.banner IS NOT NULL;
         RETURN (
             WITH g AS (
-                SELECT sg.name, sg.target_date, sg.priority, sg.has_fx_gap, sg.behind_amount,
+                SELECT sg.name, sg.target_date, sg.priority, sg.behind_amount,
                        finance.fn_savings_goal_pace(sg.id) AS pace
                   FROM finance.savings_goal_progress sg
                  WHERE sg.status = 'active' AND sg.target_amount IS NOT NULL
@@ -146,7 +147,7 @@ BEGIN
                            'text', core.fn_ui_tpl('finance.app.goals.banner_behind', jsonb_build_object('name', g.name)),
                            'target', jsonb_build_object('screen', 'goals', 'params', '{}'::jsonb))
                          ORDER BY g.target_date, g.priority NULLS LAST, g.name)
-                         FILTER (WHERE g.pace = 'behind' AND NOT g.has_fx_gap AND g.behind_amount > 0), '[]'::jsonb)
+                         FILTER (WHERE g.pace = 'behind' AND g.behind_amount > 0), '[]'::jsonb)
                        || v_acc_ban)
               FROM g);
     END IF;
@@ -253,7 +254,7 @@ BEGIN
                              'text', core.fn_ui_tpl('finance.app.goals.cover_short', jsonb_build_object(
                                          'depot', g.dep_short ->> 'name',
                                          'gap', core.fn_ui_money((g.dep_short ->> 'gap')::numeric, 'EUR'))))
-                    WHEN g.pace = 'behind' AND NOT g.has_fx_gap AND g.behind_amount > 0
+                    WHEN g.pace = 'behind' AND g.behind_amount > 0
                     THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                              'text', core.fn_ui_tpl('finance.app.goals.pace.behind_gap', jsonb_build_object(
                                          'gap', core.fn_ui_money(g.behind_amount, 'EUR'))))

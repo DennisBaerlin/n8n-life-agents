@@ -1,11 +1,20 @@
 -- ============================================================
 -- finance.fn_savings_goal_pace(p_goal_id int) — die EINE Ampel-Regel eines Sparziels (2026-10-28)
---   Konsumenten: Mini-App-Bildschirm „Ziele" (finance.fn_app_screen_goals: Pill, Balken, Banner) und der Berater
---   (finance.fn_advisor_review, Pace-Alert). Fakten aus finance.savings_goal_progress (DB rechnet, kein Aufrufer).
+--   Konsumenten: Mini-App-Bildschirm „Ziele" (finance.fn_app_screen_goals: Pill, Balken, Banner), der Berater
+--   (finance.fn_advisor_review, Pace-Alert) und sein Schnappschuss (finance.fn_advisor_snapshot, goal_status).
+--   Fakten aus finance.savings_goal_progress (DB rechnet, kein Aufrufer).
 --   Zustand eines AKTIVEN Ziels, erste passende Regel gewinnt:
 --     1. unmeasurable  NOT progress_measurable (laufende Rate ohne Topf; gilt auch fuer eine Ruecklage)
 --     2. NULL          Instandhaltungsruecklage (target_amount NULL, Form-CHECK finance_savings_goals_shape)
---     3. behind        pace_drift_pp > core.config core/advisor/drift_pace_pp (Default 10)
+--     3. behind        pace_drift_pp > core.config core/advisor/drift_pace_pp (Default 10), ohne Kurs-Luecke
+--        unknown       dieselbe Bedingung MIT has_fx_gap (2026-11-06): ein Anteil liegt auf einem Konto in einer Waehrung
+--                      ohne jeden Wechselkurs. Der gemessene Stand ist dann nur eine Untergrenze; eine Aussage bleibt
+--                      nur gueltig, wenn sie nicht vom Fehlenden abhaengt (SQL-Dreiwertlogik). reached/paused/on_track
+--                      haengen nicht davon ab (mehr Geld aendert sie nicht), behind schon -> nicht beurteilbar.
+--                      Annahme: Summe der Luecken-Anteile je Ziel >= 0. Kein Constraint, die Write-fns sichern sie
+--                      (fn_book_savings_reservation Betrag >= 0, fn_book_savings_goal_transfer Entnahme <= Anteil,
+--                      fn_book_savings_goal_reassign fx_missing-Guard, fn_book_stock_buy). Vorbild-Name:
+--                      finance.fn_depot_cover_state ('unknown' = nicht ermittelbar statt Fehldiagnose).
 --     4. reached       current_amount >= target_amount
 --     5. paused        das Ziel hat eine Spar-Quelle (Raten-Kette recurring_payment_id oder verknuepfter Sparplan) und
 --                      keine davon ist aktiv und nicht beendet (Glied der Kette: status active, valid_to offen/kuenftig;
@@ -13,8 +22,9 @@
 --                      ist NICHT pausiert.
 --     6. on_track      sonst
 --   Nicht aktives oder unbekanntes Ziel -> NULL.
---   Reihenfolge bewusst: behind VOR reached/paused, damit behind <=> (aktiv AND pace_drift_pp > Toleranz) exakt der
---   frueheren Berater-Bedingung entspricht (auch bei negativer Toleranz); unmeasurable <=> NOT progress_measurable.
+--   Reihenfolge bewusst: behind/unknown VOR reached/paused, damit (behind OR unknown) <=> (aktiv AND pace_drift_pp >
+--   Toleranz) exakt gilt (auch bei negativer Toleranz), unknown <=> zusaetzlich has_fx_gap;
+--   unmeasurable <=> NOT progress_measurable. unknown meldet nie einen Alert (die Luecke meldet data_quality).
 --   plpgsql (late-bound wie finance.fn_price_status): core.fn_config_get ist eine core-R__.
 --   INVOKER, reiner Lese-Helfer (finance_ro bekommt ihn wie jede INVOKER-fn).
 --   Tests: tests/db/finance/test_fn_savings_goal_pace.sql
@@ -27,7 +37,8 @@ DECLARE
     r     record;
     v_tol numeric;
 BEGIN
-    SELECT p.status, p.progress_measurable, p.target_amount, p.current_amount, p.pace_drift_pp, p.recurring_payment_id
+    SELECT p.status, p.progress_measurable, p.target_amount, p.current_amount, p.pace_drift_pp, p.recurring_payment_id,
+           p.has_fx_gap
       INTO r
       FROM finance.savings_goal_progress p
      WHERE p.id = p_goal_id;
@@ -42,7 +53,7 @@ BEGIN
     END IF;
     v_tol := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'drift_pace_pp'), '')::numeric, 10);
     IF r.pace_drift_pp > v_tol THEN
-        RETURN 'behind';
+        RETURN CASE WHEN r.has_fx_gap THEN 'unknown' ELSE 'behind' END;
     END IF;
     IF r.current_amount >= r.target_amount THEN
         RETURN 'reached';

@@ -2,7 +2,8 @@
 // Antworten. Wird nur von scripts/dev/serve_desktop_preview.ps1 vor app.js eingefügt, nie in die App gebaut.
 //   ?state=<fall>   missing (Standard), stopped, ready, ready-orbstack, old, memory, other, colima, remote, foreign,
 //                   blocked, hints, interrupted, dmg, complete, wizard, laptop
-//   ?os=win         Windows statt Mac       ?screen=<name>  direkt zu einem Bildschirm (z. B. power, report, uninstall)
+//   ?lang=en|ko     Sprache der Seiten (Standard de)
+//   ?os=win         Windows statt Mac      ?screen=<name>  direkt zu einem Bildschirm (z. B. power, report, uninstall)
 //   ?hold=1         Laden bzw. Starten bleibt stehen (Fortschritt aufnehmen)   ?fail=<code>  Docker holen scheitert
 //   ?click=<id>     nach dem Bildschirm einmal den Knopf mit dieser id drücken, z. B. next (Hauptknopf) oder trash
 //                   (Download wegräumen auf der Fertig-Seite), um Ergebnis-Seiten aufzunehmen
@@ -69,7 +70,8 @@
       journal: { kind: fall === 'interrupted' ? 'interrupted' : fall === 'complete' ? 'complete' : 'fresh', step: { step: 'core-started' } },
       version: '0.1.0',
       compose_ready: fall === 'wizard',
-      download: ['missing', 'wizard'].includes(fall) ?(os === 'mac' ? 'lifeagents.dmg' : 'lifeagents-setup.exe') : null,
+      download: ['missing', 'wizard'].includes(fall) ? (os === 'mac' ? 'lifeagents.dmg' : 'lifeagents-setup.exe') : null,
+      lang: q.get('lang') || 'de',
     }),
     trash_download: async () => wait(300),
     check_system: async () => (await wait(500), sys),

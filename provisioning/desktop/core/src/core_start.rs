@@ -272,12 +272,21 @@ pub struct WizardStatus {
     pub phase: WizardPhase,
     /// Benutzername des Bots für „Telegram öffnen“ (`https://t.me/<bot>`), leer bis bekannt.
     pub bot: String,
+    /// Im Fragebogen gewählte Sprache (`lang::SUPPORTED`), sonst `None`.
+    pub lang: Option<&'static str>,
+}
+
+impl WizardStatus {
+    pub fn unavailable() -> Self {
+        WizardStatus { phase: WizardPhase::Unavailable, bot: String::new(), lang: None }
+    }
 }
 
 pub fn wizard_status(host: &dyn Host, d: &Docker) -> WizardStatus {
     let Ok(v) = master_json(host, d, MasterCmd::WizardStatus) else {
-        return WizardStatus { phase: WizardPhase::Unavailable, bot: String::new() };
+        return WizardStatus::unavailable();
     };
+    let lang = v.get("lang").and_then(|l| l.as_str()).and_then(crate::lang::parse);
     let phase = match v.get("phase").and_then(|p| p.as_str()) {
         Some("questions" | "installing" | "failed" | "pairing" | "connected") => WizardPhase::Running,
         Some("handoff") => WizardPhase::Handoff,
@@ -286,7 +295,7 @@ pub fn wizard_status(host: &dyn Host, d: &Docker) -> WizardStatus {
     let bot = v.get("bot").and_then(|b| b.as_str()).unwrap_or("").to_string();
     // Telegram-Benutzernamen: 5–32 Zeichen, Buchstaben, Ziffern, Unterstrich.
     let bot = if bot.len() <= 32 && bot.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') { bot } else { String::new() };
-    WizardStatus { phase, bot }
+    WizardStatus { phase, bot, lang }
 }
 
 /// Nach der letzten App-Seite: Der Wizard löscht seinen Fortschritt und endet.
@@ -602,5 +611,16 @@ mod tests {
         assert_eq!(wizard_status(&h, &d()).bot, "");
         h.set(&cmd(DockerCall::Master(MasterCmd::WizardStatus)), CmdOut::ok("{\"phase\":\"handoff\",\"bot\":\"erika_helfer_bot\"}\n"));
         assert_eq!(wizard_status(&h, &d()).bot, "erika_helfer_bot");
+    }
+
+    #[test]
+    fn wizard_reports_the_chosen_language() {
+        let h = FakeHost::mac();
+        h.set(&cmd(DockerCall::Master(MasterCmd::WizardStatus)), CmdOut::ok("{\"phase\":\"questions\",\"lang\":\"ko\"}\n"));
+        assert_eq!(wizard_status(&h, &d()).lang, Some("ko"));
+        h.set(&cmd(DockerCall::Master(MasterCmd::WizardStatus)), CmdOut::ok("{\"phase\":\"questions\",\"lang\":\"../x\"}\n"));
+        assert_eq!(wizard_status(&h, &d()).lang, None, "nur bekannte Sprachen");
+        h.set(&cmd(DockerCall::Master(MasterCmd::WizardStatus)), CmdOut::ok("{\"phase\":\"questions\"}\n"));
+        assert_eq!(wizard_status(&h, &d()).lang, None);
     }
 }

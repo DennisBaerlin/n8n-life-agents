@@ -17,11 +17,13 @@ pub mod docker_desktop;
 pub mod host;
 pub mod inventory;
 pub mod journal;
+pub mod lang;
 pub mod network;
 pub mod power;
 pub mod report;
 pub mod suggest;
 pub mod system;
+pub mod texts;
 pub mod uninstall;
 
 /// Alle Quellen der Bibliothek, für Tests, die über den ganzen Code wachen (z. B. keine Sicherheits-Einstellung).
@@ -41,12 +43,14 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
         ("host.rs", include_str!("host.rs")),
         ("inventory.rs", include_str!("inventory.rs")),
         ("journal.rs", include_str!("journal.rs")),
+        ("lang.rs", include_str!("lang.rs")),
         ("lib.rs", include_str!("lib.rs")),
         ("network.rs", include_str!("network.rs")),
         ("power.rs", include_str!("power.rs")),
         ("report.rs", include_str!("report.rs")),
         ("suggest.rs", include_str!("suggest.rs")),
         ("system.rs", include_str!("system.rs")),
+        ("texts.rs", include_str!("texts.rs")),
         ("uninstall.rs", include_str!("uninstall.rs")),
     ]
 }

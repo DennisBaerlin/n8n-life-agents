@@ -44,4 +44,18 @@ foreach ($c in (Get-UiCopies)) {
         Write-Host "  [neu] ${name}: $f" -ForegroundColor Cyan
     }
 }
+# Texte aus dem Katalog (Get-UiLocaleBlocks)
+foreach ($b in (Get-UiLocaleBlocks)) {
+    $abs = Join-Path $RepoRoot $b.File
+    $text = [System.IO.File]::ReadAllText($abs, $u8)
+    $rx = Get-UiLocaleRegex $b.Name
+    $m = $rx.Match($text)
+    if (-not $m.Success) { throw "Keine Marker fuer Texte '$($b.Name)' in $($b.File): '/* ui-locale:begin $($b.Name) */' und '/* ui-locale:end */' von Hand einsetzen." }
+    $want = Get-UiLocaleText $RepoRoot $b
+    if ($m.Value -ceq $want) { Write-Host "  [OK] Texte $($b.Name): aktuell" -ForegroundColor Green; continue }
+    if ($Verify) { Write-Host "  [FAIL] Texte $($b.Name): Block in $($b.File) ist veraltet" -ForegroundColor Red; $fails++; continue }
+    $text = $rx.Replace($text, [System.Text.RegularExpressions.MatchEvaluator] { param($x) $want }, 1)
+    [System.IO.File]::WriteAllText($abs, $text, $u8)
+    Write-Host "  [neu] Texte $($b.Name): $($b.File)" -ForegroundColor Cyan
+}
 exit $fails

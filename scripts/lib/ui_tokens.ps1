@@ -70,6 +70,46 @@ function Get-UiCopyText([string]$RepoRoot, $Copy) {
     "/* ui-copy:begin $name (kopiert von scripts/build_ui_tokens.ps1 aus $($Copy.Source), nicht von Hand aendern) */`n$body`n/* ui-copy:end */"
 }
 
+# Texte aus dem Katalog packages/core/locales/<code>.json als Block in eine Oberflaeche ohne Bau-Schritt (Start-App,
+# Leitung 2026-11-06: eine Uebersetzungs-Quelle mit Bot und Fragebogen). Je Sprache die Schluessel mit den genannten
+# Praefixen, sortiert. Eigenes Serialisieren statt ConvertTo-Json: gleiche Ausgabe unter PowerShell 5.1 und 7.
+function Get-UiLocaleBlocks {
+    @([pscustomobject]@{ Name = 'desktop'; File = 'provisioning/desktop/ui/app.js'; Prefixes = @('core.desktop.', 'core.wizard.step.') })
+}
+function Get-UiLocaleRegex([string]$Name) {
+    [regex]::new('/\* ui-locale:begin ' + [regex]::Escape($Name) + '\b[^\n]*\*/\n[\s\S]*?/\* ui-locale:end \*/')
+}
+function ConvertTo-UiJsString([string]$Text) {
+    $sb = [System.Text.StringBuilder]::new('"')
+    foreach ($c in $Text.ToCharArray()) {
+        $n = [int]$c
+        if ($c -eq '"') { [void]$sb.Append('\"') }
+        elseif ($c -eq '\') { [void]$sb.Append('\\') }
+        elseif ($n -eq 10) { [void]$sb.Append('\n') }
+        elseif ($n -lt 32 -or $n -eq 0x2028 -or $n -eq 0x2029) { [void]$sb.Append(('\u{0:x4}' -f $n)) }
+        else { [void]$sb.Append($c) }
+    }
+    [void]$sb.Append('"')
+    $sb.ToString()
+}
+function Get-UiLocaleText([string]$RepoRoot, $Block) {
+    $dir = Join-Path (Join-Path (Join-Path $RepoRoot 'packages') 'core') 'locales'
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("/* ui-locale:begin $($Block.Name) (erzeugt von scripts/build_ui_tokens.ps1 aus packages/core/locales, nicht von Hand aendern) */")
+    $lines.Add('const UI_TEXT = {')
+    foreach ($f in (Get-ChildItem $dir -Filter '*.json' | Sort-Object Name)) {
+        $obj = [System.IO.File]::ReadAllText($f.FullName, $script:UiTokensUtf8) | ConvertFrom-Json
+        $keys = [string[]]@($obj.PSObject.Properties.Name | Where-Object { $k = $_; @($Block.Prefixes | Where-Object { $k.StartsWith($_, [StringComparison]::Ordinal) }).Count -gt 0 })
+        [Array]::Sort($keys, [StringComparer]::Ordinal)
+        $lines.Add("  $($f.BaseName): {")
+        foreach ($k in $keys) { $lines.Add("    $(ConvertTo-UiJsString $k): $(ConvertTo-UiJsString ([string]$obj.$k)),") }
+        $lines.Add('  },')
+    }
+    $lines.Add('};')
+    $lines.Add('/* ui-locale:end */')
+    $lines -join "`n"
+}
+
 # Wurzeln, unter denen der Lint Farb-Literale sucht. Eine UI-Datei ausserhalb dieser Wurzeln (und ausserhalb von
 # Get-UiExcludedPrefixes) ist ein Fehler: so rutscht eine neue Oberflaeche nicht unbemerkt durch.
 function Get-UiScanRoots {

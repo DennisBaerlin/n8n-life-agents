@@ -25,6 +25,7 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 
 - **Nie Werte fest eintragen.** Eine Oberfläche nutzt `var(--token)`; ihre Variablen kommen als erzeugter Block aus `config/ui.tokens.json` (`scripts/build_ui_tokens.ps1`). Zur Laufzeit wird nichts nachgeladen. `scripts/ui_token_lint.ps1` weist neue feste Farben ab.
 - **Geteilte Bausteine** (Schritt-Leiste von Start-App und Fragebogen): Quelle `config/ui.steps.*`, dasselbe Skript kopiert sie wortgleich als markierten Block in jede Oberfläche (`Get-UiCopies` in `scripts/lib/ui_tokens.ps1`), der Lint prüft die Kopien.
+- **Texte einer Oberfläche ohne Bau-Schritt** (Start-App): aus dem Textkatalog `packages/core/locales/<code>.json`, dasselbe Skript schreibt die Schlüssel mit den registrierten Präfixen als Block (`Get-UiLocaleBlocks`), `ui_token_lint` prüft ihn gegen den Katalog, `locale_lint` Vollständigkeit und Platzhalter.
 - **Neue Farbe nötig?** Erst fragen, ob eine vorhandene Rolle passt. Sonst ein Token mit Verwendung in der Farbdatei und mit Kontrast-Paarung.
 - **Lesen:** `ink` auf `bg`. Der Hauptknopf ist `ink` mit `bg` als Schrift.
 - **Akzent:** `accent` für Links und „läuft“, `accent-pale` als Fläche für Gewähltes, Text darauf `ink`.

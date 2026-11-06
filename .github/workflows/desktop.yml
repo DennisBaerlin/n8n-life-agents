@@ -8,11 +8,13 @@ on:
     paths:
       - 'provisioning/desktop/**'
       - 'scripts/lib/ui_tokens.ps1'
+      - 'packages/core/locales/**'
       - '.github/workflows/desktop.yml'
       - '.github/workflows/desktop-build.yml'
   pull_request:
     paths:
       - 'provisioning/desktop/**'
+      - 'packages/core/locales/**'
       - '.github/workflows/desktop.yml'
       - '.github/workflows/desktop-build.yml'
   workflow_dispatch:

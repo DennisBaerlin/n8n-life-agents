@@ -272,14 +272,22 @@ $corpus = New-Object System.Text.StringBuilder
 $srcFiles = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object {
         Get-ChildItem (Join-Path $_.FullName 'build') -Recurse -File -Filter '*.ps1' -ErrorAction SilentlyContinue
         Get-ChildItem (Join-Path $_.FullName 'db\migrations') -File -Filter '*.sql' -ErrorAction SilentlyContinue }) +
-    @(Get-ChildItem (Join-Path $RepoRoot 'scripts\build\lib') -File -Filter '*.ps1')
-foreach ($f in $srcFiles) { [void]$corpus.Append([System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)) }
+    @(Get-ChildItem (Join-Path $RepoRoot 'scripts\build\lib') -File -Filter '*.ps1') +
+    # Start-App: Seiten und Menue (ohne den erzeugten Text-Block, der jeden Schluessel nennt)
+    @(Get-ChildItem (Join-Path $RepoRoot 'provisioning\desktop') -Recurse -File -Include '*.js', '*.rs' -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/](target|gen|preview)[\\/]' })
+foreach ($f in $srcFiles) {
+    $txt = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
+    [void]$corpus.Append([regex]::Replace($txt, '/\* ui-locale:begin [\s\S]*?/\* ui-locale:end \*/', ''))
+}
 $corpusText = $corpus.ToString()
 $unused = @()
 foreach ($pkg in $cat.Keys) {
     $de = $cat[$pkg]['de']; if ($null -eq $de) { continue }
     foreach ($k in $de.Keys) {
         if ($k -match '\.(enum|facts|monitor_method|plan_section)\.' -or $k -match '\.plan\.name$' -or $k -match '^core\.persona\.(name|frame)\.') { continue }
+        # Start-App: zusammengesetzt aus Codes (Fehler, Docker-Art, Schritt der Leiste, Ergebnis-Zeilen, Haken beim Entfernen)
+        if ($k -match '^core\.desktop\.(error|engine|result|uninstall|uninstalled|check)\.' -or $k -match '^core\.wizard\.step\.') { continue }
         if (-not $corpusText.Contains("'$k'") -and -not $corpusText.Contains("""$k""")) { $unused += $k }
     }
 }

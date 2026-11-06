@@ -76,7 +76,12 @@ if ($Capture) {
             'dk-foreign:foreign:docker', 'core-start:wizard:coreStart:hold=1', 'wizard-missing:missing:wizardMissing', 'power:missing:power',
             'power-laptop:laptop:power', 'power-result:missing:powerApply', 'done:missing:finish', 'done-trashed:missing:finish:click=trash', 'done-no-download:ready:finish','home:complete:home', 'report:missing:report',
             'uninstall:missing:uninstall', 'uninstalled:missing:uninstall:click=next', 'power-restore:missing:powerRestore',
-            'power-restored:missing:powerRestore:click=next', 'win-sys:hints:sys:os=win', 'win-power:missing:power:os=win', 'win-dk-missing:missing:docker:os=win')
+            'power-restored:missing:powerRestore:click=next', 'win-sys:hints:sys:os=win', 'win-power:missing:power:os=win', 'win-dk-missing:missing:docker:os=win',
+            # Sprachen (Systemsprache bzw. Wahl im Fragebogen): je Sprache die Seiten mit dem meisten Text
+            'en-welcome:missing:welcome:lang=en', 'en-dk-missing:missing:docker:lang=en', 'en-power:laptop:power:lang=en', 'en-power-result:missing:powerApply:lang=en',
+            'en-done:missing:finish:lang=en', 'en-uninstall:missing:uninstall:lang=en', 'ko-welcome:missing:welcome:lang=ko', 'ko-need:missing:need:lang=ko',
+            'ko-sys-hint:hints:sys:lang=ko', 'ko-dk-ready:ready:docker:lang=ko', 'ko-dk-memory:memory:docker:lang=ko', 'ko-power:laptop:power:lang=ko',
+            'ko-power-result:missing:powerApply:lang=ko', 'ko-done:missing:finish:lang=ko', 'ko-uninstalled:missing:uninstall:click=next&lang=ko', 'ko-win-power:missing:power:os=win&lang=ko')
         if ($Screens.Count) { $cases = @($cases | Where-Object { $Screens -contains ($_ -split ':')[0] }) }
         $deskHtml = {
             param([string]$Params, [bool]$Full)

@@ -18,9 +18,10 @@ if ($Down) {
     Write-Host "  [ok] Volumes $prefix-cargo/-target entfernt" -ForegroundColor Green
     exit 0
 }
-$src = (Resolve-Path (Join-Path (Join-Path $RepoRoot 'provisioning') 'desktop')).Path
+# Ganzes Repo nur lesend: Die Bibliothek liest den Textkatalog packages/core/locales/*.json beim Bau ein (texts.rs).
+$src = (Resolve-Path $RepoRoot).Path
 $cmd = "cargo test --quiet $Filter"
 if ($Lint) { $cmd = "rustup component add rustfmt clippy >/dev/null 2>&1; cargo fmt --check && cargo clippy --all-targets --quiet -- -D warnings && $cmd" }
-docker run --rm --name "$prefix-rust" -v "${src}:/src" -v "${prefix}-cargo:/usr/local/cargo/registry" -v "${prefix}-target:/target" `
-    -e CARGO_TARGET_DIR=/target -w /src/core $image sh -c $cmd
+docker run --rm --name "$prefix-rust" -v "${src}:/repo:ro" -v "${prefix}-cargo:/usr/local/cargo/registry" -v "${prefix}-target:/target" `
+    -e CARGO_TARGET_DIR=/target -w /repo/provisioning/desktop/core $image sh -c $cmd
 exit $LASTEXITCODE

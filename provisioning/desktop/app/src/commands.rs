@@ -17,7 +17,7 @@ use lifeagents_desktop_core::journal::{self, Journal, Status, Step};
 use lifeagents_desktop_core::power::{self, FileVault, PowerError, PowerResult};
 use lifeagents_desktop_core::system::{self, Location, SystemReport};
 use lifeagents_desktop_core::uninstall::{self, Choices, Outcome, Plan};
-use lifeagents_desktop_core::{autostart, cleanup, report};
+use lifeagents_desktop_core::{autostart, cleanup, lang, report};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -90,6 +90,8 @@ pub struct Startup {
     compose_ready: bool,
     /// Name der geladenen Datei im Download-Ordner, nur wenn genau eine passt („Download wegräumen“).
     download: Option<String>,
+    /// Sprache der Seiten (`de`/`en`/`ko`): gemerkte Wahl aus dem Fragebogen, sonst Systemsprache.
+    lang: &'static str,
 }
 
 #[tauri::command(async)]
@@ -108,6 +110,7 @@ pub fn startup(app: AppHandle) -> Startup {
         version: app.package_info().version.to_string(),
         compose_ready: compose_path(&app).is_some(),
         download,
+        lang: lang::current(&RealHost),
     }
 }
 
@@ -343,9 +346,7 @@ fn watch_wizard(app: AppHandle, d: Docker, mut back: tauri::Url) {
     while start.elapsed() < Duration::from_secs(6 * 3600) {
         std::thread::sleep(Duration::from_secs(3));
         let s = core_start::wizard_status(&RealHost, &d);
-        if !s.bot.is_empty() {
-            *app.state::<AppState>().bot.lock().unwrap() = s.bot.clone();
-        }
+        remember(&app, &s);
         if s.phase == WizardPhase::Handoff {
             back.set_fragment(Some("power"));
             if let Some(w) = app.get_webview_window("main") {
@@ -361,13 +362,21 @@ fn watch_wizard(app: AppHandle, d: Docker, mut back: tauri::Url) {
 #[tauri::command(async)]
 pub fn wizard_status(app: AppHandle) -> WizardStatus {
     let Some(d) = docker_if_ready() else {
-        return WizardStatus { phase: WizardPhase::Unavailable, bot: String::new() };
+        return WizardStatus::unavailable();
     };
     let s = core_start::wizard_status(&RealHost, &d);
+    remember(&app, &s);
+    s
+}
+
+/// Bot-Name und im Fragebogen gewählte Sprache merken (Sprache dauerhaft: Menü und App-Seiten danach).
+fn remember(app: &AppHandle, s: &WizardStatus) {
     if !s.bot.is_empty() {
         *app.state::<AppState>().bot.lock().unwrap() = s.bot.clone();
     }
-    s
+    if let Some(l) = s.lang {
+        let _ = lang::save(&RealHost, l);
+    }
 }
 
 // ---------------------------------------------------------------------------------------- Dauerbetrieb

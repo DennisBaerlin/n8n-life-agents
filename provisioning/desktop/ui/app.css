@@ -69,6 +69,8 @@ body {
   font: 400 16px/1.55 var(--font);
   -webkit-font-smoothing: antialiased;
 }
+/* Koreanisch bricht an Wortgrenzen um, nicht mitten im Wort (übliche Regel für Hangul-Oberflächen). */
+html:lang(ko) body { word-break: keep-all; overflow-wrap: break-word; }
 a { color: var(--accent); }
 a:hover { color: var(--accent-hover); }
 

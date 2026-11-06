@@ -9,6 +9,7 @@ use std::time::Duration;
 use lifeagents_desktop_core::autostart::AUTOSTART_ARG;
 use lifeagents_desktop_core::host::RealHost;
 use lifeagents_desktop_core::journal::{Journal, Status};
+use lifeagents_desktop_core::{lang, texts};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
@@ -37,14 +38,33 @@ fn show(app: &AppHandle, screen: &str) {
     }
 }
 
-fn build_tray(app: &AppHandle) -> tauri::Result<MenuItem<Wry>> {
-    let status = MenuItem::with_id(app, "status", "Wird geprüft …", false, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", "Fenster öffnen", true, None::<&str>)?;
-    let telegram = MenuItem::with_id(app, "telegram", "Telegram öffnen", true, None::<&str>)?;
-    let power = MenuItem::with_id(app, "power-restore", "Dauerbetrieb zurückstellen", true, None::<&str>)?;
-    let report = MenuItem::with_id(app, "report", "Fehlerbericht", true, None::<&str>)?;
-    let uninstall = MenuItem::with_id(app, "uninstall", "Deinstallieren", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "App beenden", true, None::<&str>)?;
+/// Einträge des Menüs mit ihrem Katalog-Schlüssel (`texts::TRAY_KEYS`); die Status-Zeile steht vorn.
+struct Tray {
+    status: MenuItem<Wry>,
+    items: Vec<(MenuItem<Wry>, &'static str)>,
+}
+
+impl Tray {
+    /// Texte in der aktuellen Sprache (nach einer Wahl im Fragebogen ändert sie sich).
+    fn relabel(&self, lang: &str, running: bool) {
+        for (item, key) in &self.items {
+            let _ = item.set_text(texts::text(lang, key));
+        }
+        let key = if running { "core.desktop.tray.running" } else { "core.desktop.tray.stopped" };
+        let _ = self.status.set_text(texts::text(lang, key));
+    }
+}
+
+fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
+    let lang = lang::current(&RealHost);
+    let item = |id: &str, key: &'static str, enabled: bool| MenuItem::with_id(app, id, texts::text(lang, key), enabled, None::<&str>);
+    let status = item("status", "core.desktop.tray.checking", false)?;
+    let open = item("open", "core.desktop.tray.open", true)?;
+    let telegram = item("telegram", "core.desktop.tray.telegram", true)?;
+    let power = item("power-restore", "core.desktop.tray.power_restore", true)?;
+    let report = item("report", "core.desktop.tray.report", true)?;
+    let uninstall = item("uninstall", "core.desktop.tray.uninstall", true)?;
+    let quit = item("quit", "core.desktop.tray.quit", true)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &sep2, &uninstall, &quit])?;
@@ -66,15 +86,29 @@ fn build_tray(app: &AppHandle) -> tauri::Result<MenuItem<Wry>> {
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
-    Ok(status)
+    Ok(Tray {
+        status,
+        items: vec![
+            (open, "core.desktop.tray.open"),
+            (telegram, "core.desktop.tray.telegram"),
+            (power, "core.desktop.tray.power_restore"),
+            (report, "core.desktop.tray.report"),
+            (uninstall, "core.desktop.tray.uninstall"),
+            (quit, "core.desktop.tray.quit"),
+        ],
+    })
 }
 
-/// Hält die Status-Zeile im Menü aktuell: „Läuft“ oder „Docker ist aus“.
-fn watch_status(status: MenuItem<Wry>) {
-    std::thread::spawn(move || loop {
-        let text = if commands::docker_running() { "Assistent läuft" } else { "Assistent ist aus: Docker läuft nicht" };
-        let _ = status.set_text(text);
-        std::thread::sleep(Duration::from_secs(60));
+/// Hält das Menü aktuell: Status-Zeile „läuft“ oder „Docker ist aus“, Sprache wie zuletzt im Fragebogen gewählt.
+/// Die Systemsprache nur einmal lesen (unter Windows ein PowerShell-Aufruf), die gemerkte Wahl jede Minute.
+fn watch_status(tray: Tray) {
+    std::thread::spawn(move || {
+        let system = lang::system(&RealHost);
+        loop {
+            let l = lang::saved(&RealHost).unwrap_or(system);
+            tray.relabel(l, commands::docker_running());
+            std::thread::sleep(Duration::from_secs(60));
+        }
     });
 }
 
@@ -122,8 +156,8 @@ fn main() {
             if let Some(w) = app.get_webview_window("main") {
                 *app.state::<commands::AppState>().app_url.lock().unwrap() = w.url().ok();
             }
-            let status = build_tray(&handle)?;
-            watch_status(status);
+            let tray = build_tray(&handle)?;
+            watch_status(tray);
             if autostart {
                 // Bei der Anmeldung: nur das Symbol, kein Fenster, kein Dock-Eintrag.
                 #[cfg(target_os = "macos")]

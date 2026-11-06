@@ -57,6 +57,7 @@ prepare_n8n_env() {
         N8N_PROTOCOL="$N8N_PROTOCOL" \
         N8N_EDITOR_BASE_URL="$N8N_EDITOR_BASE_URL" \
         WEBHOOK_URL="$WEBHOOK_URL" \
+        N8N_PROXY_HOPS="$(if rt_is_compose; then echo 2; else echo 1; fi)" \
         TIMEZONE="$TIMEZONE" \
       | write_if_changed "$envf" 0640 "root:${N8N_USER}"; then
     N8N_ENV_CHANGED=0

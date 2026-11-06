@@ -40,12 +40,15 @@ _OC_ACT_ERR=''
 #   * Proxy auf einem anderen Rechner: nur der Einfuege-Baustein fuer dessen bestehenden Domain-Block, Upstream
 #     <LAN-IP dieses Rechners>:<port> (ip route get Richtung Proxy), plus Angaben fuer NPM/Traefik.
 emit_ingress_help() {
-  local tpl_dir="$1" domain="$2" port="$3" webhook_url="$4" caddyfile list nonloop upstream proxies bind
+  local tpl_dir="$1" domain="$2" port="$3" webhook_url="$4" caddyfile list nonloop upstream proxies bind paths
   [ -n "$domain" ] || return 0
+  paths="$(printf '%s' "$LA_PUBLIC_PATHS" | sed 's/ /   /g')"   # Lesefassung der einen Liste (common.sh)
+  # Docker-Verbund: der Rand bringt seinen Proxy mit (Tunnel oder FritzBox) — statt Caddyfile die Hilfe zum Weg.
+  if rt_is_compose; then DOMAIN="$domain" reach_ingress_help; return 0; fi
   list="$(normalize_trusted_proxies "${TRUSTED_PROXIES:-}" 2>/dev/null || printf '127.0.0.1')"
   nonloop="$(_proxy_nonloop "$list")"
   if [ -z "$nonloop" ]; then
-    caddyfile="$(render_template "$tpl_dir/Caddyfile.tpl" SITE_ADDRESS="$domain" N8N_UPSTREAM="127.0.0.1:${port}")"
+    caddyfile="$(render_template "$tpl_dir/Caddyfile.tpl" SITE_ADDRESS="$domain" N8N_UPSTREAM="127.0.0.1:${port}" PUBLIC_PATHS="$LA_PUBLIC_PATHS")"
     printf '%s\n' "$caddyfile" | write_if_changed "${LIFEAGENTS_DIR:-/etc/lifeagents}/reverse-proxy.caddyfile" 0644 "root:${N8N_USER:-n8n}" || true
     ui_box "Fertige Caddy-Konfiguration für ${domain} (auch gespeichert in ${LIFEAGENTS_DIR:-/etc/lifeagents}/reverse-proxy.caddyfile)" <<EOF
 ${caddyfile}
@@ -55,7 +58,7 @@ n8n ist nur auf diesem Rechner erreichbar (127.0.0.1:${port}). Der Reverse Proxy
 HTTPS-Verbindungen aus dem Internet an (Zertifikat z. B. von Let's Encrypt) und reicht weiter:
 
   NUR diese Pfade (alles andere gesperrt lassen):
-    /webhook/*   /webhook-test/*   /webhook-waiting/*   /webhook-waiting-telegram
+    ${paths}
     →   http://127.0.0.1:${port}
   /webhook-waiting/* ist für die Bestätigungs-Knöpfe nötig (ohne bleiben Bestätigungen hängen);
   mit /webhook-waiting-telegram antworten sie direkt im Chat statt über eine Webseite.
@@ -71,8 +74,7 @@ EOF
     [ -n "$upstream" ] || upstream="<IP dieses Rechners>"
     proxies="$(printf '%s' "$nonloop" | paste -sd, - | sed 's/,/, /g')"
     bind="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" N8N_LISTEN_ADDRESS 2>/dev/null || true)"
-    caddyfile="$(render_template "$tpl_dir/Caddyfile.tpl" SITE_ADDRESS="$domain" N8N_UPSTREAM="${upstream}:${port}" \
-      | sed -n '/>>> lifeagents-webhooks/,/<<< lifeagents-webhooks/p' | sed '1d;$d' | sed 's/^\t//')"
+    caddyfile="$(caddy_webhook_block "$tpl_dir" "${upstream}:${port}")"
     printf '%s\n' "$caddyfile" | write_if_changed "${LIFEAGENTS_DIR:-/etc/lifeagents}/reverse-proxy.caddyfile" 0644 "root:${N8N_USER:-n8n}" || true
     ui_box "Baustein für deinen bestehenden Caddy (Proxy-Rechner ${proxies}) — in den Block „${domain} { … }“ einfügen" <<EOF
 ${caddyfile}
@@ -83,7 +85,7 @@ EOF
    Pfad-Regel zuerst, alles andere geht weiter an den Sammel-Block. Danach: systemctl reload caddy.
    Gespeichert auch in ${LIFEAGENTS_DIR:-/etc/lifeagents}/reverse-proxy.caddyfile.
    Nginx Proxy Manager / Traefik: genau diese Pfade an http://${upstream}:${port}
-     /webhook/*   /webhook-test/*   /webhook-waiting/*   /webhook-waiting-telegram
+     ${paths}
      (alles andere NICHT weiterleiten)
    X-Forwarded-For/-Host/-Proto durchreichen (Caddy macht das automatisch).
 2. Dieser Rechner lässt n8n (Port ${port}) NUR von ${proxies} zu (Firewall);

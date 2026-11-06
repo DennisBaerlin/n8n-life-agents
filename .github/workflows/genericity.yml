@@ -226,9 +226,16 @@ jobs:
   # Release-Weg (`git archive`, LF laut .gitattributes) laeuft, Zweitlauf legt keinen Container neu an, n8n uebersteht
   # einen Neustart, der Rand erreicht n8n, aber weder Postgres noch Gateway, und ein fremder Nachbar-Container samt Volume
   # und Netz bleibt unveraendert (Plan *Wenn Docker schon da ist*).
+  # Je Weg nach aussen (lib/reach.sh) ein eigener kalter Lauf: tunnel = echter Tailscale-Container ohne Konto (Anmelde-Link
+  # erscheint, nichts wird angemeldet), fritzbox = wan mit internem Zertifikat (*.localhost, keine ACME-Anfrage) samt
+  # belegtem Port 80 vorher (nichts wird ueberschrieben). Beide pruefen die Pfad-Liste des Rands und die Tailnet-Sperre.
   compose-stack-cold:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        reach: [tunnel, fritzbox]
     env:
       LA_PROJECT: ci-lifeagents
       LA_EDGE_PORT: '5880'
@@ -281,6 +288,7 @@ jobs:
             "OWNER_LAST_NAME='Runner'" \
             "OWNER_BIRTH_DATE='1990-01-01'" \
             "OWNER_LANGUAGE='de'" \
+            "REACH_MODE=${{ matrix.reach }}" \
             "LLM_GATEWAY_KEEPALIVE_HOURS=0" > "$RUNNER_TEMP/answers.env"
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.1"
           bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev --packages all
@@ -313,8 +321,9 @@ jobs:
           bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev
           test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT count(*) FROM core.package_registry WHERE status='active'" | tr -d '[:space:]')" -ge 5
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.2"
-          grep -v -e '-n8n ' -e '-gateway ' "$RUNNER_TEMP/ids.1" > "$RUNNER_TEMP/ids.1.base"   # n8n und gateway entstehen erst im Erstlauf
-          grep -v -e '-n8n ' -e '-gateway ' "$RUNNER_TEMP/ids.2" > "$RUNNER_TEMP/ids.2.base"
+          # n8n, gateway und der Tunnel-Knoten entstehen erst im Erstlauf; wan startet erst im Rand-Schritt.
+          grep -v -e '-n8n ' -e '-gateway ' -e '-tailscale ' "$RUNNER_TEMP/ids.1" > "$RUNNER_TEMP/ids.1.base"
+          grep -v -e '-n8n ' -e '-gateway ' -e '-tailscale ' "$RUNNER_TEMP/ids.2" > "$RUNNER_TEMP/ids.2.base"
           diff "$RUNNER_TEMP/ids.1.base" "$RUNNER_TEMP/ids.2.base"
           docker restart "$LA_PROJECT-n8n" >/dev/null
           ready=""
@@ -327,6 +336,103 @@ jobs:
           # mit erfundenem Token, Probelauf-Fund).
           if docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | grep -q 'AxiosError'; then docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | tail -40; exit 1; fi
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Edge paths (one public list, editor and wizard closed to the tailnet, proxy hops)
+        run: |
+          set -euo pipefail
+          # Eingang :8088 (Ziel von Funnel und wan) direkt ueber die Container-Adresse des Rands.
+          ip="$(docker inspect -f "{{(index .NetworkSettings.Networks \"${LA_PROJECT}_edge_public\").IPAddress}}" "$LA_PROJECT-edge")"
+          body() { curl -s --path-as-is --max-time 5 "$@" || true; }
+          # Die Liste schreibt der master am Ende der Installation (reach_conf), edge laedt sie binnen 5 s ohne Neustart.
+          for _ in $(seq 1 15); do [ "$(body "http://$ip:8088/webhook/ci-nope")" != "Not Found" ] && break; sleep 2; done
+          docker exec "$LA_PROJECT-edge" cat /tmp/public.caddy
+          # Oeffentlich: landet bei n8n (JSON-Antwort von n8n), nie die 404 des Rands ("Not Found" als Klartext).
+          for p in /webhook/ci-nope /webhook-test/ci-nope /webhook-waiting/ci-nope; do
+            b="$(body "http://$ip:8088$p")"; echo "$p -> ${b:0:80}"
+            [ -n "$b" ] && [ "$b" != "Not Found" ] || { echo "FAIL $p erreicht n8n nicht"; exit 1; }
+          done
+          b="$(body -X POST -H 'Content-Type: application/json' --data '{}' "http://$ip:8088/webhook-waiting-telegram")"
+          [ "$b" != "Not Found" ] || { echo "FAIL /webhook-waiting-telegram gesperrt"; exit 1; }
+          # Gesperrt: Editor, REST, API, Gesundheit, Wizard-Pfade, Tricks mit .. und Kodierung -> genau die 404 des Rands.
+          for p in / /rest/settings /rest/login /api/v1/workflows /healthz /signin /start /webhook /webhook-waiting-telegramx \
+                   /webhook/../rest/settings /webhook/%2e%2e/rest/settings /webhook%2f..%2frest%2fsettings; do
+            b="$(body "http://$ip:8088$p")"
+            [ "$b" = "Not Found" ] || { echo "FAIL $p ist oeffentlich: ${b:0:120}"; exit 1; }
+          done
+          # Tailnet simuliert: Tailscale (Userspace) reicht Tailnet-Zugriffe auf 127.0.0.1 im Namensraum des Rands weiter.
+          # Editor :8080 und Wizard :8081 muessen von dort scheitern, :8088 (die Liste) muss gehen.
+          if docker exec "$LA_PROJECT-edge" wget -q -O /dev/null -T 3 http://127.0.0.1:8080/healthz; then echo "FAIL Editor aus dem Namensraum erreichbar"; exit 1; fi
+          # Wizard laeuft hier nicht (sonst 502): gesperrt heisst, es kommt gar keine HTTP-Antwort (abort), auch keine 502.
+          wz="$(docker exec "$LA_PROJECT-edge" wget -q -O /dev/null -T 3 http://127.0.0.1:8081/ 2>&1 || true)"
+          if printf '%s' "$wz" | grep -q 'HTTP/'; then echo "FAIL Wizard-Eingang antwortet aus dem Namensraum: $wz"; exit 1; fi
+          wz="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_WIZARD_PORT}/" || true)"
+          test "$wz" = 502   # Gegenprobe: ueber den veroeffentlichten Port antwortet der Rand
+          # Ueber den veroeffentlichten Port (Rechner) bleibt der Editor erreichbar.
+          test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_EDGE_PORT}/healthz")" = 200
+          docker exec "$LA_PROJECT-master" grep -qx 'N8N_PROXY_HOPS=2' /etc/n8n/n8n.env
+          docker exec "$LA_PROJECT-master" grep -qx 'REACH_MODE=${{ matrix.reach }}' /etc/lifeagents/core.env
+
+      - name: Tunnel (Tailscale without an account -> login link, same namespace as the edge)
+        if: matrix.reach == 'tunnel'
+        run: |
+          set -euo pipefail
+          edge_id="$(docker inspect -f '{{.Id}}' "$LA_PROJECT-edge")"
+          test "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$LA_PROJECT-tailscale")" = "container:$edge_id"
+          docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$LA_PROJECT-tailscale" | grep -qx 'TS_HOSTNAME=bot'
+          # Wizard und App fragen den Stand ueber reach_ctl.sh status (eine JSON-Zeile).
+          st=''
+          for _ in $(seq 1 45); do
+            st="$(docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/compose/reach_ctl.sh status)"
+            [ "$(printf '%s' "$st" | jq -r .state)" = needs_login ] && break
+            sleep 2
+          done
+          echo "$st"
+          test "$(printf '%s' "$st" | jq -r .state)" = needs_login
+          printf '%s' "$st" | jq -er '.url | test("^https://login\\.tailscale\\.com/")' >/dev/null
+          test "$(printf '%s' "$st" | jq -r .mode)" = tunnel
+          # Ohne Anmeldung gibt es keine Internet-Adresse: DOMAIN bleibt leer.
+          if docker exec "$LA_PROJECT-master" grep -q '^DOMAIN=.' /etc/lifeagents/core.env; then echo "FAIL DOMAIN ohne Tunnel gesetzt"; exit 1; fi
+          # Tailnet-Zugriff aus dem Tailscale-Container selbst (derselbe Namensraum): Editor gesperrt.
+          if docker exec "$LA_PROJECT-tailscale" wget -q -O /dev/null -T 3 http://127.0.0.1:8080/healthz; then echo "FAIL Editor vom Tailscale-Knoten erreichbar"; exit 1; fi
+          if docker ps --format '{{.Names}}' | grep -qx "$LA_PROJECT-wan"; then echo "FAIL wan laeuft beim Tunnel-Weg"; exit 1; fi
+          # Neuer Link ohne Zuruecksetzen des Knotens.
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/compose/reach_ctl.sh relogin >/dev/null
+
+      - name: FritzBox (ports 80/443 checked first, wan with internal certificate, nothing overwritten)
+        if: matrix.reach == 'fritzbox'
+        run: |
+          set -euo pipefail
+          lib='. /opt/lifeagents/provisioning/lib/common.sh'
+          st() { docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/compose/reach_ctl.sh status; }
+          # Ohne Internet-Adresse startet nichts.
+          test "$(st | jq -r .reason)" = no_domain
+          docker exec "$LA_PROJECT-master" bash -c "$lib; env_upsert /etc/lifeagents/core.env DOMAIN ci-edge.localhost"
+          # Port 80 belegt (fremder Nachbar): wan startet nicht, der Nachbar bleibt, Status raet zum Tunnel.
+          docker run -d --name ci-port80 -p 80:80 busybox:1.37 httpd -f -p 80 >/dev/null
+          before="$(docker inspect -f '{{.Id}} {{.State.StartedAt}}' ci-port80)"
+          docker exec "$LA_PROJECT-master" bash -c "$lib; DOMAIN=ci-edge.localhost reach_converge"
+          if docker ps --format '{{.Names}}' | grep -qx "$LA_PROJECT-wan"; then echo "FAIL wan trotz belegtem Port 80"; exit 1; fi
+          test "$(st | jq -r .state)" = ports_busy
+          test "$(docker inspect -f '{{.Id}} {{.State.StartedAt}}' ci-port80)" = "$before"
+          docker rm -f ci-port80 >/dev/null
+          # Frei: wan startet, Zertifikat intern (*.localhost), alles geht an die Pfad-Liste des Rands.
+          docker exec "$LA_PROJECT-master" bash -c "$lib; DOMAIN=ci-edge.localhost reach_converge"
+          ok=''
+          for _ in $(seq 1 30); do
+            if curl -sk --max-time 3 --resolve ci-edge.localhost:443:127.0.0.1 -o /dev/null https://ci-edge.localhost/webhook/ci-nope; then ok=1; break; fi
+            sleep 2
+          done
+          [ -n "$ok" ] || { docker logs --tail 40 "$LA_PROJECT-wan"; exit 1; }
+          w() { curl -sk --path-as-is --max-time 5 --resolve ci-edge.localhost:443:127.0.0.1 "https://ci-edge.localhost$1" || true; }
+          b="$(w /webhook/ci-nope)"; [ -n "$b" ] && [ "$b" != "Not Found" ]
+          for p in / /rest/settings /healthz /webhook/../rest/settings; do test "$(w "$p")" = "Not Found"; done
+          # Port 80 leitet auf HTTPS um (und dient der Zertifikats-Abfrage).
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: ci-edge.localhost' http://127.0.0.1/)" = 308
+          test "$(st | jq -r .state)" = pending_activation
+          # Zweiter Converge ist still (kein Neustart von wan).
+          s1="$(docker inspect -f '{{.State.StartedAt}}' "$LA_PROJECT-wan")"
+          docker exec "$LA_PROJECT-master" bash -c "$lib; DOMAIN=ci-edge.localhost reach_converge"
+          test "$(docker inspect -f '{{.State.StartedAt}}' "$LA_PROJECT-wan")" = "$s1"
 
       - name: Neighbour after (unchanged)
         run: |
@@ -343,12 +449,13 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: |
-          for c in master n8n postgres gateway edge; do echo "=== $c"; docker logs --tail 60 "$LA_PROJECT-$c" 2>&1 || true; done
+          for c in master n8n postgres gateway edge tailscale wan; do echo "=== $c"; docker logs --tail 60 "$LA_PROJECT-$c" 2>&1 || true; done
 
       - name: Teardown (only our project + the neighbour)
         if: always()
         run: |
-          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down --remove-orphans || true
+          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox down --remove-orphans || true
+          docker rm -f ci-port80 >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
           for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
           docker rm -f ci-neighbour >/dev/null 2>&1 || true

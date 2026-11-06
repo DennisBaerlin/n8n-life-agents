@@ -30,9 +30,9 @@ N8N_USER_FOLDER=@@N8N_USER_FOLDER@@
 # --- external URLs (set once a domain exists; WEBHOOK_URL drives Telegram webhook paths) ---
 N8N_EDITOR_BASE_URL=@@N8N_EDITOR_BASE_URL@@
 WEBHOOK_URL=@@WEBHOOK_URL@@
-# Behind ONE reverse proxy — trust a single X-Forwarded hop. A proxy CHAIN (e.g. a cloud LB in front
-# of the proxy) would need a higher value; a bare NAT port-forward adds no hop, so 1 stays correct.
-N8N_PROXY_HOPS=1
+# Behind ONE reverse proxy (CLI) — trust a single X-Forwarded hop; a bare NAT port-forward adds no hop. The Docker stack
+# has TWO (Tailscale Funnel or the wan Caddy, then the edge Caddy) -> 2 (lib/install_n8n.sh).
+N8N_PROXY_HOPS=@@N8N_PROXY_HOPS@@
 
 # --- operational ---
 GENERIC_TIMEZONE=@@TIMEZONE@@

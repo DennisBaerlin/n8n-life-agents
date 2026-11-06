@@ -53,6 +53,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     const butler = pe.options.find((o) => o.value === 'butler');
     assert.ok(butler.frame.de.startsWith('🎩') && butler.frame.en && butler.frame.ko, 'Sprechweise in allen Sprachen');
     assert.deepEqual(pe.options.find((o) => o.value === 'neutral').frame, {});
+    assert.equal(pe.t.art.next, 'Nächster Schritt ›', 'Bildtexte (ui/art) aus dem Katalog core.wizard.art.*');
     for (const o of pe.options) {
       assert.equal(o.sticker, `/sticker/${o.value}.webp`, o.value + ': Sticker angeboten');
       const r = await req(w, 'GET', o.sticker);
@@ -359,7 +360,8 @@ test('Sprache: Antippen stellt die Einrichtung sofort um, die Auswahl bleibt in 
     assert.equal(p.title, 'Your first name');
     assert.equal(p.value, 'Erika');
     assert.match(p.note.text, /user account/);
-    assert.ok(!JSON.stringify(p).includes('Server'), 'App-Weg: Rechner/computer, nie Server');
+    // Bildtexte (t.art) ausgenommen: sie nennen die FritzBox-Beschriftung „HTTP-Server“ wörtlich
+    assert.ok(!JSON.stringify(Object.assign({}, p, { t: Object.assign({}, p.t, { art: null }) })).includes('Server'), 'App-Weg: Rechner/computer, nie Server');
     assert.equal((await answer(w, 'h:OWNER_FIRST_NAME', '')).json.error, 'Something is still missing here.');
   } finally { await w.stop(); }
 });

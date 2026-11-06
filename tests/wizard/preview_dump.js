@@ -13,6 +13,13 @@ async function shot(w, name, extra) {
   out.push(Object.assign({ name, page: p }, extra || {}));
   return p;
 }
+// Seite mit Bild (ui/art) zusätzlich in Englisch und Koreanisch festhalten (<name>-en, <name>-ko), danach wieder Deutsch.
+async function langShots(w, name, edit) {
+  for (const l of ['en', 'ko', 'de']) {
+    await post(w, '/api/lang', { lang: l });
+    if (l !== 'de') { const p = await shot(w, `${name}-${l}`); if (edit) edit(p); }
+  }
+}
 async function step(w, id, value, opt) {
   await shot(w, id.replace(/[^A-Za-z0-9_.-]/g, '_'));
   const r = await answer(w, id, value, opt);
@@ -42,10 +49,7 @@ async function step(w, id, value, opt) {
     await shot(w, 'h_OWNER_BIRTH_DATE-fehler', { error: (await answer(w, 'h:OWNER_BIRTH_DATE', '2999-01-01')).json.error, value: '2999-01-01' });
     await step(w, 'h:OWNER_BIRTH_DATE', '1980-01-01');
     // Charakter-Seite auch in Englisch und Koreanisch, dort mit Butler gewählt (Standard hat keinen Rahmensatz).
-    for (const l of ['en', 'ko', 'de']) {
-      await post(w, '/api/lang', { lang: l });
-      if (l !== 'de') (await shot(w, `h_OWNER_PERSONA-${l}`)).value = 'butler';
-    }
+    await langShots(w, 'h_OWNER_PERSONA', (p) => { p.value = 'butler'; });
     await step(w, 'h:OWNER_PERSONA', 'neutral');
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
     await step(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel');
@@ -64,7 +68,9 @@ async function step(w, id, value, opt) {
     await step(w, 's:paperless:general.paperless_url', plUrl);
     await step(w, 'c:paperless:PAPERLESS_API_TOKEN', 'beispieltoken0123');
     await step(w, 'reach', 'fritzbox');
+    await langShots(w, 'fb_dslite');
     await step(w, 'fb_dslite', 'no');
+    await langShots(w, 'fb_guide');
     await step(w, 'fb_guide', null);
     await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Name als Vorschlag
     await shot(w, 'h_DOMAIN-tippen', { value: 'meinrechner', live: (await post(w, '/api/check', { id: 'h:DOMAIN', value: 'meinrechner' })).json.live });

@@ -277,6 +277,9 @@ function uiTexts() {
   }
   o.step_short = T('core.wizard.step.short');
   o.step_aria = T('core.wizard.step.aria');
+  // Texte der Bilder und geführten Animationen (ui/art/art.js liest t.art[<Name>]): alle core.wizard.art.*
+  o.art = {};
+  for (const k of Object.keys(CAT.de || {})) { const m = /^core\.wizard\.art\.(.+)$/.exec(k); if (m) o.art[m[1]] = T(k); }
   return o;
 }
 

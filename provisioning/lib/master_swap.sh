@@ -18,7 +18,7 @@ SWAP_DIR="${SWAP_DIR:-/var/lib/lifeagents/master-swap}"
 SWAP_STATE="${SWAP_DIR}/state"
 MASTER_IMAGE_TREE="${MASTER_IMAGE_TREE:-/opt/lifeagents}"   # Installer-Baum IM master-Image (master.Dockerfile)
 # Variablen, die compose.yml interpoliert (EINE Liste fuer die Env-Datei des Helfers; contract_lint 33 haelt sie gleich).
-SWAP_STACK_VARS="LA_PROJECT LA_EDGE_PORT LA_WIZARD_PORT LA_PG_SUPERPW LA_MASTER_IMAGE LA_TS_HOSTNAME LA_HOST_IP"
+SWAP_STACK_VARS="LA_PROJECT LA_EDGE_PORT LA_WIZARD_PORT LA_PG_SUPERPW LA_MASTER_IMAGE LA_TS_HOSTNAME"
 
 _swap_get() { read_env_value "$SWAP_STATE" "$1" 2>/dev/null || true; }
 _swap_set() { env_upsert "$SWAP_STATE" "$1" "$2"; }

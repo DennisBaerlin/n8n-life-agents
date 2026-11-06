@@ -339,7 +339,7 @@
   const DLG = { x: 465, y: 300, s: 1.2 };
   const FB_STEPS = [
     { cap: 'fritz.box im Browser öffnen, links „Internet“',
-      acts: [{ to: [96, 122], click: true, set: { sub: '1' } }], hold: 900 },
+      acts: [{ to: [104, 112], click: true, set: { sub: '1' }, ring: [10, 102, 184, 26] }], hold: 1100 },
     { cap: '„Freigaben“, Reiter „Portfreigaben“',
       acts: [{ to: [116, 230], click: true, set: { act: 'freigaben', scene: 'list' } }, { to: [330, 132], ring: [220, 106, 108, 34], wait: 700 }] },
     { cap: '„Gerät für Freigaben hinzufügen“, Rechner wählen',
@@ -355,9 +355,10 @@
         { set: { scene: 'dev', rows: '1', radio: '0', chk: '0' }, cam: { x: 490, y: 520, s: 1 }, ring: [224, 513, 532, 26] }] },
     { cap: 'Dasselbe noch einmal mit „HTTPS-Server“',
       acts: [{ to: [752, 602], click: true, set: { scene: 'dlg', app: 'https', radio: '1', chk: '1' }, cam: DLG, ring: [426, 252, 236, 36], wait: 1300 },
-        { to: [552, 516], click: true, set: { scene: 'dev', rows: '2', radio: '0', chk: '0' }, cam: { x: 490, y: 550, s: 1 }, ring: [224, 541, 532, 26] }], hold: 1800 },
+        { to: [552, 516], click: true, set: { scene: 'dev', rows: '2', radio: '0', chk: '0' }, cam: { x: 490, y: 545, s: 1 }, ring: [224, 541, 532, 26] },
+        { to: [700, 562], cam: { x: 490, y: 545, s: 1 }, wait: 400 }], hold: 1800 },
     { cap: 'Unten „Übernehmen“ klicken',
-      acts: [{ to: [754, 656], click: true, ring: [664, 630, 98, 36] }], hold: 2400 },
+      acts: [{ to: [754, 656], click: true, cam: { x: 490, y: 600, s: 1 }, ring: [664, 630, 98, 36] }], hold: 2400 },
   ];
 
   function fbShare() {

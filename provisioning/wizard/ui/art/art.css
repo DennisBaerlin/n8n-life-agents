@@ -14,6 +14,9 @@
 /* Mit Bild wird der freie Raum ganz zum Bild (sonst hält der Abstand über der Knopfleiste 18 px fest) */
 .art ~ .spacer { min-height: 0; }
 .art-stage svg { display: block; width: 100%; height: 100%; border: 1px solid var(--hairline); border-radius: var(--radius-sm); overflow: hidden; }
+/* Lupe: angeschnittene Zeilen oben und über der Beschriftungsleiste weich ausblenden statt hart abschneiden */
+.art-guide .art-stage { -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--ink) 16px, var(--ink) calc(100% - 46px), transparent calc(100% - 30px), var(--ink) calc(100% - 30px));
+  mask-image: linear-gradient(to bottom, transparent 0, var(--ink) 16px, var(--ink) calc(100% - 46px), transparent calc(100% - 30px), var(--ink) calc(100% - 30px)); }
 .art-guide text { font-family: var(--font); }
 .art-guide .art-cap { position: absolute; left: 1px; right: 1px; bottom: 1px; display: flex; gap: 6px 12px; align-items: center; justify-content: space-between;
   padding: 4px 8px; background: var(--bg); border-top: 1px solid var(--hairline); border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
@@ -72,7 +75,7 @@
 .fb .t-m { font-size: 14px; }
 .fb .t-strong { font-weight: 700; }
 .fb .t-gray, .fb .t-lbl, .fb .t-th { fill: var(--gray); }
-.fb .t-th { font-size: 11.5px; }
+.fb .t-th { font-size: 12.5px; }
 .fb .t-s { font-size: 12.5px; }
 .fb .ph { fill: var(--hairline); }
 .fb .card, .fb .tab-off, .fb .field-off { fill: var(--bg-soft); stroke: var(--hairline); stroke-width: 1.2; }
@@ -98,8 +101,8 @@
 .fb .radio { fill: var(--bg); stroke: var(--gray); stroke-width: 1.3; }
 .fb .radio-on { fill: var(--accent); opacity: 0; transition: opacity .2s ease; }
 .fb[data-radio="1"] .r1 { opacity: 1; }
-.fb .okdot { fill: var(--ok); }
-.fb .veil { fill: var(--ink); opacity: .28; }
+.fb .okdot { fill: var(--ok, var(--accent)); }   /* ok fehlt noch im Wizard-Block (bei di4 angefragt) */
+.fb .veil { fill: var(--ink); opacity: .55; }
 .fb .s { opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
 .fb[data-scene="home"] .s-home, .fb[data-scene="list"] .s-list, .fb[data-scene="dev"] .s-dev,
 .fb[data-scene="dlg"] .s-dev, .fb[data-scene="dlg"] .s-dlg { opacity: 1; visibility: visible; }
@@ -114,12 +117,12 @@
 /* Neben der Auswahl (side: true → app.js .with-art): so hoch wie die Auswahl, schmal; im schmalen Fenster darunter */
 .with-art { display: flex; gap: 24px; align-items: flex-start; }
 .with-art > .choices { flex: 1 1 auto; min-width: 0; }
-.with-art > .art { flex: 0 0 264px; height: 340px; margin: 0; max-height: none; }
+.with-art > .art { flex: 0 0 264px; height: 362px; margin: 0; max-height: none; }
 @media (max-width: 600px) { .with-art { display: block; } .with-art > .art { height: 330px; margin: 14px 0 0; } }
 .art-phone .art-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; }
 .art-phone .ph-frame { width: 300px; max-width: 100%; flex: 0 1 300px; min-height: 0; overflow: hidden; border-radius: 46px 46px 0 0;
   padding: 9px 9px 0; background: var(--bg-soft); border: 1.5px solid var(--gray); border-bottom: 0;
-  -webkit-mask-image: linear-gradient(to bottom, var(--ink) 80%, transparent); mask-image: linear-gradient(to bottom, var(--ink) 80%, transparent); }
+  -webkit-mask-image: linear-gradient(to bottom, var(--ink) 88%, transparent); mask-image: linear-gradient(to bottom, var(--ink) 88%, transparent); }
 .art-phone .ph-screen { position: relative; height: 100%; border-radius: 38px 38px 0 0; overflow: hidden; background: var(--bg);
   border: 1px solid var(--hairline); border-bottom: 0; display: flex; flex-direction: column; }
 .art-phone .island { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 92px; height: 26px; border-radius: var(--radius-pill); background: var(--bg-soft); border: 1.5px solid var(--gray); }

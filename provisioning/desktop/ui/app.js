@@ -1055,9 +1055,13 @@ const SCREENS = {
   },
 
   welcome() {
+    // Begrüßung „Was ist lifeagents?“: dasselbe Bild wie in README und Anleitung, je Sprache eine fertige SVG mit Bewegung
+    // im Bild (Quelle config/ui.art.greeting.svg, erzeugt von scripts/build_ui_tokens.ps1). Fehlt sie, bleibt nur der Text.
+    const intro = h('img', { class: 'la-intro', src: `art/greeting.${LANG}.svg`, alt: t('core.art.greeting.alt') });
+    intro.addEventListener('error', () => intro.remove());
     show('welcome', {
       title: t('core.desktop.welcome.title'),
-      body: [h('p', { class: 'lead' }, t('core.desktop.welcome.lead')), h('p', {}, t('core.desktop.welcome.time'))],
+      body: [intro, h('p', { class: 'lead' }, t('core.desktop.welcome.lead')), h('p', {}, t('core.desktop.welcome.time'))],
       next: { label: t('core.desktop.welcome.start'), run: () => SCREENS.need() },
     });
   },

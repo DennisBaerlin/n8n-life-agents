@@ -8,7 +8,7 @@ Tauri-2-App für Freunde ohne eigenen Server (Plan *Docker-Installer für Freund
 |---|---|
 | `core/` | Prüf- und Änderungs-Logik ohne Tauri, Modul je Prüflisten-Nummer (Kopf von `src/lib.rs`) |
 | `app/` | Tauri-Hülle: Befehle (`src/commands.rs`), Symbol in Menüleiste/neben der Uhr, Anmeldestart (`src/main.rs`) |
-| `ui/` | Bildschirme (HTML/CSS/JS ohne Build-Schritt); Farben nur `var(--token)`, Texte nur aus dem Katalog (`core.desktop.*` in `packages/core/locales`, de/en/ko); beide Blöcke aus `scripts/build_ui_tokens.ps1` |
+| `ui/` | Bildschirme (HTML/CSS/JS ohne Build-Schritt); Farben nur `var(--token)`, Texte nur aus dem Katalog (`core.desktop.*` in `packages/core/locales`, de/en/ko); Bilder unter `ui/art/` (Begrüßung `greeting.<lang>.svg`, erzeugt aus `config/ui.art.greeting.svg`); beide Blöcke aus `scripts/build_ui_tokens.ps1` |
 | `preview/` | Attrappe der App-Befehle für die Browser-Vorschau, nie Teil der App |
 
 ## Harte Regeln

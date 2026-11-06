@@ -22,6 +22,9 @@ if ($Down) {
 $src = (Resolve-Path $RepoRoot).Path
 $cmd = "cargo test --quiet $Filter"
 if ($Lint) { $cmd = "rustup component add rustfmt clippy >/dev/null 2>&1; cargo fmt --check && cargo clippy --all-targets --quiet -- -D warnings && $cmd" }
+# Image vorab laden: Laedt erst `docker run` es, schreibt Docker "Unable to find image" auf stderr, und unter
+# ErrorActionPreference Stop bricht PowerShell 5.1 den Lauf ab, sobald die Ausgabe umgeleitet ist.
+if (-not (docker images -q $image)) { docker pull -q $image | Out-Null }
 docker run --rm --name "$prefix-rust" -v "${src}:/repo:ro" -v "${prefix}-cargo:/usr/local/cargo/registry" -v "${prefix}-target:/target" `
     -e CARGO_TARGET_DIR=/target -w /repo/provisioning/desktop/core $image sh -c $cmd
 exit $LASTEXITCODE

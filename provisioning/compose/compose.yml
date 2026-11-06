@@ -144,6 +144,18 @@ services:
     image: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
     container_name: ${LA_PROJECT:-lifeagents}-master
     mem_limit: 512m
+    init: true   # raeumt die Kindprozesse der docker-exec-Aufrufe ab (tini)
+    # Wizard (Paket 4) laeuft, bis er sich nach "Fertig" selbst beendet (er erkennt den Zustand im Volume wizard_state und
+    # endet dann auch nach einem Neustart sofort); danach bleibt der master als Ruhe-Prozess fuer docker exec stehen.
+    # Fehlt die Datei (Baum ohne Wizard), startet nur der Ruhe-Prozess. SIGTERM geht an den Wizard weiter.
+    command:
+      - sh
+      - -c
+      - |
+        w=/opt/lifeagents/provisioning/wizard/server.js
+        trap 'kill -TERM "$$pid" 2>/dev/null; exit 0' TERM INT
+        if [ -f "$$w" ]; then node "$$w" & pid=$$!; wait "$$pid" || echo "Wizard endete mit Fehler" >&2; fi
+        while :; do sleep 3600 & pid=$$!; wait "$$pid"; done
     depends_on:
       anchor:
         condition: service_started
@@ -176,6 +188,7 @@ services:
       - gw_code:/gw
       - gw_state:/var/lib/lifeagents-llm-gateway
       - n8n_patches:/opt/n8n-patches
+      - wizard_state:/var/lib/lifeagents-wizard   # Fortschritt des Wizards; nur der master sieht ihn
 
   edge:
     image: *img_caddy
@@ -259,6 +272,9 @@ volumes:
   ts_state:
     external: true
     name: ${LA_PROJECT:-lifeagents}_ts_state
+  wizard_state:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_wizard_state
   # Abgeleitet (jeder Installer-Lauf schreibt sie neu) -> von Compose verwaltet.
   shared:
     labels: *labels

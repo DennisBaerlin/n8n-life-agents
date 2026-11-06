@@ -2179,6 +2179,27 @@ foreach ($k in 'N8N_VERSION', 'PG_VERSION', 'NODE_MAJOR') {
 $rtTxt = [System.IO.File]::ReadAllText((Join-Path $provDir 'lib\runtime.sh'), $Utf8NoBom)
 $cState = @(([regex]::Match($rtTxt, '(?m)^LA_STATE_VOLUMES="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ })
 if (-not $cState.Count) { $errors.Add("COMPOSE-PINS: LA_STATE_VOLUMES in lib/runtime.sh nicht lesbar -- Check 33 ist defekt.") }
+# Spiegel der Start-App (Paket 6): provisioning/desktop/core/src/contract.rs STATE_VOLUMES muss dieselbe Menge sein (die App
+# legt die Volumes vor dem ersten Start an). Datei fehlt (Branch ohne App) = nichts zu pruefen.
+function Get-AppStateVolumes([string]$Rs) {
+    $m = [regex]::Match($Rs, '(?s)STATE_VOLUMES\s*:\s*\[\s*&(?:''static\s+)?str\s*;\s*\d+\s*\]\s*=\s*\[(.*?)\]')
+    if (-not $m.Success) { return $null }
+    return , @([regex]::Matches($m.Groups[1].Value, '"([a-z0-9_]+)"') | ForEach-Object { $_.Groups[1].Value })
+}
+$appContract = Join-Path $provDir 'desktop\core\src\contract.rs'
+if ((Test-Path $appContract) -and $cState.Count) {
+    $appVols = Get-AppStateVolumes ([System.IO.File]::ReadAllText($appContract, $Utf8NoBom))
+    if ($null -eq $appVols) { $errors.Add("COMPOSE-PINS: STATE_VOLUMES in provisioning/desktop/core/src/contract.rs nicht lesbar -- Check 33 ist defekt oder die Form hat sich geaendert.") }
+    elseif ((@($appVols | Sort-Object) -join ' ') -ne (@($cState | Sort-Object) -join ' ')) {
+        $errors.Add("COMPOSE-PINS: STATE_VOLUMES der Start-App ($($appVols -join ', ')) != LA_STATE_VOLUMES in lib/runtime.sh ($($cState -join ', ')) -- beide Listen gleich halten.")
+    }
+}
+foreach ($sa in @(
+    @{ n = 'App-Liste lesbar'; t = 'pub const STATE_VOLUMES: [&str; 2] = ["pgdata", "etc_la"];'; want = 'etc_la pgdata' },
+    @{ n = 'static-Form';      t = "pub const STATE_VOLUMES: [&'static str; 1] = [`n  `"pgdata`",`n];"; want = 'pgdata' })) {
+    $got = ((Get-AppStateVolumes $sa.t) | Sort-Object) -join ' '
+    if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet '$($sa.want)', gefunden '$got' -- Check 33 ist defekt.") }
+}
 $cPatches = @([regex]::Matches([System.IO.File]::ReadAllText((Join-Path $provDir 'lib\n8n_patches.sh'), $Utf8NoBom), '(?m)^\s+"([a-z0-9-]+)\|([^|]+)\|') |
     ForEach-Object { @{ Id = $_.Groups[1].Value; Path = $_.Groups[2].Value } })
 if (-not (Test-Path $composePath)) { $errors.Add("COMPOSE-PINS: provisioning/compose/compose.yml fehlt.") }

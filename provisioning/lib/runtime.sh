@@ -12,7 +12,9 @@
 #   docker run --rm · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version>.
 # Verboten sind breite Befehle (prune, --all/-a, ps -q, rm $(…), down -v/--volumes, --rmi, system …): unser master hat
 # Zugriff auf GANZ Docker, ein Fehler hier traefe fremde Container (z. B. Paperless) — die wichtigste Regel des Verbunds.
-# Alles, was wir anlegen, traegt den Projektnamen als Vorsatz und das Label io.lifeagents.install=<projekt>.
+# Alles, was wir anlegen, traegt den Projektnamen als Vorsatz und das Label io.lifeagents.install=<projekt>. Nur der
+# Deinstaller (Start-App bzw. Paket 2, nach ausdruecklicher Rueckfrage, Pruefliste Nr. 17) darf zusaetzlich `compose down`
+# (ohne -v), `volume rm <eigenes, gelabeltes Volume>` und `image rm <laut Journal selbst geladen>`.
 
 rt_is_compose() { [ "${LIFEAGENTS_RUNTIME:-systemd}" = compose ]; }
 
@@ -26,7 +28,7 @@ LA_GW_CONTAINER="${LA_GW_CONTAINER:-${LA_PROJECT}-gateway}"
 LA_N8N_EXEC_USER="${LA_N8N_EXEC_USER:-node}"   # Nutzer des n8n-Images (uid 1000); im systemd-Betrieb gilt $N8N_USER
 # Zustandsfuehrende Volumes (compose.yml: alle `external`, `compose down` loescht sie nie; nur der Deinstaller nach
 # Rueckfrage). EINE Liste fuer rt_volumes_ensure und den Deinstaller (Paket 2).
-LA_STATE_VOLUMES="pgdata n8n_home etc_n8n etc_la var_la rt_tree gw_state ts_state"
+LA_STATE_VOLUMES="pgdata n8n_home etc_n8n etc_la var_la rt_tree gw_state ts_state wizard_state"
 
 # _rt_compose <args…> — docker compose mit FESTEM Projekt und fester Datei (nie das Projekt aus der Umgebung raten).
 _rt_compose() { docker compose -p "$LA_PROJECT" -f "$LA_COMPOSE_FILE" "$@"; }

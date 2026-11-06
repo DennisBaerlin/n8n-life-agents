@@ -236,25 +236,39 @@ jobs:
       fail-fast: false
       matrix:
         reach: [tunnel, fritzbox]
+    # Wie ein Release: der master kommt per Digest aus einem Register (hier ein lokales registry:2) ueber den Release-Pin in
+    # compose.yml, OHNE LA_MASTER_IMAGE in der Umgebung (Form: scripts/lib/release_images.ps1).
+    services:
+      registry:
+        image: registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+        ports:
+          - 127.0.0.1:5000:5000
     env:
       LA_PROJECT: ci-lifeagents
       LA_EDGE_PORT: '5880'
       LA_WIZARD_PORT: '5881'
-      LA_MASTER_IMAGE: ci-lifeagents-master:ci
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Build the master image from the release tree (git archive, like release.yml)
+      - name: Build the master image from the release tree, push, write the release pin
         run: |
           set -euo pipefail
+          img=127.0.0.1:5000/ci/master
           git archive --format=tar HEAD provisioning packages .gitattributes \
-            | docker build -q -f provisioning/compose/master.Dockerfile -t "$LA_MASTER_IMAGE" -
+            | docker build -q -f provisioning/compose/master.Dockerfile -t "$img:ci" -
           # CRLF-Fund aus dem Probelauf: ein CR in einem Installer-Skript bricht bash mit pipefail ab.
-          crlf="$(docker run --rm --entrypoint sh "$LA_MASTER_IMAGE" -c "grep -rlI \"\$(printf '\r')\" /opt/lifeagents/provisioning || true")"
+          crlf="$(docker run --rm --entrypoint sh "$img:ci" -c "grep -rlI \"\$(printf '\r')\" /opt/lifeagents/provisioning || true")"
           [ -z "$crlf" ] || { echo "FAIL CRLF im master-Image:"; echo "$crlf"; exit 1; }
+          docker push -q "$img:ci" >/dev/null
+          pin="$(docker inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$img:ci" | grep -m1 "^$img@sha256:")"
+          grep -q '^  master: &img_master ${LA_MASTER_IMAGE:?' provisioning/compose/compose.yml || { echo "FAIL compose.yml ohne neutrale Pin-Zeile"; exit 1; }
+          sed -i "s|^  master: &img_master .*|  master: \&img_master \${LA_MASTER_IMAGE:-$pin}|" provisioning/compose/compose.yml
+          grep -n 'img_master' provisioning/compose/compose.yml
+          docker image rm "$img:ci" >/dev/null   # der Stack muss es per Digest aus dem Register ziehen
+          echo "MASTER_PIN=$pin" >> "$GITHUB_ENV"
 
       - name: Neighbour before (foreign container + volume + network, no label of ours)
         run: |
@@ -277,6 +291,9 @@ jobs:
           pw="$(openssl rand -hex 16)"; echo "::add-mask::$pw"
           echo "LA_PG_SUPERPW=$pw" >> "$GITHUB_ENV"
           LA_PG_SUPERPW="$pw" bash provisioning/compose/stack.sh up
+          # master aus dem Pin (Digest), und er kennt sein eigenes Image (master_swap, upgrade_guard brauchen es)
+          test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = "$MASTER_PIN"
+          test "$(docker exec "$LA_PROJECT-master" printenv LA_MASTER_IMAGE)" = "$MASTER_PIN"
 
       - name: Install everything inside the master (provision.sh, all packages, invented values)
         run: |

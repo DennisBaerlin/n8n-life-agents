@@ -7,8 +7,11 @@
 #     docker run -d --name di5-registry -p 127.0.0.1:5099:5000 registry:2
 #     .\scripts\dev\release_images_test.ps1 -Registry 127.0.0.1:5099
 #     docker rm -fv di5-registry
+# Teil C (nur mit -MasterImage <register/pfad@sha256:…>, ein mit build_master_image.ps1 -NoPin aus HEAD gebautes Image): die
+#   Pruefung von sign_release.ps1 (Test-ReleaseCompose) gegen lose Pin-Commits — gruen, Installer geaendert, falscher Digest,
+#   Asset abweichend, ohne Pin. Legt nur lose Git-Objekte an (kein Branch, kein Tag).
 # Exit-Code = Anzahl Fehler.
-param([string]$Registry)
+param([string]$Registry, [string]$MasterImage)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $u8 = New-Object System.Text.UTF8Encoding($false)
@@ -65,6 +68,68 @@ try {
     Check 'Revision kein Vorfahr = rot' ((Test-MasterRevision $repo (TGit rev-parse t-code).Trim() 't-more').Count -eq 1)
     Check 'Revision unbekannt = rot' ((Test-MasterRevision $repo ('0' * 40) 't-ok').Count -eq 1)
 } finally { Remove-Item -LiteralPath $repo -Recurse -Force -ErrorAction SilentlyContinue }
+
+Write-Host 'A: SHA256SUMS (Test-ReleaseSums)' -ForegroundColor Cyan
+$sd = Join-Path ([System.IO.Path]::GetTempPath()) ('ris_' + [guid]::NewGuid().ToString('N').Substring(0, 12))
+New-Item -ItemType Directory -Force $sd | Out-Null
+try {
+    $tb = 'n8n-life-agents-v9.9.9.tar.gz'
+    foreach ($n in @($tb) + $ReleaseSumAssets) { [System.IO.File]::WriteAllText((Join-Path $sd $n), "inhalt $n`n", $u8) }
+    $lines = foreach ($n in @($tb) + $ReleaseSumAssets) { "$((Get-FileHash -Algorithm SHA256 (Join-Path $sd $n)).Hash.ToLowerInvariant())  $n" }
+    [System.IO.File]::WriteAllText((Join-Path $sd 'SHA256SUMS'), ($lines -join "`n") + "`n", $u8)
+    Check 'passende Liste = gruen' ((Test-ReleaseSums $sd $tb).Count -eq 0)
+    [System.IO.File]::WriteAllText((Join-Path $sd 'SHA256SUMS'), (($lines | Select-Object -First 2) -join "`n") + "`n", $u8)
+    Check 'DMG/EXE fehlen in der Liste = rot' ((Test-ReleaseSums $sd $tb).Count -eq 1)
+    [System.IO.File]::WriteAllText((Join-Path $sd 'SHA256SUMS'), ($lines -join "`n") + "`n", $u8)
+    [System.IO.File]::WriteAllText((Join-Path $sd 'compose.yml'), "anders`n", $u8)
+    Check 'geaenderte compose.yml = rot' ((Test-ReleaseSums $sd $tb).Count -eq 1)
+    Remove-Item (Join-Path $sd 'lifeagents.dmg')
+    Check 'fehlendes Asset = rot' ((Test-ReleaseSums $sd $tb).Count -ge 1)
+} finally { Remove-Item -LiteralPath $sd -Recurse -Force -ErrorAction SilentlyContinue }
+
+if ($MasterImage) {
+    # Ganze Kette gegen ein echtes, schon gebautes master-Image (build_master_image.ps1 -Registry <lokal> -NoPin auf HEAD):
+    # Pin-Commit als loses Objekt (commit-tree, kein Branch, keine Hooks), dann Test-ReleaseCompose wie sign_release.ps1.
+    Write-Host "C: Kette mit $MasterImage" -ForegroundColor Cyan
+    $root = (& git -C $PSScriptRoot rev-parse --show-toplevel).Trim()
+    $mRef, $mDig = $MasterImage -split '@', 2
+    $cw = Join-Path ([System.IO.Path]::GetTempPath()) ('ric_' + [guid]::NewGuid().ToString('N').Substring(0, 12))
+    New-Item -ItemType Directory -Force $cw | Out-Null
+    function New-LooseCommit([hashtable]$Files) {
+        $env:GIT_INDEX_FILE = Join-Path $cw 'index'
+        try {
+            & git -C $root read-tree HEAD
+            foreach ($k in $Files.Keys) {
+                $f = Join-Path $cw 'blob'; [System.IO.File]::WriteAllText($f, $Files[$k], $u8)
+                $b = (& git -C $root hash-object -w --no-filters $f).Trim()
+                & git -C $root update-index --add --cacheinfo "100644,$b,$k"
+            }
+            $t = (& git -C $root write-tree).Trim()
+        } finally { Remove-Item env:GIT_INDEX_FILE }
+        return (& git -C $root -c user.name=Test -c user.email=test@example.com commit-tree $t -p HEAD -m 'di5 chain test').Trim()
+    }
+    try {
+        $headCompose = (& git -C $root show "HEAD:$MasterComposeRel") -join "`n"
+        $pinnedTxt = (Set-MasterPin $headCompose -Ref $mRef -Digest $mDig) + "`n"
+        $asset = Join-Path $cw 'compose.yml'; [System.IO.File]::WriteAllText($asset, $pinnedTxt, $u8)
+        $ok = New-LooseCommit @{ $MasterComposeRel = $pinnedTxt }
+        $r = Test-ReleaseCompose $root $ok $asset
+        Check 'Pin-Commit nach dem Bau = gruen' ($r.Problems.Count -eq 0) ($r.Problems -join '; ')
+        $bad = New-LooseCommit @{ $MasterComposeRel = $pinnedTxt; 'provisioning/di5_chain_extra.sh' = "echo x`n" }   # lint-ignore: Wegwerf-Objekt
+        $r = Test-ReleaseCompose $root $bad $asset
+        Check 'Installer seit dem Bau geaendert = rot' ($r.Problems.Count -eq 1 -and ($r.Problems -join ' ') -match 'neu bauen') ($r.Problems -join '; ')
+        $wrong = (Set-MasterPin $headCompose -Ref $mRef -Digest ('sha256:' + ('1' * 64))) + "`n"
+        $wc = New-LooseCommit @{ $MasterComposeRel = $wrong }
+        [System.IO.File]::WriteAllText($asset, $wrong, $u8)
+        $r = Test-ReleaseCompose $root $wc $asset
+        Check 'Digest nicht im Register = rot' ($r.Problems.Count -ge 1) ($r.Problems -join '; ')
+        $r = Test-ReleaseCompose $root $ok $asset
+        Check 'Asset != Datei des Tags = rot' ($r.Problems.Count -eq 1 -and ($r.Problems -join ' ') -match 'weicht') ($r.Problems -join '; ')
+        [System.IO.File]::WriteAllText($asset, $headCompose + "`n", $u8)
+        $r = Test-ReleaseCompose $root 'HEAD' $asset
+        Check 'ohne Release-Pin = rot' (($r.Problems -join ' ') -match 'keinen Release-Pin') ($r.Problems -join '; ')
+    } finally { Remove-Item -LiteralPath $cw -Recurse -Force -ErrorAction SilentlyContinue }
+}
 
 if ($Registry) {
     Write-Host "B: Register $Registry" -ForegroundColor Cyan

@@ -98,11 +98,11 @@ function Get-BytesSha256([byte[]]$Bytes) {
 # Get-RegistryObject: Manifest oder Blob per Digest; prueft, dass der Inhalt wirklich diesen Digest hat (Inhalts-Adressierung).
 function Get-RegistryObject($Client, $R, [string]$Token, [string]$Kind, [string]$Digest) {
     $accept = if ($Kind -eq 'manifests') { $script:ManifestAccept } else { $null }
-    $r = Invoke-RegistryGet $Client "$($R.Base)/v2/$($R.Repo)/$Kind/$Digest" $Token $accept
-    if ($r.Status -ne 200) { throw "HTTP $($r.Status) fuer $($R.Registry)/$($R.Repo) $Kind/$Digest." }
-    $got = Get-BytesSha256 $r.Bytes
+    $res = Invoke-RegistryGet $Client "$($R.Base)/v2/$($R.Repo)/$Kind/$Digest" $Token $accept
+    if ($res.Status -ne 200) { throw "HTTP $($res.Status) fuer $($R.Registry)/$($R.Repo) $Kind/$Digest." }
+    $got = Get-BytesSha256 $res.Bytes
     if ($got -ne $Digest) { throw "Register lieferte fuer $Digest Inhalt mit $got." }
-    return @{ Type = $r.Type; Json = ([System.Text.Encoding]::UTF8.GetString($r.Bytes) | ConvertFrom-Json) }
+    return @{ Type = $res.Type; Json = ([System.Text.Encoding]::UTF8.GetString($res.Bytes) | ConvertFrom-Json) }
 }
 
 # Get-MasterImageReport -Ref <register/pfad> -Digest sha256:… -> @{ Ok; Problems[]; Revision; Version; Platforms; SizeMb }
@@ -166,4 +166,40 @@ function Test-MasterRevision([string]$RepoRoot, [string]$Revision, [string]$Tag)
         if ((Set-MasterPin $a) -cne (Set-MasterPin $b)) { $iss.Add("compose.yml weicht seit dem Image-Bau nicht nur in der Pin-Zeile ab — Image neu bauen.") }
     }
     return , $iss
+}
+
+# --- Release-Pruefung (sign_release.ps1) --------------------------------------------------------------------------------------
+$ReleaseSumAssets = @('install.sh', 'compose.yml', 'lifeagents.dmg', 'lifeagents-setup.exe')   # nach dem Tarball, Reihenfolge = release.yml
+
+# Test-ReleaseSums -Dir -Tarball -> Abweichungen: SHA256SUMS muss genau Tarball + $ReleaseSumAssets in dieser Reihenfolge nennen,
+#   jede Pruefsumme passend zur geladenen Datei.
+function Test-ReleaseSums([string]$Dir, [string]$Tarball) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $names = @($Tarball) + $ReleaseSumAssets
+    $want = foreach ($n in $names) {
+        $p = Join-Path $Dir $n
+        if (-not (Test-Path -LiteralPath $p)) { $iss.Add("Asset $n fehlt."); continue }
+        "$((Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant())  $n"
+    }
+    if ($iss.Count) { return , $iss }
+    $have = @([System.IO.File]::ReadAllLines((Join-Path $Dir 'SHA256SUMS')) | Where-Object { $_ })
+    if ((@($have) -join "`n") -cne (@($want) -join "`n")) { $iss.Add("SHA256SUMS passt nicht zu den geladenen Dateien:`n$($have -join "`n")") }
+    return , $iss
+}
+
+# Test-ReleaseCompose -RepoRoot -Tag -ComposeFile -> @{ Problems; Report }: Asset = compose.yml des Tags (Blob), traegt den
+#   Release-Pin, das Image liegt anonym als Multi-Arch-Index im Register und ist der Release-Baum des Tags bis auf die Pin-Zeile.
+function Test-ReleaseCompose([string]$RepoRoot, [string]$Tag, [string]$ComposeFile) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $ErrorActionPreference = 'Continue'
+    $blobWant = (& git -C $RepoRoot rev-parse "${Tag}:$MasterComposeRel" 2>$null)
+    $blobHave = (& git -C $RepoRoot hash-object --no-filters $ComposeFile)
+    if (-not $blobWant -or $blobWant.Trim() -ne $blobHave.Trim()) { $iss.Add("compose.yml im Release weicht von $MasterComposeRel des Tags ab."); return @{ Problems = $iss; Report = $null } }
+    try { $pin = Get-MasterPin ([System.IO.File]::ReadAllText($ComposeFile, [System.Text.UTF8Encoding]::new($false))) }
+    catch { $iss.Add($_.Exception.Message); return @{ Problems = $iss; Report = $null } }
+    if ($pin.Form -ne 'pinned') { $iss.Add('compose.yml traegt keinen Release-Pin des master-Images (build_master_image.ps1).'); return @{ Problems = $iss; Report = $null } }
+    $rep = Get-MasterImageReport -Ref $pin.Ref -Digest $pin.Digest
+    foreach ($p in $rep.Problems) { $iss.Add("master-Image $($pin.Ref)@$($pin.Digest): $p") }
+    if ($rep.Ok) { foreach ($p in (Test-MasterRevision $RepoRoot $rep.Revision $Tag)) { $iss.Add($p) } }
+    return @{ Problems = $iss; Report = $rep; Pin = $pin }
 }

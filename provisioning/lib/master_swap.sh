@@ -12,7 +12,7 @@
 #   3. neuer (bzw. alter) master, naechster Tick (`lifeagents update --tick`, update_runner.sh): setzt fort — provision.sh aus
 #      dem Image-Baum (upgrade_guard sichert davor) bzw. meldet den Rueckweg — und schliesst den Chat-Auftrag ab.
 # Stirbt der Helfer mittendrin, entscheidet das eigene Image des master: = Ziel -> weiter, = Ausgang -> zurueckgerollt.
-# Bis Paket 5 nennt compose.yml kein master-Image (`${LA_MASTER_IMAGE:?}`) -> ein Update bricht vor jeder Aenderung ab.
+# Nennt die compose.yml des Releases keinen Pin (neutrale Zeile `${LA_MASTER_IMAGE:?…}`) -> ein Update bricht vor jeder Aenderung ab.
 
 SWAP_DIR="${SWAP_DIR:-/var/lib/lifeagents/master-swap}"
 SWAP_STATE="${SWAP_DIR}/state"

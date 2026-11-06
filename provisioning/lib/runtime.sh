@@ -277,8 +277,8 @@ rt_container_image() { docker inspect -f '{{.Config.Image}}' "$1" 2>/dev/null; }
 # rt_container_running <container> — 0 = laeuft.
 rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
 # rt_master_image_of <compose-datei> -> das master-Image, das DIESE Datei selbst nennt (Release-Pin, Paket 5:
-#   `image: ${LA_MASTER_IMAGE:-<register>/master@sha256:…}`), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
-#   keins (heute `:?`). Die aufgeloeste Fassung enthaelt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.
+#   x-images.master `${LA_MASTER_IMAGE:-<register>/master@sha256:…}`, scripts/lib/release_images.ps1), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
+#   keins (neutrale Form `:?`). Die aufgeloeste Fassung enthaelt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.
 rt_master_image_of() {
   ( unset LA_MASTER_IMAGE; LA_COMPOSE_FILE="$1"; _rt_compose config --format json master 2>/dev/null ) \
     | jq -r '.services.master.image // empty' 2>/dev/null || true

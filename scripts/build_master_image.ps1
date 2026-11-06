@@ -14,6 +14,7 @@
 #   .\scripts\build_master_image.ps1 -Version v0.37.0                     # Owner: nach ghcr.io/<owner>/<repo>/master, Pin eintragen
 #   .\scripts\build_master_image.ps1 -Version v0.37.0 -Registry 127.0.0.1:5099/di5 -NoPin   # Test gegen ein lokales Register
 #   .\scripts\build_master_image.ps1 -Version v0.37.0 -NoPush             # nur bauen (lokaler Bild-Speicher), nichts veroeffentlichen
+#   .\scripts\build_master_image.ps1 -Version v0.37.0 -Digest sha256:<hex> # schon gepusht (z. B. nach dem Oeffentlich-Stellen): nur pruefen + Pin
 # Push nach ghcr.io braucht vorher `docker login ghcr.io` (Token mit write:packages) und ist eine Veroeffentlichung; das Paket
 # muss danach oeffentlich sein (GitHub > Packages > master > Package settings > Change visibility), sonst scheitert die Pruefung.
 # Exit 0 = gebaut (und ggf. gepusht + geprueft + Pin eingetragen); jeder Fehler bricht mit Meldung ab.
@@ -23,6 +24,7 @@ param(
     [string]$Name = 'master',
     [switch]$NoPush,
     [switch]$NoPin,
+    [string]$Digest,
     [switch]$AllowDirty
 )
 $ErrorActionPreference = 'Stop'
@@ -50,6 +52,7 @@ $work = Join-Path ([System.IO.Path]::GetTempPath()) ('master_image_' + [guid]::N
 New-Item -ItemType Directory $work | Out-Null
 $prevIndex = $env:GIT_INDEX_FILE
 try {
+    if (-not $Digest) {
     # Release-Baum mit neutraler Pin-Zeile als eigener Baum (temporaerer Index; das Arbeitsverzeichnis bleibt unberuehrt).
     $composeHead = (Invoke-Git show "HEAD:$MasterComposeRel") -join "`n"
     $neutralFile = Join-Path $work 'compose.yml'
@@ -84,9 +87,19 @@ try {
     if ($digest -notmatch '^sha256:[0-9a-f]{64}$') { throw "Kein Digest in den Bau-Metadaten ($digest)." }
     Write-Host "Index: $ref@$digest" -ForegroundColor Green
     if ($NoPush) { Write-Host 'Nicht gepusht (-NoPush): kein Pin eingetragen.'; exit 0 }
+    } else {
+        if ($Digest -notmatch '^sha256:[0-9a-f]{64}$') { throw "Ungueltiger -Digest '$Digest' (sha256:<64 hex>)." }
+        $digest = $Digest
+    }
 
     $rep = Get-MasterImageReport -Ref $ref -Digest $digest
-    if (-not $rep.Ok) { throw "Pruefung im Register gescheitert: $($rep.Problems -join ' | ')" }
+    if (-not $rep.Ok) {
+        # Ein neues Paket ist bei GitHub zuerst privat: die anonyme Pruefung scheitert, bis es oeffentlich ist.
+        Write-Host "Pruefung im Register gescheitert: $($rep.Problems -join ' | ')" -ForegroundColor Red
+        Write-Host "Ist das Paket noch privat? GitHub > Packages > $Name > Package settings > Change visibility > Public. Danach ohne neuen Bau weiter:" -ForegroundColor Yellow
+        Write-Host "  .\scripts\build_master_image.ps1 -Version $Version -Digest $digest$(if ($PSBoundParameters.ContainsKey('Registry')) { ' -Registry ' + $Registry })"
+        exit 1
+    }
     if ($rep.Revision -ne $rev) { throw "Register meldet Revision $($rep.Revision), gebaut wurde $rev." }
     Write-Host ("Im Register geprueft (anonym): {0}, Revision {1}, ~{2} MB je Plattform." -f ($rep.Platforms -join ' + '), $rev.Substring(0, 12), $rep.SizeMb) -ForegroundColor Green
 

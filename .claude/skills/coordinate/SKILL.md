@@ -23,7 +23,7 @@ Es gibt immer genau eine leitende Session mit Merge-Hoheit, die alle anderen zen
 
 ## 3. Pflichten der Leitung
 
-- **Merge-Hoheit:** Nur die Leitung merged auf den Integrations-Branch, fährt die Schluss-Gates, pusht `main` und taggt. Niemand sonst pusht oder taggt.
+- **Merge-Hoheit:** Nur die Leitung merged auf den Integrations-Branch, fährt die Schluss-Gates, pusht `main` und taggt. Niemand sonst pusht oder taggt. Liegen ungepushte Commits eines Sprints auf `main`, merged eine andere Session erst nach Absprache mit dessen Leitung nach `main`.
 - **Geschützte `main` und `v*`-Tags** (Rulesets → `CONTRIBUTING.md` *Branch protection*): Die Leitung pusht direkt per Admin-Bypass der CI-Pflicht. Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version. Nach jedem Push die CI-Ampel prüfen (`scripts/check_ci_status.ps1`). Ein gepushter Text lässt sich nicht still zurückholen; meldet `privacy_lint -Outgoing` rot, wird der Text korrigiert.
 - **Fremd-PRs:** Nie auschecken, bevor der Diff gelesen ist (Hooks sehen `.env`). Die Leitung schreibt `gh pr diff <nr>` in eine Datei, fährt darauf `privacy_lint -TextFile <datei>` und die Modell-Prüfung (die Denylist fehlt in der CI, Fork-Läufe sehen sie nie). Erst danach gibt sie den Lauf frei. Merge nur per Squash mit eigenem, geprüftem Text, nach Bestätigung des Owners. Antworten im PR sind öffentlich: keine Live-Werte, auch nicht zur Begründung.
 - **Statusrunde alle 15 Minuten** per `CronCreate` (Off-Minuten, z. B. `7,22,37,52 * * * *`, `recurring: true`):

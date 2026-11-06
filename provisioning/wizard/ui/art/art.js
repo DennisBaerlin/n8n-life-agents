@@ -384,8 +384,9 @@
   // ---------- A2: Charakter des Bots (Seite h:OWNER_PERSONA) ----------
   // Handy-Ausschnitt nach dem Analog der Site (phone-frame-*.html, .tg-*), Farben aus den Tokens. Zeigt, was der Bot wirklich
   // tut: Rahmensatz des Charakters (fester Katalogtext core.persona.frame.<code>.1, mit Emoji) vor einer neutralen Antwort, in der
-  // im Setup gewählten Sprache; darunter groß das Emoji des Charakters. Emoji und Rahmensätze liefert der Server je Option
-  // (o.emoji, o.frame[lang], aus dem Core-Katalog), page.lang die gewählte Sprache. Fehlt etwas, bleibt nur die neutrale Antwort.
+  // im Setup gewählten Sprache; darunter der Sticker, den der Bot in Telegram schickt. Rahmensätze und Sticker-Adresse liefert der
+  // Server je Option (o.frame[lang] aus dem Core-Katalog, o.sticker aus packages/core/build/stickers), page.lang die gewählte
+  // Sprache. Fehlt etwas, bleibt nur die neutrale Antwort.
   // Hier stehen nur die Beispiel-Frage und die neutrale Antwort selbst (Bildtext, keine Bot-Sprechweise).
   const CHAT = {
     de: { bot: 'Dein Bot', q: 'Was steht heute an?', a: 'Für heute ist nichts eingetragen.' },
@@ -411,20 +412,20 @@
     for (const o of page.options || []) opts[o.value] = o;
     const frame = h('span', { class: 'frame' });
     const reply = h('div', { class: 'msg msg-in', lang }, frame, h('span', { text: t.a }));
-    const emoji = h('div', { class: 'sticker', 'aria-hidden': 'true' });
+    const sticker = h('img', { class: 'sticker', alt: '', 'aria-hidden': 'true', width: '512', height: '512', decoding: 'async' });
     const typing = h('div', { class: 'msg msg-in typing', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
     const fig = h('figure', { class: 'art art-phone', 'data-art': 'persona' },
       h('div', { class: 'art-box' },
         phone('Beispiel-Chat mit deinem Bot', h('span', { class: 'tg-title', text: t.bot, lang }),
-          [h('div', { class: 'msg msg-out', text: t.q, lang }), reply, emoji, typing])));   // „was gleich bleibt“ sagt der Seitentext
+          [h('div', { class: 'msg msg-out', text: t.q, lang }), reply, sticker, typing])));   // „was gleich bleibt“ sagt der Seitentext
     let timer = null;
     const show = (code) => {
       const o = opts[code] || {};
       const f = o.frame && (o.frame[lang] || o.frame.de);
       frame.textContent = f || '';
       frame.hidden = !f;
-      emoji.textContent = o.emoji || '';
-      emoji.hidden = !o.emoji;
+      if (o.sticker) sticker.src = o.sticker;
+      sticker.hidden = !o.sticker;
     };
     show(page.value);
     function select(code) {

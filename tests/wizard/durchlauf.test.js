@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const { startWizard, ctl, login, state, post, answer, waitFor, lanIp, WIZ } = require('./helpers');
+const { REPO, startWizard, req, ctl, login, state, post, answer, waitFor, lanIp, WIZ } = require('./helpers');
 const qr = require(path.join(WIZ, 'qr.js'));
 
 // Erfundenes Paperless: /api/ antwortet mit X-Version, prüft den Token.
@@ -48,12 +48,20 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal((await answer(w, 'h:OWNER_BIRTH_DATE', '2999-01-01')).status, 422);
     assert.equal((await answer(w, 'h:OWNER_BIRTH_DATE', '01.02.1985')).status, 422);
     await expectOk(await answer(w, 'h:OWNER_BIRTH_DATE', '1984-07-15'));
-    // Handy-Bild der Charakter-Seite: Zeichen + echte Sprechweise aus dem Katalog, je Sprache; Standard ohne Rahmensatz.
+    // Handy-Bild der Charakter-Seite: echte Sprechweise aus dem Katalog, je Sprache; Standard ohne Rahmensatz. Sticker je
+    // Charakter = byte-gleich die Datei, die der Bot in Telegram schickt (keine Kopie im Wizard, die veralten könnte).
     const pe = await page(w);
     const butler = pe.options.find((o) => o.value === 'butler');
-    assert.equal(butler.emoji, '🎩');
     assert.ok(butler.frame.de.startsWith('🎩') && butler.frame.en && butler.frame.ko, 'Sprechweise in allen Sprachen');
     assert.deepEqual(pe.options.find((o) => o.value === 'neutral').frame, {});
+    for (const o of pe.options) {
+      assert.equal(o.sticker, `/sticker/${o.value}.webp`, o.value + ': Sticker angeboten');
+      const r = await req(w, 'GET', o.sticker);
+      assert.equal(r.status, 200, o.sticker);
+      assert.equal(r.headers['content-type'], 'image/webp');
+      assert.ok(r.buf.equals(fs.readFileSync(path.join(REPO, 'packages', 'core', 'build', 'stickers', `${o.value}_hallo.webp`))), o.value + ': Sticker byte-gleich mit dem des Bots');
+    }
+    for (const p of ['/sticker/pirat.webp', '/sticker/..%2Fstickers.webp', '/sticker/Butler.webp']) assert.equal((await req(w, 'GET', p)).status, 404, p);
     assert.equal((await answer(w, 'h:OWNER_PERSONA', 'pirat')).status, 422, 'nur angebotene Charaktere');
     await expectOk(await answer(w, 'h:OWNER_PERSONA', 'butler'));
     // „Noch kein Telegram?“: QR-Code (lokal erzeugt) und Links nur zu offiziellen Telegram-Adressen, Texte aus dem Katalog.

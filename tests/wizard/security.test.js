@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { startWizard, req, ctl, login, state, post, answer } = require('./helpers');
+const { WIZ, startWizard, req, ctl, login, state, post, answer } = require('./helpers');
 
 let w;
 test.before(async () => { w = await startWizard(); });
@@ -23,6 +23,9 @@ test('falscher Host wird abgewiesen (auch DNS-Rebinding)', async () => {
 test('Kopfzeilen: CSP ohne Inline-Skript, kein Referrer, kein Caching, kein Einbetten', async () => {
   const r = await req(w, 'GET', '/app.js');
   assert.equal(r.status, 200);
+  for (const [p, f] of [['/app.js', 'app.js'], ['/app.css', 'app.css']]) {
+    assert.ok((p === '/app.js' ? r : await req(w, 'GET', p)).buf.equals(fs.readFileSync(path.join(WIZ, 'ui', f))), p + ' kommt als die Datei selbst');
+  }
   assert.match(r.headers['content-security-policy'], /default-src 'none'/);
   assert.match(r.headers['content-security-policy'], /script-src 'self'(;|$)/);
   assert.doesNotMatch(r.headers['content-security-policy'], /unsafe-inline|unsafe-eval/);

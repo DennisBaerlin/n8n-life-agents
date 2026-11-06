@@ -41,6 +41,11 @@ async function step(w, id, value, opt) {
     await step(w, 'h:OWNER_LAST_NAME', 'Muster');
     await shot(w, 'h_OWNER_BIRTH_DATE-fehler', { error: (await answer(w, 'h:OWNER_BIRTH_DATE', '2999-01-01')).json.error, value: '2999-01-01' });
     await step(w, 'h:OWNER_BIRTH_DATE', '1980-01-01');
+    // Charakter-Seite auch in Englisch und Koreanisch, dort mit Butler gewählt (Standard hat keinen Rahmensatz).
+    for (const l of ['en', 'ko', 'de']) {
+      await post(w, '/api/lang', { lang: l });
+      if (l !== 'de') (await shot(w, `h_OWNER_PERSONA-${l}`)).value = 'butler';
+    }
     await step(w, 'h:OWNER_PERSONA', 'neutral');
     // Token-Seite mit aufgeklapptem „Noch kein Telegram?“ in allen drei Sprachen (die zugeklappte Fassung nimmt step() auf).
     for (const l of ['en', 'ko', 'de']) {

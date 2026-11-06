@@ -155,7 +155,8 @@
   display: flex; align-items: center; justify-content: center; flex: none; }
 .art-phone .tg-avatar svg { width: 21px; height: 21px; }
 .art-phone .tg-title { font-size: 14px; font-weight: 600; line-height: 1.2; color: var(--ink); }
-.art-phone .tg-chat { flex: 1; background: var(--bg-soft); padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
+/* Wie Telegram: Neuestes unten (Sticker bleibt sichtbar), bei wenig Platz verschwindet die Frage oben; unten Raum für den Rand-Verlauf */
+.art-phone .tg-chat { flex: 1; min-height: 0; overflow: hidden; justify-content: flex-end; background: var(--bg-soft); padding: 12px 12px 34px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
 .art-phone .msg { max-width: 86%; padding: 7px 11px; border-radius: 16px; }
 .art-phone .msg-out { align-self: flex-end; background: var(--accent-pale); border-bottom-right-radius: 6px; }
 .art-phone .msg-in { align-self: flex-start; background: var(--bg); border: 1px solid color-mix(in srgb, var(--gray) 45%, transparent); border-bottom-left-radius: 6px; transition: opacity .25s ease; }
@@ -167,7 +168,7 @@
 .art-phone .frame { display: block; margin-bottom: 6px; color: var(--gray); }   /* Rahmensatz = Ton des Charakters, Inhalt darunter */
 .art-phone :lang(ko) { word-break: keep-all; }
 .art-phone [hidden] { display: none; }
-.art-phone .sticker { align-self: flex-start; font-size: 32px; line-height: 1; padding: 0 4px; }
+.art-phone .sticker { align-self: flex-start; width: 84px; height: 84px; flex: none; }   /* Telegram zeigt Sticker ohne Blase */
 .art-phone.busy .msg-in:not(.typing), .art-phone.busy .sticker { display: none; }
 .art-phone.busy .typing { display: flex; }
 .art-note { margin: 8px 0 0; text-align: center; max-width: 34rem; flex: none; }

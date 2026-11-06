@@ -26,7 +26,7 @@ async function step(w, id, value, opt) {
   });
   await new Promise((r) => pl.listen(0, '0.0.0.0', r));
   const plUrl = `http://${lanIp()}:${pl.address().port}`;
-  const w = await startWizard();
+  const w = await startWizard({ env: { LA_HOST_LAN_IP: '192.0.2.10' } });
   try {
     await login(w);
     await step(w, 'h:OWNER_LANGUAGE', 'de');
@@ -42,6 +42,7 @@ async function step(w, id, value, opt) {
     await step(w, 'h:ANTHROPIC_API_KEY', 'sk-ant-beispiel');
     await step(w, 'voice', 'yes');
     await step(w, 'h:GOOGLE_API_KEY', 'AIza-beispiel');
+    fs.writeFileSync(path.join(w.fake, 'paperless_ports'), JSON.stringify([{ ip: '0.0.0.0', port: 8010 }]));
     await step(w, 'packages', ['career', 'estate', 'finance', 'paperless']);
     await step(w, 'c:career:ADZUNA_APP_ID', 'beispiel-id');
     await step(w, 'c:career:ADZUNA_APP_KEY', 'beispiel-key');

@@ -88,5 +88,6 @@ test('Paperless-Prüfung: Version, Zugang, localhost, nicht erreichbar', async (
 test('Schnittstellen zu Paket 1/3 ohne deren Code: unbekannt statt Fehler', () => {
   assert.deepEqual(run(['reach-status']), { state: 'unavailable' });
   assert.deepEqual(run(['reach-ports']), { state: 'unknown' });
+  assert.deepEqual(run(['paperless-ports']), { ports: [] }, 'ohne runtime.sh keine Suche');
   assert.deepEqual(run(['tg-check'], '', { TELEGRAM_BOT_TOKEN: '' }), { ok: false, reason: 'unauthorized' });
 });

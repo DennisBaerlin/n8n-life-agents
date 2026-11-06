@@ -168,6 +168,10 @@
     // Nach „Weiter“ holt die App (gleiches Fenster) ihre eigenen Seiten zurück, sobald sie phase=handoff sieht (alle 3 s).
     if (p.kind === 'handoff' && p.done) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), 'Einen Moment …')));
 
+    // Bild „im leeren Platz“ (figures.js): Inhalt links, Bild rechts; im schmalen Fenster untereinander.
+    const fig = p.figure && window.WIZARD_FIGURES && window.WIZARD_FIGURES[p.figure] ? window.WIZARD_FIGURES[p.figure]() : null;
+    if (fig && fig.classList.contains('fig-wide')) kids.push(fig);   // breite Schemata unter dem Text
+    else if (fig) kids.splice(1, kids.length - 1, h('div', { class: 'split' }, h('div', { class: 'split-main' }, kids.slice(1)), fig));
     kids.push(h('div', { class: 'err', id: 'er', role: 'alert' }), h('div', { id: 'ck' }));
     if (p.kind === 'install' && p.failed) {
       kids.push(h('p', null, h('button', { type: 'button', id: 'rp', on: { click: showReport } }, 'Bericht für die Hilfe anzeigen')), h('div', { id: 'rpt' }));

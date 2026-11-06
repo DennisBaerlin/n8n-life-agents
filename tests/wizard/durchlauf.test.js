@@ -32,7 +32,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
   const ip = lanIp();
   assert.ok(ip, 'Container braucht eine Netz-Adresse für die Paperless-Attrappe');
   const plUrl = `http://${ip}:${pl.address().port}`;
-  const w = await startWizard();
+  const w = await startWizard({ env: { LA_HOST_LAN_IP: '192.0.2.10' } });
   try {
     await login(w);
     assert.equal((await page(w)).id, 'h:OWNER_LANGUAGE');
@@ -59,6 +59,8 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     const pk = await page(w);
     assert.deepEqual(pk.options.map((o) => o.value), ['career', 'estate', 'finance', 'paperless'], 'Module aus der CLI-Quelle');
     assert.ok(pk.options.every((o) => o.label && o.desc), 'Name + package.summary');
+    // Paperless läuft auf diesem Rechner (ein veröffentlichter Port, einer nur lokal): Adresse vorausgefüllt.
+    fs.writeFileSync(path.join(w.fake, 'paperless_ports'), JSON.stringify([{ ip: '0.0.0.0', port: 8010 }, { ip: '127.0.0.1', port: 8011 }]));
     await expectOk(await answer(w, 'packages', ['paperless', 'career', 'estate']));
     // Folgefragen nur der gewählten Module, je Seite eine.
     await expectOk(await answer(w, 'c:career:ADZUNA_APP_ID', 'beispiel-id'));
@@ -66,6 +68,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     await expectOk(await answer(w, 'c:career:JSEARCH_API_KEY', '', { skip: true }));
     assert.equal((await answer(w, 's:estate:general.bundesland', 'atlantis')).status, 422);
     await expectOk(await answer(w, 's:estate:general.bundesland', 'thueringen'));
+    assert.equal((await page(w)).value, 'http://192.0.2.10:8010', 'vorausgefüllt aus dem Paperless-Container dieses Rechners');
     const loc = await answer(w, 's:paperless:general.paperless_url', 'http://localhost:8000');
     assert.equal(loc.status, 422);
     assert.match(loc.json.error, /localhost/);

@@ -61,6 +61,11 @@ function Get-WizardPreviewHtml([string]$RepoRoot, $Entry, [int]$PhoneWidth = 0, 
     $model = $model.Replace('</', '<\/')
     $stub = "window.WIZARD_PREVIEW = (function () { var m = $model; return { error: m.error, value: m.value, api: function (method, path) { return Promise.resolve(method === 'GET' && path === '/api/state' ? { csrf: 'vorschau', page: m.page } : { error: 'Vorschau: nichts wird gesendet.' }); } }; })();"
     $width = if ($PhoneWidth -gt 0) { "html { width: ${PhoneWidth}px; }" } else { '' }
+    $figJs = [System.IO.File]::ReadAllText((Join-Path $ui 'figures.js'), $u8)
+    # Zeichen wie server.js indexHtml(): Kommentar der Datei weg, an jede Stelle <!--mark--> einsetzen
+    $mark = [regex]::Replace([System.IO.File]::ReadAllText((Join-Path $ui 'mark.html'), $u8), '^<!--[\s\S]*?-->\s*', '').Trim()
+    $shell = $shell.Replace('<!--mark-->', $mark)
     $shell = $shell.Replace('<link rel="stylesheet" href="/app.css">', "<style>$css`n$width</style>")
+    $shell = $shell.Replace('<script src="/figures.js"></script>', "<script>$figJs</script>")
     $shell.Replace('<script src="/app.js"></script>', "<script>$stub</script><script>$js</script>")
 }

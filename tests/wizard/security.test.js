@@ -54,6 +54,17 @@ test('Einmal-Wert: falsch, wiederverwendet, ersetzt; Cookie-Attribute', async ()
   assert.equal((await req(w, 'GET', b.pathname + b.search, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
 });
 
+test('Startseite: Projekt-Zeichen eingesetzt, Bild-Bausteine nur als eigene Datei (CSP)', async () => {
+  await login(w);
+  const r = await req(w, 'GET', '/', { headers: { Cookie: w.cookie } });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.includes('M13 2.5 L22 10 V19.5'), 'Haus mit Sprechblase');
+  assert.ok(!r.body.includes('<!--mark-->'));
+  assert.ok(!r.body.includes('-->'), 'kein Rest des Datei-Kommentars in der Seite');
+  assert.ok(!/<script>/.test(r.body), 'kein Inline-Skript');
+  assert.equal((await req(w, 'GET', '/figures.js')).status, 200);
+});
+
 test('neue Anmeldung beendet die alte Sitzung', async () => {
   await login(w);
   const old = w.cookie;

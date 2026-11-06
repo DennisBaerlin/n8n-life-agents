@@ -237,10 +237,15 @@ function pageFor(id) {
       page.optional = false;
     }
     if (key === 'OWNER_LANGUAGE' && !v) page.value = 'de';
+    if (q.setting === 'general.paperless_url' && v === undefined && P.notes.paperless_guess) {
+      page.value = P.notes.paperless_guess;
+      page.note = { kind: '', text: 'Auf diesem Rechner läuft Paperless. Die Adresse ist schon eingetragen, prüf sie kurz.' };
+    }
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
     if (NO_SKIP.includes(key)) page.optional = false;
     if (q.kind === 'date') page.placeholder = 'JJJJ-MM-TT';
+    if (key === 'TELEGRAM_BOT_TOKEN') page.figure = 'botfather';   // Bild: so sieht der Chat mit BotFather aus (figures.js)
     return page;
   }
   switch (id) {
@@ -267,7 +272,7 @@ function pageFor(id) {
     case 'fb_guide': return Object.assign(base, { kind: 'info', title: 'Richte die FritzBox ein',
       help: [{ p: 'In der FritzBox stellst du ein, dass Nachrichten aus dem Internet bei diesem Rechner ankommen. Das sind einige Schritte, die Anleitung zeigt jeden mit Bild.' }],
       note: { kind: 'warn', text: 'Meldet die FritzBox „Freigabe existiert bereits“, nutzt schon etwas anderes diesen Weg. Lösche nichts, sonst fällt es aus. Geh dann zurück und nimm den Tunnel.' },
-      link: { href: GUIDE_URL, label: 'Anleitung für die FritzBox öffnen' }, next: 'Ich habe die Freigaben angelegt' });
+      link: { href: GUIDE_URL, label: 'Anleitung für die FritzBox öffnen' }, figure: 'fritzbox', next: 'Ich habe die Freigaben angelegt' });
     case 'review': return Object.assign(base, { kind: 'review', title: 'Stimmt alles so?', rows: reviewRows(), next: 'Alles richtig, weiter' });
     case 'confirm': return Object.assign(base, { kind: 'confirm', title: 'Das wird auf deinem Rechner geändert',
       help: [{ p: 'Bis hierher hat die Einrichtung nichts verändert. Du kannst jetzt noch abbrechen.' }],
@@ -446,6 +451,11 @@ async function answer(id, raw, skip) {
     case 'packages': {
       if (!Array.isArray(raw) || raw.some((p) => typeof p !== 'string' || !flow.pkgDef(Q, p))) return { error: MSG.choose };
       P.A.__packages = Q.packages.map((p) => p.id).filter((p) => raw.includes(p));
+      if (P.A.__packages.includes('paperless') && P.notes.paperless_guess === undefined) {
+        // Paperless auf DIESEM Rechner suchen (Owner-Runde 2026-11-06); ein Treffer füllt die Adresse vor, sonst bleibt sie leer.
+        const r = await bridge(['paperless-ports'], { timeoutMs: 20000 });
+        P.notes.paperless_guess = flow.paperlessGuess(r && r.ports, process.env.LA_HOST_LAN_IP);
+      }
       break;
     }
     case 'reach':
@@ -647,7 +657,13 @@ function cookieSid(req) {
 }
 function hasSession(req) { const s = cookieSid(req); return !!(session && s && safeEq(s, session.sid)); }
 
-const STATIC = { '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/app.css': ['app.css', 'text/css; charset=utf-8'] };
+const STATIC = { '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/figures.js': ['figures.js', 'text/javascript; charset=utf-8'],
+  '/app.css': ['app.css', 'text/css; charset=utf-8'] };
+// Startseite mit dem Projekt-Zeichen (ui/mark.html, eine Datei, gegen die Quelle der Site prüfbar) an jeder Stelle <!--mark-->.
+function indexHtml() {
+  const mark = fs.readFileSync(path.join(UI_DIR, 'mark.html'), 'utf8').replace(/<!--[\s\S]*?-->\s*/, '').trim();
+  return fs.readFileSync(path.join(UI_DIR, 'index.html'), 'utf8').split('<!--mark-->').join(mark);
+}
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -682,7 +698,7 @@ async function handle(req, res) {
   }
   if (req.method === 'GET' && url.pathname === '/') {
     if (!hasSession(req)) return send(res, 403, page403(), 'text/html; charset=utf-8');
-    return send(res, 200, fs.readFileSync(path.join(UI_DIR, 'index.html')), 'text/html; charset=utf-8');
+    return send(res, 200, indexHtml(), 'text/html; charset=utf-8');
   }
   if (!url.pathname.startsWith('/api/')) return deny(res, 404);
   if (!hasSession(req)) return deny(res, 401);

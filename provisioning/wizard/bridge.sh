@@ -265,8 +265,19 @@ br_reach_ports() {
   jq -nc '{state:"unknown"}'
 }
 
+# paperless-ports — veröffentlichte Ports der Paperless-Container auf DIESEM Rechner (Vorausfüllung der Adresse, Owner-Runde
+#   2026-11-06; kein Abtasten des Heimnetzes). Docker-Abfragen nur über runtime.sh (contract_lint 32):
+#   rt_published_ports_json <image-muster> <container-port> -> [{"ip":"0.0.0.0","port":8010}, …]. Ohne die Funktion: keine.
+#   Ausgabe {"ports":[…]}; die Entscheidung (genau ein erreichbarer Treffer) trifft flow.paperlessGuess.
+br_paperless_ports() {
+  local p='[]'
+  if declare -F rt_published_ports_json >/dev/null; then p="$(rt_published_ports_json paperless-ngx 8000 2>/dev/null || echo '[]')"; fi
+  jq -nc --argjson p "$(jq -c 'if type == "array" then . else [] end' <<<"${p:-[]}" 2>/dev/null || echo '[]')" '{ports:$p}'
+}
+
 case "${1:-}" in
   questions)       br_questions ;;
+  paperless-ports) br_paperless_ports ;;
   reach-ports)     br_reach_ports ;;
   validate)        [ -n "${2:-}" ] || exit 64; br_validate "$2" ;;
   paperless-check) br_paperless_check ;;

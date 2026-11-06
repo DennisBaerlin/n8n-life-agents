@@ -31,6 +31,8 @@ const DOCKER_WAIT: Duration = Duration::from_secs(240);
 pub struct AppState {
     pub last_error: Mutex<String>,
     pub bot: Mutex<String>,
+    /// Eigene Adresse des App-Fensters (beim Start gemerkt), Ziel der Rückkehr aus dem Fragebogen.
+    pub app_url: Mutex<Option<tauri::Url>>,
 }
 
 fn fail(app: &AppHandle, code: &str) -> String {
@@ -289,8 +291,14 @@ pub fn start_core(app: AppHandle) -> Result<u16, String> {
         let seq = j.begin(&h, Step::Inventory { file }).map_err(|_| fail(&app, "journal-unreadable"))?;
         j.done(&h, seq, None).map_err(|_| fail(&app, "journal-unreadable"))?;
     }
-    let port = saved_port().or_else(|| inventory::free_port(&h)).ok_or_else(|| fail(&app, "no-free-port"))?;
-    core_start::start_first(&h, &mut j, &d, &paths, port).map_err(|_| fail(&app, "start-failed"))?;
+    // Den gemerkten Port nur behalten, wenn unser Verbund schon lief (dann hält er ihn selbst) oder er noch frei ist.
+    let started = j.has_done(|s| matches!(s, Step::CoreStarted { .. }));
+    let port = saved_port()
+        .filter(|p| started || h.port_free(*p))
+        .or_else(|| inventory::free_port(&h))
+        .ok_or_else(|| fail(&app, "no-free-port"))?;
+    core_start::start_first(&h, &mut j, &d, &paths, port)
+        .map_err(|e| fail(&app, if e.starts_with("foreign-volume:") { "foreign-objects" } else { "start-failed" }))?;
     Ok(port)
 }
 

@@ -673,6 +673,9 @@ async function boot() {
   if (s.location !== 'installed') return SCREENS.move();
   // Zurück aus dem Fragebogen (main.rs lädt die App mit `#power`): weiter mit dem Dauerbetrieb.
   if (location.hash === '#power') return SCREENS.power();
+  // Aus dem Menü des Symbols, während der Fragebogen im Fenster stand (main.rs lädt dann mit `#…` neu).
+  const fromTray = { '#report': SCREENS.report, '#uninstall': SCREENS.uninstall, '#power-restore': SCREENS.powerRestore }[location.hash];
+  if (fromTray) return fromTray();
   if (!s.journal) return failed('journal-unreadable');
   const k = s.journal.kind;
   if (k === 'complete') return SCREENS.home();

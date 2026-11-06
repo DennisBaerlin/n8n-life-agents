@@ -188,7 +188,17 @@ impl Host for RealHost {
             .unwrap_or_default()
     }
     fn trash(&self, path: &str) -> Result<(), String> {
-        trash::delete(path).map_err(|e| e.to_string())
+        // Mac: über NSFileManager statt Finder-Steuerung, sonst fragt macOS zusätzlich „… möchte Finder steuern“.
+        #[cfg(target_os = "macos")]
+        let result = {
+            use trash::macos::{DeleteMethod, TrashContextExtMacos};
+            let mut ctx = trash::TrashContext::default();
+            ctx.set_delete_method(DeleteMethod::NsFileManager);
+            ctx.delete(path)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let result = trash::delete(path);
+        result.map_err(|e| e.to_string())
     }
 }
 

@@ -13,15 +13,27 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
 
-/// Bildschirm, den das Fenster beim Öffnen über das Symbol zeigen soll (`ui/app.js` hört auf `show-screen`).
+/// Bildschirm, den das Fenster beim Öffnen über das Symbol zeigen soll (`ui/app.js` hört auf `show-screen`). Steht
+/// gerade der Fragebogen (fremde Seite ohne App-Rechte) im Fenster, hört dort niemand zu: dann die eigene Seite mit
+/// dem Bildschirm als `#…` neu laden.
 fn show(app: &AppHandle, screen: &str) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
+    let Some(w) = app.get_webview_window("main") else { return };
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
+    if screen.is_empty() {
+        return;
     }
-    if !screen.is_empty() {
-        let _ = app.emit("show-screen", screen.to_string());
+    let foreign = w.url().map(|u| u.host_str() == Some("127.0.0.1")).unwrap_or(false);
+    let own = app.state::<commands::AppState>().app_url.lock().unwrap().clone();
+    match own {
+        Some(mut url) if foreign => {
+            url.set_fragment(Some(screen));
+            let _ = w.navigate(url);
+        }
+        _ => {
+            let _ = app.emit("show-screen", screen.to_string());
+        }
     }
 }
 
@@ -106,6 +118,10 @@ fn main() {
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
+            // Eigene Adresse des App-Fensters merken (tauri://localhost bzw. http://tauri.localhost), für die Rückkehr.
+            if let Some(w) = app.get_webview_window("main") {
+                *app.state::<commands::AppState>().app_url.lock().unwrap() = w.url().ok();
+            }
             let status = build_tray(&handle)?;
             watch_status(status);
             if autostart {

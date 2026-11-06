@@ -102,38 +102,43 @@ _n8n_patch_render() {
       fs.writeFileSync(process.env.PATCH_DST, s);'
 }
 
-# _apply_n8n_patches_compose — Verbund: n8n liegt im UNVERAENDERLICHEN Image (kein eigenes Image, Einwand 5). Das Original
-#   wird aus dem Image gelesen (n8n_image_cat, nie aus dem laufenden Container mit dem Mount), geprueft, gepatcht und in
-#   das Volume N8N_PATCH_DIR (`n8n_patches`) geschrieben; compose.yml legt `<id>.js` per Volume-Unterpfad schreibgeschuetzt
-#   ueber die Original-Datei. In place ueberschrieben (gleiche Inode: ein laufender Mount sieht die neue Fassung).
+# _apply_n8n_patches_compose — Verbund: n8n liegt im UNVERAENDERLICHEN Image (kein eigenes Image, Einwand 5). Das
+#   VERZEICHNIS der zu korrigierenden Datei wird aus dem Image kopiert (n8n_image_tar, nie aus dem laufenden Container mit
+#   dem Mount), die Datei darin geprueft und gepatcht, das Ergebnis liegt im Volume N8N_PATCH_DIR (`n8n_patches`) unter
+#   <id>/; compose.yml haengt <id>/ per Volume-Unterpfad schreibgeschuetzt ueber das Original-Verzeichnis. Verzeichnis statt
+#   Einzeldatei: ein Unterpfad auf eine DATEI lehnen Docker-Engines unter Linux ab ("readdirent … not a directory", CI-Fund),
+#   Docker Desktop nicht. Geaendert -> N8N_PATCH_CHANGED=1, der folgende n8n-Neustart haengt die neue Fassung ein.
 _apply_n8n_patches_compose() {
-  local id f src tmp out="${N8N_PATCH_DIR:-/opt/n8n-patches}" sha
+  local id f name stage out="${N8N_PATCH_DIR:-/opt/n8n-patches}" sha
   install -d -m 0755 "$out"
   while IFS= read -r id; do
     [ -n "$id" ] || continue
-    f="$(n8n_patch_file "$id")"
-    src="$(mktemp)"; tmp="$(mktemp)"
-    if ! n8n_image_cat "$f" > "$src" 2>/dev/null; then
+    f="$(n8n_patch_file "$id")"; name="$(basename "$f")"
+    stage="$(mktemp -d)"
+    if ! n8n_image_tar "$(dirname "$f")" 2>/dev/null | tar -xf - -C "$stage" 2>/dev/null || [ ! -f "$stage/$name" ]; then
       warn "n8n-Korrektur '${id}': Datei im Image nicht gefunden ($f) — n8n-Aufbau geändert? Patch prüfen ($(_n8n_patch_field "$id" 5))."
-      rm -f "$src" "$tmp"; continue
+      rm -rf "$stage"; continue
     fi
-    sha="$(sha256sum "$src" | cut -d' ' -f1)"
+    sha="$(sha256sum "$stage/$name" | cut -d' ' -f1)"
     if [ "$sha" != "$(_n8n_patch_field "$id" 3)" ]; then
       warn "n8n-Korrektur '${id}': Image-Fassung ist nicht die erwartete Original-Datei — NICHT gepatcht ($(_n8n_patch_field "$id" 5))."
-      rm -f "$src" "$tmp"; continue
+      rm -rf "$stage"; continue
     fi
-    if _n8n_patch_render "$id" "$src" "$tmp" && [ "$(sha256sum "$tmp" | cut -d' ' -f1)" = "$(_n8n_patch_field "$id" 4)" ]; then
-      if [ -f "$out/$id.js" ] && cmp -s "$tmp" "$out/$id.js"; then
+    if _n8n_patch_render "$id" "$stage/$name" "$stage/.$name.new" \
+       && [ "$(sha256sum "$stage/.$name.new" | cut -d' ' -f1)" = "$(_n8n_patch_field "$id" 4)" ]; then
+      mv -f "$stage/.$name.new" "$stage/$name"
+      chmod -R u=rwX,go=rX "$stage"
+      if [ -d "$out/$id" ] && diff -rq "$stage" "$out/$id" >/dev/null 2>&1; then
         ok "n8n-Korrektur '${id}' ist aktiv."
       else
-        cat "$tmp" > "$out/$id.js"; chmod 0644 "$out/$id.js"
+        rm -rf "${out:?}/$id"; mkdir -p "$out/$id"; cp -a "$stage/." "$out/$id/"
         N8N_PATCH_CHANGED=1
-        ok "n8n-Korrektur '${id}' erzeugt (${out}/${id}.js)."
+        ok "n8n-Korrektur '${id}' erzeugt (${out}/${id}/${name})."
       fi
     else
       warn "n8n-Korrektur '${id}': Ersatz ergab nicht die erwartete Fassung — nicht angelegt."
     fi
-    rm -f "$src" "$tmp"
+    rm -rf "$stage"
   done < <(n8n_patch_ids)
 }
 

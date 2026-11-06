@@ -100,13 +100,11 @@ n8n_cli_env() {
 n8n_exec() { if rt_is_compose; then docker exec -u "$LA_N8N_EXEC_USER" "$LA_N8N_CONTAINER" "$@"; else "$@"; fi; }
 # n8n_present — gibt es ein n8n, das man fragen kann? (compose: der Container laeuft)
 n8n_present() { if rt_is_compose; then svc_is_active n8n; else need_cmd n8n; fi; }
-# n8n_image_cat <pfad> — eine Datei aus dem UNVERAENDERTEN n8n-Image lesen (compose: Kurzlauf-Container mit --rm, nie
-# aus dem laufenden Container, dort liegt schon der Patch-Mount). systemd: die Datei auf der Platte.
-n8n_image_cat() {
-  if rt_is_compose; then
-    docker run --rm --name "${LA_PROJECT}-patchsrc" --label "${LA_LABEL}=${LA_PROJECT}" --network none \
-      --entrypoint cat "${LA_N8N_IMAGE:?LA_N8N_IMAGE nicht gesetzt}" "$1"
-  else cat "$1"; fi
+# n8n_image_tar <verzeichnis> — tar-Strom eines Verzeichnisses aus dem UNVERAENDERTEN n8n-Image (nur compose: die
+# n8n-Korrektur legt eine Kopie des Verzeichnisses samt korrigierter Datei ins Volume, s. n8n_patches.sh).
+n8n_image_tar() {
+  docker run --rm --name "${LA_PROJECT}-patchsrc" --label "${LA_LABEL}=${LA_PROJECT}" --network none \
+    --entrypoint tar "${LA_N8N_IMAGE:?LA_N8N_IMAGE nicht gesetzt}" -C "$1" -cf - .
 }
 # n8n_live_cat <pfad> — die Datei, wie n8n sie gerade sieht (compose: im laufenden Container, inkl. Patch-Mount).
 n8n_live_cat() { if rt_is_compose; then docker exec "$LA_N8N_CONTAINER" cat "$1"; else cat "$1"; fi; }

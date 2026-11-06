@@ -2128,7 +2128,7 @@ foreach ($sa in @(
 #     (provision.sh N8N_VERSION/PG_VERSION/NODE_MAJOR) und gegen die Schutzregeln des Verbunds: jedes Image per Digest
 #     (ein Pull verschiebt nie ein Tag des Nachbarn), jeder Dienst mit mem_limit, Label und Namens-Vorsatz, keine
 #     Bind-Mounts ausser dem Docker-Socket, die externen Volumes = LA_STATE_VOLUMES (lib/runtime.sh), je n8n-Korrektur
-#     (lib/n8n_patches.sh) genau ein Patch-Mount an der passenden Datei. Sonst liefe der Docker-Weg still mit einer
+#     (lib/n8n_patches.sh) genau ein Patch-Mount auf das Verzeichnis der Datei. Sonst liefe der Docker-Weg still mit einer
 #     anderen n8n-/Postgres-Fassung als die CLI.
 # ---------------------------------------------------------------
 function Get-ComposePinIssues([string]$Cy, [hashtable]$Pin, [string[]]$StateVols, [object[]]$Patches) {
@@ -2161,9 +2161,9 @@ function Get-ComposePinIssues([string]$Cy, [hashtable]$Pin, [string[]]$StateVols
         if ($Cy -notmatch ("(?m)^  ${v}:[ \t]*\r?\n\s+external:\s*true[ \t]*\r?\n\s+name:\s*\`$\{LA_PROJECT:-lifeagents\}_${v}\s*$")) { $iss.Add("externes Volume '$v' ohne name `${LA_PROJECT:-lifeagents}_$v (rt_volumes_ensure legt genau diesen Namen an).") }
     }
     foreach ($p in $Patches) {
-        $tail = ($p.Path -split 'node_modules/')[-1]
-        $mm = [regex]::Matches($Cy, ('(?m)^\s+target:\s*(\S+)[^\n]*\n(?:\s+\S.*\r?\n){0,3}?\s+subpath:\s*' + [regex]::Escape("$($p.Id).js") + '\s*$'))
-        if ($mm.Count -ne 1) { $iss.Add("n8n-Korrektur '$($p.Id)' hat $($mm.Count) Patch-Mount(s) (subpath $($p.Id).js, erwartet genau 1).") }
+        $tail = (($p.Path -split 'node_modules/')[-1]) -replace '/[^/]+$', ''   # Verzeichnis der Datei (Mount = Verzeichnis)
+        $mm = [regex]::Matches($Cy, ('(?m)^\s+target:\s*(\S+)[^\n]*\n(?:\s+\S.*\r?\n){0,3}?\s+subpath:\s*' + [regex]::Escape("$($p.Id)") + '\s*$'))
+        if ($mm.Count -ne 1) { $iss.Add("n8n-Korrektur '$($p.Id)' hat $($mm.Count) Patch-Mount(s) (subpath $($p.Id), erwartet genau 1).") }
         elseif (-not $mm[0].Groups[1].Value.EndsWith("/$tail")) { $iss.Add("Patch-Mount '$($p.Id)' zielt auf '$($mm[0].Groups[1].Value)', passt nicht zu '$tail' (lib/n8n_patches.sh).") }
     }
     return , $iss
@@ -2196,7 +2196,7 @@ $saPin = @{ N8N_VERSION = '2.45.4'; PG_VERSION = '17'; NODE_MAJOR = '24' }
 $saD = '@sha256:' + ('a' * 64)
 $saOk = "x-images:`n  busybox: &img_busybox busybox:1$saD`n  postgres: &img_postgres postgres:17$saD`n  n8n: &img_n8n n8nio/n8n:2.45.4$saD`n  node: &img_node node:24-alpine$saD`n" +
         "services:`n" + ((@('sa', 'sb', 'sc', 'sd', 'se') | ForEach-Object { "  ${_}:`n    image: *img_busybox`n    container_name: `${LA_PROJECT:-lifeagents}-$_`n    labels: *labels`n    mem_limit: 8m`n" }) -join '') +
-        "  n8n:`n    image: *img_n8n`n    container_name: `${LA_PROJECT:-lifeagents}-n8n`n    labels: *labels`n    mem_limit: 1g`n    volumes:`n      - type: volume`n        target: /x/node_modules/@n8n/p/f.js`n        read_only: true`n        volume:`n          subpath: fix-a.js`n" +
+        "  n8n:`n    image: *img_n8n`n    container_name: `${LA_PROJECT:-lifeagents}-n8n`n    labels: *labels`n    mem_limit: 1g`n    volumes:`n      - type: volume`n        target: /x/node_modules/@n8n/p`n        read_only: true`n        volume:`n          subpath: fix-a`n" +
         "volumes:`n  pgdata:`n    external: true`n    name: `${LA_PROJECT:-lifeagents}_pgdata`n"
 $saP = @(@{ Id = 'fix-a'; Path = 'pkg/node_modules/@n8n/p/f.js' })
 foreach ($sa in @(
@@ -2206,7 +2206,7 @@ foreach ($sa in @(
     @{ n = 'ohne mem_limit';   t = $saOk -replace '    mem_limit: 1g\n', '';           want = 1 },
     @{ n = 'Bind-Mount';       t = $saOk -replace '      - type: volume', "      - /srv/x:/y`n      - type: volume"; want = 1 },
     @{ n = 'Volume-Liste';     t = $saOk -replace 'pgdata', 'pgdatax';                 want = 1 },
-    @{ n = 'Patch-Mount fehlt'; t = $saOk -replace 'fix-a\.js', 'fix-b.js';            want = 1 })) {
+    @{ n = 'Patch-Mount fehlt'; t = $saOk -replace 'subpath: fix-a', 'subpath: fix-b';  want = 1 })) {
     $got = (Get-ComposePinIssues $sa.t $saPin @('pgdata') $saP).Count
     if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got ($((Get-ComposePinIssues $sa.t $saPin @('pgdata') $saP) -join '; ')) -- Check 33 ist defekt.") }
 }

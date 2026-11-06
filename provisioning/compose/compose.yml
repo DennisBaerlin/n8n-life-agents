@@ -108,15 +108,16 @@ services:
       - etc_n8n:/etc/n8n:ro
       - etc_la:/etc/lifeagents:ro
       - shared:/shared:ro
-      # n8n-Korrektur 'memory-all-tool-rounds' (lib/n8n_patches.sh): der master schreibt die gepatchte Datei ins Volume
-      # n8n_patches; hier liegt sie per Unterpfad schreibgeschuetzt ueber dem Original. Kein eigenes Image (Einwand 5).
+      # n8n-Korrektur 'memory-all-tool-rounds' (lib/n8n_patches.sh): der master legt eine Kopie des Original-Verzeichnisses samt
+      # korrigierter Datei ins Volume n8n_patches (<id>/); hier liegt sie per Unterpfad schreibgeschuetzt ueber dem Original.
+      # Verzeichnis statt Datei: einen Datei-Unterpfad lehnt Docker Engine unter Linux ab. Kein eigenes Image (Einwand 5).
       # Ziel = echter pnpm-Pfad im Image (der npm-Pfad aus n8n_patches.sh ist dort ein Symlink); contract_lint 33.
       - type: volume
         source: n8n_patches
-        target: /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/memoryManagement.js   # lint-ignore: Pfad im n8n-Image, kein Repo-Ordner
+        target: /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution   # lint-ignore: Pfad im n8n-Image, kein Repo-Ordner
         read_only: true
         volume:
-          subpath: memory-all-tool-rounds.js
+          subpath: memory-all-tool-rounds
 
   gateway:
     <<: *pod

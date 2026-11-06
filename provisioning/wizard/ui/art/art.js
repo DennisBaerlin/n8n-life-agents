@@ -56,7 +56,7 @@
   // Seiten-Hinweis (page.note) und Anleitungs-Link (page.link) übernimmt das Bild (takes), damit die Zeichnung Platz hat:
   // Hinweis an den Schritten mit hint: true, Link in der Knopfleiste. Ohne Bild zeigt app.js beides wie bisher.
   function guided(o) {
-    const W = o.width, H = o.height, N = o.steps.length, SLOW = 1.5;
+    const W = o.width, H = o.height, N = o.steps.length, SLOW = 1.5, MINK = 0.86;
     const fig = h('figure', { class: 'art art-guide', 'data-art': o.name });
     const svg = fromMarkup(o.svg);
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
@@ -68,15 +68,15 @@
     const hintBox = o.hint ? h('p', { class: 'art-hint', role: 'note', text: o.hint }) : null;   // Server-Text: nur textContent
     const line = h('p', { class: 'art-line', 'aria-live': 'polite' });
     const btn = (cls, text, fn, label) => h('button', { type: 'button', class: 'art-btn ' + cls, 'aria-label': label || null, on: { click: fn } }, text);
-    const back = btn('art-back', '‹ Zurück', () => go(i - 1), 'Vorheriger Schritt');
+    const back = btn('art-back', '‹', () => go(i - 1), 'Vorheriger Schritt');
     const again = btn('art-again', '↻ Nochmal zeigen', () => go(i));
     const next = btn('art-next', 'Nächster Schritt ›', () => go(i + 1 < N ? i + 1 : 0));
     const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${k + 1} von ${N}: ${s.cap}`, on: { click: () => go(k) } }));
-    // Anleitungs-Link (Ziel vom Server) rechts in der Schrittzeile, kurz beschriftet, damit die Zeichnung Platz behält
-    const guide = o.link ? h('a', { class: 'art-guide-link', href: o.link.href, target: '_blank', rel: 'noopener noreferrer', title: o.link.label, text: 'Ausführliche Anleitung' }) : null;
-    const bar = h('figcaption', { class: 'art-bar' }, h('div', { class: 'art-top' }, line, guide),
+    // Anleitungs-Link (Ziel vom Server) als kleine Marke oben rechts im Bild, damit die Zeichnung Platz behält
+    const guide = o.link ? h('a', { class: 'art-guide-link', href: o.link.href, target: '_blank', rel: 'noopener noreferrer', title: o.link.label, text: 'Ausführliche Anleitung ↗' }) : null;
+    const bar = h('figcaption', { class: 'art-bar' }, line,
       h('div', { class: 'art-ctl' }, back, h('span', { class: 'art-dots' }, dots), again, next));
-    fig.append(h('div', { class: 'art-frame' }, stage, hintBox, bar), h('ol', { class: 'sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
+    fig.append(h('div', { class: 'art-frame' }, stage, guide, hintBox, bar), h('ol', { class: 'sr' }, o.steps.map((s) => h('li', { text: s.cap }))));
     fig.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' && i + 1 < N) { e.preventDefault(); go(i + 1); next.focus(); }
       if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); go(i - 1); back.focus(); }
@@ -95,9 +95,10 @@
     function measure() {
       const r = stage.getBoundingClientRect();
       if (r.width < 10 || r.height < 10) return false;
-      const vh = Math.min(H, r.height / (r.width / W));
-      view = { w: W, h: vh, free: vh };
-      svg.setAttribute('viewBox', `0 0 ${W} ${vh.toFixed(1)}`);
+      const k = Math.max(r.width / W, MINK);   // schmale Spalte: Schrift lesbar halten, die Lupe schwenkt dann auch seitlich
+      const vw = Math.min(W, r.width / k), vh = Math.min(H, r.height / k);
+      view = { w: vw, h: vh, free: vh };
+      svg.setAttribute('viewBox', `0 0 ${vw.toFixed(1)} ${vh.toFixed(1)}`);
       return true;
     }
     function setCam(f) {
@@ -152,10 +153,13 @@
       void svg.getBoundingClientRect();
       fig.classList.remove('instant');
     }
-    function ready(on) {   // Schritt fertig: „Nächster Schritt“ macht ein paar Sekunden lang auf sich aufmerksam
+    // Schritt fertig: „Nächster Schritt“ macht kurz auf sich aufmerksam, im selben Aussehen wie der Weiter-Hinweis des
+    // Wizards (Klasse la-nudge aus config/ui.nudge.css, als Kopie in app.css derselben Seite: 2 Pulse à 1,5 s, ohne
+    // Bewegung nur ein Rahmen). Die Zeitsteuerung von UiNudge gehört dem Wizard-Knopf und bleibt unberührt.
+    function ready(on) {
       fig.classList.toggle('done', on);
-      next.classList.toggle('call', on && !reduced());
-      if (on && !reduced()) later(6000, () => next.classList.remove('call'));
+      next.classList.remove('la-nudge');
+      if (on) { void next.offsetWidth; next.classList.add('la-nudge'); later(3200, () => next.classList.remove('la-nudge')); }
     }
     function go(n, still) {   // Schritt n zeigen; still = gleich das Endbild ohne Bewegung
       if (n < 0 || n >= N) return;
@@ -411,8 +415,7 @@
     const fig = h('figure', { class: 'art art-phone', 'data-art': 'persona' },
       h('div', { class: 'art-box' },
         phone('Beispiel-Chat mit deinem Bot', h('span', { class: 'tg-title', text: t.bot, lang }),
-          [h('div', { class: 'msg msg-out', text: t.q, lang }), reply, emoji, typing]),
-        h('figcaption', { class: 'art-cap art-note', text: 'So klingt dein Bot (Beispiel). Nur der Ton ändert sich, nicht die Inhalte.' })));
+          [h('div', { class: 'msg msg-out', text: t.q, lang }), reply, emoji, typing])));   // „was gleich bleibt“ sagt der Seitentext
     let timer = null;
     const show = (code) => {
       const o = opts[code] || {};

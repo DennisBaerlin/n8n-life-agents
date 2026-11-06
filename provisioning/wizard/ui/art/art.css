@@ -11,7 +11,7 @@
 /* ---------- Geführte Animation: Bildrahmen mit Lupe, Hinweis und eigener Knopfleiste ---------- */
 /* Mit Bild wird der freie Raum ganz zum Bild (sonst hält der Abstand über der Knopfleiste 18 px fest) */
 .art ~ .spacer { min-height: 0; }
-.art-frame { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; background: var(--bg-soft); }
+.art-frame { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; background: var(--bg-soft); }
 .art-guide .art-stage { flex: 1 1 auto; min-height: 0; }
 .art-stage svg { display: block; width: 100%; height: 100%; }
 /* Lupe: angeschnittene Zeilen oben und unten weich ausblenden statt hart abschneiden */
@@ -20,10 +20,9 @@
 .art-guide text { font-family: var(--font); }
 .art-hint { margin: 0; padding: 8px 14px; font-size: 14.5px; line-height: 1.45; color: var(--ink); background: var(--warn-wash); border-top: 1px solid var(--hairline); border-left: 3px solid var(--warn); }
 .art-bar { flex: none; padding: 8px 12px 9px; border-top: 1px solid var(--hairline); background: var(--bg); }
-.art-top { display: flex; gap: 4px 14px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 6px; }
-.art-line { margin: 0; font-size: 16px; line-height: 1.35; color: var(--ink); min-width: 0; }
+.art-line { margin: 0 0 6px; font-size: 16px; line-height: 1.35; color: var(--ink); min-width: 0; }
 .art-line b { font-weight: 700; }
-.art-ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.art-ctl { display: flex; gap: 6px; align-items: center; }
 .art-dots { display: flex; align-items: center; margin-right: auto; }
 /* Schritt-Knöpfe: klein, umrandet, im Rahmen – bewusst anders als Zurück/Weiter des Wizards (unten, Pille, dunkel) */
 .art button.art-btn { font: 600 14px/1 var(--font); padding: 7px 12px; border-radius: var(--radius-sm); background: var(--bg); color: var(--ink);
@@ -32,15 +31,14 @@
 .art button.art-btn:disabled { opacity: .45; }
 .art button.art-next { background: var(--accent-pale); border-color: var(--accent); }
 .art button.art-next:hover { background: var(--accent-mid); }
-.art button.art-next.call { animation: art-call 1.6s ease-in-out infinite; }
-@keyframes art-call { 0%, 100% { outline: 2px solid transparent; outline-offset: 0; } 50% { outline: 3px solid var(--accent); outline-offset: 3px; } }
-.art button.art-dot { width: 20px; height: 26px; padding: 0; margin: 0; background: none; border: 0; position: relative; transform: none; box-shadow: none; }
-.art button.art-dot::after { content: ""; position: absolute; left: 7px; top: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--gray); transition: background .18s ease, width .18s ease, left .18s ease; }
-.art button.art-dot.on::after { left: 2px; width: 16px; border-radius: var(--radius-pill); background: var(--accent); }
+.art button.art-dot { width: 16px; height: 26px; padding: 0; margin: 0; background: none; border: 0; position: relative; transform: none; box-shadow: none; }
+.art button.art-dot::after { content: ""; position: absolute; left: 5px; top: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--gray); transition: background .18s ease, width .18s ease, left .18s ease; }
+.art button.art-dot.on::after { left: 1px; width: 14px; border-radius: var(--radius-pill); background: var(--accent); }
 .art button.art-dot:hover { background: none; transform: none; }
 .art button.art-dot:hover::after { background: var(--accent-mid); }
 .art button.art-dot.on:hover::after { background: var(--accent); }
-.art-guide-link { font-size: 14px; flex: none; white-space: nowrap; }
+.art button.art-back { padding: 7px 11px; font-size: 16px; }
+.art-guide-link { position: absolute; top: 8px; right: 8px; padding: 3px 10px; border-radius: var(--radius-pill); background: var(--bg); border: 1px solid var(--hairline); font-size: 13px; white-space: nowrap; }
 
 /* Takt: Lupe, Zeiger, Klick, Leuchtrahmen */
 .art-guide .cam { transition: transform 1.1s cubic-bezier(.3,.7,.3,1); }
@@ -120,18 +118,21 @@
 
 /* Lupe braucht Breite (Start-App 760 px) und etwas Höhe; sonst entfällt die Animation */
 /* Zu wenig Platz: Zeichnung und Schritt-Knöpfe weg, der übernommene Hinweis bleibt sichtbar */
-@container art (max-width: 460px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; } }
-@container art (max-height: 220px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; } }
+@container art (max-width: 460px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; }
+  .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin-top: 10px; } }
+@container art (max-height: 220px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; }
+  .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin-top: 10px; } }
 
 /* ---------- Handy-Ausschnitt (Analog: docs/site/layouts/partials/phone-frame-*.html) ---------- */
 /* Neben der Auswahl (side: true → app.js .with-art): so hoch wie die Auswahl, schmal; im schmalen Fenster darunter */
-.with-art { display: flex; gap: 24px; align-items: flex-start; }
+.with-art { display: flex; gap: 24px; align-items: stretch; }
 .with-art > .choices { flex: 1 1 auto; min-width: 0; }
-.with-art > .art { flex: 0 0 264px; height: 362px; margin: 0; max-height: none; }
+.with-art > .art { flex: 0 0 248px; margin: 0 0 -52px; max-height: none; min-height: 250px; }   /* gestreckt + negativer Rand = Auswahl-Höhe + 52 px (freier Raum darunter) */
 /* Neben der Auswahl zählt die Antwort: Statusleiste weg, Handy füllt die Höhe über dem Satz */
 .with-art .art-phone .statusbar, .with-art .art-phone .island { display: none; }
 .with-art .art-phone .ph-screen { padding-top: 6px; }
-.with-art .art-phone .ph-frame { flex: 1 1 auto; }
+.with-art .art-phone .ph-frame { flex: 1 1 auto; -webkit-mask-image: linear-gradient(to bottom, var(--ink) calc(100% - 12px), transparent); mask-image: linear-gradient(to bottom, var(--ink) calc(100% - 12px), transparent); }
+.with-art .art-phone .tg-chat { padding: 10px; gap: 7px; }
 @media (max-width: 600px) { .with-art { display: block; } .with-art > .art { height: 330px; margin: 14px 0 0; } }
 .art-phone .art-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; }
 .art-phone .ph-frame { width: 300px; max-width: 100%; flex: 0 1 300px; min-height: 0; overflow: hidden; border-radius: 46px 46px 0 0;
@@ -161,7 +162,7 @@
 .art-phone .frame { display: block; margin-bottom: 6px; color: var(--gray); }   /* Rahmensatz = Ton des Charakters, Inhalt darunter */
 .art-phone :lang(ko) { word-break: keep-all; }
 .art-phone [hidden] { display: none; }
-.art-phone .sticker { align-self: flex-start; font-size: 40px; line-height: 1; padding: 0 4px; }
+.art-phone .sticker { align-self: flex-start; font-size: 32px; line-height: 1; padding: 0 4px; }
 .art-phone.busy .msg-in:not(.typing), .art-phone.busy .sticker { display: none; }
 .art-phone.busy .typing { display: flex; }
 .art-note { margin: 8px 0 0; text-align: center; max-width: 34rem; flex: none; }
@@ -174,6 +175,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .art-guide .cam, .art-guide .cursor, .art-guide .ring, .art .s, .art .sub, .art .rest, .art .act, .art .radio-on, .art .msg-in { transition: none; }
-  .art-guide .ring.on, .art-phone .typing i, .art button.art-next.call { animation: none; }
+  .art-guide .ring.on, .art-phone .typing i { animation: none; }
   .art-guide .ripple { display: none; }
 }

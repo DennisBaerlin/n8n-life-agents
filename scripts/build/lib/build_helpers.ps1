@@ -1200,7 +1200,8 @@ const mname = (R.member && R.member.name) || '';
 const chrome = (X) => ({ approve: X.t((S && typeof S === 'object' && S.approve_key) ? S.approve_key : 'core.hitl.approve'), cancel: X.t('core.hitl.cancel'),
   unauthorized: X.t('core.hitl.unauthorized') });
 const oText = O.msg('', O.t('core.hitl.hint'));
-const oStage2 = O.msg(O.fill(O.t('core.hitl.member_requests'), { name: mname }), O.t('core.hitl.hint'));
+// Zweitfreigabe: der Owner hat die Anfrage nicht geschrieben -> eigener Schlusssatz statt "neu schreiben"
+const oStage2 = O.msg(O.fill(O.t('core.hitl.member_requests'), { name: mname }), O.t('core.hitl.hint_member_request'));
 const oInfo = O.msg(O.fill(O.t('core.hitl.member_confirmed'), { name: mname }), '');
 const mText = M.msg('', M.t('core.hitl.hint'));
 return { json: {

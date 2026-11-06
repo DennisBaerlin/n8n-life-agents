@@ -31,7 +31,7 @@ function Build-EstateSetSystemProfile {
         (New-HitlLine 'estate.label.backup_key_location' "$S.backup_key_location" -If "$S.backup_key_location")
         (New-HitlLine 'estate.label.restore_hint'      "$S.restore_hint" -If "$S.restore_hint")
         (New-HitlLine 'estate.label.hints'             "$S.notes" -If "$S.notes")
-        (New-HitlNote -Key 'estate.note.unchanged_fields')
+        (New-HitlNote -Key 'core.note.unchanged_fields')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1320, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

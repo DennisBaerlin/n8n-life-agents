@@ -67,9 +67,7 @@ function Build-CreateRecurringTransfer {
         (New-HitlLine 'finance.label.from'         "$S.from_account_name")
         (New-HitlLine 'finance.label.to'           "$S.to_account_name")
         (New-HitlLine 'core.label.amount'          "$S.amount" -Kind money -Currency "`$('Resolve From').item.json.currency")
-        (New-HitlLine 'finance.label.cycle'        "'finance.tpl.every_unit'" -Kind tpl -Params @{
-            interval = "($S.schedule_interval || '1')"
-            unit     = (New-HitlValue -Kind enum -Value "$S.schedule_unit" -Enum 'finance.enum.schedule_unit') })
+        (Get-FinanceRhythmLine -Label 'finance.label.cycle' -Interval "$S.schedule_interval" -Unit "$S.schedule_unit")
         (New-HitlLine 'finance.label.debit_day'    $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
         (New-HitlLine 'finance.label.first_transfer' (Get-DryEffectiveExpr 'first_payment_date') -Kind date)
         (New-HitlLine 'finance.label.valid_from'   ("(" + (Get-DryEffectiveExpr 'valid_from') + " || " + (Get-DryEffectiveExpr 'first_payment_date') + ")") -Kind date -IsDefault "!$S.valid_from")

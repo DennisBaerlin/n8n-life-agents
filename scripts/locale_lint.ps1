@@ -19,6 +19,7 @@
 #   (9) Mini-App-Laien-Test: keine Fachwoerter ($AppDeniedWords) in App-Texten; Ratchet-Ausnahmen je Key,
 #       eine ueberfluessige Ausnahme ist ein Fehler.
 #   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; Tab-Titel ausgenommen).
+#   (11) Karten-Laien-Test: Texte der Bestaetigungskarten kurz, ohne interne Begriffe, Datum statt Zeitspanne (Ratchet je Key).
 # Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs/Workflows/SQL vorkommt (dynamisch zusammengesetzte
 #   Keys — .enum.*, .facts.*, .monitor_method.*, core.persona.name.* — sind ausgenommen).
 # Usage: .\scripts\locale_lint.ps1 [-Verbose]
@@ -264,6 +265,95 @@ Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
     }
     foreach ($k in $appWordExcept) {
         if (-not $hit.ContainsKey($k)) { "Ausnahme '$k' in scripts/locale_lint.ps1 ist ueberfluessig (kein Verstoss mehr oder Key entfernt) -- Zeile streichen" }
+    }
+}
+
+# (11) Laien-Test der Bestaetigungskarten (Regel E der Sprint-Probe, Owner 2026-11-06; Gerüst packages/CLAUDE.md
+#      *HITL-Bestätigungs-Format*). Dieselbe Mechanik wie (9), eigene Wortliste: Karten-Woerter treffen keine App-Texte.
+#      UMFANG aus dem Code abgeleitet: jedes Key-Literal in Build-Defs, die eine Karte bauen (New-HitlSummary/-Line/-Note),
+#      und in R__-Funktionen mit Kartenzeilen (card_lines / 'kind', 'note'), dazu die Gate-Texte core.hitl.*; ein Literal,
+#      das Praefix von Keys ist (Enum), nimmt seine Wert-Keys mit. Nie *.app.* (App-Fenster), *.help.*, *.wf.*.
+#      Regeln je Key: de hoechstens 3 Saetze, 20 Woerter je Satz, 160 Zeichen; en/ko hoechstens 3 Saetze (Uebersetzungen
+#      wachsen, W3C). Keine Vorsilbe ACHTUNG:/Hinweis:/Aktion:; das Warnzeichen nur als Satzanfang "⚠️ " (E1, die Folge
+#      steht in Worten dahinter). Keine Woerter aus $CardDeniedWords (die Meldung nennt den Ersatz), keine Zeitspanne
+#      "<Zahl> Tage vor/nach" (ein Datum nennen). Satzzaehlung ignoriert Abkuerzungen (z. B.), Zahl- und Datumspunkte.
+#      RATCHET wie (9): Ausnahmen je EXAKTEM Key mit Grund in $cardExcept; ueberfluessige Ausnahme = Fehler.
+$CardDeniedWords = [ordered]@{
+    'Entität' = 'Versicherung, Kredit, Sparziel …'; 'referenziert' = 'hängt dran'; 'Export' = 'Datei'
+    'Sammelbetrag' = 'Summe der übrigen Posten'; 'Trigger' = 'Überwachung'; 'II. BV' = 'weglassen'; 'Turnus' = 'Rhythmus'
+    'Prompt' = 'Anweisung'; 'SQL' = 'Abfrage'; 'das System' = 'ich'
+    'verrechnet' = 'zählt nur einmal'
+}
+$cardExcept = [ordered]@{     # Key = Grund; neue Zeile = Owner-Freigabe (Termin 3 der Sprint-Probe)
+    'finance.note.goal_derisk_window'           = 'Text gehoert dem Paket "Sparziel unter 5 Jahren" (neuer Text kommt mit dessen Merge)'
+    'finance.note.until_free_money'             = 'Text gehoert dem Paket "Bank-Hinweis nur, wo er passt" (neuer Text kommt mit dessen Merge)'
+    'finance.note.reconcile_closes_due'         = 'Stufe 2 dieses Pakets: die fn liefert den Stichtag, dann Datum statt Zeitspanne'
+    'finance.note.reconcile_closes_due_account' = 'Stufe 2 dieses Pakets: die fn liefert den Stichtag, dann Datum statt Zeitspanne'
+}
+function Get-CardTextFindings([string]$Text, [string]$Lang) {
+    $out = @()
+    $t = [regex]::Replace($Text, '\s+', ' ').Trim()
+    # Satzenden zaehlen: Abkuerzungen, Zahl-/Datumspunkte und Auslassung maskieren
+    $m = [regex]::Replace($t, '\b(z|d|u|bzw|ca|Nr|ggf|inkl|evtl|bspw|e\.g|i\.e|etc)\.', 'X')
+    $m = [regex]::Replace($m, '(?<=\d)\.(?=\s?\d)|(?<=\{\w+\})\.(?=\d)', '')
+    $m = $m.Replace('…', '')
+    $sentences = @([regex]::Split($m, '(?<=[.!?])\s+') | Where-Object { $_.Trim() -ne '' })
+    if ($sentences.Count -gt 3) { $out += "$($sentences.Count) Sätze (höchstens 3)" }
+    if ($Lang -eq 'de') {
+        if ($t.Length -gt 160) { $out += "$($t.Length) Zeichen (höchstens 160)" }
+        foreach ($s in $sentences) {
+            $w = @($s.Trim() -split ' ' | Where-Object { $_ -match '[\p{L}\p{N}{]' }).Count
+            if ($w -gt 20) { $out += "Satz mit $w Wörtern (höchstens 20): '$($s.Trim().Substring(0, [Math]::Min(40, $s.Trim().Length)))…'" }
+        }
+        foreach ($k in $CardDeniedWords.Keys) {
+            if ([regex]::IsMatch($t, '(?<![\p{L}])' + [regex]::Escape($k), 'IgnoreCase')) { $out += "'$k' -> '$($CardDeniedWords[$k])'" }
+        }
+        if ($t -match '\d+\s+Tage?n?\s+(vor|nach)\b') { $out += "Zeitspanne '$($Matches[0])' -> ein Datum nennen" }
+    }
+    if ($t -match '^(ACHTUNG|Achtung|Hinweis|Aktion|WARNING|Note|Action)\s*:') { $out += "Vorsilbe '$($Matches[0])' -> Warnung mit '⚠️ ' beginnen, sonst ohne Vorsilbe" }
+    $warn = [regex]::Matches($t, '⚠️?')
+    if ($warn.Count -gt 1 -or ($warn.Count -eq 1 -and -not $t.StartsWith('⚠️ ', [StringComparison]::Ordinal))) { $out += "Warnzeichen nur als Satzanfang '⚠️ '" }
+    $out
+}
+Check 'Karten-Laien-Test: kurze Kartentexte ohne interne Begriffe (Ratchet je Key)' {
+    # Selbsttest der Regel (Positiv-/Negativfall), damit ein kaputter Regex nicht still alles durchwinkt
+    $neg = @(Get-CardTextFindings 'ACHTUNG: Der Export wird gelöscht. Eins. Zwei. Drei. Fällig 10 Tage vor dem Stichtag.' 'de')
+    if ($neg.Count -lt 4) { "Selbsttest: Negativfall meldet nur $($neg.Count) Funde (erwartet Vorsilbe, Sätze, Wort, Zeitspanne)" }
+    $pos = @(Get-CardTextFindings '⚠️ Der Eintrag wird z. B. am 01.10.2026 endgültig gelöscht. Falls falsch, abbrechen.' 'de')
+    if ($pos.Count) { "Selbsttest: Positivfall meldet Funde: $($pos -join '; ')" }
+    $keys = @{}
+    # Wildcard-Pfad + -Recurse liefert unter PS 5.1 nicht rekursiv -> je Paket-Ordner (wie der Corpus unten)
+    $src = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object {
+            Get-ChildItem (Join-Path $_.FullName 'build') -Recurse -File -Filter '*.ps1' -ErrorAction SilentlyContinue } | Where-Object {
+            [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom) -match 'New-Hitl(Summary|Line|Note)' }) +
+        @(Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_*.sql') | Where-Object {
+            $s = [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom); $s -match 'card_lines' -or $s -match "'kind',\s*'note'" })
+    foreach ($f in $src) {
+        $cmt = if ($f.Extension -eq '.sql') { '(?m)--.*$' } else { '(?m)#.*$' }
+        $txt = [regex]::Replace([System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom), $cmt, '')
+        foreach ($m in [regex]::Matches($txt, "'([a-z][a-z0-9_]*\.[a-z0-9_]+\.[a-z0-9_.]+)'")) { $keys[$m.Groups[1].Value] = $true }
+    }
+    $hit = [ordered]@{}
+    foreach ($pkg in $cat.Keys) {
+        foreach ($l in $cat[$pkg].Keys) {
+            $dict = $cat[$pkg][$l]
+            foreach ($k in $dict.Keys) {
+                # nur Karten-Bereiche: Chat-/Cron-Texte derselben Datei (offer, dialog, cron …) sind keine Karte
+                if ($k -notmatch '^[a-z0-9_]+\.(hitl|note|label|tpl|value|enum|fmt)\.') { continue }
+                $parts = $k.Split('.'); $inScope = $k -like 'core.hitl.*'
+                for ($i = 3; -not $inScope -and $i -le $parts.Count; $i++) { $inScope = $keys.ContainsKey(($parts[0..($i - 1)] -join '.')) }
+                if (-not $inScope) { continue }
+                $f = @(Get-CardTextFindings ([string]$dict[$k]) $l)
+                if ($f.Count) { $hit["$l|$k"] = $f }
+            }
+        }
+    }
+    foreach ($hk in $hit.Keys) {
+        $l, $k = $hk.Split('|')
+        if (-not $cardExcept.Contains($k)) { "Datei packages/$($k.Split('.')[0])/locales/$l.json: '$k': $($hit[$hk] -join '; ')" }
+    }
+    foreach ($k in $cardExcept.Keys) {
+        if (-not @($hit.Keys | Where-Object { $_.EndsWith("|$k") }).Count) { "Ausnahme '$k' in scripts/locale_lint.ps1 ist ueberfluessig (kein Verstoss mehr oder Key entfernt) -- Zeile streichen" }
     }
 }
 

@@ -83,9 +83,7 @@ function Build-SetInsurance {
         (New-HitlLine 'finance.label.rate_per_debit'      "'finance.tpl.change'" -Kind tpl -If $hasPrem -Params @{
             from = (New-HitlValue -Kind money -Value "$R.premium_amount" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$D.premium_amount" -EurByModel) })
-        (New-HitlLine 'finance.label.payment_mode'        "'finance.tpl.every_unit'" -Kind tpl -If "$S.schedule_unit" -Params @{
-            interval = "($S.schedule_interval || '1')"
-            unit     = (New-HitlValue -Kind enum -Value "$S.schedule_unit" -Enum 'finance.enum.schedule_unit') })
+        (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "$S.schedule_interval" -Unit "$S.schedule_unit" -If "$S.schedule_unit")
         (New-HitlLine 'finance.label.annual_contribution' "'finance.tpl.change'" -Kind tpl -If $hasPrem -Params @{
             from = (New-HitlValue -Kind money -Value "$R.annual_premium" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$D.annual_premium" -EurByModel) })

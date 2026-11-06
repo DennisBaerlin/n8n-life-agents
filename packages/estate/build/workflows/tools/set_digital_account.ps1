@@ -52,7 +52,7 @@ function Build-EstateSetDigitalAccount {
         (New-HitlLine 'estate.label.twofa_location'  "$S.twofa_hint" -If "$S.twofa_hint")
         (New-HitlLine 'estate.label.seed_backup_location' "$S.seed_backup_location" -If "$S.seed_backup_location")
         (New-HitlLine 'estate.label.notes'           "$S.notes" -If "$S.notes")
-        (New-HitlNote -Key 'estate.note.unchanged_fields')
+        (New-HitlNote -Key 'core.note.unchanged_fields')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

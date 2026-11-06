@@ -42,6 +42,21 @@ function Get-FinanceMonthEndKey([string]$Dom) {
 #   Gutschrift  dom -1 -> zum Monats-/Quartals-/Halbjahres-/Jahresende | fester Tag -> am n. | leer: year -> am
 #               Jahrestag, month (Altzeile) -> am Tag des Starts, day/week -> laufend
 #   Methode   Katalog-Enum finance.enum.day_count.<code> (der Renderer macht aus ACT/365 den Key act_365)
+# Rhythmus in Klartext (Laien-Pruefung 2026-11-06: nie "alle 1 Jahr(e)") — EINE Definition fuer Zins-Kadenz und
+# Zahlungs-Rhythmus: Intervall 1 bzw. 3/6/12 Monate -> ein Wort (jaehrlich, vierteljaehrlich ...), sonst "alle n <Einheit>".
+# Interval/Unit = JS-Ausdruecke der gespeicherten Werte (Default der Einheit traegt der Aufrufer im Ausdruck).
+function Get-FinanceRhythmLine {
+    param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$Interval, [Parameter(Mandatory)][string]$Unit, [string]$If)
+    $u = "String($Unit || '')"
+    $n = "Number($Interval || 1)"
+    $rhythm = "($n === 1 ? $u : ($u === 'month' && $n === 3 ? 'quarter' : ($u === 'month' && $n === 6 ? 'half_year' : ($u === 'month' && $n === 12 ? 'year' : $u))))"
+    $simple = "($n === 1 || ($u === 'month' && [3, 6, 12].includes($n)))"
+    New-HitlLine $Label "($simple ? 'finance.tpl.plain' : 'finance.tpl.every_unit')" -Kind tpl -If $If -Params @{
+        value    = (New-HitlValue -Kind enum -Value $rhythm -Enum 'finance.enum.credit_rhythm')
+        interval = $n
+        unit     = (New-HitlValue -Kind enum -Value $u -Enum 'finance.enum.schedule_unit') }
+}
+
 function Get-FinanceInterestScheduleLines {
     param([Parameter(Mandatory)][string]$Unit, [Parameter(Mandatory)][string]$Interval, [Parameter(Mandatory)][string]$Dom,
           [Parameter(Mandatory)][string]$Pdom, [Parameter(Mandatory)][string]$FirstCredit,
@@ -49,15 +64,10 @@ function Get-FinanceInterestScheduleLines {
     $u  = "String($Unit || '')"
     $n  = "Number($Interval || 1)"
     $d  = "String($Dom ?? '')"
-    $rhythm = "($n === 1 ? $u : ($u === 'month' && $n === 3 ? 'quarter' : ($u === 'month' && $n === 6 ? 'half_year' : ($u === 'month' && $n === 12 ? 'year' : $u))))"
-    $simple = "($n === 1 || ($u === 'month' && [3, 6, 12].includes($n)))"
     $endOf  = "($u === 'year' ? 'year' : ($u !== 'month' ? 'period' : ({ 1: 'month', 3: 'quarter', 6: 'half_year', 12: 'year' })[$n] || 'period'))"
     $creditTpl = "($d === '-1' ? 'finance.tpl.credit_end' : ($d !== '' ? 'finance.tpl.credit_on_day' : ($u === 'year' ? 'finance.tpl.credit_anniversary' : ($u === 'month' ? 'finance.tpl.credit_start_day' : 'finance.tpl.credit_continuous'))))"
     @(
-        (New-HitlLine 'finance.label.credit_rhythm' "($simple ? 'finance.tpl.plain' : 'finance.tpl.every_unit')" -Kind tpl -If $If -Params @{
-            value    = (New-HitlValue -Kind enum -Value $rhythm -Enum 'finance.enum.credit_rhythm')
-            interval = $n
-            unit     = (New-HitlValue -Kind enum -Value $u -Enum 'finance.enum.schedule_unit') })
+        (Get-FinanceRhythmLine -Label 'finance.label.credit_rhythm' -Interval $Interval -Unit $Unit -If $If)
         (New-HitlLine 'finance.label.credit_day' $creditTpl -Kind tpl -If $If -Params @{
             value = (New-HitlValue -Kind enum -Value $endOf -Enum 'finance.enum.credit_end')
             day   = $d })
@@ -187,9 +197,7 @@ function Get-FinanceHitlLines {
                 # WP2: Beitrag je Abbuchung (genannt oder aus dem Jahresbeitrag) und Jahreswert kommen aus fn_insurance_fields
                 # (Einzel-Tool: Vorschau-Knoten, Import: fn_import_card_rows) -- die Karte rechnet nichts.
                 (New-HitlLine 'finance.label.rate_per_debit'       (& $need 'PeriodAmount') -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.payment_mode'         "'finance.tpl.every_unit'" -Kind tpl -Params @{
-                    interval = "($S.schedule_interval || '1')"
-                    unit     = (New-HitlValue -Kind enum -Value "($S.schedule_unit || 'year')" -Enum 'finance.enum.schedule_unit') })
+                (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "$S.schedule_interval" -Unit "($S.schedule_unit || 'year')")
                 (New-HitlLine 'finance.label.annual_contribution'  (& $need 'Annual') -Kind money -EurByModel)
                 (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
                 (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name")
@@ -217,9 +225,7 @@ function Get-FinanceHitlLines {
                 # WP2: Beitrag je Abbuchung + Rhythmus roh (Default monatlich); den Monatswert leitet pension_overview ab
                 (New-HitlLine 'finance.label.rate_per_debit'            "($hasC ? 'finance.tpl.plain' : 'finance.value.none_parens')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "$S.contribution_amount" -EurByModel) })
-                (New-HitlLine 'finance.label.payment_mode'               "'finance.tpl.every_unit'" -Kind tpl -If $hasC -Params @{
-                    interval = "($S.schedule_interval || '1')"
-                    unit     = (New-HitlValue -Kind enum -Value "($S.schedule_unit || 'month')" -Enum 'finance.enum.schedule_unit') })
+                (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "$S.schedule_interval" -Unit "($S.schedule_unit || 'month')" -If $hasC)
                 (New-HitlLine 'finance.label.debit_account'              "$S.debit_account_name" -If $hasC)
                 (New-HitlLine 'finance.label.first_debit'                "$S.first_payment_date" -Kind date -If $hasC)
                 (New-HitlLine 'finance.label.debit_day'                  $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If $hasC)
@@ -246,13 +252,12 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.account'       "$S.account_name")
                 (New-HitlLine 'finance.label.direction'     "($S.direction === 'expense' ? 'outflow' : 'inflow')" -Kind enum -Enum 'finance.enum.direction')
                 (New-HitlLine 'core.label.amount'           "$S.amount" -Kind money -Currency (& $need 'Ccy'))
-                (New-HitlLine 'finance.label.cycle'         "'finance.tpl.every_unit'" -Kind tpl -Params @{
-                    interval = "($S.schedule_interval || '1')"
-                    unit     = (New-HitlValue -Kind enum -Value "$S.schedule_unit" -Enum 'finance.enum.schedule_unit') })
+                (Get-FinanceRhythmLine -Label 'finance.label.cycle' -Interval "$S.schedule_interval" -Unit "$S.schedule_unit")
                 (New-HitlLine 'finance.label.debit_day'     $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.direction === 'expense'")
                 (New-HitlLine 'finance.label.credit_day'    $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.direction !== 'expense'")
                 (New-HitlLine 'finance.label.first_payment' "$S.first_payment_date" -Kind date)
-                (New-HitlLine 'finance.label.valid_from'    "($S.valid_from || $S.first_payment_date)" -Kind date -IsDefault "!$S.valid_from")
+                # Gueltig ab = erste Zahlung, wenn nicht genannt; ohne "(Standard)" (Laien-Pruefung 2026-11-06: der Zusatz sagt dem Nutzer nichts)
+                (New-HitlLine 'finance.label.valid_from'    "($S.valid_from || $S.first_payment_date)" -Kind date)
                 (New-HitlLine 'finance.label.valid_to'      "($S.valid_to ? 'finance.tpl.plain' : 'finance.value.unlimited')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind date -Value "$S.valid_to") })
                 (New-HitlLine 'core.label.note'             "$S.notes" -OmitEmpty)

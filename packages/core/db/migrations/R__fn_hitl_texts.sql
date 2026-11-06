@@ -23,7 +23,7 @@ CREATE OR REPLACE FUNCTION core.fn_hitl_texts(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_chrome  text[] := ARRAY[
-        'core.hitl.hint', 'core.hitl.approve', 'core.hitl.cancel', 'core.hitl.unauthorized',
+        'core.hitl.hint', 'core.hitl.hint_member_request', 'core.hitl.approve', 'core.hitl.cancel', 'core.hitl.unauthorized',
         'core.hitl.member_requests', 'core.hitl.member_confirmed', 'core.hitl.part',
         'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes', 'core.fmt.no', 'core.fmt.removed'];
     -- Die Summary-Keys sammelt agent.fn_ui_texts_for aus dem Dokument (robust: jede Form-Abweichung -> nur

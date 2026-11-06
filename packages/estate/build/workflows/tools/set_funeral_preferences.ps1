@@ -37,7 +37,7 @@ function Build-EstateSetFuneralPreferences {
         (New-HitlLine 'estate.label.prepaid_contract' "$isPrepaid" -Kind bool -If "$S.has_prepaid_contract")
         (New-HitlLine 'estate.label.prepaid_provider' "$S.prepaid_contract_provider" -If "$S.prepaid_contract_provider")
         (New-HitlLine 'estate.label.wishes'          "$S.wishes" -If "$S.wishes")
-        (New-HitlNote -Key 'estate.note.unchanged_fields')
+        (New-HitlNote -Key 'core.note.unchanged_fields')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

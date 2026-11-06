@@ -40,7 +40,7 @@ function Build-EstateSetStoragePlace {
         (New-HitlLine 'estate.label.location'     "$S.location" -If "$S.location")
         (New-HitlLine 'estate.label.access_hint'  "$S.access_hint" -If "$S.access_hint")
         (New-HitlLine 'estate.label.notes'        "$S.notes" -If "$S.notes")
-        (New-HitlNote -Key 'estate.note.unchanged_fields')
+        (New-HitlNote -Key 'core.note.unchanged_fields')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

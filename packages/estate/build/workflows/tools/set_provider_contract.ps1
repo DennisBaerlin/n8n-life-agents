@@ -44,7 +44,7 @@ function Build-EstateSetProviderContract {
         (New-HitlLine 'estate.label.contact'      "$S.contact_info" -If "$S.contact_info")
         (New-HitlLine 'estate.label.death_action' "$S.death_action" -Kind enum -Enum 'estate.enum.contract_action' -If "$S.death_action")
         (New-HitlLine 'estate.label.notes'        "$S.notes" -If "$S.notes")
-        (New-HitlNote -Key 'estate.note.unchanged_fields')
+        (New-HitlNote -Key 'core.note.unchanged_fields')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

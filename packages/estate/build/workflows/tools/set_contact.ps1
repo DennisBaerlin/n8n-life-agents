@@ -42,7 +42,7 @@ function Build-EstateSetContact {
         (New-HitlLine 'estate.label.email'        "$S.email" -If "$S.email")
         (New-HitlLine 'estate.label.address'      "$S.address" -If "$S.address")
         (New-HitlLine 'estate.label.notes'        "$S.notes" -If "$S.notes")
-        (New-HitlNote -Key 'estate.note.unchanged_fields')
+        (New-HitlNote -Key 'core.note.unchanged_fields')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

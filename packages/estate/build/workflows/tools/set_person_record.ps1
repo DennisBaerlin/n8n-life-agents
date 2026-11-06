@@ -47,7 +47,7 @@ function Build-EstateSetPersonRecord {
         (New-HitlLine 'estate.label.employer'            "$S.employer" -If "$S.employer")
         (New-HitlLine 'estate.label.certificates_location' "$S.certificates_location" -If "$S.certificates_location")
         (New-HitlLine 'estate.label.notes'               "$S.notes" -If "$S.notes")
-        (New-HitlNote -Key 'estate.note.unchanged_fields')
+        (New-HitlNote -Key 'core.note.unchanged_fields')
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1540, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })

@@ -177,8 +177,10 @@ function New-LongSummary([string]$Id) {
 # Sprache je Empfaenger (Textkatalog): Lena (Mitglied) = en, Owner = de. Erwartete Knopf-Texte + ein Hinweis-Fragment
 # je Sprache; jeder abgefangene Button-Send wird darauf geprueft (nicht nur hitl08).
 $LangExpect = @{
-    member = @{ approve = '✅ Confirm'; cancel = '❌ Cancel'; hint = 'Please confirm or cancel' }
-    owner  = @{ approve = '✅ Bestätigen'; cancel = '❌ Abbrechen'; hint = 'Bitte über die Knöpfe' }
+    member = @{ approve = '✅ Confirm'; cancel = '❌ Cancel'; hint = 'To change something, cancel and write again.' }
+    # Zweitfreigabe (Owner gibt die Anfrage eines Mitglieds frei, Kopf "Mitglied X beantragt:"): eigener Schlusssatz
+    owner  = @{ approve = '✅ Bestätigen'; cancel = '❌ Abbrechen'; hint = 'Zum Ändern abbrechen und neu schreiben.'
+                stage2 = 'beantragt:'; hintStage2 = 'Entscheide über die Knöpfe.' }
 }
 function Get-ButtonTexts($Msg) {
     $kb = $Msg.body.reply_markup
@@ -290,7 +292,8 @@ foreach ($tc in $cases) {
             # hitl16: eigener Knopf-Text aus summary.approve_key statt des Standard-Bestaetigen
             $wantApprove = if ($tc.approveText) { $tc.approveText[$snd.t] } else { $le.approve }
             if ($btn -notcontains $wantApprove -or $btn -notcontains $le.cancel) { $langBad += "Knoepfe [$($btn -join ' | ')]" }
-            if (-not $txt.Contains($le.hint)) { $langBad += "Hinweis fehlt ('$($le.hint)')" }
+            $hint = if ($le.stage2 -and $txt.Contains($le.stage2)) { $le.hintStage2 } else { $le.hint }
+            if (-not $txt.Contains($hint)) { $langBad += "Hinweis fehlt ('$hint')" }
             $want = if ($snd.t -eq 'member') { $tc.expectMember } else { $tc.expectOwner }
             foreach ($w in @($want)) { if ($w -and -not $txt.Contains($w)) { $langBad += "Text ohne '$w'" } }
             if ($langBad.Count) {

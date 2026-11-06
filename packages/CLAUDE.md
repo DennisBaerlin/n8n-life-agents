@@ -81,8 +81,8 @@ Nutzer-korrigierbare Fehler (Oversell, Über-/Unterzahlung, nicht-positive Betr�
 
 ### HITL-Bestätigungs-Format
 
-- **Die Karte ist eine Struktur, kein Text:** `New-HitlSummary` (Titel-Key + `New-HitlLine`/`New-HitlNote`, typisierte Rohwerte); das Gate rendert sie je Empfänger in dessen Sprache (`workflow_lint` lehnt String-Summaries ab). Texte als Keys im Textkatalog des Pakets (`docs/package-contract.md` §3.11), Keys prüft der Build.
+- **Die Karte ist eine Struktur, kein Text:** `New-HitlSummary` (Titel-Key + `New-HitlLine`/`New-HitlNote`, typisierte Rohwerte); das Gate rendert sie je Empfänger in dessen Sprache. Texte als Keys im Textkatalog des Pakets (`docs/package-contract.md` §3.11), Keys prüft der Build.
 - Titel `Verb + Objekt – bitte prüfen:`; ein Feld pro Zeile `• <Label>: <Wert>`, Labels nutzerfreundlich (nie DB-Spaltennamen); ENUMs als `-Kind enum` (Wert-Key `<pkg>.enum.<typ>.<wert>`).
-- **Beträge und Daten nur als `-Kind money`/`-Kind date`** (Intl im Locale des Empfängers) — nie hart „€"/„EUR"; Währung per `-Currency` aus der Zeile; festes `'EUR'` nur mit `-EurByModel`.
-- **Je Art dieselben Zeilen**, leer = `—`; optionale Info ohne Wert `-OmitEmpty` (entfällt); `-If` für Unterart/Folgegruppen; Default `-IsDefault`. Plain text, kein Markdown (auch nicht im Katalog: `_ * [` Backtick). Buttons und lange Karten (Teile) macht das Gate.
+- **Beträge und Daten nur als `-Kind money`/`-Kind date`** — nie hart „€"/„EUR"; Währung per `-Currency` aus der Zeile; festes `'EUR'` nur mit `-EurByModel`.
+- **Je Art dieselben Zeilen**, leer = `—`; optionale Info ohne Wert `-OmitEmpty` (entfällt); `-If` für Unterart/Folgegruppen; Default `-IsDefault`. Plain text, kein Markdown (auch nicht im Katalog: `_ * [` Backtick). Knöpfe, Teile langer Karten und Schlusszeile macht das Gate; Laien-Gerüst → `docs/reference/packages.md` *HITL-Karten*.
 - **Ganzer Text zum Prüfen:** `New-HitlBody` (nie gekürzt); formuliert das Modell ihn je Aufruf neu → `-RepeatKey` (`docs/reference/core.md` *Wiederhol-Sperre*).

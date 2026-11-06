@@ -42,6 +42,11 @@ async function step(w, id, value, opt) {
     await shot(w, 'h_OWNER_BIRTH_DATE-fehler', { error: (await answer(w, 'h:OWNER_BIRTH_DATE', '2999-01-01')).json.error, value: '2999-01-01' });
     await step(w, 'h:OWNER_BIRTH_DATE', '1980-01-01');
     await step(w, 'h:OWNER_PERSONA', 'neutral');
+    // Token-Seite mit aufgeklapptem „Noch kein Telegram?“ in allen drei Sprachen (die zugeklappte Fassung nimmt step() auf).
+    for (const l of ['en', 'ko', 'de']) {
+      await post(w, '/api/lang', { lang: l });
+      await shot(w, `h_TELEGRAM_BOT_TOKEN-offen${l === 'de' ? '' : '-' + l}`, { open: true });
+    }
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
     await step(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel');
     await shot(w, 'tg_busy');

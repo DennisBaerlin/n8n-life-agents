@@ -47,6 +47,11 @@ const PROVISION = process.env.LA_PROVISION || path.join(__dirname, '..', 'provis
 const LA_CLI = process.env.LA_CLI || 'lifeagents';
 // Ausführliche FritzBox-Anleitung für den Docker-Weg (docs/site fritzbox.md, Abschnitt start-app, Paket 8).
 const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox/#start-app';
+// Telegram-App für Leute ohne Telegram (Token-Seite). Offizielle Links von telegram.org/apps: /dl leitet je Gerät weiter
+// (iPhone → App Store, Android → Google-Play-Seite), daher ein QR-Code für beide Handys; für den Rechner die Seiten für Mac
+// und Windows. Der QR-Code entsteht lokal mit qr.js, zur Laufzeit wird nichts nachgeladen.
+const TG_APP = { phone: 'https://telegram.org/dl', mac: 'https://macos.telegram.org/', windows: 'https://desktop.telegram.org/' };
+const TG_APP_QR = qr.toSvg(qr.encode(TG_APP.phone));
 const POLL_MS = Math.max(50, parseInt(process.env.WIZARD_POLL_MS || '1000', 10));
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');
@@ -324,6 +329,12 @@ function pageFor(id) {
     }
     if (q.setting === 'general.paperless_url' && v === undefined) Object.assign(page, paperlessSearchView());
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
+    // Schritt 1 der Anleitung setzt Telegram voraus: zugeklappter Block mit QR-Code fürs Handy und Links für den Rechner.
+    if (key === 'TELEGRAM_BOT_TOKEN') {
+      page.getApp = { summary: T('core.wizard.page.get_tg_summary'), scan: T('core.wizard.page.get_tg_scan'), qr: TG_APP_QR,
+        computer: T('core.wizard.page.get_tg_computer'),
+        links: [{ href: TG_APP.mac, label: T('core.wizard.page.get_tg_mac') }, { href: TG_APP.windows, label: T('core.wizard.page.get_tg_windows') }] };
+    }
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
     if (NO_SKIP.includes(key)) page.optional = false;
     if (q.kind === 'date') page.placeholder = T('core.wizard.ui.date_placeholder');

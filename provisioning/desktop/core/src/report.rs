@@ -33,9 +33,15 @@ fn code<T: serde::Serialize>(v: &T) -> String {
     }
 }
 
-/// Versionen sehen aus wie `27.3.1` oder `15.1`; alles andere fällt weg.
+/// Versionen sehen aus wie `27.3.1` oder `15.1`: das letzte Stück aus Ziffern und Punkten, alles andere fällt weg
+/// („Microsoft Windows 11 Home (26100)“ → `26100`).
 fn version_only(s: &str) -> String {
-    s.chars().filter(|c| c.is_ascii_digit() || *c == '.').take(16).collect()
+    s.split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .rfind(|t| t.chars().any(|c| c.is_ascii_digit()))
+        .unwrap_or("")
+        .chars()
+        .take(16)
+        .collect()
 }
 
 /// Die festen Fehler-Codes der App. Alles andere wird zu `other`, so kann kein Meldungstext durchrutschen.
@@ -172,6 +178,8 @@ mod tests {
         assert!(text.contains("journal: autostart-installed:done"), "{text}");
         assert!(text.contains("filevault: on"));
         assert!(text.contains("letzter fehler: other"));
+        assert_eq!(version_only("Microsoft Windows 11 Home (26100)"), "26100");
+        assert_eq!(version_only("15.1"), "15.1");
         assert_eq!(build("0.1.0", &sys, None, &j, FileVault::On, "start-failed").last_error, "start-failed");
     }
 }

@@ -11,7 +11,7 @@ use crate::host::{args, join, Arch, Host, Os};
 use crate::journal;
 
 /// Team-ID von Docker Inc. in der Mac-Unterschrift. **Am Original abgelesen** im CI-Job `vendor-ids`
-/// (`.github/workflows/desktop.yml`), der bei Abweichung rot wird.
+/// (`.github/workflows/desktop-vendor-ids.yml`), der bei Abweichung rot wird.
 pub const MAC_TEAM_ID: &str = "9BNSXJN65R";
 /// Organisation im Zertifikat des Windows-Installers, ebenfalls im CI-Job `vendor-ids` am Original geprüft.
 pub const WIN_PUBLISHER_ORG: &str = "Docker Inc";

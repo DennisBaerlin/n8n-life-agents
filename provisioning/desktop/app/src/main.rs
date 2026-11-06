@@ -107,10 +107,12 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Nach der Einrichtung schließt das Fenster nur; die App bleibt im Symbol und hält den Bot am Laufen.
+            // Nach der Einrichtung schließt das Fenster nur; die App bleibt im Symbol und hält den Bot am Laufen. Solange
+            // der Fragebogen offen ist, versteckt es sich ebenfalls: Es fragt danach nach dem Dauerbetrieb.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let complete = Journal::load(&RealHost).map(|j| j.status() == Status::Complete).unwrap_or(false);
-                if window.label() == "main" && complete {
+                let wizard_open = window.app_handle().get_webview_window("wizard").is_some();
+                if window.label() == "main" && (complete || wizard_open) {
                     api.prevent_close();
                     let _ = window.hide();
                 }

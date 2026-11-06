@@ -33,15 +33,29 @@ pub fn compose_images(compose_text: &str) -> Vec<String> {
 }
 
 /// Welche Images fehlen vor dem Start? Genau die lädt Docker gleich und genau die darf das Entfernen löschen.
-pub fn missing_images(host: &dyn Host, d: &Docker, images: &[String]) -> Vec<String> {
-    images.iter().filter(|i| d.call(host, DockerCall::ImageInspect(i)).map(|o| !o.success()).unwrap_or(true)).cloned().collect()
+/// „Fehlt“ nur bei Dockers eigener Antwort „No such image“; jeder andere Fehler bricht ab, denn ein falsch als
+/// „fehlt“ notiertes Image eines Nachbarn würde beim Entfernen gelöscht.
+pub fn missing_images(host: &dyn Host, d: &Docker, images: &[String]) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for i in images {
+        let o = d.call(host, DockerCall::ImageInspect(i))?;
+        if o.success() {
+            continue;
+        }
+        if o.stderr.to_ascii_lowercase().contains("no such image") {
+            out.push(i.clone());
+        } else {
+            return Err(format!("Image-Abfrage scheiterte ({})", o.code));
+        }
+    }
+    Ok(out)
 }
 
 /// Erste Zustimmung (Nr. 8 bestätigt): Port festhalten, fehlende Images ins Journal, `anchor` + `master` starten.
 pub fn start_first(host: &dyn Host, j: &mut Journal, d: &Docker, p: &CorePaths, port: u16) -> Result<(), String> {
     host.write_file(&p.env_file, &format!("{PORT_VAR}={port}\n"))?;
     let text = host.read_file(&p.compose_file).ok_or("Compose-Datei fehlt")?;
-    let missing = missing_images(host, d, &compose_images(&text));
+    let missing = missing_images(host, d, &compose_images(&text))?;
     let seq_img = if missing.is_empty() { None } else { Some(j.begin(host, Step::ImagesPulled { refs: missing })?) };
     let seq = j.begin(host, Step::CoreStarted { compose_file: p.compose_file.clone(), env_file: p.env_file.clone() })?;
     let out = d.call(host, DockerCall::ComposeUpFirst { file: &p.compose_file, env_file: &p.env_file })?;
@@ -176,6 +190,18 @@ mod tests {
             ]
         );
         assert!(j.entries.iter().all(|e| e.state == journal::State::Done));
+    }
+
+    #[test]
+    fn unclear_image_query_never_counts_as_missing() {
+        let h = FakeHost::mac();
+        let p = paths(&h, "/x/compose.yml");
+        h.write_file(&p.compose_file, "services:\n  anchor:\n    image: busybox:1.37@sha256:aaaa\n").unwrap();
+        h.set(&cmd(DockerCall::ImageInspect("busybox:1.37@sha256:aaaa")), CmdOut::fail(1, "Cannot connect to the Docker daemon"));
+        let mut j = Journal::default();
+        assert!(start_first(&h, &mut j, &d(), &p, 5880).is_err());
+        assert!(j.entries.is_empty(), "nichts notiert, nichts gestartet");
+        assert!(h.calls_starting("docker --context desktop-linux compose").is_empty());
     }
 
     #[test]

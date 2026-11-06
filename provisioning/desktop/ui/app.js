@@ -120,6 +120,15 @@ function failed(code, retry) {
   });
 }
 
+/** Das App-Fenster kann versteckt sein, während der Fragebogen läuft (main.rs). */
+function bringToFront() {
+  const w = T.window && T.window.getCurrentWindow ? T.window.getCurrentWindow() : null;
+  if (w) {
+    w.show();
+    w.setFocus();
+  }
+}
+
 // ---------------------------------------------------------------------------------------------- Bildschirme
 
 const SCREENS = {
@@ -421,7 +430,7 @@ const SCREENS = {
     });
     state.poll = setInterval(async () => {
       const s = await invoke('wizard_status');
-      if (s.phase === 'power') SCREENS.power();
+      if (s.phase === 'power') { bringToFront(); SCREENS.power(); }
       else if (s.phase === 'done') SCREENS.finish();
     }, 3000);
   },
@@ -438,7 +447,7 @@ const SCREENS = {
   },
 
   async power() {
-    state.power = await invoke('power_info');
+    state.power = state.power || (await invoke('power_info'));
     const p = state.power;
     const yes = mac()
       ? 'Er schläft nicht mehr ein und startet nach einem Stromausfall von selbst. Ein Mac mini kostet so rund 10 bis 20 € Strom im Jahr.'

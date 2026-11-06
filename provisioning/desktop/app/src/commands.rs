@@ -355,12 +355,14 @@ pub fn power_apply(app: AppHandle) -> Result<PowerResult, String> {
             let _ = j.abandon(&h, seq);
             Err(fail(&app, "power-cancelled"))
         }
-        // Windows räumt selbst auf; auf dem Mac ist der Stand unklar, der Eintrag bleibt für den Rückweg.
-        Err(_) if h.os() == Os::Windows => {
-            let _ = j.abandon(&h, seq);
+        // Windows räumt selbst auf. Auf dem Mac ist der Stand unklar: alte Werte zurückstellen; klappt das nicht, bleibt
+        // der Eintrag „begonnen“ für den Rückweg.
+        Err(_) => {
+            if h.os() == Os::Windows || power::restore(&h, &prepared).is_ok() {
+                let _ = j.abandon(&h, seq);
+            }
             Err(fail(&app, "power-failed"))
         }
-        Err(_) => Err(fail(&app, "power-failed")),
     }
 }
 

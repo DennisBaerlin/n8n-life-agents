@@ -26,7 +26,7 @@ Tauri-2-App für Freunde ohne eigenen Server (Plan *Docker-Installer für Freund
 
 - Logik: `.\scripts\dev\test_desktop_core.ps1` (Wegwerf-Container `rust:1-slim`, kein Rust auf dem Rechner nötig), `-Lint` mit fmt + clippy.
 - Oberfläche: Vorschau `desktop-app` (`.claude/launch.json`), Fälle per `?state=` (Kopf von `preview/mock.js`), `?theme=dark`, `?os=win`.
-- App-Bau: nur CI (`.github/workflows/desktop.yml` → `desktop-build.yml`), Artefakte `desktop-dmg`/`desktop-nsis`; Job `vendor-ids` liest Team-ID und Windows-Herausgeber von Docker am Original ab.
+- App-Bau: nur CI (`.github/workflows/desktop.yml` → `desktop-build.yml`), Artefakte `desktop-dmg`/`desktop-nsis`; `desktop-vendor-ids.yml` liest Team-ID und Windows-Herausgeber von Docker am Original ab (bei Änderung der Konstanten, wöchentlich, von Hand).
 
 ## Schnittstelle zu den anderen Paketen
 

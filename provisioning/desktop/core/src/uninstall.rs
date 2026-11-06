@@ -47,6 +47,17 @@ fn our_volumes(host: &dyn Host, d: &Docker) -> Vec<String> {
         .collect()
 }
 
+/// Repository eines Image-Namens ohne Tag und Digest: `ghcr.io/x/master:1@sha256:…` → `ghcr.io/x/master`. Die
+/// Image-Liste zeigt `repo:tag`, das Journal `repo:tag@digest`; verglichen wird nur das Repository.
+pub fn repo_of(reference: &str) -> String {
+    let no_digest = reference.split('@').next().unwrap_or(reference);
+    let slash = no_digest.rfind('/').map(|i| i + 1).unwrap_or(0);
+    match no_digest[slash..].find(':') {
+        Some(c) => no_digest[..slash + c].to_string(),
+        None => no_digest.to_string(),
+    }
+}
+
 pub fn plan(host: &dyn Host, j: &Journal, d: Option<&Docker>) -> Plan {
     let live = |pred: fn(&Step) -> bool| j.entries.iter().rev().find(|e| e.state != State::Undone && pred(&e.step)).map(|e| e.step.clone());
     Plan {
@@ -67,6 +78,15 @@ pub fn plan(host: &dyn Host, j: &Journal, d: Option<&Docker>) -> Plan {
 /// → (Docker) → Vergleich. Fehler einzelner Schritte halten nicht an; sie stehen im Ergebnis.
 pub fn run(host: &dyn Host, j: &mut Journal, d: Option<&Docker>, p: &Plan, c: Choices) -> Outcome {
     let mut o = Outcome::default();
+    let our_repos: Vec<String> = j
+        .entries
+        .iter()
+        .filter_map(|e| match &e.step {
+            Step::ImagesPulled { refs } => Some(refs.iter().map(|r| repo_of(r)).collect::<Vec<_>>()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
     let before = d.and_then(|d| inventory::take(host, d).ok());
     if let Some(d) = d {
         let ok = d.call(host, DockerCall::Master(crate::contract::MasterCmd::ReleaseWebhook)).map(|x| x.success()).unwrap_or(false);
@@ -118,7 +138,11 @@ pub fn run(host: &dyn Host, j: &mut Journal, d: Option<&Docker>, p: &Plan, c: Ch
         if let Ok(after) = inventory::take(host, d) {
             // Energiewerte haben wir eben selbst zurückgestellt, das ist keine fremde Änderung.
             let ignore: Vec<String> = b.power.keys().cloned().collect();
-            o.deviations = inventory::compare(&b, &after, if c.restore_power { &ignore } else { &[] });
+            o.deviations = inventory::compare(&b, &after, if c.restore_power { &ignore } else { &[] })
+                .into_iter()
+                // Unsere eigenen Images (Journal) fehlen danach gewollt.
+                .filter(|dev| !matches!(dev, Deviation::ImageGoneOrMoved { image } if our_repos.contains(&repo_of(image))))
+                .collect();
         }
     }
     if c.remove_docker && p.docker_installed_by_us {
@@ -231,6 +255,38 @@ mod tests {
         assert!(!h.exists("/Users/erika/Library/LaunchAgents/io.lifeagents.desktop.autostart.plist"));
         assert!(h.calls_starting("/usr/bin/osascript").iter().all(|c| !c.contains("Docker.app")), "Docker gehörte uns nicht");
         assert_eq!(j.status(), journal::Status::RolledBack);
+    }
+
+    #[test]
+    fn our_removed_images_are_no_deviation_but_a_neighbours_are() {
+        let h = host();
+        let mut j = setup(&h, false);
+        let p = plan(&h, &j, Some(&d()));
+        h.cmds.borrow_mut().insert(
+            cmd(DockerCall::ImageList),
+            vec![
+                CmdOut::ok("redis:7|sha256:d7\nghcr.io/example/lifeagents-master:<none>|sha256:bb\n"),
+                CmdOut::ok("ghcr.io/example/lifeagents-master:<none>|sha256:bb\n"),
+            ],
+        );
+        let o = run(&h, &mut j, Some(&d()), &p, Choices::default());
+        // Das eigene Image bleibt in dieser Attrappe sogar stehen; gemeldet wird nur das fremde redis.
+        assert_eq!(o.deviations, vec![Deviation::ImageGoneOrMoved { image: "redis:7".into() }]);
+        h.cmds.borrow_mut().insert(
+            cmd(DockerCall::ImageList),
+            vec![CmdOut::ok("redis:7|sha256:d7\nghcr.io/example/lifeagents-master:<none>|sha256:bb\n"), CmdOut::ok("redis:7|sha256:d7\n")],
+        );
+        let mut j = setup(&h, false);
+        let o = run(&h, &mut j, Some(&d()), &p, Choices::default());
+        assert!(o.deviations.is_empty(), "{:?}", o.deviations);
+    }
+
+    #[test]
+    fn repo_names() {
+        assert_eq!(repo_of("ghcr.io/example/lifeagents-master@sha256:bbbb"), "ghcr.io/example/lifeagents-master");
+        assert_eq!(repo_of("busybox:1.37@sha256:aaaa"), "busybox");
+        assert_eq!(repo_of("localhost:5000/x/y:2"), "localhost:5000/x/y");
+        assert_eq!(repo_of("redis:7"), "redis");
     }
 
     #[test]

@@ -180,10 +180,17 @@ impl Journal {
         if self.entries.is_empty() {
             return Status::Fresh;
         }
-        if live.is_empty() {
+        // Docker Desktop bleibt beim Rückweg absichtlich (eigene Frage beim Entfernen): zählt nicht als Rest.
+        if live.iter().all(|e| e.step == Step::DockerInstalled && e.state == State::Done) {
             return Status::RolledBack;
         }
-        if let Some(b) = live.iter().rev().find(|e| e.state == State::Begun) {
+        // Ein begonnener Schritt, den ein späterer Lauf derselben Art abgeschlossen hat (Fortsetzen nach einem
+        // Abbruch), ist erledigt; nur ein offener Rest heißt „unterbrochen“.
+        let superseded = |b: &Entry| {
+            live.iter()
+                .any(|e| e.seq > b.seq && e.state == State::Done && std::mem::discriminant(&e.step) == std::mem::discriminant(&b.step))
+        };
+        if let Some(b) = live.iter().rev().find(|e| e.state == State::Begun && !superseded(e)) {
             return Status::Interrupted { step: b.step.clone() };
         }
         if live.iter().any(|e| e.step == Step::SetupComplete) {
@@ -293,6 +300,50 @@ mod tests {
         assert_eq!(on_disk.status(), Status::Interrupted { step: Step::DockerStarted });
         j.done(&h, seq, None).unwrap();
         assert_eq!(Journal::load(&h).unwrap().status(), Status::InProgress);
+    }
+
+    #[test]
+    fn resumed_setup_becomes_complete() {
+        let h = FakeHost::mac();
+        let mut j = Journal::default();
+        let core = Step::CoreStarted { compose_file: "/c/compose.yml".into(), env_file: "/c/app.env".into() };
+        j.begin(&h, core.clone()).unwrap(); // erster Versuch bricht ab
+        assert!(matches!(j.status(), Status::Interrupted { .. }));
+        let seq = j.begin(&h, core).unwrap(); // Fortsetzen
+        j.done(&h, seq, None).unwrap();
+        assert_eq!(j.status(), Status::InProgress);
+        let seq = j.begin(&h, Step::SetupComplete).unwrap();
+        j.done(&h, seq, None).unwrap();
+        assert_eq!(j.status(), Status::Complete);
+    }
+
+    #[test]
+    fn rollback_with_own_docker_counts_as_rolled_back() {
+        let h = FakeHost::mac().on(
+            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+            CmdOut::ok(""),
+        );
+        let mut j = Journal::default();
+        for s in [Step::DockerInstalled, Step::CoreStarted { compose_file: "/c/compose.yml".into(), env_file: "/c/app.env".into() }] {
+            let seq = j.begin(&h, s).unwrap();
+            j.done(&h, seq, None).unwrap();
+        }
+        rollback(&h, &mut j, Some(&docker())).unwrap();
+        assert_eq!(j.status(), Status::RolledBack);
+        assert!(j.has_done(|s| *s == Step::DockerInstalled), "Docker bleibt für die Frage beim Entfernen vermerkt");
+    }
+
+    #[test]
+    fn every_step_survives_the_round_trip_through_the_file() {
+        let h = FakeHost::mac();
+        let mut j = Journal::default();
+        for s in full_setup() {
+            let seq = j.begin(&h, s).unwrap();
+            j.done(&h, seq, None).unwrap();
+        }
+        let seq = j.begin(&h, Step::PowerChanged { backup: PowerBackup::Windows { previous: "a".into(), ours: String::new() } }).unwrap();
+        let _ = seq;
+        assert_eq!(Journal::load(&h).unwrap(), j);
     }
 
     #[test]

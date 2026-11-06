@@ -1,7 +1,5 @@
-# Start-App auf Branch und PR: baut DMG (macOS arm64) und Setup (Windows) als Artefakte (desktop-build.yml) und liest
-# die Herstellerkennung von Docker Desktop am Original ab (vendor-ids). Die Kennungen stehen als Konstanten in
-# provisioning/desktop/core/src/docker_desktop.rs; aendert Docker sie, wird dieser Lauf rot, bevor eine App mit falscher
-# Pruefung ausgeliefert wird. Von Hand: gh workflow run desktop.yml --ref <branch>
+# Start-App auf Branch und PR: baut DMG (macOS arm64) und Setup (Windows) als Artefakte (desktop-build.yml). Die
+# Herstellerkennung von Docker prueft desktop-vendor-ids.yml. Von Hand: gh workflow run desktop.yml --ref <branch>
 name: desktop
 
 on:
@@ -29,50 +27,3 @@ concurrency:
 jobs:
   build:
     uses: ./.github/workflows/desktop-build.yml # zizmor: ignore[self-repository] actionlint 1.7.12 kennt "$/" noch nicht
-
-  vendor-ids:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, windows-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Docker-Kennung am Original ablesen
-        run: |
-          $src = [System.IO.File]::ReadAllText("$PWD/provisioning/desktop/core/src/docker_desktop.rs")
-          $const = { param($n) ([regex]::Match($src, "pub const $n`: &str = `"([^`"]+)`"")).Groups[1].Value }
-          if ($IsMacOS) {
-            $url = & $const 'URL_MAC_ARM64'
-            $team = & $const 'MAC_TEAM_ID'
-            curl --fail --location --proto '=https' --silent --show-error --output "$env:RUNNER_TEMP/Docker.dmg" $url
-            if ($LASTEXITCODE -ne 0) { throw 'Download scheiterte' }
-            $mnt = "$env:RUNNER_TEMP/dmg"
-            hdiutil attach -nobrowse -readonly -noautoopen -mountpoint $mnt "$env:RUNNER_TEMP/Docker.dmg" | Out-Null
-            $app = "$mnt/Docker.app"
-            $info = (codesign -dv --verbose=2 $app 2>&1) -join "`n"
-            $gk = (spctl --assess --type execute -vv $app 2>&1) -join "`n"
-            hdiutil detach $mnt | Out-Null
-            Write-Host $info; Write-Host $gk
-            $seen = ([regex]::Match($info, 'TeamIdentifier=(\S+)')).Groups[1].Value
-            if ($seen -ne $team) { throw "Team-ID am Original: '$seen', in docker_desktop.rs: '$team'" }
-            if ($gk -notmatch 'Notarized Developer ID') { throw 'Original ist nicht notarisiert' }
-            Write-Host "OK: Team-ID $seen"
-          } else {
-            $url = & $const 'URL_WIN_AMD64'
-            $org = & $const 'WIN_PUBLISHER_ORG'
-            Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\docker-setup.exe"
-            $s = Get-AuthenticodeSignature -LiteralPath "$env:RUNNER_TEMP\docker-setup.exe"
-            Write-Host "Status: $($s.Status)"; Write-Host "Subject: $($s.SignerCertificate.Subject)"
-            if ($s.Status -ne 'Valid') { throw "Signatur des Originals: $($s.Status)" }
-            $fields = $s.SignerCertificate.Subject -split ',' | ForEach-Object { $_.Trim() }
-            if ($fields -notcontains "O=$org" -and $fields -notcontains "O=`"$org`"") { throw "Herausgeber am Original passt nicht zu WIN_PUBLISHER_ORG '$org'" }
-            Write-Host "OK: O=$org"
-          }

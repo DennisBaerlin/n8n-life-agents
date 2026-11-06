@@ -50,6 +50,9 @@ const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');
 const PROGRESS = path.join(STATE_DIR, 'progress.json');
 const LOG_FILE = path.join(STATE_DIR, 'provision.log');
+// Merker „Einrichtung abgeschlossen“ (ohne Inhalt): der master startet den Wizard bei jedem Hochfahren; steht der Merker,
+// endet der Server sofort, statt einen neuen Fragebogen zu beginnen (P1, compose: init + Ruhe-Prozess danach).
+const DONE = path.join(STATE_DIR, 'done');
 const ANSWERS = path.join(RUN_DIR, 'answers.env');
 const RESULT = path.join(RUN_DIR, 'result.env');
 const CTL_SOCK = path.join(RUN_DIR, 'ctl.sock');
@@ -731,6 +734,7 @@ let httpServer = null;
 let ctlServer = null;
 function finishAll() {
   rmQuiet(PROGRESS); rmQuiet(KEY_FILE); rmQuiet(ANSWERS); rmQuiet(RESULT); rmQuiet(LOG_FILE);
+  try { fs.mkdirSync(STATE_DIR, { recursive: true }); atomicWrite(DONE, ''); } catch (_) { /* Volume weg: dann gibt es auch nichts fortzusetzen */ }
   for (const k of Object.keys(SECRETS)) delete SECRETS[k];
   session = null; pending = null;
   const bye = () => process.exit(0);
@@ -773,6 +777,7 @@ function loadQuestions() {
 }
 
 async function main() {
+  if (fs.existsSync(DONE)) { process.stdout.write(JSON.stringify({ ev: 'wizard_done' }) + '\n'); process.exit(0); }
   KEY = loadKey();
   P = loadProgress();
   await loadQuestions();

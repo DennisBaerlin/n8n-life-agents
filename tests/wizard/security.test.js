@@ -178,5 +178,11 @@ test('„Fertig“ über den Steuerkanal: Fortschritt und Schlüssel weg, Prozes
   assert.equal(code, 0);
   assert.ok(!fs.existsSync(path.join(w.dir, 'state', 'progress.json')));
   assert.ok(!fs.existsSync(path.join(w.dir, 'etc', 'wizard.key')));
+  // Neustart des master danach: der Wizard endet sofort, kein neuer Fragebogen, kein neuer Schlüssel.
+  const again = require('child_process').spawnSync(process.execPath, [path.join(require('./helpers').WIZ, 'server.js')], { env: w.env, timeout: 20000 });
+  assert.equal(again.status, 0);
+  assert.match(again.stdout.toString(), /"wizard_done"/);
+  assert.ok(!fs.existsSync(path.join(w.dir, 'etc', 'wizard.key')));
+  assert.ok(!fs.existsSync(path.join(w.dir, 'run', 'ctl.sock')));
   w = null;
 });

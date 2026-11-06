@@ -1,5 +1,6 @@
 // Wizard-Bilder: Illustrationen und geführte Animationen neben den Fragen (Schnittstelle zu app.js: WizardArt.mount(page)).
-// - Welche Seite welches Bild bekommt, steht nur hier (ART unten); app.js hängt das Ergebnis vor den Abstand über den Knöpfen.
+// - Welches Bild kommt, steht nur hier (ART unten, nach page.art, sonst page.id); app.js hängt das Ergebnis vor den Abstand
+//   über den Knöpfen, bei place 'before' vor die Auswahl.
 // - Platz: Das Bild bekommt nur den Raum zwischen Inhalt und angehefteter Knopfleiste (App-Fenster 760 × 640) und passt sich
 //   ihm an (art.css: Container-Abfragen auf die eigene Höhe); fehlt er, entfällt es.
 // - Fremde Oberflächen (FritzBox, später Anthropic, Google …): wirklichkeitsgetreu nach recherchierten Vorlagen nachgezeichnet
@@ -44,8 +45,15 @@
     return s ? s.cloneNode(true) : null;
   }
 
+  // Texte der Bilder aus dem Katalog (core.wizard.art.*, vom Server als page.t.art in der Sprache der Einrichtung); {n}-Platzhalter
+  // wie T() im Server. Fehlt ein Text, steht sein Name da (sichtbar statt still falsch).
+  function texts(page) {
+    const a = (page && page.t && page.t.art) || {};
+    return (k, vars) => String(a[k] || k).replace(/\{([a-z_]+)\}/g, (m, v) => (vars && vars[v] !== undefined ? String(vars[v]) : m));
+  }
+
   // ---------- Geführte Animation: Mauszeiger, Klick, Lupe mit Zoom, Leuchtrahmen; Schritt für Schritt per Klick ----------
-  // o = { name, svg, width, height, steps, cursor, initial, label, light, hint, link, takes }
+  // o = { name, svg, width, height, steps, cursor, initial, label, light, hint, link, takes, tx }  (tx = texts(page))
   // steps[i] = { cap, start: {set, cam, ring}, acts: [{ to:[x,y], click, set, ring, cam, wait }], hint }
   // set = data-*-Attribute am <svg> (art.css entscheidet, was sichtbar ist); ring = [x,y,b,h] Leuchtrahmen oder null;
   // cam = {x,y,s} Lupe auf Punkt x,y mit Zoom s, null = Zoom 1. Ohne cam folgt die Lupe dem Ziel des Zeigers (to).
@@ -68,12 +76,13 @@
     const hintBox = o.hint ? h('p', { class: 'art-hint', role: 'note', text: o.hint }) : null;   // Server-Text: nur textContent
     const line = h('p', { class: 'art-line', 'aria-live': 'polite' });
     const btn = (cls, text, fn, label) => h('button', { type: 'button', class: 'art-btn ' + cls, 'aria-label': label || null, on: { click: fn } }, text);
-    const back = btn('art-back', '‹ Schritt zurück', () => go(i - 1));
-    const again = btn('art-again', '↻ Nochmal zeigen', () => go(i));
-    const next = btn('art-next', 'Nächster Schritt ›', () => go(i + 1));
-    const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${k + 1} von ${N}: ${s.cap}`, title: `Schritt ${k + 1}`, on: { click: () => go(k) } }));
+    const tx = o.tx, stepOf = (k) => tx('step_of', { n: k + 1, total: N });
+    const back = btn('art-back', tx('back'), () => go(i - 1));
+    const again = btn('art-again', tx('again'), () => go(i));
+    const next = btn('art-next', tx('next'), () => go(i + 1));
+    const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `${stepOf(k)}: ${s.cap}`, title: tx('step_dot', { n: k + 1 }), on: { click: () => go(k) } }));
     // Anleitungs-Link (Ziel vom Server) als kleine Marke oben rechts im Bild, damit die Zeichnung Platz behält
-    const guide = o.link ? h('a', { class: 'art-guide-link', href: o.link.href, target: '_blank', rel: 'noopener noreferrer', title: o.link.label, text: 'Ausführliche Anleitung ↗' }) : null;
+    const guide = o.link ? h('a', { class: 'art-guide-link', href: o.link.href, target: '_blank', rel: 'noopener noreferrer', title: o.link.label, text: tx('guide') }) : null;
     const bar = h('figcaption', { class: 'art-bar' }, line,
       h('div', { class: 'art-ctl' }, back, h('span', { class: 'art-dots' }, dots), again, next));
     // Schrittliste: für Screenreader immer, sichtbar als Rückfall, wenn für die Zeichnung kein Platz ist (art.css)
@@ -142,7 +151,7 @@
       return st;
     }
     function caption(n) {
-      line.replaceChildren(h('b', { text: `Schritt ${n + 1} von ${N}: ` }), o.steps[n].cap);
+      line.replaceChildren(h('b', { text: `${stepOf(n)}: ` }), o.steps[n].cap);
       dots.forEach((d, k) => { d.classList.toggle('on', k === n); d.setAttribute('aria-current', k === n ? 'step' : 'false'); });
       back.disabled = n === 0;
       next.hidden = n + 1 >= N;   // letzter Schritt: kein Neustart-Knopf neben dem Hauptknopf des Wizards
@@ -197,30 +206,34 @@
     const want = pv ? (Number.isInteger(pv.artStep) ? pv.artStep : window.WIZARD_ART_STEP) : undefined;
     if (Number.isInteger(want)) go(Math.min(want, N - 1), true);
     else go(0);   // Schritt 1 läuft einmal von selbst, dann steht er
-    return { el: fig, takes: o.takes || [] };
+    return { el: fig, takes: o.takes || [], place: o.place || null };   // place 'before' = vor Auswahl bzw. Feld (app.js)
   }
 
-  // ---------- A1: FritzBox-Freigabe (Seite fb_guide) ----------
-  // Nachzeichnung der FRITZ!OS-8-Oberfläche: Kopfleiste, Menü links, Inhalt rechts; Seiten „Internet › Freigaben“ (Reiter
-  // „Portfreigaben“), Geräteseite „Freigabe“ mit „‹ Zurück“, Dialog „Freigabe anlegen“. Kein Logo (Fläche bleibt leer).
+  // ---------- FritzBox-Grundzeichnung (fb_guide, fb_dslite) ----------
+  // Nachzeichnung der FRITZ!OS-8-Oberfläche: Kopfleiste, Menü links (Internet klappt auf, data-sub), Inhalt rechts als Szenen
+  // (.s-<name>, sichtbar per data-scene). Kein Logo (Fläche bleibt leer). Menüpunkt hervorgehoben per data-act.
   const CHK = (x, y) => `<rect class="box" x="${x}" y="${y}" width="13" height="13" rx="2"/>`;
   const ICON = (y) => `<rect class="ico" x="18" y="${y - 12}" width="14" height="14" rx="4"/>`;   // Platzhalter für die Menü-Symbole
-  const FB_SVG = `
-<svg class="fb" aria-hidden="true" preserveAspectRatio="xMidYMin meet" data-sub="0" data-act="none" data-scene="home" data-radio="0" data-chk="0" data-rows="0" data-app="http">
+  const CRUMB = (page) => `<circle class="ico-c" cx="230" cy="90" r="8"/><text class="t-m" x="246" y="95">Internet</text><text class="t-m t-gray" x="308" y="95">›</text><text class="t-m" x="322" y="95">${page}</text>
+   <circle class="help" cx="748" cy="90" r="11"/><text class="t-help" x="748" y="95">?</text>`;
+  function fbSvg(H, data, scenes) {
+    return `
+<svg class="fb" aria-hidden="true" preserveAspectRatio="xMidYMin meet" data-sub="0" data-act="none" data-scene="home" ${data}>
  <g class="cam">
-  <rect class="pg" x="0" y="0" width="780" height="680"/>
+  <rect class="pg" x="0" y="0" width="780" height="${H}"/>
   <rect class="hdr" x="0" y="0" width="780" height="58"/>
   <text class="t-hdr" x="214" y="37">FRITZ!Box</text>
   <rect class="hbtn" x="566" y="16" width="80" height="26" rx="3"/><text class="t-hbtn" x="606" y="33">MyFRITZ!</text>
   <rect class="hbtn" x="654" y="16" width="84" height="26" rx="3"/><text class="t-hbtn" x="696" y="33">FRITZ!NAS</text>
   <circle class="hdot" cx="760" cy="22" r="2"/><circle class="hdot" cx="760" cy="29" r="2"/><circle class="hdot" cx="760" cy="36" r="2"/>
-  <rect class="nav" x="0" y="58" width="200" height="622"/><line class="ln" x1="200" y1="58" x2="200" y2="680"/>
+  <rect class="nav" x="0" y="58" width="200" height="${H - 58}"/><line class="ln" x1="200" y1="58" x2="200" y2="${H}"/>
 
+  <rect class="act act-monitor" x="8" y="128" width="184" height="26" rx="4"/>
   <rect class="act act-freigaben" x="8" y="210" width="184" height="26" rx="4"/>
   ${ICON(88)}<text class="t-n" x="42" y="88">Übersicht</text>
   ${ICON(120)}<text class="t-n t-int" x="42" y="120">Internet</text><path class="chev" d="M176 112 l5 5 l5 -5"/><path class="chev-up" d="M176 117 l5 -5 l5 5"/>
   <g class="sub">
-   <text class="t-sub" x="42" y="146">Online-Monitor</text>
+   <text class="t-sub t-om" x="42" y="146">Online-Monitor</text>
    <text class="t-sub" x="42" y="172">Zugangsdaten</text>
    <text class="t-sub" x="42" y="198">Filter</text>
    <text class="t-sub t-fg" x="42" y="228">Freigaben</text>
@@ -243,10 +256,27 @@
    <rect class="ph" x="222" y="114" width="300" height="9" rx="4"/><rect class="ph" x="222" y="132" width="220" height="9" rx="4"/>
    <rect class="card" x="222" y="160" width="536" height="120" rx="4"/><rect class="card" x="222" y="296" width="536" height="120" rx="4"/>
   </g>
+${scenes}
+  <rect class="ring" x="0" y="0" width="0" height="0" rx="6"/>
+  <circle class="ripple" cx="0" cy="0" r="14"/>
+  <g class="cursor"><path d="M0 0 V17 L4.5 13 L7.6 20 L10.4 18.8 L7.4 12 H13 Z"/></g>
+ </g>
+</svg>`;
+  }
+  // Schritt 1 beider FritzBox-Animationen: links „Internet“ aufklappen
+  const FB_OPEN = { key: 'fb_open', acts: [{ to: [122, 116], click: true, set: { sub: '1' }, ring: [10, 102, 184, 26] }] };
+  function fbGuided(page, o) {
+    const tx = texts(page);
+    const link = page.link && page.link.href ? page.link : null;
+    return guided(Object.assign({ width: 780, cursor: [420, 160], light: true, link, tx, label: tx(o.name.replace('-', '_') + '_label') }, o,
+      { steps: o.steps.map((s) => Object.assign({ cap: tx(s.key) }, s)), takes: [link ? 'link' : null].concat(o.takes || []).filter(Boolean) }));
+  }
 
+  // ---------- A1: FritzBox-Freigabe (Seite fb_guide) ----------
+  // Seiten „Internet › Freigaben“ (Reiter „Portfreigaben“), Geräteseite „Freigabe“ mit „‹ Zurück“, Dialog „Freigabe anlegen“.
+  const FB_SHARE_SCENES = `
   <g class="s s-list">
-   <circle class="ico-c" cx="230" cy="90" r="8"/><text class="t-m" x="246" y="95">Internet</text><text class="t-m t-gray" x="308" y="95">›</text><text class="t-m" x="322" y="95">Freigaben</text>
-   <circle class="help" cx="748" cy="90" r="11"/><text class="t-help" x="748" y="95">?</text>
+   ${CRUMB('Freigaben')}
    <rect class="tab-on" x="222" y="108" width="104" height="30"/><rect class="tab-line" x="222" y="135" width="104" height="3"/>
    <text class="t-tab t-strong" x="274" y="128">Portfreigaben</text>
    <rect class="tab-off" x="330" y="108" width="124" height="30"/><text class="t-tab" x="392" y="128">FRITZ!Box-Dienste</text>
@@ -260,7 +290,7 @@
    <text class="t-th" x="530" y="200">Port extern</text><text class="t-th" x="530" y="213">vergeben IPv4</text>
    <text class="t-th" x="618" y="200">Port extern</text><text class="t-th" x="618" y="213">vergeben IPv6</text>
    <line class="ln" x1="222" y1="220" x2="758" y2="220"/>
-   <text class="t-s" x="230" y="240">drucker</text><rect class="ph" x="340" y="232" width="70" height="8" rx="4"/>
+   <text class="t-s pr-name" x="230" y="240">drucker</text><text class="t-s pc-name" x="230" y="240">mein-rechner</text><rect class="ph" x="340" y="232" width="70" height="8" rx="4"/>
    <circle class="ibtn" cx="716" cy="235" r="11"/><path class="pen" d="M711 240 l8 -8 l2 2 l-8 8 h-2 z"/>
    <circle class="ibtn" cx="744" cy="235" r="11"/><path class="bin" d="M739 230 h10 M741 230 v10 h6 v-10"/>
    <rect class="btn2" x="474" y="262" width="194" height="26" rx="3"/><text class="t-btn2" x="571" y="279">Gerät für Freigaben hinzufügen</text>
@@ -329,6 +359,7 @@
    <text class="t-s app-http" x="440" y="275">HTTP-Server</text><text class="t-s app-https" x="440" y="275">HTTPS-Server</text><path class="caret" d="M638 267 l5 5 l5 -5"/>
    <text class="t-lbl" x="300" y="311">Verzeichnis (optional)</text><rect class="field" x="430" y="294" width="228" height="28" rx="3"/>
    <text class="t-lbl" x="300" y="349">MyFRITZ!-Adresse</text><rect class="field-off" x="430" y="332" width="228" height="28" rx="3"/>
+   <g class="addr"><text class="t-s t-strong" x="440" y="351">mein-rechner</text><text class="t-s" x="524" y="351">.</text><rect class="ph" x="530" y="343" width="52" height="8" rx="4"/><text class="t-s" x="584" y="351">.myfritz.net</text></g>
    <circle class="radio" cx="276" cy="382" r="7"/><circle class="radio-on r2" cx="276" cy="382" r="4"/>
    <text class="t-m" x="292" y="387">Portfreigabe</text>
    <line class="ln" x1="266" y1="406" x2="664" y2="406"/>
@@ -336,49 +367,120 @@
    <text class="t-m" x="292" y="433">Freigabe aktivieren</text>
    <rect class="btn2" x="476" y="492" width="94" height="30" rx="3"/><text class="t-btn2" x="523" y="512">OK</text>
    <rect class="btn-off" x="576" y="492" width="94" height="30" rx="3"/><text class="t-off" x="623" y="512">Abbrechen</text>
-  </g>
-
-  <rect class="ring" x="0" y="0" width="0" height="0" rx="6"/>
-  <circle class="ripple" cx="0" cy="0" r="14"/>
-  <g class="cursor"><path d="M0 0 V17 L4.5 13 L7.6 20 L10.4 18.8 L7.4 12 H13 Z"/></g>
- </g>
-</svg>`;
+  </g>`;
 
   // Zeiger-Spitze neben die Schrift, damit sie lesbar bleibt. Jeder Schritt endet auf dem Bild, das seine Beschriftung zeigt
   // (Standbild bei reduzierter Bewegung und für die Punkte).
   const DLG = { x: 465, y: 300, s: 1.2 };
-  const FB_STEPS = [
-    { cap: 'fritz.box im Browser öffnen, links „Internet“',
-      acts: [{ to: [104, 112], click: true, set: { sub: '1' }, ring: [10, 102, 184, 26] }] },
-    { cap: '„Freigaben“, Reiter „Portfreigaben“',
+  const FB_SHARE_STEPS = [
+    FB_OPEN,
+    { key: 'fb_share_2',
       acts: [{ to: [116, 230], click: true, set: { act: 'freigaben', scene: 'list' } }, { to: [330, 132], ring: [220, 106, 108, 34], wait: 700 }] },
-    { cap: '„Gerät für Freigaben hinzufügen“, Rechner wählen',
+    { key: 'fb_share_3',
       acts: [{ to: [664, 282], click: true, set: { scene: 'dev' } }, { to: [566, 132], ring: [356, 106, 208, 34], wait: 700 }] },
-    { cap: '„Neue Freigabe“, oben „MyFRITZ!-Freigabe“',
+    { key: 'fb_share_4',
       acts: [{ to: [752, 602], click: true, set: { scene: 'dlg', app: 'http' }, cam: DLG },
         { to: [418, 240], click: true, set: { radio: '1' }, ring: [264, 220, 160, 26] }] },
-    { cap: '„HTTP-Server“, Haken bei „Freigabe aktivieren“',
+    { key: 'fb_share_5',
       acts: [{ to: [652, 280], ring: [426, 252, 236, 36], wait: 900 },
         { to: [424, 436], click: true, set: { chk: '1' }, ring: [264, 416, 160, 26] }] },
-    { cap: '„OK“, die Freigabe steht jetzt in der Liste', hint: true,
+    { key: 'fb_share_6', hint: true,
       acts: [{ to: [552, 516], click: true, ring: [472, 488, 102, 38], wait: 500 },
         { set: { scene: 'dev', rows: '1', radio: '0', chk: '0' }, cam: { x: 490, y: 520, s: 1 }, ring: [224, 513, 532, 26] }] },
-    { cap: 'Dasselbe noch einmal mit „HTTPS-Server“',
+    { key: 'fb_share_7',
       acts: [{ to: [752, 602], click: true, set: { scene: 'dlg', app: 'https', radio: '1', chk: '1' }, cam: DLG, ring: [426, 252, 236, 36], wait: 1300 },
         { to: [552, 516], click: true, set: { scene: 'dev', rows: '2', radio: '0', chk: '0' }, cam: { x: 490, y: 545, s: 1 }, ring: [224, 541, 532, 26] },
         { to: [700, 562], cam: { x: 490, y: 545, s: 1 }, wait: 400 }] },
-    { cap: 'Unten „Übernehmen“ klicken',
+    { key: 'fb_share_8',
       acts: [{ to: [754, 656], click: true, cam: { x: 490, y: 600, s: 1 }, ring: [664, 630, 98, 36] }] },
   ];
+
+  // pc = Rechner statt Drucker in der Geräteliste, addr = MyFRITZ!-Adresse im Dialog sichtbar (Namens-Animation)
+  const FB_SHARE_DATA = 'data-radio="0" data-chk="0" data-rows="0" data-app="http" data-pc="0" data-addr="0"';
+  const FB_SHARE_INITIAL = { sub: '0', act: 'none', scene: 'home', radio: '0', chk: '0', rows: '0', app: 'http', pc: '0', addr: '0' };
 
   // Seiten-Hinweis „Freigabe existiert bereits“ gehört zum Speichern mit „OK“ (Schritt 6) und steht dort im Bild.
   function fbShare(page) {
     const note = page.note && page.note.text ? page.note.text : null;
-    const link = page.link && page.link.href ? page.link : null;
-    return guided({ name: 'fb-share', svg: FB_SVG, width: 780, height: 680, steps: FB_STEPS, cursor: [420, 160], light: true,
-      label: 'Nachgezeichnete FritzBox-Oberfläche: der Weg zu den Freigaben, Schritt für Schritt',
-      hint: note, link, takes: [note ? 'note' : null, link ? 'link' : null].filter(Boolean),
-      initial: { sub: '0', act: 'none', scene: 'home', radio: '0', chk: '0', rows: '0', app: 'http' } });
+    return fbGuided(page, { name: 'fb-share', height: 680, steps: FB_SHARE_STEPS, hint: note, takes: note ? ['note'] : [],
+      svg: fbSvg(680, FB_SHARE_DATA, FB_SHARE_SCENES), initial: FB_SHARE_INITIAL });
+  }
+
+  // ---------- B2: Name für die MyFRITZ!-Adresse (Seite h:DOMAIN, page.art 'myfritz_name') ----------
+  // Dieselben Bilder wie fb_guide, Schritte 1–2 sind dieselben Objekte. Der Rechner hat schon beide Freigaben; die
+  // MyFRITZ!-Adresse zeigt der Dialog „Freigabe anlegen“ (belegter Wortlaut), deshalb „Neue Freigabe“ nur zum Nachschauen
+  // und am Ende „Abbrechen“. Vorderer Teil = Name, die Endung (Zone) nur als Balken.
+  const FB_NAME_STEPS = [
+    FB_OPEN,
+    FB_SHARE_STEPS[1],
+    { key: 'myfritz_name_3', acts: [{ to: [724, 244], ring: [224, 222, 534, 28], wait: 900 }] },
+    { key: 'myfritz_name_4',
+      acts: [{ to: [716, 235], click: true, set: { scene: 'dev', rows: '2' }, cam: { x: 490, y: 560, s: 1 }, wait: 900 },
+        { to: [752, 602], click: true, set: { scene: 'dlg', radio: '1', addr: '1' }, cam: DLG, ring: [426, 328, 236, 36], wait: 900 }] },
+    { key: 'myfritz_name_5',
+      acts: [{ to: [530, 362], ring: [434, 334, 94, 24], cam: { x: 500, y: 330, s: 1.3 }, wait: 1200 }] },   // endet auf dem Namen
+  ];
+  function fbName(page) {
+    return fbGuided(page, { name: 'myfritz-name', height: 680, steps: FB_NAME_STEPS, place: 'before',
+      svg: fbSvg(680, FB_SHARE_DATA, FB_SHARE_SCENES), initial: Object.assign({}, FB_SHARE_INITIAL, { pc: '1' }) });
+  }
+
+  // ---------- B: DS-Lite im Online-Monitor (Seite fb_dslite) ----------
+  // FRITZ!OS 8: Internet › Online-Monitor mit den Reitern „Online-Monitor“, „Online-Zähler“, „Verbindungsdetails“. Unter
+  // „Verbindungsdetails“ stehen die Zeilen „Internet, IPv4“ und „Internet, IPv6“; bei DS-Lite meldet die IPv4-Zeile „FRITZ!Box
+  // verwendet einen DS-Lite-Tunnel“, mit eigener IPv4 „verbunden seit …“ und die Adresse. Beide Anzeigen werden gezeigt
+  // (data-v). Weitere Zeilen, deren Wortlaut nicht belegt ist, nur als graue Balken; Adressen nur als Balken.
+  const TABS = (on) => [['Online-Monitor', 222, 116], ['Online-Zähler', 342, 104], ['Verbindungsdetails', 450, 140]].map(([t, x, w], k) =>
+    k === on ? `<rect class="tab-on" x="${x}" y="108" width="${w}" height="30"/><rect class="tab-line" x="${x}" y="135" width="${w}" height="3"/><text class="t-tab t-strong" x="${x + w / 2}" y="128">${t}</text>`
+      : `<rect class="tab-off" x="${x}" y="108" width="${w}" height="30"/><text class="t-tab" x="${x + w / 2}" y="128">${t}</text>`).join('')
+    + '<line class="ln" x1="222" y1="138" x2="758" y2="138"/>';
+  const ROW = (y, label, value) => `<line class="ln" x1="222" y1="${y + 46}" x2="758" y2="${y + 46}"/>${label}${value}`;
+  const FB_DSLITE_SCENES = `
+  <g class="s s-mon">
+   ${CRUMB('Online-Monitor')}
+   ${TABS(0)}
+   <rect class="pill-g" x="222" y="152" width="84" height="24" rx="12"/><text class="t-pill" x="264" y="168">Heimnetz</text>
+   <rect class="pill-o" x="312" y="152" width="84" height="24" rx="12"/><text class="t-pill" x="354" y="168">Gastnetz</text>
+   <rect class="field" x="658" y="150" width="100" height="26" rx="3"/><text class="t-s" x="668" y="168">10 Minuten</text><path class="caret" d="M738 160 l5 5 l5 -5"/>
+   <text class="t-m t-strong" x="222" y="204">Downstream</text>
+   <rect class="tbl" x="222" y="214" width="536" height="96"/>
+   <line class="grid" x1="222" y1="246" x2="758" y2="246"/><line class="grid" x1="222" y1="278" x2="758" y2="278"/>
+   <path class="line-g" d="M222 296 L270 290 L318 270 L366 284 L414 252 L462 262 L510 236 L558 258 L606 274 L654 248 L702 266 L758 260"/>
+   <text class="t-m t-strong" x="222" y="336">Upstream</text>
+   <rect class="tbl" x="222" y="346" width="536" height="72"/>
+   <line class="grid" x1="222" y1="370" x2="758" y2="370"/><line class="grid" x1="222" y1="394" x2="758" y2="394"/>
+   <path class="line-o" d="M222 410 L270 404 L318 408 L366 396 L414 402 L462 388 L510 400 L558 392 L606 406 L654 398 L702 402 L758 396"/>
+   <rect class="btn2" x="644" y="432" width="114" height="26" rx="3"/><text class="t-btn2" x="701" y="449">Einzelne Geräte</text>
+  </g>
+
+  <g class="s s-det">
+   ${CRUMB('Online-Monitor')}
+   ${TABS(2)}
+   ${ROW(150, '<text class="t-lbl t-strong" x="232" y="178">Internet, IPv4</text>',
+    `<text class="t-s v-ds" x="380" y="178">FRITZ!Box verwendet einen DS-Lite-Tunnel</text>
+     <g class="v-v4"><text class="t-s" x="380" y="170">verbunden seit 01.11.2026, 04:12 Uhr</text>
+      <text class="t-s" x="380" y="188">IPv4-Adresse:</text><rect class="ph" x="462" y="181" width="96" height="8" rx="4"/></g>`)}
+   ${ROW(196, '<text class="t-lbl t-strong" x="232" y="224">Internet, IPv6</text>',
+    `<text class="t-s" x="380" y="216">verbunden seit 01.11.2026, 04:12 Uhr</text>
+     <text class="t-s" x="380" y="234">IPv6-Adresse:</text><rect class="ph" x="462" y="227" width="170" height="8" rx="4"/>`)}
+   ${ROW(242, '<rect class="ph" x="232" y="262" width="80" height="8" rx="4"/>', '<rect class="ph" x="380" y="262" width="210" height="8" rx="4"/>')}
+   ${ROW(288, '<rect class="ph" x="232" y="308" width="64" height="8" rx="4"/>', '<rect class="ph" x="380" y="308" width="150" height="8" rx="4"/>')}
+   ${ROW(334, '<rect class="ph" x="232" y="354" width="96" height="8" rx="4"/>', '<rect class="ph" x="380" y="354" width="120" height="8" rx="4"/>')}
+  </g>`;
+  const ROW4 = [224, 152, 532, 42];
+  // Lupe auf die IPv4-Zeile: Beschriftung links im Bild, das Menü (x < 200) ganz draußen statt halb angeschnitten
+  const DET = { x: 482, y: 190, s: 1.15 };
+  const FB_DSLITE_STEPS = [
+    FB_OPEN,
+    { key: 'fb_dslite_2', acts: [{ to: [156, 146], click: true, set: { act: 'monitor', scene: 'mon' }, ring: [8, 128, 184, 26] }] },
+    { key: 'fb_dslite_3', acts: [{ to: [560, 128], click: true, set: { scene: 'det' }, ring: [448, 106, 144, 34], wait: 700 },
+      { to: [360, 186], ring: ROW4, cam: { x: 490, y: 200, s: 1.1 } }] },
+    { key: 'fb_dslite_4', start: { set: { v: 'ds' } }, acts: [{ to: [664, 186], ring: [372, 160, 300, 28], cam: DET, wait: 900 }] },
+    { key: 'fb_dslite_5', start: { set: { v: 'v4' } }, acts: [{ to: [600, 196], ring: [372, 154, 300, 42], cam: DET, wait: 900 }] },
+  ];
+  function fbDslite(page) {
+    return fbGuided(page, { name: 'fb-dslite', height: 480, place: 'before', steps: FB_DSLITE_STEPS, svg: fbSvg(480, 'data-v="ds"', FB_DSLITE_SCENES),
+      initial: { sub: '0', act: 'none', scene: 'home', v: 'ds' } });
   }
 
   // ---------- A2: Charakter des Bots (Seite h:OWNER_PERSONA) ----------
@@ -440,12 +542,14 @@
   // ---------- Zuordnung Seite → Bild (die eine Adresse) ----------
   const ART = {
     fb_guide: fbShare,
+    dslite: fbDslite,   // page.art: nur wenn die Erkennung unsicher war (Server)
+    myfritz_name: fbName,   // page.art: MyFRITZ!-Adresse nicht automatisch gefunden (Server)
     'h:OWNER_PERSONA': persona,
   };
 
   window.WizardArt = {
     mount(page) {
-      const f = page && ART[page.id];
+      const f = page && ART[page.art || page.id];   // page.art: Bild nur in einem Zustand der Seite (Server entscheidet)
       return f ? f(page) : null;
     },
   };

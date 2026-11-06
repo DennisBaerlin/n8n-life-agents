@@ -17,6 +17,8 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 
 ## Sprache
 
+- **Zielgruppe sind Familien:** Alles, was ein Nutzer sieht (App, Wizard, Bot-Texte und Karten, Mini-App, Nutzer-Seiten der Doku, README-Kopf), spricht Familien ohne Technikwissen an. lifeagents ist die Hilfe, die da ist, wann immer jemand in der Familie Hilfe braucht. Entwickler-Seiten (Selbst betreiben, Pakete, Mitwirken, Referenz) bleiben für Entwickler.
+- **Name und Wer hilft:** In Titeln nur „lifeagents“ (n8n nur als technische Grundlage), in Sätzen „dein Assistent“; „Bot“ nur, wo Telegram gemeint ist.
 - Deutsch, du, kurze Sätze. Fachwörter nur, wenn es sie braucht, und dann einmal erklärt.
 - Knöpfe sagen, was als Nächstes passiert: „Weiter zu Telegram“, nicht „OK“.
 - Beispiele nur mit erfundenen Werten, nie mit echten Namen, Beträgen oder Konten.

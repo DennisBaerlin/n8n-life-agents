@@ -9,7 +9,7 @@ Leitfaden für Claude Code in diesem Repo: nur, was der Code nicht zeigt. Prozed
 
 ## Projekt
 
-Persönliches Multi-Agent-System auf self-hosted n8n: Telegram-Bot → `agent.orchestrator` → Spezialisten-Agenten als Sub-Workflows, Daten und Agenten-Instruktionen in PostgreSQL. Paket-Vertrag `docs/package-contract.md`.
+Persönliches Multi-Agent-System auf self-hosted n8n: Telegram-Bot → `agent.orchestrator` → Spezialisten-Agenten als Sub-Workflows, Daten und Agenten-Instruktionen in PostgreSQL. Paket-Vertrag `docs/package-contract.md`. Zielgruppe: Familien (`docs/reference/ui.md`).
 
 ## Arbeitsweise (Gotchas, die der Code nicht zeigt)
 

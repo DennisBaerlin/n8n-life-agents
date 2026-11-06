@@ -36,7 +36,7 @@ Es gibt immer genau eine leitende Session mit Merge-Hoheit, die alle anderen zen
   - dem Owner danach kurz den Stand melden
   - nach dem Tag mit `CronDelete` beenden
 - **Release-Umfang:** Vor dem Zusammenführen fragt die Leitung den Owner (`AskUserQuestion`), welche fertigen Arbeiten in das gemeinsame Release kommen. Nicht selbst festlegen.
-- **Engpässe lösen:** Wartet eine Session auf eine andere, bringt die Leitung beide direkt zusammen. Belegt die Leitung einen Substrat-Platz, den sie gerade nicht braucht (Parallel-Limit in `scripts/dev/bootstrap_test_n8n.ps1`), gibt sie ihn frei.
+- **Engpässe lösen:** Wartet eine Session auf eine andere, bringt die Leitung beide direkt zusammen. Belegt die Leitung einen Substrat-Platz, den sie gerade nicht braucht (Parallel-Limit in `scripts/dev/bootstrap_test_n8n.ps1`), gibt sie ihn frei. Eine zugesagte, noch nicht gestartete Zuteilung trägt sie mit `scripts/reserve_substrate_slot.ps1` ein, sonst nimmt ihn eine andere Session in der Lücke weg.
 - Ablauf danach wie gewohnt: Merge-Kette → freie Gates auf dem Gesamtstand (Standard: Integrations-Branch pushen, `gh workflow run free-gates.yml --ref <branch>`; zusätzlich lokal `scripts/dev/run_free_gates.ps1 -Reset -Parallel` mit eigenen Containern nur bei geänderten Test-Skripten, Bot-Anschluss oder Install-Kern (dann `-Cold`) und vor einem Release, vorher per `docker ps` prüfen, ob ein Substrat-Platz frei ist, sonst den Halter direkt um Freigabe bitten; reine Doku-Merges brauchen keinen Lauf) → bezahlte Suiten im Owner-Fenster → annotierter Tag mit englischen Release-Notes (öffentlich: was sich geändert hat, keine Live-Werte; `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`) → alle Sessions benachrichtigen → Aufräumen.
 
 ## 4. Pflichten der übrigen Sessions

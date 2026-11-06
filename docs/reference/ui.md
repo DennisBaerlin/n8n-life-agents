@@ -23,6 +23,7 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 
 ## Farben und Formen
 
+- **Ein Zeichen für alle Oberflächen:** Das Projekt-Zeichen (Sprechblase mit Giebeldach und Häkchen) steht nur in `config/ui.mark.svg`; die Doku-Seite bekommt ihr Partial daraus erzeugt (`scripts/build_ui_tokens.ps1`), jede andere Oberfläche übernimmt die `<path>`-Zeilen 1:1 (Farben dürfen abweichen), und `ui_token_lint` weist ein abweichendes oder altes Zeichen ab.
 - **Nie Werte fest eintragen.** Eine Oberfläche nutzt `var(--token)`; ihre Variablen kommen als erzeugter Block aus `config/ui.tokens.json` (`scripts/build_ui_tokens.ps1`). Zur Laufzeit wird nichts nachgeladen. `scripts/ui_token_lint.ps1` weist neue feste Farben ab.
 - **Geteilte Bausteine** (Schritt-Leiste von Start-App und Fragebogen): Quelle `config/ui.steps.*`, dasselbe Skript kopiert sie wortgleich als markierten Block in jede Oberfläche (`Get-UiCopies` in `scripts/lib/ui_tokens.ps1`), der Lint prüft die Kopien.
 - **Texte einer Oberfläche ohne Bau-Schritt** (Start-App): aus dem Textkatalog `packages/core/locales/<code>.json`, dasselbe Skript schreibt die Schlüssel mit den registrierten Präfixen als Block (`Get-UiLocaleBlocks`), `ui_token_lint` prüft ihn gegen den Katalog, `locale_lint` Vollständigkeit und Platzhalter.

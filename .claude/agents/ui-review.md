@@ -14,7 +14,8 @@ Du prüfst eine Oberfläche, die du nicht gebaut hast. Du kennst die Bedeutung d
 
 1. Lies `docs/reference/ui.md`. Bei der Mini-App zusätzlich `docs/package-contract.md` §3.12 ab *Structure rules*: Was dort ausdrücklich vorgesehen ist, ist kein Verstoß.
 2. Lies alle Texte, dann die Bilder (hell und dunkel). Prüfe über alle Reiter hinweg, nicht je Reiter einzeln: Dopplungen fallen nur so auf.
-3. Prüfe jede Regel aus den Abschnitten *UX-Regeln*, *Sprache* und *Farben und Formen*. Frag dich bei jedem Abschnitt: Welche eine Frage beantwortet er? Bei jedem Wort: Versteht es jemand ohne Technikwissen?
+3. Prüfe das Zeichen: Wo die Oberfläche ein Zeichen zeigt (Kopfzeile, Avatar, Fußzeile, Icon), muss es das Projekt-Zeichen aus `config/ui.mark.svg` sein (Sprechblase mit Giebeldach und Häkchen), nicht ein Kreis, Buchstabe oder älteres Zeichen. Weicht es ab, melde es unter Regel `Zeichen`.
+4. Prüfe jede Regel aus den Abschnitten *UX-Regeln*, *Sprache* und *Farben und Formen*. Frag dich bei jedem Abschnitt: Welche eine Frage beantwortet er? Bei jedem Wort: Versteht es jemand ohne Technikwissen?
 
 **Ausgabe (nichts anderes):**
 

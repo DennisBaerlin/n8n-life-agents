@@ -19,7 +19,7 @@ Host-Paket: Agent-Plattform (Schemas `agent` + `core`) — Orchestrator, Guide, 
 - **Derived-Key-Denylist** gilt rekursiv über alle jsonb-Ebenen jedes Sidecars (`age/…/income/years_to_*`, Prefix `derived_/computed_`, `nominal`, `regelaltersgrenze/kindergeld`, Muster `*_year`, `(…_)age(_…)`, `years_since_*`, `is_minor/is_adult`; geplante Roh-Alter `start_age`/`planned_retirement_age`/`age_from`/`age_to` erlaubt); Roh-Inputs bleiben erlaubt, sonst open-world.
 - **Relative Daten und Stempel macht die DB:** `core.fn_resolve_date` (feste Form `-3 days`/`in 3 weeks`/`next friday`, sonst NULL) ist die eine Adresse; Fakten/Plan-Abschnitte lösen `*_date`/`since` über `core.fn_resolve_fact_dates` auf (Genauigkeit folgt der Angabe). Write-fns lösen ihre Datums-Keys als erste Anweisung über `core.fn_resolve_input_dates(p, ARRAY[…])` auf (unlesbar → `{ok:false, code:'invalid_date'}`); Feld-Hinweis fürs Modell `Get-DateParamHint`, rohe `::date`-Casts fangen `test_fn_relative_dates` und `contract_lint` 27. Karte und Write nutzen denselben aufgelösten Wert. `as_of` stempelt die fn, Slugs neuer `family`-Personen `agent.fn_person_slug`. Reservierte Form-Keys `persons` (Array, eindeutige `person_id`) und `household`; per_user-Kontexte tragen kein `persons`.
 - **Einziger Fakten-Schreibweg = `fn_set_context_facts`** (eigene per_user-Kontexte über `fn_set_own_context_facts`, HITL-Stufe `self`; Plan-Dokumente nur über `fn_advisor_publish_plan`). Merge-Patch: `null` löscht nur den Patch-Key; Person entfernen nur `fn_remove_household_person`; Prosa nicht leerbar. Household-Kontexte existieren nur als Installer-Skelett (`contract_lint` 16a); per_user-Kontexte `<base>__<pid>`, fail-closed bei unaufgelöstem Sender.
-- **„Fakt im Header, Prosa verweist nur":** berechenbare Werte leben im `facts`-Sidecar, Renderer liefern nur den Header (Ableitungen render-at-fetch, nie gespeichert). Tunbare Werte in `core.config`.
+- **„Fakt im Header, Prosa verweist nur":** berechenbare Werte leben im `facts`-Sidecar, Renderer liefern nur den Header (Ableitungen render-at-fetch, nie gespeichert). Keine Modell-Kopplung in `core.advisors`, tunbare Werte in `core.config`.
 - **Drei Flags:** `package` = Purge-Key · `managed_by` (`seed|build|agent`) = Overwrite-Guard (Seeder fasst `'agent'` nie an) · Löschschutz nur über die Registry `core.protected_contexts` (Manifest `protected_contexts`; nur Host/Deinstall entfernt den Eintrag; suffix-aware für `<base>__<pid>` lebender Personen). Neuer Entitätstyp: Systemzeile → `origin`, geschützter Context → Registry-Eintrag.
 - **Advisor-Latch / Notify-Dedup:** der Latch wird an beiden Call-Sites (`fn_should_notify` + `fn_notify_reconcile`) mit derselben person-suffigierten `source` gesetzt; `metric_key` ohne Domänen-Präfix (`contract_lint` 14); Staleness-Alarme über `core.fn_staleness_alert`.
 - `agent.persons` ist ein read-only Read-Model der `family`-Facts (FK-Ziel der `*_person_id`-Spalten, ON DELETE RESTRICT); Namen werden nicht automatisch nachgetaggt. Paket-Rollen lesen es nur über `core.fn_household_persons()`. `core.fn_resolve_person` ist tolerant (Vorname/Alias); 0 oder >1 Treffer → Tool bricht vor dem Gate ab.
@@ -49,13 +49,13 @@ Nur per CLI (`lifeagents backup`), nicht über den Chat → `provisioning/CLAUDE
 
 ## Update im Chat (`core.update_requests`)
 
-Höchstens ein offener Auftrag (Unique-Index); SemVer nur in `core.fn_semver_cmp`; alle Runner-Meldungen baut die DB (`core.fn_release_card`, `core.fn_update_report`), bash sendet nur. Brücke und Runner → `provisioning/CLAUDE.md` *Update im Chat*.
+Callback `upd:` ist owner-only und legt höchstens einen offenen Auftrag an (Unique-Index); SemVer nur in `core.fn_semver_cmp`; alle Runner-Meldungen baut die DB (`core.fn_release_card`, `core.fn_update_report`), bash sendet nur. Brücke und Runner → `provisioning/CLAUDE.md` *Update im Chat*.
 
 ## Multi-User-Pairing (`agent.pairing_state`)
 
 - Nur die numerische `telegram_user_id` zählt, nie der Username (Identity-Rebinding-CVE). Challenge ≥ 8 alphanum (CHECK) + `fail_count`-Lockout.
-- `owner-no-rearm` blockt nur einen gepairten Owner, nicht das Bootstrap-Skelett (sonst könnte der Zwei-Stufen-Bootstrap nie armieren). Re-Arm eines etablierten Owners nur per CLI.
-- Jeder Bind läuft über `fn_merge_member_identity` (liest die aktuelle uid vorab → Doppel-Bind/Replay `{ok:false}`); der Validator fängt nur Intra-Payload-Kollisionen. `pairing_state` ist ephemer, nicht im Backup.
+- `owner-no-rearm` blockt nur einen gepairten Owner, nicht das Bootstrap-Skelett. Re-Arm eines etablierten Owners nur per CLI.
+- Jeder Bind läuft über `fn_merge_member_identity` (Doppel-Bind/Replay → `{ok:false}`); der Validator fängt nur Intra-Payload-Kollisionen. `pairing_state` ist ephemer, nicht im Backup.
 
 ## Owner-Lifecycle + Sperrliste (`agent.access_blocks`)
 

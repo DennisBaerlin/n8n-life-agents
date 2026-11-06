@@ -82,7 +82,10 @@ Neues Tool ⟹ Golden-Case in `tests/agent/<pkg>/*_cases.json` + „Not yet avai
 - HITL vor jedem persistenten Write über das geteilte Gate `agent.tool_human_approval` (Maker-Checker: Owner ein Tap, Mitglieder je `approval_matrix` im Manifest). Decline → `{ok:false, cancelled:true}`. Nur Buttons: Text erreicht den suspendierten Vorgang nicht. Format → `packages/CLAUDE.md` *HITL-Bestätigungs-Format*.
 - Alle Writes eines Tools in einer PL/pgSQL-Function `fn_<tool>(p jsonb)` (RAISE → Rollback), auch bei 1-INSERT-Tools.
 - Nutzerkorrigierbare Fehler als Daten (`{ok:false, reason}` ohne RAISE → `Build-ToolError`), `Stop and Error` nur für echte Ausnahmen (`packages/CLAUDE.md` *Korrigierbare Ablehnung*). `maxIterations` an jedem Agent-Node cappen.
-- Strikter DAG `orchestrator → agent.<x> → tool_* → human_approval`; kein `tool_*` enthält einen Agenten (Depth-Gate → `packages/CLAUDE.md` *Workflow-Bau*).
+
+## Anti-Loop-Konvention
+
+Strikter DAG `orchestrator → agent.<x> → tool_* → human_approval`; kein `tool_*` enthält einen Agenten (Depth-Gate → `packages/CLAUDE.md` *Workflow-Bau*).
 
 ## Modell-/Kosten-Politik
 

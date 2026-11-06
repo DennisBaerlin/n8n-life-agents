@@ -1,6 +1,6 @@
 ---
 name: leitung
-description: Macht diese Session zur Leit-Session – liest die private Stand-Datei, verteilt Arbeit auf Unter-Sessions, führt zusammen und entwickelt die Arbeitsweise weiter. Nutzen, sobald der Owner „du bist die Leitung“ oder „übernimm die Leitung“ sagt oder /leitung aufruft. Nicht für Unter-Sessions.
+description: Macht diese Session zur Leit-Session – liest die private Stand-Datei, verteilt Arbeit auf Unter-Sessions, führt zusammen, entwickelt die Arbeitsweise weiter. Nutzen, sobald der Owner „du bist die Leitung“, „übernimm die Leitung“ oder „du leitest“ sagt oder /leitung aufruft. Nicht für Unter-Sessions.
 ---
 
 # Leit-Session (`/leitung`)

@@ -1,6 +1,6 @@
 ---
 name: privacy-review
-description: Vor jedem Push, auch für Branches – ein Modell liest, was der Push öffentlich macht (jeden neuen Commit, Commit- und Tag-Texte, Branch-Namen), auf persönliche Hinweise; meldet Datei, Zeile, Art, nie den Wert, danach setzt scripts/privacy_review_stamp.ps1 den Stempel. Auf Zuruf „Privacy-Prüfung“.
+description: Vor jedem Push (auch Branches) – ein Modell liest, was der Push öffentlich macht (Commits, Commit-/Tag-Texte, Branch-Namen) auf persönliche Hinweise; meldet Datei, Zeile, Art, nie den Wert; dann setzt scripts/privacy_review_stamp.ps1 den Stempel. Nutzen bei gesperrtem Push oder „Privacy-Prüfung“.
 ---
 
 # Modell-Prüfung vor dem Push (`/privacy-review`)

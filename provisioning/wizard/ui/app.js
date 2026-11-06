@@ -315,8 +315,8 @@ const UiNudge = {
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
-    // „Noch kein Telegram?“ (Token-Seite): zugeklappt zwischen Einleitung und Anleitung, damit Feld und Knöpfe im Fenster bleiben.
-    if (p.getApp) help.splice(help[0] ? 1 : 0, 0, getAppNode(p.getApp));
+    // „Noch kein Telegram?“ (Seite „Warum Telegram?“): zugeklappt unter dem Text, damit Bild und Knöpfe im Fenster bleiben.
+    if (p.getApp) help.push(getAppNode(p.getApp));
     kids.push(...help);
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
     else if (p.note && !takes.includes('note')) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));   // takes: das Bild zeigt den Hinweis selbst

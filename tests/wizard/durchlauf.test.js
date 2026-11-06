@@ -57,10 +57,14 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal((await answer(w, 'h:OWNER_PERSONA', 'pirat')).status, 422, 'nur angebotene Charaktere');
     await expectOk(await answer(w, 'h:OWNER_PERSONA', 'butler'));
     // „Noch kein Telegram?“: QR-Code (lokal erzeugt) und Links nur zu offiziellen Telegram-Adressen, Texte aus dem Katalog.
-    const ga = (await page(w)).getApp;
+    const why = await page(w);
+    assert.equal(why.id, 'tg_why', '„Warum Telegram?“ vor dem Token');
+    assert.equal(why.art, 'tg_why');
+    const ga = why.getApp;
     assert.equal(ga.qr, qr.toSvg(qr.encode('https://telegram.org/dl')), 'QR-Code = Telegram-Link, der je Handy in den passenden Store führt');
     assert.ok(ga.summary.startsWith('Noch kein Telegram?') && ga.scan && ga.computer);
     assert.deepEqual(ga.links.map((l) => new URL(l.href).origin), ['https://macos.telegram.org', 'https://desktop.telegram.org']);
+    await expectOk(await answer(w, 'tg_why', null));
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', '')).status, 422, 'Pflicht');
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', 'bad-token')).status, 422);
     const tg = await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel-token'));
@@ -182,6 +186,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await expectOk(await post(w, '/api/lang', { lang: 'de' }));
     // Prüfliste Nr. 10: der Bot hat schon eine fremde Webhook-Adresse.
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
+    await expectOk(await answer(w, 'tg_why', null));
     await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '111:alt-beispiel'));
     const busy = await page(w);
     assert.equal(busy.id, 'tg_busy');
@@ -281,7 +286,7 @@ async function toDomain(hints, dnsSpec, ip) {
   if (ip !== undefined) fs.writeFileSync(path.join(w.fake, 'public_ip'), ip);
   await login(w);
   for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
     ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'fritzbox'], ['fb_dslite', 'no'],
     ['fb_guide', null]]) await expectOk(await answer(w, id, v));
   const dom = await waitFor(async () => { const x = await page(w); return x.id === 'h:DOMAIN' && !x.poll ? x : null; });
@@ -295,7 +300,7 @@ test('DS-Lite automatisch: „keine eigene IPv4“ = Bestätigung, „eigene“ 
   try {
     await login(w);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
       ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await expectOk(await answer(w, id, v));
     fs.writeFileSync(path.join(w.fake, 'dslite'), 'yes');
     await expectOk(await answer(w, 'reach', 'fritzbox'));

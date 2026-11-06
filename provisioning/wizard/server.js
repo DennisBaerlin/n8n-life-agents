@@ -330,12 +330,6 @@ function pageFor(id) {
     }
     if (q.setting === 'general.paperless_url' && v === undefined) Object.assign(page, paperlessSearchView());
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
-    // Schritt 1 der Anleitung setzt Telegram voraus: zugeklappter Block mit QR-Code fürs Handy und Links für den Rechner.
-    if (key === 'TELEGRAM_BOT_TOKEN') {
-      page.getApp = { summary: T('core.wizard.page.get_tg_summary'), scan: T('core.wizard.page.get_tg_scan'), qr: TG_APP_QR,
-        computer: T('core.wizard.page.get_tg_computer'),
-        links: [{ href: TG_APP.mac, label: T('core.wizard.page.get_tg_mac') }, { href: TG_APP.windows, label: T('core.wizard.page.get_tg_windows') }] };
-    }
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
     if (NO_SKIP.includes(key)) page.optional = false;
     if (q.kind === 'date') page.placeholder = T('core.wizard.ui.date_placeholder');
@@ -344,6 +338,14 @@ function pageFor(id) {
   const next = T('core.wizard.ui.next');
   const P1 = (k) => [{ p: T(k) }];
   switch (id) {
+    // „Warum Telegram?“: Nutzen in zwei Absätzen, Bild (di12), zugeklappt „Noch kein Telegram?“ mit QR-Code fürs Handy und
+    // Links für den Rechner (die Token-Anleitung danach setzt Telegram voraus).
+    case 'tg_why': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.tg_why_title'), art: 'tg_why',
+      help: [{ p: T('core.wizard.page.tg_why_help') }, { p: T('core.wizard.page.tg_why_app') }],
+      getApp: { summary: T('core.wizard.page.get_tg_summary'), scan: T('core.wizard.page.get_tg_scan'), qr: TG_APP_QR,
+        computer: T('core.wizard.page.get_tg_computer'),
+        links: [{ href: TG_APP.mac, label: T('core.wizard.page.get_tg_mac') }, { href: TG_APP.windows, label: T('core.wizard.page.get_tg_windows') }] },
+      next });
     case 'tg_busy': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.tg_busy_title'), help: P1('core.wizard.page.tg_busy_help'),
       note: P.A.__tg_conflict && P.A.__tg_conflict !== 'polling' ? { kind: 'warn', text: T('core.wizard.page.tg_busy_previous', { host: P.A.__tg_conflict }) } : null,
       options: optionsFor(id), value: P.A.__tg_choice || 'new', next });
@@ -351,7 +353,8 @@ function pageFor(id) {
       options: optionsFor(id), value: P.A.__voice || '', next });
     case 'packages': return Object.assign(base, { kind: 'multi', title: T('core.wizard.page.packages_title'), help: P1('core.wizard.page.packages_help'),
       options: optionsFor(id), value: P.A.__packages || [], next });
-    case 'reach': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.reach_title'), help: P1('core.wizard.page.reach_help'),
+    // Schema der zwei Wege (di12) wechselt mit der Auswahl (art.select), Beschreibung je Weg: was es ist, für wen es passt.
+    case 'reach': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.reach_title'), help: P1('core.wizard.page.reach_help'), art: 'reach',
       options: optionsFor(id), value: P.A.__reach || 'tunnel', next });
     // DS-Lite sicher erkannt (__dslite_auto = yes): Bestätigung statt Frage. Unsicher: Handfrage mit Bild des Wegs dorthin.
     case 'fb_dslite':
@@ -722,6 +725,7 @@ async function answer(id, raw, skip) {
       if (!['yes', 'no'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__dslite = raw;
       break;
+    case 'tg_why': P.A.__tg_why = true; break;
     case 'fb_guide': P.A.__fb_guide = true; break;
     case 'fb_ports_busy': P.A.__reach = 'tunnel'; break;
     case 'review': P.cursor = 'confirm'; save(); return { ok: true };

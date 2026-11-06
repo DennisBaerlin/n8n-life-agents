@@ -19,9 +19,7 @@ $cmd = 'cd /repo && node --test --test-concurrency=1'
 if ($Filter) { $cmd += " --test-name-pattern='$Filter'" }
 $cmd += ' tests/wizard/*.test.js'
 if ($Verbose) { Write-Host "  Image $Image, Container $Container" -ForegroundColor DarkGray }
-$prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-docker run --rm --name $Container --entrypoint bash -v "${RepoRoot}:/repo:ro" $Image -c $cmd
+Invoke-WizardContainer $Container @('--entrypoint', 'bash', '-v', "${RepoRoot}:/repo:ro", $Image, '-c', $cmd)
 $code = $LASTEXITCODE
-$ErrorActionPreference = $prev
 if ($code -eq 0) { Write-Host '  [PASS] wizard_test' -ForegroundColor Green } else { Write-Host "  [FAIL] wizard_test (Exit $code)" -ForegroundColor Red }
 exit $code

@@ -260,6 +260,40 @@ function paperlessGuess(ports, lanIp) {
   return ok.size === 1 ? `http://${lanIp}:${[...ok][0]}` : '';
 }
 
+// MyFRITZ-Adresse vorausfüllen (Owner-Wunsch über die Leitung): die App liest die Kennung der FritzBox aus deren
+//   Zertifikat (LA_MYFRITZ_ZONE = <kennung>.myfritz.net) und mögliche Gerätenamen dieses Rechners
+//   (LA_HOST_NAME_CANDIDATES, Komma oder Leerzeichen). myfritzZone/myfritzCandidates prüfen beides streng;
+//   myfritzGuess probiert per DNS (resolve = async name -> bool) der Reihe nach <kandidat>.<zone>, der erste Treffer zählt.
+const ZONE_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.myfritz\.net$/;
+const LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+function myfritzZone(z) { const v = String(z || '').trim().toLowerCase().replace(/\.$/, ''); return ZONE_RE.test(v) ? v : ''; }
+function myfritzCandidates(s) {
+  const out = [];
+  for (const c of String(s || '').toLowerCase().split(/[\s,]+/)) if (LABEL_RE.test(c) && !out.includes(c)) out.push(c);
+  return out.slice(0, 8);
+}
+async function myfritzGuess(zone, candidates, resolve) {
+  if (!zone) return '';
+  for (const c of candidates) {
+    const name = `${c}.${zone}`;
+    try { if (await resolve(name)) return name; } catch (_) { /* nächster */ }
+  }
+  return '';
+}
+
+// Vorschläge vom Rechner (nur Vorschlag, änderbar): Sprache aus LA_USER_LANG („de“, „en-US“, „de_DE.UTF-8“) auf eine der
+//   angebotenen Sprachen, Name aus LA_USER_FULLNAME am letzten Leerzeichen geteilt. Unbrauchbares = kein Vorschlag.
+function userLanguage(lang, languages) {
+  const code = String(lang || '').trim().toLowerCase().split(/[-_.@]/)[0];
+  return (languages || []).some((l) => l.code === code) ? code : '';
+}
+function userName(full) {
+  const v = String(full || '').trim().replace(/\s+/g, ' ');
+  if (!v || valueProblem(v) || v.length > 120) return { first: '', last: '' };
+  const i = v.lastIndexOf(' ');
+  return i > 0 ? { first: v.slice(0, i), last: v.slice(i + 1) } : { first: v, last: '' };
+}
+
 // packagesArg(Q, A) -> Wert für `provision.sh --packages` (der bestehende Weg der CLI): Komma-Liste oder none.
 function packagesArg(Q, A) {
   const p = (A.__packages || []).filter((x) => pkgDef(Q, x));
@@ -267,4 +301,5 @@ function packagesArg(Q, A) {
 }
 
 module.exports = { PHASES, PH, steps, reachMode, answered, envOf, question, phaseOf, helpBlocks, valueProblem,
-  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, hostDef, pkgDef };
+  allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, myfritzZone, myfritzCandidates, myfritzGuess,
+  userLanguage, userName, hostDef, pkgDef };

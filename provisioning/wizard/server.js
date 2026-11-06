@@ -19,6 +19,7 @@
 const http = require('http');
 const net = require('net');
 const crypto = require('crypto');
+const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -236,8 +237,12 @@ function pageFor(id) {
       page.title = 'Füge die MyFRITZ!-Adresse deines Rechners ein';
       page.help = [{ p: 'Sie steht in der Freigabe im Feld „MyFRITZ!-Adresse“, zum Beispiel meinrechner.deine-domain.myfritz.net. Warte danach etwa eine Minute, bis sie eingetragen ist.' }];
       page.optional = false;
+      Object.assign(page, domainView(v));
     }
-    if (key === 'OWNER_LANGUAGE' && !v) page.value = 'de';
+    // Vorschläge vom Rechner (App: LA_USER_LANG, LA_USER_FULLNAME), nur solange nichts beantwortet ist.
+    if (key === 'OWNER_LANGUAGE' && !v) page.value = flow.userLanguage(process.env.LA_USER_LANG, Q.languages) || 'de';
+    if (key === 'OWNER_FIRST_NAME' && v === undefined) page.value = flow.userName(process.env.LA_USER_FULLNAME).first;
+    if (key === 'OWNER_LAST_NAME' && v === undefined) page.value = flow.userName(process.env.LA_USER_FULLNAME).last;
     if (q.setting === 'general.paperless_url' && v === undefined) Object.assign(page, paperlessSearchView());
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
@@ -313,6 +318,35 @@ function paperlessSearchView() {
   }
   if (s.found.length > 1) return { suggestions: s.found, note: { kind: '', text: 'Im Heimnetz läuft Paperless mehrmals. Tipp die richtige Adresse an.' } };
   return { note: { kind: '', text: 'Im Heimnetz wurde kein Paperless gefunden. Trag die Adresse selbst ein.' } };
+}
+
+// MyFRITZ-Adresse dieses Rechners finden (Seite h:DOMAIN): Kennung der Box von der App (LA_MYFRITZ_ZONE), Gerätenamen-
+//   Kandidaten (LA_HOST_NAME_CANDIDATES), DNS-Probe <kandidat>.<zone>. Treffer = vorausgefüllt; sonst steht .<zone> fest
+//   hinter dem Feld und nur der Gerätename fehlt. Ohne Zone wie bisher (ganze Adresse eintippen).
+const MYFRITZ_ZONE = flow.myfritzZone(process.env.LA_MYFRITZ_ZONE);
+let domainSearching = null;
+function dnsResolves(name) {
+  // Nur Tests: WIZARD_FAKE_DNS = Komma-Liste auflösbarer Namen (deterministisch, ohne Netz).
+  if (process.env.WIZARD_FAKE_DNS !== undefined) return Promise.resolve(process.env.WIZARD_FAKE_DNS.split(',').includes(name));
+  const r = new dns.Resolver({ timeout: 1500, tries: 1 });
+  return r.resolve4(name).then((a) => a.length > 0, () => false);
+}
+function domainView(v) {
+  if (!MYFRITZ_ZONE) return {};
+  const g = P.notes.domain_guess;
+  if (!g && !domainSearching) {
+    P.notes.domain_guess = { state: 'running' };
+    domainSearching = flow.myfritzGuess(MYFRITZ_ZONE, flow.myfritzCandidates(process.env.LA_HOST_NAME_CANDIDATES), dnsResolves)
+      .then((name) => { P.notes.domain_guess = { state: 'done', name }; save(); })
+      .catch(() => { P.notes.domain_guess = { state: 'done', name: '' }; })
+      .finally(() => { domainSearching = null; });
+  }
+  const s = P.notes.domain_guess || { state: 'running' };
+  if (s.state === 'running') return { poll: true, note: { kind: '', text: 'Suche die Adresse deines Rechners …', busy: true } };
+  if (s.name) return { value: v || s.name, note: { kind: '', text: 'Gefunden. Die Adresse ist schon eingetragen, prüf sie kurz.' } };
+  const prefix = v && v.endsWith('.' + MYFRITZ_ZONE) ? v.slice(0, -MYFRITZ_ZONE.length - 1) : (v || '');
+  return { value: prefix, suffix: '.' + MYFRITZ_ZONE, placeholder: 'meinrechner',
+    note: { kind: '', text: 'Trag vorne nur noch den Gerätenamen ein. Du siehst ihn in der FritzBox unter Internet → Freigaben, in der Zeile dieses Rechners.' } };
 }
 
 function labelOf(id, value) {
@@ -397,6 +431,17 @@ function keyExpiryNote() {
   if (!t || t.days === null || t.days === undefined || t.days >= 30 || flow.reachMode(P.A) !== 'tunnel') return null;
   return { kind: 'warn', text: `Tailscale meldet diesen Rechner in ${t.days} Tagen ab, dann erreicht Telegram den Bot nicht mehr. Schalte das ab: in Tailscale unter „Machines“ beim Rechner „Disable key expiry“.` };
 }
+// webhookNote — Zustellfehler verständlich erklären, mit dem nächsten Schritt je Weg, statt still zu warten.
+function webhookNote(c) {
+  const w = c.webhook;
+  if (!w) return null;
+  if (w.state === 'foreign') return { kind: 'warn', text: 'Dein Bot liefert seine Nachrichten noch an einen anderen Dienst. Schließ dort die Verbindung oder leg einen neuen Bot an.' };
+  if (!w.error) return null;
+  if (flow.reachMode(P.A) === 'fritzbox') {
+    return { kind: 'warn', text: 'Telegram kommt gerade nicht bei deinem Rechner an. Prüf in der FritzBox unter Internet → Freigaben, ob beide Freigaben (HTTP-Server und HTTPS-Server) für diesen Rechner aktiv sind. Steht im Online-Monitor „DS-Lite“, geht dieser Weg nicht; stell dann in der App auf „Über einen sicheren Tunnel“ um.' };
+  }
+  return { kind: 'warn', text: 'Telegram kommt gerade nicht bei deinem Rechner an. Prüf in Tailscale, ob die Freigabe für Nachrichten von außen (Funnel) für diesen Rechner noch an ist. Tipp danach in Telegram noch einmal auf „Starten“.' };
+}
 function connectView() {
   const c = P.notes.connect || {};
   const v = { kind: 'connect', title: 'Verbinde dich mit deinem Bot', poll: true };
@@ -421,6 +466,7 @@ function connectView() {
     return Object.assign(v, { qr: PAIR.qr, link: { href: PAIR.link, label: 'Link öffnen, wenn du Telegram auf diesem Rechner hast' },
       help: [{ p: 'Scanne den Code mit dem Handy. Telegram öffnet deinen Bot.' }, { p: 'Tippe dort auf „Starten“.' },
         { p: 'Der Code gilt 10 Minuten und zeigt nur dir, dass du der Besitzer bist.' }],
+      note: webhookNote(c),
       wait: c.connected ? 'Verbunden. Der Bot wird auf dich eingestellt …' : 'Warte auf deine Nachricht an den Bot …' });
   }
   return Object.assign(v, { help: [{ p: 'Einen Moment, der Code wird vorbereitet.' }], wait: 'Bereite die Verbindung vor …' });
@@ -451,6 +497,8 @@ async function answer(id, raw, skip) {
     let check = null;
     let note = null;
     let v = value;
+    // MyFRITZ mit fester Zone: eingegeben wird nur der Gerätename vorne (domainView), die Zone hängt der Server an.
+    if (q.key === 'DOMAIN' && MYFRITZ_ZONE && /^[A-Za-z0-9-]{1,63}$/.test(v)) v = `${v}.${MYFRITZ_ZONE}`;
     if (v !== '') {
       const r = await bridge(['validate', q.validateRef], { input: v, timeoutMs: 30000 });
       if (!r) return { error: 'Die Prüfung hat nicht geantwortet. Versuch es gleich noch einmal.' };
@@ -661,6 +709,13 @@ async function connectTick(force) {
       if (Date.now() - PAIR.armed > TOKEN_TTL_MS) { c.expired = true; PAIR = null; save(); return; }
       const st = await laCli('status');
       if (st && st.ok && st.connected) c.connected = true;
+      // Selbsttest (Leitung, Format Paket 3): kommt Telegram bei diesem Rechner an? Alle 10 s den Webhook-Zustand lesen.
+      if (!c.connected && (!c.webhookAt || Date.now() - c.webhookAt > 10000)) {
+        c.webhookAt = Date.now();
+        const r = await bridge(['reach-status'], { timeoutMs: 20000 });
+        if (r) c.webhook = { state: ['ours', 'none', 'foreign', 'unknown'].includes(r.webhook) ? r.webhook : 'unknown',
+          error: typeof r.webhook_error === 'string' && r.webhook_error !== '' };
+      }
     }
     if (c.connected && !c.finalized) {
       const f = await laCli('finalize');

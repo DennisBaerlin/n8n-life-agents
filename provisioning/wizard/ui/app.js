@@ -129,10 +129,12 @@
 
     if (['text', 'date', 'secret'].includes(p.kind)) {
       const type = p.kind === 'secret' ? 'password' : p.kind === 'date' ? 'date' : 'text';
+      const inp = h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? 'Schon eingetragen. Leer lassen, um es zu behalten.' : (p.placeholder || null),
+        autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'er',
+        on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } } } });
+      // Fester Teil hinter dem Feld (z. B. .<kennung>.myfritz.net): nur der Gerätename vorne wird getippt.
       kids.push(h('label', { class: 'sr', for: 'in', text: p.title }),
-        h('input', { id: 'in', type, value: p.value || '', placeholder: p.hasSecret ? 'Schon eingetragen. Leer lassen, um es zu behalten.' : (p.placeholder || null),
-          autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'er',
-          on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); next(); } } } }));
+        p.suffix ? h('div', { class: 'with-suffix' }, inp, h('span', { class: 'suffix', text: p.suffix })) : inp);
       // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
       if ((p.suggestions || []).length) {
         kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': 'Gefundene Adressen' }, p.suggestions.map((s) => h('button', {

@@ -26,7 +26,8 @@ async function step(w, id, value, opt) {
   });
   await new Promise((r) => pl.listen(0, '0.0.0.0', r));
   const plUrl = `http://${lanIp()}:${pl.address().port}`;
-  const w = await startWizard({ env: { LA_HOST_IP: '192.0.2.10' } });
+  const w = await startWizard({ env: { LA_HOST_IP: '192.0.2.10', LA_USER_LANG: 'de-DE', LA_USER_FULLNAME: 'Erika Mustermann',
+    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini', WIZARD_FAKE_DNS: '' } });
   try {
     await login(w);
     await step(w, 'h:OWNER_LANGUAGE', 'de');
@@ -54,7 +55,8 @@ async function step(w, id, value, opt) {
     await step(w, 'reach', 'fritzbox');
     await step(w, 'fb_dslite', 'no');
     await step(w, 'fb_guide', null);
-    await step(w, 'h:DOMAIN', 'meinrechner.deine-domain.myfritz.net');
+    await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: Kennung fest, Gerätename fehlt
+    await step(w, 'h:DOMAIN', 'meinrechner');
     await step(w, 'review', null);
     await shot(w, 'confirm');
     fs.writeFileSync(path.join(w.fake, 'hold_stage'), 'workflows');
@@ -71,6 +73,10 @@ async function step(w, id, value, opt) {
     await waitFor(async () => (await state(w)).json.page.id === 'connect');
     const pg = await waitFor(async () => { const p = (await state(w)).json.page; return p.qr ? p : null; });
     out.push({ name: 'connect', page: pg });
+    // Selbsttest: Telegram meldet einen Zustellfehler -> Hinweis mit nächstem Schritt für die FritzBox.
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'fritzbox', state: 'ready', webhook: 'ours', webhook_error: 'Connection timed out' }));
+    const pe = await waitFor(async () => { const p = (await state(w)).json.page; return p.note ? p : null; }, 30000);
+    out.push({ name: 'connect-zustellfehler', page: pe });
     fs.writeFileSync(path.join(w.fake, 'paired'), '');
     await waitFor(async () => (await state(w)).json.page.id === 'handoff');
     await shot(w, 'handoff');
@@ -81,6 +87,16 @@ async function step(w, id, value, opt) {
     pl.close();
     await w.stop();
   }
+  // MyFRITZ: Gerätename löst auf -> Adresse vorausgefüllt.
+  const d = await startWizard({ env: { LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini', WIZARD_FAKE_DNS: 'mac-mini.deine-domain.myfritz.net' } });
+  try {
+    await login(d);
+    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
+      ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []],
+      ['reach', 'fritzbox'], ['fb_dslite', 'no'], ['fb_guide', null]]) await answer(d, id, v);
+    await waitFor(async () => !(await state(d)).json.page.poll);
+    await shot(d, 'h_DOMAIN-gefunden');
+  } finally { await d.stop(); }
   // Tunnel-Anmeldung und belegte Ports als eigene Läufe (anderer Weg).
   const t = await startWizard();
   try {

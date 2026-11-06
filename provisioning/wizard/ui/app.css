@@ -172,3 +172,7 @@ dl { margin: 0; }
 .choices:not(.multi) .choice b::before { content: ""; display: inline-block; width: 16px; height: 16px; border: 1.5px solid var(--gray); border-radius: 50%; margin-right: 10px; vertical-align: -2px; box-sizing: border-box; }
 .choices:not(.multi) .choice.sel b::before { border: 5px solid var(--accent); background: var(--bg); }
 .choices:not(.multi) .choice small { padding-left: 26px; }
+/* Eingabe mit festem Ende (MyFRITZ-Kennung): Feld + Endung in einer Zeile, im schmalen Fenster untereinander. */
+.with-suffix { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.with-suffix input { flex: 1 1 180px; width: auto; }
+.with-suffix .suffix { font-weight: 600; overflow-wrap: anywhere; }

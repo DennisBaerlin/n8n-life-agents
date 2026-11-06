@@ -108,6 +108,31 @@ test('Paperless-Adresse vorausfüllen: genau ein erreichbarer Treffer, sonst lee
   assert.equal(g([{ ip: '0.0.0.0', port: 0 }, { ip: '0.0.0.0', port: 'x' }], '192.0.2.10'), '');
 });
 
+test('MyFRITZ-Adresse: Zone und Kandidaten streng geprüft, erster auflösbarer Name gewinnt', async () => {
+  assert.equal(flow.myfritzZone('Deine-Domain.myfritz.net.'), 'deine-domain.myfritz.net');
+  for (const bad of ['', 'myfritz.net', 'zwei.deine-domain.myfritz.net', 'deine-domain.myfritz.net.evil.example', 'mein rechner.deine-domain.myfritz.net']) assert.equal(flow.myfritzZone(bad), '', bad);
+  assert.deepEqual(flow.myfritzCandidates('Mac-Mini, meinrechner mac-mini ;rm -rf /, -x'), ['mac-mini', 'meinrechner']);
+  const seen = [];
+  const resolve = async (n) => { seen.push(n); return n === 'meinrechner.deine-domain.myfritz.net'; };
+  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['mac-mini', 'meinrechner', 'x'], resolve), 'meinrechner.deine-domain.myfritz.net');
+  assert.deepEqual(seen, ['mac-mini.deine-domain.myfritz.net', 'meinrechner.deine-domain.myfritz.net'], 'stoppt beim ersten Treffer');
+  assert.equal(await flow.myfritzGuess('deine-domain.myfritz.net', ['a'], async () => { throw new Error('x'); }), '');
+  assert.equal(await flow.myfritzGuess('', ['a'], async () => true), '');
+});
+
+test('Vorschläge vom Rechner: Sprache auf angebotene Codes, Name am letzten Leerzeichen', () => {
+  const L = [{ code: 'de' }, { code: 'en' }];
+  assert.equal(flow.userLanguage('de-DE', L), 'de');
+  assert.equal(flow.userLanguage('en_US.UTF-8', L), 'en');
+  assert.equal(flow.userLanguage('fr', L), '');
+  assert.equal(flow.userLanguage('', L), '');
+  assert.deepEqual(flow.userName('Lena Marie Beispiel'), { first: 'Lena Marie', last: 'Beispiel' });
+  assert.deepEqual(flow.userName('  Kim  '), { first: 'Kim', last: '' });
+  assert.deepEqual(flow.userName('Tom\nBeispiel'), { first: 'Tom', last: 'Beispiel' }, 'Zeilenumbruch wird Leerzeichen');
+  assert.deepEqual(flow.userName('x\u0000y'), { first: '', last: '' });
+  assert.deepEqual(flow.userName(''), { first: '', last: '' });
+});
+
 test('Hilfetext der CLI: Listen, Absätze, Terminal-Befehle entfallen', () => {
   const b = flow.helpBlocks('Erste Zeile\nzweite Zeile.\n  1. Eins\n  2. Zwei mit\n     Fortsetzung\nSpäter nachtragen: lifeagents reconfigure');
   assert.deepEqual(b, [{ p: 'Erste Zeile zweite Zeile.' }, { ol: ['Eins', 'Zwei mit Fortsetzung'] }]);

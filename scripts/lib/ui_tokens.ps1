@@ -56,6 +56,9 @@ function Get-UiCopies {
     @(
         [pscustomobject]@{ Source = 'config/ui.steps.js'; Files = @('provisioning/desktop/ui/app.js') }
         [pscustomobject]@{ Source = 'config/ui.steps.css'; Files = @('provisioning/desktop/ui/app.css') }
+        # Lese-Hinweis am Hauptknopf (Werte der Leitung, Referenz im Fragebogen).
+        [pscustomobject]@{ Source = 'config/ui.nudge.js'; Files = @('provisioning/desktop/ui/app.js') }
+        [pscustomobject]@{ Source = 'config/ui.nudge.css'; Files = @('provisioning/desktop/ui/app.css') }
     )
 }
 function Get-UiCopyRegex([string]$Name) {

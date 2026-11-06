@@ -6,6 +6,8 @@ Mit der [Start-App](start-app.html) erreicht Telegram deinen Rechner am einfachs
 
 {{< schema name="weg-tunnel" caption="Eigene Schema-Zeichnung: Telegram schickt an die öffentliche Tailscale-Adresse, von dort geht es durch den Tunnel und durch den unveränderten Router zum Mac. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch." >}}
 
+**Du installierst per Befehl auf einem eigenen Server (Debian, LXC)?** Dann bietet dir der Installer denselben Tunnel als ersten Weg an; der Ablauf steht unter [Installation → Weg 1: Tunnel](installation.html#tunnel). Kosten, der neutrale Name und die Grenzen unten gelten genauso.
+
 ## Was du brauchst
 
 - Die [Start-App](start-app.html), die bis zur Frage „Wie soll Telegram deinen Rechner erreichen?“ gekommen ist.
